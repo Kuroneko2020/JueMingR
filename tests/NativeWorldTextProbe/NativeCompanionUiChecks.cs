@@ -170,8 +170,23 @@ namespace NativeWorldTextProbe
                 Require(!bindings.TrySet(otherAction, bindings.Get(actionId), null, out duplicateCommand, out duplicateReason) && !string.IsNullOrEmpty(duplicateReason),
                     "the actual shared binding owner rejects a duplicate management chord without altering the accepted binding");
                 NativeToolsUiChecks.PopupClick(context, popup, "Close"); release();
-                frame(Vector2.Zero, false, new[] { Keys.F5 }); release();
-                Require(!(bool)Get(state, "Visible"), "main F5 is closed before testing the independent action");
+                var manage = Get(Get(shell, "MiscUi"), "companionControl");
+                NativeToolsUiChecks.Click(context, NativeToolsUiChecks.Point(Get(manage, "Rect")));
+                Require(!(bool)Get(state, "Visible") && (bool)Get(window, "Visible") && (bool)Get(window, "Independent") &&
+                    ReferenceEquals(window, Get(shell, "CompanionUi")),
+                    "the actual Misc management release closes F5 and opens the same independent companion window");
+                typeof(Player).GetMethod("ResetControls", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(Main.LocalPlayer, null);
+                Terraria.GameInput.PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);
+                Require(!Main.LocalPlayer.controlUseItem && !Main.LocalPlayer.controlUseTile,
+                    "manual parent-to-independent handoff consumes its actual release before native world input");
+                var manualPanel = Get(window, "panel"); var manualTitle = NativeToolsUiChecks.Point(Get(window, "titleBar"));
+                frame(manualTitle, false, neutral); frame(manualTitle, true, neutral);
+                frame(manualTitle + new Vector2(18, 6), true, neutral); frame(manualTitle + new Vector2(18, 6), false, neutral);
+                Require((float)Get(Get(window, "panel"), "X") > (float)Get(manualPanel, "X") &&
+                    (float)Get(Get(window, "panel"), "Y") > (float)Get(manualPanel, "Y") && !(bool)Get(state, "Visible"),
+                    "the manually opened independent window remains draggable while F5 stays closed");
+                pulse();
+                Require(!(bool)Get(window, "Visible") && !(bool)Get(state, "Visible"), "the existing management hotkey closes the manually opened window without reopening F5");
                 NotesCapture(context, chordKeys);
                 pulse();
                 Require((bool)Get(window, "Visible") && (bool)Get(window, "Independent") && !(bool)Get(state, "Visible"),

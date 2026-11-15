@@ -61,10 +61,19 @@ namespace JueMingR.TerrariaHost.Companions
                 if(!active || finished)return;
                 // Snapshot only these necessary identities on the game thread.
                 // The writer receives text, never Player/Main or live actors.
+                // The native body itself may have no deeper frame even before
+                // Harmony rethrows. Record only bounded null facts and control
+                // indices here, once; never inspect item contents or Asset.Value.
+                var body=actor.Body;int selected=body.selectedItem;
+                bool slotValid=body.inventory!=null && selected>=0 && selected<body.inventory.Length;
                 string record="end=first-player-fault\nutc="+DateTime.UtcNow.ToString("O",CultureInfo.InvariantCulture)+
                     "\nphase="+actor.FaultPhase+"\nprofile="+actor.Profile.Id.ToString("N")+"\ngeneration="+actor.Generation+
                     "\nslot="+actor.Body.whoAmI+"\nnetMode="+Main.netMode+"\ngameUpdate="+Main.GameUpdateCount+
-                    "\nworld="+(Main.ActiveWorldFileData==null?"none":Main.ActiveWorldFileData.UniqueId.ToString("N"))+"\nexception=\n"+error;
+                    "\nworld="+(Main.ActiveWorldFileData==null?"none":Main.ActiveWorldFileData.UniqueId.ToString("N"))+
+                    "\nthread="+Thread.CurrentThread.ManagedThreadId+"\nselectedSlot="+selected+"\nitemAnimation="+body.itemAnimation+
+                    "\nnullFacts=inventory:"+(body.inventory==null)+";slotValid:"+slotValid+";selectedItem:"+(!slotValid || body.inventory[selected]==null)+
+                    ";mount:"+(body.mount==null)+";lastVisualizedSelectedItem:"+(body.lastVisualizedSelectedItem==null)+
+                    ";threadRandom:"+(Main.rand==null)+";mainInstance:"+(Main.instance==null)+"\nexception=\n"+error;
                 string home=Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
                 if(!String.IsNullOrEmpty(home))record=record.Replace(home,"<user>");
                 Finish(record);

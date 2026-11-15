@@ -27,7 +27,11 @@ namespace JueMingR.TerrariaHost.Companions
             if(installed)return;
             Patch(typeof(Player),"Update",nameof(PlayerBefore),nameof(PlayerAfter),nameof(PlayerFinal),nameof(UpdateGates),new[]{typeof(int)});
             Patch(typeof(Main),"UpdateWorld_NPCs",postfix:nameof(NpcWorldAfter));
+#if JMR_COMPANION_FAULT_DIAGNOSTIC
+            Patch(typeof(Player),"ItemCheck",nameof(UseBefore),finalizer:nameof(ItemFaultFinal));
+#else
             Patch(typeof(Player),"ItemCheck",nameof(UseBefore),finalizer:nameof(ScopeFinal));
+#endif
             Harmony.Patch(AccessTools.PropertyGetter(typeof(PlayerInput),"ShouldFastUseItem"),postfix:Hook(nameof(FastUse)));
             Patch(typeof(PlayerInput),"TryEndingFastUse",nameof(EndFastUse));
             Patch(typeof(Main),"LocalPlayerHasPendingInventoryActions",nameof(PendingInventory));
@@ -82,7 +86,21 @@ namespace JueMingR.TerrariaHost.Companions
                 Main.myPlayer=actor.Body.whoAmI;Main.mouseX=(int)(aim.X-Main.screenPosition.X);Main.mouseY=(int)(actor.Body.gravDir<0?Main.screenHeight-aim.Y+Main.screenPosition.Y:aim.Y-Main.screenPosition.Y);
                 Player.tileTargetX=(int)(aim.X/16);Player.tileTargetY=(int)(aim.Y/16);
             }
-            public void Dispose(){if(ended)return;ended=true;if(life!=Actor.Body.statLife || mana!=Actor.Body.statMana || inventory && resources!=Resources(Actor.Body))Actor.Dirty=true;host.LeaveNpcObservation(npcTable);Main.myPlayer=oldPlayer;Main.mouseX=x;Main.mouseY=y;Player.tileTargetX=tileX;Player.tileTargetY=tileY;Main.mapFullscreen=map;Main.mouseItem=mouse;current=previous;}
+            public void Dispose()
+            {
+                if(ended)return;ended=true;
+                try{if(life!=Actor.Body.statLife || mana!=Actor.Body.statMana || inventory && resources!=Resources(Actor.Body))Actor.Dirty=true;}
+                finally
+                {
+                    // Resource observation must not strand the temporary actor
+                    // identity on failure. PlayerFinal repairs NPC/tile state,
+                    // but cannot restore this scope's mouse or Send routing.
+                    // Nested scopes return to their exact prior owner even if
+                    // observation/cleanup fails; the exception still propagates.
+                    try{host.LeaveNpcObservation(npcTable);}
+                    finally{Main.myPlayer=oldPlayer;Main.mouseX=x;Main.mouseY=y;Player.tileTargetX=tileX;Player.tileTargetY=tileY;Main.mapFullscreen=map;Main.mouseItem=mouse;current=previous;}
+                }
+            }
         }
         private sealed class PlayerStep {internal int X,Y;internal NPC[] Npcs;}
         private static bool PlayerBefore(Player __instance,ref PlayerStep __state)
@@ -126,6 +144,26 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool EndFastUse(){return current==null;}
         private static bool PendingInventory(ref bool __result){if(current==null)return true;__result=false;return false;}
         private static Exception ScopeFinal(Exception __exception,Scope __state){__state?.Dispose();return __exception;}
+#if JMR_COMPANION_FAULT_DIAGNOSTIC
+        private static Exception ItemFaultFinal(Player __instance,Exception __exception,Scope __state)
+        {
+            // Task184's bounded collector must format inside this catch boundary:
+            // Harmony's Exception-return finalizers end with throw exception and
+            // erase deeper frames before PlayerFinal sees them. A failed prefix
+            // may not have produced a Scope, so actor identity comes from Player.
+            if(__exception!=null){var actor=host?.Owned(__instance);if(actor!=null)CompanionUpdateFaultTrace.Capture(actor,__exception);}
+            try{__state?.Dispose();}
+            catch(Exception cleanup)
+            {
+                // Cleanup itself can be the first fault. Preserve its original
+                // behavior/stack, including when Harmony retries finalizers;
+                // the collector's one-use gate prevents a second record.
+                var actor=host?.Owned(__instance);if(actor!=null)CompanionUpdateFaultTrace.Capture(actor,cleanup);
+                throw;
+            }
+            return __exception;
+        }
+#endif
         private static void DeathBefore(Player __instance,ref Scope __state){var a=host?.Owned(__instance);if(a!=null && a.Ready && !a.Closing)__state=Enter(a,a.Aim);}
         private static Exception DeathFinal(Exception __exception,Player __instance,Scope __state)
         {try{if(__state!=null)host.ObserveDeath(__state.Actor);}finally{__state?.Dispose();}return __exception;}

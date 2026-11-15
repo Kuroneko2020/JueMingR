@@ -256,7 +256,15 @@ namespace JueMingR.TerrariaHost.F5
             }
         }
         private void OpenCompanions(F5Rect anchor)
-        { ToggleCompanionWindow(anchor,false,null); }
+        {
+            if(CompanionUi==null)return;
+            if(CompanionUi.Visible){CompanionUi.Close();return;}
+            // Misc already owns this validated release and its physical tail.
+            // Close the parent first, then open the same independent window;
+            // hidden-page cleanup must never retire the newly opened view.
+            CloseAndSubmitPosition();
+            ToggleCompanionWindow(anchor,true,null);
+        }
         // Notes hover may coexist with this keyboard action. An existing drag
         // and its final consumed release sample must finish before a new window.
         internal bool CanToggleCompanionsFromHotkey
