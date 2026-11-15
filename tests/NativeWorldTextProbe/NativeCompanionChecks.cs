@@ -67,6 +67,7 @@ namespace NativeWorldTextProbe
             {
                 Require((bool)Call(host,"Join",id),"actual native Spawn joins saved character: "+Get(host,"Feedback"));
                 var p=(Player)Call(host,"GetBody",id);Require(p.active && p.whoAmI!=Main.myPlayer,"independent active native body");
+                NativeCompanionTileContextChecks.Run(host,p);
                 try{NativeCompanionBehaviorChecks.RunJumpReachability(host);}
                 catch(Exception failure){Console.Error.WriteLine("FAIL companion jump (other restored native checks continue): "+failure);independentFailures.Add(failure);}
                 var human=Main.LocalPlayer;human.position=new Vector2(1300,900);var start=p.position;int realSlot=Main.myPlayer;var mouse=Main.mouseItem;int x=Main.mouseX,y=Main.mouseY;

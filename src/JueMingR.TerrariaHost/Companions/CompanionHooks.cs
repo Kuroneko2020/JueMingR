@@ -27,11 +27,10 @@ namespace JueMingR.TerrariaHost.Companions
             if(installed)return;
             Patch(typeof(Player),"Update",nameof(PlayerBefore),nameof(PlayerAfter),nameof(PlayerFinal),nameof(UpdateGates),new[]{typeof(int)});
             Patch(typeof(Main),"UpdateWorld_NPCs",postfix:nameof(NpcWorldAfter));
-#if JMR_COMPANION_FAULT_DIAGNOSTIC
-            Patch(typeof(Player),"ItemCheck",nameof(UseBefore),finalizer:nameof(ItemFaultFinal));
-#else
             Patch(typeof(Player),"ItemCheck",nameof(UseBefore),finalizer:nameof(ScopeFinal));
-#endif
+            Patch(typeof(Player),"PlaceThing",nameof(PlaceBefore),args:new[]{typeof(bool),typeof(Player.ItemCheckContext).MakeByRefType()});
+            Patch(typeof(Player),"ItemCheck_UseWiringTools",nameof(PlaceBefore));
+            Patch(typeof(Player),"UpdatePlacementPreview",nameof(PreviewBefore));
             Harmony.Patch(AccessTools.PropertyGetter(typeof(PlayerInput),"ShouldFastUseItem"),postfix:Hook(nameof(FastUse)));
             Patch(typeof(PlayerInput),"TryEndingFastUse",nameof(EndFastUse));
             Patch(typeof(Main),"LocalPlayerHasPendingInventoryActions",nameof(PendingInventory));
@@ -44,6 +43,7 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player),"GrabItems",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(WorldItem),"UpdateItem",postfix:nameof(ItemOwner));
             Patch(typeof(Projectile),"AI",nameof(ProjectileBefore),finalizer:nameof(ScopeFinal));
+            Patch(typeof(Projectile),"AI_075",transpiler:nameof(DrillTileGate));
             Patch(typeof(Projectile),"Damage",nameof(ProjectileBefore),nameof(ProjectileDamageAfter),nameof(ScopeFinal));
             Patch(typeof(Projectile),"Kill",nameof(ProjectileBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(NetMessage),"SendPacketToServer",nameof(Send));
@@ -74,6 +74,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal sealed class Scope : IDisposable
         {
             internal readonly HostCompanions.Actor Actor;private readonly Scope previous;
+            internal readonly bool TileInteractionReady;
             private readonly int oldPlayer,x,y,tileX,tileY;private readonly bool map;private readonly Item mouse;private bool ended;
             private readonly int life,mana;private readonly bool inventory;private readonly ulong resources;
             private readonly NPC[] npcTable;
@@ -85,6 +86,12 @@ namespace JueMingR.TerrariaHost.Companions
                 Actor=actor;previous=current;current=this;oldPlayer=Main.myPlayer;x=Main.mouseX;y=Main.mouseY;tileX=Player.tileTargetX;tileY=Player.tileTargetY;map=Main.mapFullscreen;mouse=Main.mouseItem;
                 Main.myPlayer=actor.Body.whoAmI;Main.mouseX=(int)(aim.X-Main.screenPosition.X);Main.mouseY=(int)(actor.Body.gravDir<0?Main.screenHeight-aim.Y+Main.screenPosition.Y:aim.Y-Main.screenPosition.Y);
                 Player.tileTargetX=(int)(aim.X/16);Player.tileTargetY=(int)(aim.Y/16);
+                // Mouse aim remains the real combat/prism point. An unknown
+                // tile is not empty and cannot authorize native tile work;
+                // retain its exact coordinate instead of moving the action.
+                int tx=Player.tileTargetX,ty=Player.tileTargetY;
+                TileInteractionReady=Main.tile!=null && tx>=0 && ty>=0 && tx<Main.tile.GetLength(0) && ty<Main.tile.GetLength(1) && Main.tile[tx,ty]!=null &&
+                    (Main.netMode!=1 || Main.sectionManager!=null && Main.sectionManager.TileLoaded(tx,ty));
             }
             public void Dispose()
             {
@@ -108,34 +115,19 @@ namespace JueMingR.TerrariaHost.Companions
             var a=host?.Owned(__instance);if(a==null)return true;
             if(!a.Ready || a.Closing || a.Faulted)return false;
             if(a.LastUpdate==Main.GameUpdateCount)return false;
-#if JMR_COMPANION_FAULT_DIAGNOSTIC
-            CompanionUpdateFaultTrace.Phase(a,"before-body/observation");
-#endif
             __state=new PlayerStep{X=Player.tileTargetX,Y=Player.tileTargetY,Npcs=host.EnterNpcObservation()};
             a.LastUpdate=Main.GameUpdateCount;
-#if JMR_COMPANION_FAULT_DIAGNOSTIC
-            CompanionUpdateFaultTrace.Phase(a,"before-body/control");
-#endif
             host.Control(a);
-#if JMR_COMPANION_FAULT_DIAGNOSTIC
-            CompanionUpdateFaultTrace.Phase(a,"native-player-update");
-#endif
             return true;
         }
         private static void PlayerAfter(Player __instance,PlayerStep __state)
         {var a=host?.Owned(__instance);if(__state!=null && a!=null && a.Ready && !a.Closing){
-#if JMR_COMPANION_FAULT_DIAGNOSTIC
-            CompanionUpdateFaultTrace.Phase(a,"after-body/publish");
-#endif
             host.AfterBody(a);}}
         private static void NpcWorldAfter(){host?.AdvanceNpcObservation();}
         private static Exception PlayerFinal(Exception __exception,Player __instance,PlayerStep __state)
         {
             if(__state!=null){host.LeaveNpcObservation(__state.Npcs);Player.tileTargetX=__state.X;Player.tileTargetY=__state.Y;}
             if(__exception!=null){var a=host?.Owned(__instance);if(a!=null){
-#if JMR_COMPANION_FAULT_DIAGNOSTIC
-                CompanionUpdateFaultTrace.Capture(a,__exception);
-#endif
                 a.Status="人物更新失败："+__exception.Message;a.Faulted=true;a.Body.controlUseItem=false;a.Body.channel=false;return null;}}return __exception;
         }
         private static void UseBefore(Player __instance,MethodBase __originalMethod,ref Scope __state)
@@ -143,27 +135,51 @@ namespace JueMingR.TerrariaHost.Companions
         private static void FastUse(ref bool __result){if(current!=null)__result=false;}
         private static bool EndFastUse(){return current==null;}
         private static bool PendingInventory(ref bool __result){if(current==null)return true;__result=false;return false;}
-        private static Exception ScopeFinal(Exception __exception,Scope __state){__state?.Dispose();return __exception;}
-#if JMR_COMPANION_FAULT_DIAGNOSTIC
-        private static Exception ItemFaultFinal(Player __instance,Exception __exception,Scope __state)
+        private static bool PlaceBefore(Player __instance)
         {
-            // Task184's bounded collector must format inside this catch boundary:
-            // Harmony's Exception-return finalizers end with throw exception and
-            // erase deeper frames before PlayerFinal sees them. A failed prefix
-            // may not have produced a Scope, so actor identity comes from Player.
-            if(__exception!=null){var actor=host?.Owned(__instance);if(actor!=null)CompanionUpdateFaultTrace.Capture(actor,__exception);}
-            try{__state?.Dispose();}
-            catch(Exception cleanup)
-            {
-                // Cleanup itself can be the first fault. Preserve its original
-                // behavior/stack, including when Harmony retries finalizers;
-                // the collector's one-use gate prevents a second record.
-                var actor=host?.Owned(__instance);if(actor!=null)CompanionUpdateFaultTrace.Capture(actor,cleanup);
-                throw;
-            }
-            return __exception;
+            // ItemCheck calls PlaceThing even while idle with a plain weapon;
+            // Extractinator reads tile.active before checking the use action.
+            // Defer only placement at this unknown cell. Native ItemCheck,
+            // firing, timers, movement and other actors still run normally.
+            return current==null || !ReferenceEquals(current.Actor.Body,__instance) || current.TileInteractionReady;
         }
-#endif
+        private static bool PreviewBefore(Player __instance)
+        {
+            // Native placement preview is the human cursor's shared UI state,
+            // not permission granted by borrowing an actor's item identity.
+            // Its Framing path can materialize unknown footprint/anchor cells.
+            // Actual known-cell actions retain the original PlaceThing checks.
+            return current==null || !ReferenceEquals(current.Actor.Body,__instance);
+        }
+        private static bool DrillTileWork(Projectile projectile)
+        {
+            return current==null || projectile.type!=Terraria.ID.ProjectileID.LaserDrill || current.TileInteractionReady ||
+                !ReferenceEquals(host?.ProjectileActor(projectile),current.Actor);
+        }
+        private static IEnumerable<CodeInstruction> DrillTileGate(IEnumerable<CodeInstruction> instructions)
+        {
+            var code=instructions.ToList();var tile=AccessTools.Field(typeof(Main),"tile");var tx=AccessTools.Field(typeof(Player),"tileTargetX");var ty=AccessTools.Field(typeof(Player),"tileTargetY");
+            var reads=Enumerable.Range(0,code.Count-2).Where(i=>code[i].LoadsField(tile) && code[i+1].LoadsField(tx) && code[i+2].LoadsField(ty)).ToArray();
+            if(reads.Length!=1)throw new InvalidOperationException("companion-drill ABI: expected one target tile read");
+            int read=reads[0],gate=-1;Label end=default(Label);var localAI=AccessTools.Field(typeof(Projectile),"localAI");
+            for(int i=Math.Max(0,read-48);i+5<read;i++)
+            {
+                if(code[i].opcode!=OpCodes.Ldarg_0 || !code[i+1].LoadsField(localAI) || code[i+2].opcode!=OpCodes.Ldc_I4_1 || code[i+3].opcode!=OpCodes.Ldelem_R4 ||
+                    code[i+4].opcode!=OpCodes.Ldc_R4 || !Equals(code[i+4].operand,0f) || (code[i+5].opcode!=OpCodes.Bne_Un && code[i+5].opcode!=OpCodes.Bne_Un_S))continue;
+                var target=(Label)code[i+5].operand;int after=code.FindIndex(read+1,c=>c.labels.Contains(target));
+                if(after<0 || gate>=0)throw new InvalidOperationException("companion-drill ABI: ambiguous tile work boundary");
+                gate=i+6;end=target;
+            }
+            if(gate<0)throw new InvalidOperationException("companion-drill ABI: localAI tile work branch missing");
+            // Skip only the known 445 tile/steering block. Native channel-end,
+            // cooldown and the common position/timeLeft/heldProj/item-time tail
+            // still execute; never synthesize that tail or renew life ourselves.
+            var load=new CodeInstruction(OpCodes.Ldarg_0);load.labels.AddRange(code[gate].labels);code[gate].labels.Clear();
+            load.blocks.AddRange(code[gate].blocks);code[gate].blocks.Clear();
+            code.InsertRange(gate,new[]{load,new CodeInstruction(OpCodes.Call,AccessTools.Method(typeof(CompanionHooks),nameof(DrillTileWork))),new CodeInstruction(OpCodes.Brfalse,end)});
+            return code;
+        }
+        private static Exception ScopeFinal(Exception __exception,Scope __state){__state?.Dispose();return __exception;}
         private static void DeathBefore(Player __instance,ref Scope __state){var a=host?.Owned(__instance);if(a!=null && a.Ready && !a.Closing)__state=Enter(a,a.Aim);}
         private static Exception DeathFinal(Exception __exception,Player __instance,Scope __state)
         {try{if(__state!=null)host.ObserveDeath(__state.Actor);}finally{__state?.Dispose();}return __exception;}

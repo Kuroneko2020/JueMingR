@@ -106,6 +106,9 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var p=a.Body;p.FindSpawn();if(!Player.CheckSpawn(p.SpawnX,p.SpawnY)){p.SpawnX=p.SpawnY=-1;}
             CompanionHooks.Spawning=p;try{p.Spawn(context);}finally{CompanionHooks.Spawning=null;}
+            // Native Spawn chooses the real position for joins and revivals.
+            // The deserialized body's pre-spawn center is not a world cursor.
+            a.Target=null;IdleAim(a);
         }
         internal void Publish(Actor a)
         {

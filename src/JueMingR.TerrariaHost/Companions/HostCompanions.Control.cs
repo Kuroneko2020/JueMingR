@@ -13,6 +13,14 @@ namespace JueMingR.TerrariaHost.Companions
     {
         internal IEnumerable<Actor> ActiveActors {get{return actors.Values;}}
         internal bool HasActors {get{return bodies.Count!=0;}}
+        private static void IdleAim(Actor a)
+        {
+            // A loaded character has not spawned yet. No-target/disabled aim
+            // follows this body's current position, never the old load/world
+            // or dead target. Do not call this for budget-delayed valid shots.
+            a.Aim=a.Body.Center;a.HasAim=a.WasUsing=false;
+            a.AimTimeline=null;a.AimTerrain=null;a.AimRevision=0;
+        }
         internal void Control(Actor a)
         {
             var p=a.Body;
@@ -23,7 +31,7 @@ namespace JueMingR.TerrariaHost.Companions
             var frame=a.Behavior.Decide(p,owner,behavior,ReferenceEquals(a,planningActor));
             p.controlLeft=frame.Move<0;p.controlRight=frame.Move>0;p.controlJump=frame.Jump;p.controlDown=frame.Drop;
             if(frame.Heal)using(CompanionHooks.Enter(a,a.Aim))p.QuickHeal();
-            if(!behavior.AttackEnabled){a.Target=null;p.channel=false;a.Status=frame.Status;return;}
+            if(!behavior.AttackEnabled){a.Target=null;IdleAim(a);p.channel=false;a.Status=frame.Status;return;}
             bool valid=a.Target!=null && a.TargetGeneration==a.Target.generation && CombatSelection.Receives(a.Target,false) && !PredictionDead(a,a.Target) && Vector2.DistanceSquared(p.Center,a.Target.Center)<1600*1600;
             if(!valid || ReferenceEquals(a,planningActor))SelectTarget(a);
             if(a.Target!=null)
@@ -39,7 +47,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if(!p.controlUseItem)p.channel=false;
                 if(a.Aim.X!=p.Center.X && p.itemAnimation<=0)p.ChangeDir(a.Aim.X>p.Center.X?1:-1);
             }
-            else p.channel=false;
+            else {IdleAim(a);p.channel=false;}
             a.Status=frame.Status;
         }
         private void SelectTarget(Actor a)

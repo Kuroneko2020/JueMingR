@@ -36,6 +36,15 @@ AI观察来源变更只冻结受影响NPC/射弹，154仅提供同流因果屏�
 
 纯 Steam 采用专用通道73 + streamId 到房主 GUI 的最小字节桥，房主端每流连当前本地服务器 TCP。73是本产品保留选择，不证明所有第三方均无冲突。桥只接受当前会话成员并只代理本机当前服务器。已知流的队列或发送失败只退役该流；过长包按有界读取消费，避免坏队首逐帧重试。关闭一条流只关闭其 TCP，绝不调用真人 SocialSocket.Close。GUI/专服 Steam 收包归属尚需双机判别，四步为握手、一个独立槽、第二独立流、单流关闭隔离；不能用注入API故障的隔离检查或TCP通过替代。
 
+## 世界坐标、瞄准与交互资格
+
+LoadBody只恢复人物数据，不确定本世界的出生位置。首次进入与复活在原生Spawn完成后，以本角色实际中心重置临时Aim；无目标或禁攻击时跟随当前身体，清除旧目标/旧世界预测状态。合法目标因预算延后时保留仍有效的原解，不能每帧降回身体中心。
+
+actor scope中的mouse仍是原战斗/棱镜瞄准点，tileTarget也保留同一真实原目标格，不把动作搬到脚下或其他安全格。世界交互另有每scope一次O(1)资格：坐标有效、Tile对象存在，且多人时本连接共享世界的sectionManager.TileLoaded为真；缺manager、nonnull但未收块仍未知。只延后该角色该格的PlaceThing/Wiring消费者，原生ItemCheck、计时、已合资格射击、移动、其他射弹/队友与远距自背包不因此停止，不补造Tile或扫描世界。
+
+原生UpdatePlacementPreview属于真人光标的共享UI状态，不属于借用角色用物身份的权限。AI scope不执行该预览，避免CanPlace/Framing把未知足迹或锚点物化；真人预览照旧，真正的已知格PlaceThing动作仍保留原生范围、资源和操作资格。
+
+LaserDrill的AI_075同样直接读取tileTarget。只在其真实pool key/activation归属与当前actor一致时，未知格跳过该原生分支的tile/steering工作块；原生channel退出、冷却及共同position/timeLeft/heldProj/SetDummyItemTime尾继续执行，不复刻尾或手工续命。真人、其他角色/其他射弹不借当前scope被拦截。资格恢复后同一原格继续原生工作。
 ## 计算和关闭
 
 管理窗由行内入口和独立热键两种来源打开，来源属于UI本身；行内管理按钮的真实release先沿CloseAndSubmitPosition关闭F5和冲突视图，再把同一管理窗切为独立来源，保留输入尾，不通过伪释放打开；独立来源的输入、准备、绘制和收尾不依赖主F5可见性。`companions.manage`只在实际装配Companions的profile注册，默认无绑定，沿现有HotkeyBindings保存/冲突/清除。可执行门尊重其他弹窗、文字与Notes真实指针捕获及释放尾，普通悬挂便签hover不封锁新边缘；不通过全局SuppressHeld吞掉无关移动键。
