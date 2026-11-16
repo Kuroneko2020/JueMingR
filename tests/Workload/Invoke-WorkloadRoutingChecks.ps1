@@ -18,6 +18,33 @@ function Assert-Route {
     param([bool] $Pass, [string] $Reason)
     if (-not $Pass) { throw ('Workload route: ' + $Reason) }
 }
+# Shared providers keep their prior consumer propagation. Additional task
+# leaves must invalidate on their actual providers and assertion helpers.
+$continuationProviders=@{
+    'src/JueMingR.TerrariaHost/Tools/ToolUse.cs'=@('native-ToolsCpu','native-FishingCpu','native-AfkModeBackgroundCpu','native-InventoryStackingCpu');
+    'src/JueMingR.TerrariaHost/Items/ItemSourceHooks.cs'=@('native-ToolsCpu','native-FishingCpu','native-AfkModeBackgroundCpu','native-InventoryStackingCpu');
+    'src/JueMingR.TerrariaHost/CoinDeposit/HostCoinDeposit.cs'=@('native-CoinDepositCpu','native-CoinContinuationCpu','native-CoinConsumersCpu','native-RecoveryCpu');
+    'tests/NativeWorldTextProbe/NativeFishingChecks.cs'=@('native-FishingCpu','native-FishingBackgroundRecoveryCpu','native-InventoryStackingCpu','native-AfkOuterBackground');
+    'tests/NativeWorldTextProbe/NativeCoinChecks.cs'=@('native-CoinDepositCpu','native-CoinConsumersCpu');
+    'tests/NativeWorldTextProbe/NativeCoinUseChecks.cs'=@('native-CoinDepositCpu','native-CoinConsumersCpu');
+    'tests/NativeWorldTextProbe/NativeCoinContinuationChecks.cs'=@('native-CoinDepositCpu','native-CoinContinuationCpu');
+    'tests/NativeWorldTextProbe/NativeViewOriginalChecks.cs'=@('native-AfkOuterBackground');
+    'tests/NativeWorldTextProbe/NativeAfkOuterBackgroundChecks.cs'=@('native-AfkOuterBackground')
+}
+foreach($path in $continuationProviders.Keys){
+    $before=[pscustomobject]@{inputs=@($path+':A')};$after=[pscustomobject]@{inputs=@($path+':B')}
+    Assert-Route (@((Get-WorkloadRoute @($path)).unknown).Count -eq 0) ('known continuation provider '+$path)
+    foreach($consumer in $continuationProviders[$path]){
+        Assert-Route ((Get-WorkloadCheckFingerprint $before $consumer) -cne (Get-WorkloadCheckFingerprint $after $consumer)) ('provider invalidates real consumer '+$path+' -> '+$consumer)
+    }
+}
+$outerPath='tests/NativeWorldTextProbe/NativeAfkOuterBackgroundChecks.cs'
+$outerBefore=[pscustomobject]@{inputs=@($outerPath+':A')};$outerAfter=[pscustomobject]@{inputs=@($outerPath+':B')}
+Assert-Route ((Get-WorkloadCheckFingerprint $outerBefore 'native-CoinContinuationCpu') -ceq (Get-WorkloadCheckFingerprint $outerAfter 'native-CoinContinuationCpu')) 'explicit outer fixture does not invalidate unrelated coin proof'
+$outerPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() (Get-WorkloadRoute @($outerPath)).groups)
+Assert-Route (@($outerPlan | Where-Object {$_.name.StartsWith('native-')}).Count -eq 0) 'explicit graphics outer fixture does not enter automatic CPU scopes'
+$toolPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() (Get-WorkloadRoute @('src/JueMingR.TerrariaHost/Tools/ToolUse.cs')).groups)
+foreach($consumer in @('native-ToolsCpu','native-FishingCpu','native-AfkModeBackgroundCpu','native-InventoryStackingCpu')){Assert-Route (@($toolPlan.name) -contains $consumer) ('shared tool provider selects '+$consumer)}
 # New task leaves have one exact formal native responsibility each.
 foreach($guidedHelper in @('NativeCombatGuidedBudgetChecks.cs','NativeCombatGuidedLiquidChecks.cs')){
     $guidedPath='tests/NativeWorldTextProbe/'+$guidedHelper
@@ -174,7 +201,7 @@ $reviewedSharedConsumers=@('native-CombatEffectsNailCpu','native-CombatEffectsPi
 # Only these family bodies actually call SelectionPreview.Step; sharing the
 # aggregate entry does not call its sibling bodies.
 $selectionFamilyConsumers=@('native-CombatEffectsPhoenixCpu','native-CombatEffectsAttachedShotCpu','native-CombatEffectsBetsyFlameCpu','native-CombatEffectsArcSwingCpu','native-CombatEffectsThornCpu','native-DirectionalControl','native-NpcSelectedContinuation','native-TerrainLine')
-$selectionConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual','native-AfkModeCompletionCpu','native-AfkModeBorrowCpu')+$selectionFamilyConsumers
+$selectionConsumers=@('native-CombatAimCpu','native-CombatControlCpu','native-CombatMechanicsCpu','native-CombatEffectsCpu','native-CombatIntegrationCpu','native-CombatCosts','native-CombatAttackCosts','native-CombatImpactVisual','native-CombatVisual','native-AfkModeCompletionCpu','native-AfkModeBorrowCpu','native-AfkModeBackgroundCpu')+$selectionFamilyConsumers
 Assert-Route (((Get-WorkloadPathChecks $selectionPath|Sort-Object)-join '|') -ceq (($selectionConsumers|Sort-Object)-join '|')) 'selection shared Step binds its complete actual consumer union'
 $selectionRoute=Get-WorkloadRoute @($selectionPath)
 $selectionPlan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $selectionRoute.groups|ForEach-Object {$_.name})
@@ -399,7 +426,12 @@ try {
         $leaf=@(Get-WorkloadPathChecks $path)
         if($leaf.Count){
             $actual=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() $route.groups | ForEach-Object {$_.name})
-            Assert-Route ((($actual|Sort-Object)-join '|') -ceq (($leaf|Sort-Object)-join '|')) ('leaf dispatch exact consumers '+$path)
+            $nativeCpu=Get-WorkloadNativeScopes
+            $automaticLeaf=@($leaf | Where-Object {-not $_.StartsWith('native-') -or $nativeCpu.Contains($_.Substring(7))})
+            foreach($specialist in @($leaf | Where-Object {$_ -notin $automaticLeaf})){
+                Assert-Route ((Read-WorkloadNativeDispatch).leaves.ContainsKey($specialist.Substring(7))) ('excluded graphical leaf remains an exact explicit specialist '+$specialist)
+            }
+            Assert-Route ((($actual|Sort-Object)-join '|') -ceq (($automaticLeaf|Sort-Object)-join '|')) ('leaf dispatch exact automatic consumers '+$path)
             Write-Fixture $path "baseline`n";continue
         }
         Assert-Route ($changes.paths.Count -eq 1 -and $changes.paths[0] -ceq $path -and $route.groups -contains $cases[$path]) ('actual unstaged route ' + $path)

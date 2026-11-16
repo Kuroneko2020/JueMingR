@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using JueMingR.Features.AfkMode;
 using JueMingR.Features.QuickItems;
@@ -24,8 +25,12 @@ namespace NativeWorldTextProbe
         private static readonly List<uint> completions=new List<uint>();
         private static int births,previousCompletions;
         private static Vector2 lastBulletVelocity;
+        private static Vector2 lastPrismVelocity;
+        private static uint lastBulletStep,lastPrismStep;
+        private static bool lastBulletBackground,lastPrismBackground;
         private static bool lateVeto;
         private static bool startupTailAudit;
+        private static bool backgroundAudit,osFocused=true;
         internal static void Run(object context,string section="all")
         {
             owner=Get(context,"Afk");var tools=Get(context,"Tools");var input=Get(context,"Input");
@@ -36,10 +41,11 @@ namespace NativeWorldTextProbe
             audit.Patch(AccessTools.Method(typeof(Player),"ItemCheck_StartActualUse"),postfix:new HarmonyMethod(typeof(NativeAfkModeChecks),nameof(Started)));
             audit.Patch(AccessTools.Method(typeof(Player),"TryUpdateChannel"),postfix:new HarmonyMethod(typeof(NativeAfkModeChecks),nameof(Created)));
             audit.Patch(AccessTools.Method(typeof(Player),"ItemCheck",Type.EmptyTypes),prefix:new HarmonyMethod(typeof(NativeAfkModeChecks),nameof(LateVeto)){priority=Priority.First});
-            audit.Patch(AccessTools.Method(typeof(Projectile),"AI"),transpiler:new HarmonyMethod(typeof(NativeCombatBeamChecks).GetMethod("RippleOutlet",BindingFlags.NonPublic|BindingFlags.Static)));
+            audit.Patch(AccessTools.Method(typeof(Projectile),"AI"),postfix:new HarmonyMethod(typeof(NativeAfkModeChecks),nameof(ControlUpdated)),transpiler:new HarmonyMethod(typeof(NativeCombatBeamChecks).GetMethod("RippleOutlet",BindingFlags.NonPublic|BindingFlags.Static)));
             try
             {
                 Preferences();
+                if(section=="background"){Background(context);return;}
                 Player p;
                 if(section!="borrow")
                 {
@@ -97,6 +103,73 @@ namespace NativeWorldTextProbe
                 Require(rejected,"invalid persisted gap rejected: "+number);
             }
         }
+        private static void Background(object context)
+        {
+            var input=Get(context,"Input");var foreground=Get(input,"foregroundWindow");
+            var focusBoundary=new Harmony("JueMingR.Tests.AfkFocusOsBoundary");
+            // Only OS focus/window presentation is substituted. The native
+            // FocusHelper delay and wantsToPause body and product postfix run.
+            focusBoundary.Patch(AccessTools.Method(typeof(FocusHelper),"UpdateFocus"),transpiler:new HarmonyMethod(typeof(NativeAfkModeChecks),nameof(FocusOsBoundary)));
+            try
+            {
+                var cursorFailures=new List<Exception>();
+                foreach(int weapon in new[]{98,3541})
+                    try{AimConsumption(context,true,true,weapon);}
+                    catch(JueMingR.Testing.BusinessAssertionException error){Console.WriteLine("FAIL native cursor background aim weapon="+weapon+": "+error.Message);cursorFailures.Add(error);}
+                if(cursorFailures.Count!=0)throw new AggregateException("native cursor background aim",cursorFailures);
+                var replaced=Reset(context,98,0);Step(context,true);for(int i=0;i<15;i++)Step(context,false);
+                replaced.inventory[0]=replaced.inventory[0].Clone();Step(context,false);
+                Require(!(bool)Get(owner,"Running"),"same-type replacement in a carried slot never inherits cursor identity");
+                foreach(int gap in new[]{0,200})foreach(bool stale in new[]{false,true})
+                {
+                    osFocused=true;Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;
+                    var p=Reset(context,5462,gap);NativeCombatCadenceChecks.Save(Get(context,"Combat"),new JueMingR.Features.Combat.CombatOptions(gap>0?1:0));Step(context,true);Step(context,false);
+                    Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;
+                    p.mouseInterface=stale;osFocused=false;backgroundAudit=true;
+                    bool setting=Main.SettingPlayWhenUnfocused;Main.SettingPlayWhenUnfocused=false;Main.gamePaused=true;
+                    FocusHelper.UpdateFocus(out bool pause);Require(!pause && !FocusHelper.IsSelectedApplication && !Main.SettingPlayWhenUnfocused,"exact accepted AFK exempts only native default focus-pause without changing focus/config");
+                    Main.gamePaused=false;Main.SettingPlayWhenUnfocused=setting;
+                    // CopyInto and Player.Update retain the real late
+                    // mouseInterface -> delayUseItem write. No per-frame
+                    // fixture clear can hide the Sync/ItemCheck seam.
+                    for(int i=0;i<300;i++)Step(context,false);
+                    Console.WriteLine("FLINT background gap="+gap+" stale="+stale+" starts="+starts.Count+" receipts="+Get(owner,"Starts")+" completions="+completions.Count+" bodies="+Get(owner,"hadBody")+" delay="+p.delayUseItem+" running="+Get(owner,"Running")+" active1040="+string.Join(";",Main.projectile.Where(q=>q.active && q.type==1040).Select(q=>q.key+":"+q.ai[0]+","+q.ai[1])));
+                    Require((bool)Get(owner,"Running") && starts.Count>=3 && completions.Count>=2,"background Flint completes repeated actual native cycles, stale="+stale);
+                    osFocused=true;Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;p.mouseInterface=false;
+                    Step(context,false);Step(context,false);Step(context,false);
+                    Require((bool)Get(owner,"Running"),"focus neutral/rearm preserves accepted AFK intent");
+                    backgroundAudit=false;
+                    Call(owner,"SetModeEnabled",false);osFocused=false;FocusHelper.IsSelectedApplication=false;setting=Main.SettingPlayWhenUnfocused;Main.SettingPlayWhenUnfocused=false;
+                    FocusHelper.UpdateFocus(out pause);Require(pause,"inactive owner preserves native default single-player focus pause");Main.SettingPlayWhenUnfocused=setting;
+                    NativeCombatCadenceChecks.Save(Get(context,"Combat"),new JueMingR.Features.Combat.CombatOptions());
+                }
+                osFocused=true;Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;
+                foreach(int rod in new[]{ItemID.WoodFishingPole,ItemID.FiberglassFishingPole})
+                {var p=Reset(context,rod,0);Step(context,true);Require(!(bool)Get(owner,"Running") && Main.projectile.Any(q=>q.active && q.bobber),"AFK enabled never captures real rod cast "+rod);}
+                AimConsumption(context,true);
+                var sustained=Reset(context,3541,200);Step(context,true);for(int i=0;i<45;i++){sustained.statMana=200;Step(context,false);}
+                QuickBorrow(context,sustained,false,50,true);
+                sustained.inventory[13].SetDefaults(ItemID.LesserHealingPotion);sustained.inventory[13].stack=2;sustained.statLife=50;
+                sustained.QuickHeal();Step(context,false);
+                Require(sustained.statLife>50 && sustained.inventory[13].stack==1 && (bool)Get(owner,"Running"),"real native QuickHeal consumes its own source while the original AFK run survives");
+            }
+            finally{backgroundAudit=false;osFocused=true;focusBoundary.UnpatchAll(focusBoundary.Id);Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;Main.LocalPlayer.mouseInterface=false;Main.gamePaused=false;}
+        }
+        private static IEnumerable<CodeInstruction> FocusOsBoundary(IEnumerable<CodeInstruction> source)
+        {
+            var active=AccessTools.PropertyGetter(typeof(Game),"IsActive");var cursor=AccessTools.PropertySetter(typeof(Game),"IsMouseVisible");
+            var windows=AccessTools.Field(typeof(ReLogic.OS.Platform),"IsWindows");
+            var windowsGetter=AccessTools.PropertyGetter(typeof(ReLogic.OS.Platform),"IsWindows");
+            foreach(var c in source)
+            {
+                if(c.Calls(active)){c.opcode=OpCodes.Call;c.operand=AccessTools.Method(typeof(NativeAfkModeChecks),nameof(OsActive));}
+                else if(c.Calls(cursor)){c.opcode=OpCodes.Call;c.operand=AccessTools.Method(typeof(NativeAfkModeChecks),nameof(OsCursor));}
+                else if(windows!=null && c.LoadsField(windows) || windowsGetter!=null && c.Calls(windowsGetter)){c.opcode=OpCodes.Ldc_I4_0;c.operand=null;}
+                yield return c;
+            }
+        }
+        private static bool OsActive(Game game){return osFocused;}
+        private static void OsCursor(Game game,bool visible){}
         private static Player Reset(object context,int item,int gap)
         {
             Call(owner,"SetModeEnabled",false);var p=NativeToolExecutionChecks.Reset(context,Get(context,"Tools"),Get(context,"Input"),item,0,0);
@@ -109,6 +182,7 @@ namespace NativeWorldTextProbe
         }
         private static void Step(object context,bool left,Vector2? point=null)
         {
+            if(backgroundAudit)FocusHelper.UpdateFocus(out bool ignored);
             NativeCombatCadenceChecks.Step(context,left,false,0,point:point??new Vector2(825,660));
             int completed=(int)Get(owner,"Completions");if(completed!=previousCompletions){previousCompletions=completed;completions.Add((uint)Get(owner,"LastCompletion"));}
         }
@@ -116,6 +190,7 @@ namespace NativeWorldTextProbe
         {
             if(__instance.whoAmI!=Main.myPlayer || owner==null)return;
             bool owned=(int)Get(owner,"inCheck")>0;
+            if(backgroundAudit)Require(owned,"every native background start has its exact AFK receipt scope");
             if(startupTailAudit)Require(owned && (long)Get(owner,"token")!=0,"ALL native starts during the startup hold belong to an admitted AFK operation");
             if(starts.Count<3)Console.WriteLine("AFK START tick="+Main.GameUpdateCount+" owned="+owned+" operating="+Get(owner,"operating")+" token="+Get(owner,"token")+" native animation="+__instance.itemAnimation+" time="+__instance.itemTime+" completions="+Get(owner,"Completions")+" manual="+Get(owner,"manual"));
             if(owned && starts.Count>0)
@@ -127,10 +202,12 @@ namespace NativeWorldTextProbe
             }
             starts.Add(Main.GameUpdateCount);
         }
-        private static void Created(Player __instance,Projectile __0){if(__instance.whoAmI==Main.myPlayer){births++;if(__0.type==14)lastBulletVelocity=__0.velocity;}}
+        private static void Created(Player __instance,Projectile __0){if(__instance.whoAmI==Main.myPlayer){births++;if(__0.type==14){lastBulletVelocity=__0.velocity;lastBulletStep=Main.GameUpdateCount;lastBulletBackground=owner!=null && !(bool)Get(Get(Get(owner,"Tools"),"Input"),"IsFocused");}}}
+        private static void ControlUpdated(Projectile __instance)
+        {if(__instance.active && __instance.type==633 && __instance.owner==Main.myPlayer){lastPrismVelocity=__instance.velocity;lastPrismStep=Main.GameUpdateCount;lastPrismBackground=owner!=null && !(bool)Get(Get(Get(owner,"Tools"),"Input"),"IsFocused");}}
         private static bool Skip(){return false;}
         private static void LateVeto(Player __instance){if(lateVeto && ReferenceEquals(__instance,Main.LocalPlayer))__instance.delayUseItem=true;}
-        private static void QuickBorrow(object context,Player p,bool hold=false,int borrowedType=50)
+        private static void QuickBorrow(object context,Player p,bool hold=false,int borrowedType=50,bool background=false)
         {
             var quick=Get(context,"QuickItems");var settings=(QuickItemSettings)Get(quick,"Settings");
             p.inventory[5].SetDefaults(borrowedType);
@@ -143,13 +220,15 @@ namespace NativeWorldTextProbe
             Call(quick,"AfterDispatch",true);
             Require((bool)Get(owner,"Running") && (bool)Get(owner,"quickRequested"),"manual shortcut retains AFK run while releasing real prism");
             int startsBeforeBorrow=starts.Count;int afkStartsBeforeBorrow=(int)Get(owner,"Starts");
-            bool borrowed=false;
+            bool borrowed=false,switched=false;var input=Get(context,"Input");var foreground=Get(input,"foregroundWindow");
             for(int i=0;i<260;i++)
             {
                 Step(context,hold);
                 borrowed|=(bool)Get(Get(quick,"Use"),"Active");
+                if(background && borrowed && !switched){switched=true;Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;}
                 p.statMana=200;
             }
+            if(background){Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;Step(context,false);Step(context,false);Step(context,false);}
             Require(borrowed && (bool)Get(owner,"Running") && p.selectedItem==0 && !(bool)Get(Get(quick,"Use"),"Active"),"explicit temporary item obtains token, completes original use and returns without killing the AFK run: borrowed="+borrowed+" running="+Get(owner,"Running")+" slot="+p.selectedItem+" active="+Get(Get(quick,"Use"),"Active")+" message="+GetOptional(quick,"Message"));
             if(borrowedType==98)Require(starts.Count==startsBeforeBorrow+2 && (int)Get(owner,"Starts")==afkStartsBeforeBorrow+1 && p.channel,"held startup tail permits exactly one native autoReuse borrow and then resumes the original prism");
         }
@@ -212,12 +291,13 @@ namespace NativeWorldTextProbe
                 "zero-gap latch yields actual shared use token to native herb harvest/return then retains AFK run");
             NativeToolsChecks.SetMode(tools,1,0);
         }
-        private static void AimConsumption(object context)
+        private static void AimConsumption(object context,bool background=false,bool cursor=false,int cursorWeapon=0)
         {
             var observation=Get(context,"CombatObservation");
-            foreach(int weapon in new[]{98,3541})
+            foreach(int weapon in cursor?new[]{cursorWeapon}:new[]{98,3541})
             {
                 var p=Reset(context,weapon,200);
+                if(cursor){Main.playerInventory=true;Main.mouseItem=new Item();Main.mouseItem.SetDefaults(weapon);}
                 var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;
                 target.Center=p.Center+new Vector2(160,-100);target.velocity=target.netOffset=Vector2.Zero;target.aiStyle=-1;target.noGravity=true;
                 target.life=target.lifeMax=100000;target.knockBackResist=0;Array.Clear(target.immune,0,target.immune.Length);
@@ -225,19 +305,60 @@ namespace NativeWorldTextProbe
                 var basePoint=p.Center+new Vector2(-180,0);
                 for(int i=0;i<12;i++)NativeCombatSelectionPreviewChecks.Step(context,basePoint,false);
                 NativeCombatSelectionPreviewChecks.Step(context,basePoint,true);
+                if(cursor)Require(p.selectedItem==58 && p.selectedItemState.HasActiveOverride && (int)Get(owner,"slot")==58 && (bool)Get(owner,"Running"),
+                    "original cursor selection starts AFK from actual slot 58");
                 var saved=(Vector2)Get(owner,"point");
-                for(int i=0;i<80;i++){p.statMana=200;NativeCombatSelectionPreviewChecks.Step(context,p.Center+new Vector2(-200,160),false);}
+                var input=Get(context,"Input");var foreground=Get(input,"foregroundWindow");
+                uint backgroundStart=0;
+                try
+                {
+                    for(int i=0;i<80;i++)
+                    {
+                        if(background && i==20){backgroundStart=Main.GameUpdateCount;Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;p.mouseInterface=true;target.Center=p.Center+new Vector2(160,100);}
+                        target.velocity=new Vector2(.25f,0);target.UpdateNPC(2);
+                        p.statMana=200;NativeCombatSelectionPreviewChecks.Step(context,p.Center+new Vector2(-200,160),false);
+                    }
+                }
+                finally{Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;p.mouseInterface=false;}
                 var wanted=(target.Center-p.MountedCenter).SafeNormalize(Vector2.UnitX);
                 Vector2 actual=lastBulletVelocity;
                 if(weapon==3541)
                 {
                     var parent=Main.projectile.FirstOrDefault(q=>q.active && q.owner==p.whoAmI && q.type==633);
-                    Require(parent!=null && starts.Count==1,"AFK prism uses one actual continuous controller while self aim changes its consumers");actual=parent.velocity;
+                    Require(parent!=null && starts.Count==1,"AFK prism uses one actual continuous controller while self aim changes its consumers");actual=background?lastPrismVelocity:parent.velocity;
                 }
+                if(background)Require(weapon==3541?lastPrismBackground && lastPrismStep>backgroundStart:lastBulletBackground && lastBulletStep>backgroundStart,
+                    "the asserted direction is a real post-focus-loss bullet/control consumer, not the last foreground value");
                 float toward=Vector2.Dot(actual.SafeNormalize(Vector2.UnitY),wanted);
+                if(cursor)Require(p.selectedItem==58 && !ReferenceEquals(p.HeldItem,Get(owner,"source")) && (bool)Get(owner,"Running"),
+                    "native dropItemCheck/ItemCheck cloning keeps the accepted cursor run alive");
                 Require(toward>.94f && ((Vector2)Get(owner,"point"))==saved,"existing ordinary/continuous aim wins after AFK base projection and fixed run point remains intact: weapon="+weapon+" dot="+toward);
-                Console.WriteLine("AFK actual aim consumer weapon="+weapon+" targetDot="+toward+" preservedWorld="+saved);
+                Console.WriteLine("AFK actual aim consumer weapon="+weapon+" cursor="+cursor+" backgroundStep="+(weapon==3541?lastPrismStep:lastBulletStep)+" targetDot="+toward+" preservedWorld="+saved);
+                if(cursor)
+                {
+                    // Observe real lease acquisition, then let a different
+                    // exact source own input. No Running/token field is forged.
+                    for(int i=0;i<50 && (long)Get(owner,"token")==0;i++)NativeCombatSelectionPreviewChecks.Step(context,basePoint,false);
+                    var ownership=(JueMingR.Platform.Items.ItemOperationOwnership)Get(Get(Get(context,"Tools"),"Items"),"Ownership");
+                    long generation=(long)Get(owner,"session"),ownToken=(long)Get(owner,"token");
+                    Require(ownToken>0 && ownership.OwnsUse(generation,ownToken),"cursor negative starts from a real AFK use lease");
+                    ownership.EndUse(generation,ownToken);long foreign=ownership.NewUseToken();
+                    Require(ownership.TryBeginUse(generation,12,foreign) && !(bool)Call(owner,"AllowsAim",p),"foreign source lease never inherits cursor AFK aim");
+                    try{int count=starts.Count;for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,basePoint,false);
+                        Require(starts.Count==count && ownership.OwnsUse(generation,foreign),"native frames cannot restart AFK through a foreign use lease");}
+                    finally{ownership.EndUse(generation,foreign);}
+                    Main.mapFullscreen=true;try{Require(!(bool)Call(owner,"AllowsAim",p) && !(bool)Get(owner,"Running"),"real fullscreen map boundary cancels cursor aim/run");}
+                    finally{Main.mapFullscreen=false;}
+                }
                 Call(owner,"SetModeEnabled",false);NativeCombatObservationChecks.Save(observation,new JueMingR.Features.Combat.ObservationOptions());
+                if(cursor){Main.mouseItem=new Item();Main.playerInventory=false;}
+                if(background)
+                {
+                    var combat=Get(context,"Combat");NativeCombatCadenceChecks.Save(combat,new JueMingR.Features.Combat.CombatOptions(1));
+                    Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;int prior=starts.Count;
+                    try{for(int i=0;i<40;i++)Step(context,true);Require(starts.Count==prior,"physical continuous click never inherits background AFK aim/use permission");}
+                    finally{Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;NativeCombatCadenceChecks.Save(combat,new JueMingR.Features.Combat.CombatOptions());}
+                }
             }
         }
         private static void Costs(object context)

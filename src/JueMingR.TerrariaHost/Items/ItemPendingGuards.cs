@@ -131,7 +131,7 @@ namespace JueMingR.TerrariaHost.Items
             // Explicit physical click intent hands control to the player even
             // if a later vanilla animation gate declines the write. Hover is
             // neither takeover nor an inventory-mutation notification.
-            if (Active) host.World.BeforeManualFallSlot?.Invoke(array, slot);
+            if (Active) { host.World.BeforeManualFallSlot?.Invoke(array, slot); host.Storage.RetireReception(array, slot); }
         }
         private static bool GamepadEdge()
         {
@@ -158,6 +158,7 @@ namespace JueMingR.TerrariaHost.Items
         {
             if (__state.World != null && (!__state.Slot.Matches(__0[__2]) || !__state.Cursor.Matches(Main.mouseItem)))
             {
+                host.Storage.RetireReception(__0, __2);
                 if (__state.Physical) __state.Preparation?.AfterManualMutation(__state.Slot.Item, __state.Cursor.Item,
                     __0[__2], Main.mouseItem, __state.MainInventory);
                 __state.World.InvalidateObservation();

@@ -14,14 +14,42 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
-            if(scope=="AfkModeCpu" || scope=="AfkModeBorrowCpu" || scope=="AfkModeCompletionCpu" || scope=="AfkModeVisual")
+            if(scope=="AfkOuterBackground")
+            {int result=NativeAfkOuterBackgroundChecks.Run(content,output);if(result==0)NativeScopeDispatch.Enter("afk-outer-background");return result;}
+            if(scope=="FishingBackgroundRecoveryCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeFishingChecks.BackgroundRecovery(context);NativeScopeDispatch.Enter("fishing-background-recovery");},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="InventoryStackingCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeInventoryStackingChecks.Run(context);NativeScopeDispatch.Enter("inventory-stacking");},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="CoinConsumersCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCoinChecks.RunConsumers(context);NativeScopeDispatch.Enter("coin-consumers");},coins:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="CoinContinuationCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{
+                    var host=NativeInformationChecks.Get(context,"CoinDeposit");
+                    var settings=(JueMingR.Features.CoinDeposit.CoinSettings)NativeInformationChecks.Get(host,"Settings");
+                    NativeQuickItemChecks.Until(()=>{NativeInformationChecks.Call(host,"Poll");return settings.Loaded;});settings.Set(true);
+                    NativeQuickItemChecks.Until(()=>{NativeInformationChecks.Call(host,"Poll");return !settings.Busy;});
+                    NativeCoinContinuationChecks.Run(context,host);NativeScopeDispatch.Enter("coin-continuation");
+                },coins:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
+            }
+            if(scope=="AfkModeBackgroundCpu" || scope=="AfkModeCpu" || scope=="AfkModeBorrowCpu" || scope=="AfkModeCompletionCpu" || scope=="AfkModeVisual")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context=>{
                     if(scope=="AfkModeVisual")using(var graphics=new ProbeGraphics(content))NativeAfkUiChecks.Run(context,graphics,output);
-                    else NativeAfkModeChecks.Run(context,scope=="AfkModeBorrowCpu"?"borrow":scope=="AfkModeCompletionCpu"?"completion":"all");
-                    NativeScopeDispatch.Enter(scope=="AfkModeVisual"?"afk-ui":scope=="AfkModeBorrowCpu"?"afk-borrow":scope=="AfkModeCompletionCpu"?"afk-completion":"afk-mode");
-                },processing:true,shortFeedback:true);return 0;
+                    else NativeAfkModeChecks.Run(context,scope=="AfkModeBackgroundCpu"?"background":scope=="AfkModeBorrowCpu"?"borrow":scope=="AfkModeCompletionCpu"?"completion":"all");
+                    NativeScopeDispatch.Enter(scope=="AfkModeBackgroundCpu"?"afk-background":scope=="AfkModeVisual"?"afk-ui":scope=="AfkModeBorrowCpu"?"afk-borrow":scope=="AfkModeCompletionCpu"?"afk-completion":"afk-mode");
+                },processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if(scope=="BlueprintImportedMaterialsCpu" || scope=="BlueprintImportedMaterialsVisual")
             {
@@ -833,7 +861,7 @@ namespace NativeWorldTextProbe
                 Terraria.Program.SavePath = Path.Combine(Path.GetTempPath(), "JueMingR-native-coins-" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context => NativeCoinChecks.Run(context, scope == "CoinDepositVisual" ? (Action<object>)(current =>
-                { using (var graphics = new ProbeGraphics(content)) NativeCoinUiChecks.Run(current, graphics, output); }) : null), true); return 0;
+                { using (var graphics = new ProbeGraphics(content)) NativeCoinUiChecks.Run(current, graphics, output); }) : null), true,candidateAssembly:scope=="CoinDepositCpu"?Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"):null); return 0;
             }
             if (scope == "QuickItemsCpu" || scope == "QuickItemsVisual")
             {

@@ -42,20 +42,39 @@ namespace NativeWorldTextProbe
             NativeCoinMatrix.Tick(host, 400, 420);
             Require(!intent.Protected, "complete current zero-bank observation releases protection");
             NativeCoinMatrix.Run(context, host);
+            NativeCoinContinuationChecks.Run(context, host);
             NativeCoinEnvelopeChecks.Run(host);
             NativeCoinSeedChecks.Run(context, host);
             NativeCoinSeedAdmissionChecks.Run(context, host);
             NativeCoinSeedWriteChecks.Run(context, host);
             NativeCoinRangeChecks.Run(host);
             NativeCoinLifecycleChecks.Run(context, host);
+            ConsumerTail(context, host, visual);
+            Console.WriteLine("PASS: G06 real native carry, two-end conservation, mouse withdrawal and range protection.");
+        }
+        // A separate isolated entry closes this task's actual downstream consumers
+        // without changing the full suite's order or its earlier lifecycle failure.
+        internal static void RunConsumers(object context)
+        {
+            object host = Get(context, "CoinDeposit");
+            Require((bool)Get(host, "Available"), "coin consumer hooks available");
+            var settings = (CoinSettings)Get(host, "Settings");
+            NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return settings.Loaded; });
+            Require(!settings.Enabled && settings.Set(true), "fresh consumer context enables independent coin setting");
+            NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !settings.Busy; });
+            ConsumerTail(context, host, null, true);
+            Console.WriteLine("PASS: isolated existing coin Use/Network/Save/Workload/Ui and finite transaction-fault consumers; full CoinDepositCpu and world recovery NOT_EVALUATED.");
+        }
+        private static void ConsumerTail(object context, object host, Action<object> visual, bool finiteFaults = false)
+        {
             NativeCoinUseChecks.Run(context, host);
             NativeCoinNetworkChecks.Run(context, host);
             NativeCoinSaveChecks.Run(host);
             NativeCoinWorkloadChecks.Run(host);
             NativeCoinUiChecks.Run(context);
             visual?.Invoke(context);
-            NativeCoinFaultChecks.Run(context, host);
-            Console.WriteLine("PASS: G06 real native carry, two-end conservation, mouse withdrawal and range protection.");
+            if (finiteFaults) NativeCoinFaultChecks.RunTransactionFaults(context, host);
+            else NativeCoinFaultChecks.Run(context, host);
         }
         internal static Item Coin(int type, int amount) { var item = new Item(); item.SetDefaults(type); item.stack = amount; return item; }
         internal static Chest Bank(Player p, int i) { return i == 0 ? p.bank : i == 1 ? p.bank2 : i == 2 ? p.bank3 : p.bank4; }

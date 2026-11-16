@@ -84,6 +84,10 @@ namespace JueMingR.TerrariaHost.Combat
                 player.chest==-1 && player.talkNPC<0 && player.sign<0 && Main.npcShop==0 &&
                 (cursor || Main.mouseItem!=null && Main.mouseItem.IsAir);
         }
+        // Only aim's existing consumers may borrow the exact AFK source.
+        // Physical cadence, shortcuts and new gestures retain Admitted.
+        internal bool AutomaticAim {get{return Available && (Tools.Afk?.AllowsAim(Player)??false);}}
+        internal bool AimAdmitted(Player player){return Admitted(player) || ReferenceEquals(player,Player) && AutomaticAim;}
         internal void Register(HotkeyRegistry registry,Hotkeys.HotkeyStateFeedback feedback)
         {
             for(int i=0;i<8;i++)

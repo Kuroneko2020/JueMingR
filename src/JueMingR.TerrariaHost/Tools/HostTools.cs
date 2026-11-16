@@ -165,7 +165,12 @@ namespace JueMingR.TerrariaHost.Tools
         // Equipment shares the same ownership proof as other autonomous work.
         internal bool AdmitFishingEquipment(Player p,bool interfaceAllowed)
         {return Input.CanRunAutomaticActions && interfaceAllowed && CanRetainPlayer(p,true);}
-        private bool CanRetainPlayer(Player p,bool heldInventory,bool buildPreparationIntent=false)
+        // Existing fishing owners retain selection through focus quarantine
+        // and network locks; Admit still requires a real usable world step.
+        internal bool CanRetainFishingUse(Player p,bool heldInventory)
+        {return CanInterface?.Invoke()==true && CanRetainPlayer(p,heldInventory,false,true);}
+        internal Func<bool> FishingBackgroundDemand;
+        private bool CanRetainPlayer(Player p,bool heldInventory,bool buildPreparationIntent=false,bool ownedFishing=false)
         {
             // Draw-owned mouseInterface can be stale while the window is not
             // drawn. Actual menus, text, manual items and operation owners below
@@ -174,8 +179,8 @@ namespace JueMingR.TerrariaHost.Tools
             // can retain preference across its pause/closure tail. The public
             // input permission and all automatic action gates stay unchanged.
             return Available && p!=null && ReferenceEquals(p,Player) &&
-                (Input.CanRetainAutomaticIntent || buildPreparationIntent && !Input.IsFocused && Main.CanUpdateGameplay) &&
-                (!Main.gamePaused || buildPreparationIntent) && !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity && !p.HasLockedInventory() &&
+                (ownedFishing || Input.CanRetainAutomaticIntent || buildPreparationIntent && !Input.IsFocused && Main.CanUpdateGameplay) &&
+                (!Main.gamePaused || buildPreparationIntent || ownedFishing) && !p.dead && !p.CCed && !p.cursed && !p.noItems && !p.isOperatingAnotherEntity && (ownedFishing || !p.HasLockedInventory()) &&
                 !Items.World.Busy && !Items.World.HasManualOperation && !Main.mapFullscreen && !Main.inFancyUI && !Main.onlyDrawFancyUI && !Main.ingameOptionsWindow &&
                 !Main.blockInput && !Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !PlayerInput.WritingText && Main.CurrentInputTextTakerOverride==null &&
                 !Main.ServerSideCharacter && (Main.ActivePlayerFileData==null || !Main.ActivePlayerFileData.ServerSideCharacter) && !WorldGen.isGeneratingOrLoadingWorld &&

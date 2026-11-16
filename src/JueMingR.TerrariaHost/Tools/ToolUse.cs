@@ -84,6 +84,10 @@ namespace JueMingR.TerrariaHost.Tools
         internal bool Active {get{return player!=null;}}
         internal long Operation {get{return token;}}
         private bool rescueYield;
+        private bool fishingDeferred;
+        private bool FishingOwner {get{return Intent!=null && (Intent.Kind==ToolKind.FishingPull || Intent.Kind==ToolKind.FishingCast || Intent.Kind==ToolKind.FishingCut || Intent.Kind==ToolKind.Recast || Intent.Kind==ToolKind.Capture && host.Fishing.Active);}}
+        private bool RetainsOwner {get{return FishingOwner?host.CanRetainFishingUse(player,HeldInventory):host.CanRetainUse(player,HeldInventory);}}
+        private bool DeferFishing {get{return FishingOwner && SourceIdentity() && !cancelled && CanRunFeature && RetainsOwner && (!host.Input.CanRunAutomaticActions || player.HasLockedInventory());}}
         internal bool PlanningSource(int slot,Item source)
         {return Active && session==host.Runtime.Generation && selection==host.SelectionIntent && ReferenceEquals(player,host.Player) &&
             slot>=0 && slot<50 && ReferenceEquals(player.inventory[slot],source) &&
@@ -116,6 +120,12 @@ namespace JueMingR.TerrariaHost.Tools
 #endif
             if(Active)
             {
+                // Vanilla temporarily restored the hotbar before asking for
+                // the override. Preserve only our same unconsumed request.
+                if(!result && !checkedItem && FishingOwner && !cancelled && SourceIdentity() && RetainsOwner && CanRunFeature &&
+                    host.ManualSelectionFrame!=host.Input.Frame && !host.ManualLeft && !host.ManualRight &&
+                    (DeferFishing || Intent.Valid?.Invoke()==true))
+                {chosen=Intent.Slot;result=true;return;}
                 if(rescueYield && !(host.FallRescue?.CobwebYieldRequested(p,token)??false))rescueYield=yieldExternal=false;
                 if((host.FallRescue?.CobwebYieldRequested(p,token)??false) && checkedItem && !InNativeUse)
                 {rescueYield=yieldExternal=true;}
@@ -165,6 +175,7 @@ namespace JueMingR.TerrariaHost.Tools
             pulsed=checkedItem=started=cancelled=notified=nativeReady=nativeBaseline=targetRejected=false;
             yieldExternal=returnRequested=deathRetire=false;
             rescueYield=false;
+            fishingDeferred=false;
             candidate.Admitted?.Invoke();
             return true;
         }
@@ -172,6 +183,7 @@ namespace JueMingR.TerrariaHost.Tools
         private bool Identity(){return SourceIdentity() && player.selectedItem==Intent.Slot;}
         private ToolReadiness Refresh()
         {
+            if(DeferFishing)return ToolReadiness.Pending;
             if(!Active || cancelled || !Identity() || !Admitted(player))
             {
 #if JMR_BLUEPRINT_DIAGNOSTIC
@@ -287,6 +299,7 @@ namespace JueMingR.TerrariaHost.Tools
             // manual press owns this ItemCheck, including during a Boss pause.
             if(host.ManualLeft || host.SelectionIntent!=selection){HandToManual();return;}
             InNativeUse=true;
+            fishingDeferred=DeferFishing;
             if(rescueYield){nativeReady=false;SuspendInput();return;}
             var readiness=suspendedFrame==host.Input.Frame?ToolReadiness.Pending:Refresh();nativeReady=readiness==ToolReadiness.Ready;
             if(readiness==ToolReadiness.Invalid || readiness==ToolReadiness.Yield){Cancel();return;}
@@ -510,7 +523,11 @@ namespace JueMingR.TerrariaHost.Tools
         internal void End(Player p,long operation,Exception error,long generation=0)
         {
             if(operation==0 || operation!=token || generation!=0 && generation!=nativeGeneration || !ReferenceEquals(p,player))return;
-            Restore();bool entered=InNativeUse;InNativeUse=false;if(!entered)return;checkedItem=true;
+            Restore();bool entered=InNativeUse;InNativeUse=false;if(!entered)return;
+            // A neutral deferred check consumed neither pull nor cast. Keep
+            // the same owner; original receipt checks still govern real use.
+            if(fishingDeferred && error==null){fishingDeferred=false;return;}
+            checkedItem=true;
             if(deathRetire)
             {
                 if(error!=null){host.HoldUnknown((1UL<<Intent.Slot)|Intent.MaterialSlots);Notify(true);}
@@ -545,7 +562,7 @@ namespace JueMingR.TerrariaHost.Tools
         internal void Update()
         {
             if(!Active)return;
-            if(!Identity() || !host.CanRetainUse(player,HeldInventory) || !CanRunFeature)Cancel();
+            if(!Identity() || !RetainsOwner || !CanRunFeature)Cancel();
             // Select only queues the original slot. Unsampled outer updates
             // must retain this exact lease until native selection consumes it;
             // otherwise fishing mistakes our own temporary slot for manual exit.

@@ -125,6 +125,15 @@ namespace JueMingR.TerrariaHost.Items
                 item.type == observed.Identity.Type && item.prefix == observed.Identity.Prefix && item.stack == observed.Stack &&
                 item.maxStack == observed.MaximumStack && !IsProtected(player, item, observed.Slot);
         }
+        // Only the two proven consolidation endpoints need identities here;
+        // this is not a new acquisition or a whole-inventory recapture.
+        internal ItemSlotObservation ObserveSlot(int slot)
+        {
+            Player player = Player;
+            Item item = player.inventory[slot];
+            if (!ReferenceEquals(item, references[slot])) { references[slot] = item; instances[slot] = ++nextInstance; }
+            return new ItemSlotObservation(slot, new ItemIdentity(item.type, item.prefix), item.stack, item.maxStack, instances[slot], IsProtected(player, item, slot));
+        }
         internal void AcceptRejectedSaleRestoration()
         {
             Player player = Player;

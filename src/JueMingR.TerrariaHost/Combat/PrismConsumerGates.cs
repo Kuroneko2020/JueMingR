@@ -57,8 +57,8 @@ namespace JueMingR.TerrariaHost.Combat
         private bool PrismBasicPermission()
         {
             return Trace.Gate(Gate.SelectionAvailable,observation.SelectionAvailable) && Trace.Gate(Gate.SettingsReady,observation.Settings.CanRun) && Trace.Gate(Gate.AimWanted,observation.Options.Aim) &&
-                Trace.Gate(Gate.BasicPlayer,combat.Player!=null) && combat.Admitted(combat.Player) &&
-                Trace.Gate(Gate.Intent,combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active || Control.Pending || ReleaseHandCurrent || HostPhasebladeAttack.Handles(combat.Player.HeldItem.shoot) && combat.Player.itemAnimation>0);
+                Trace.Gate(Gate.BasicPlayer,combat.Player!=null) && combat.AimAdmitted(combat.Player) &&
+                Trace.Gate(Gate.Intent,combat.AutomaticAim || combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active || Control.Pending || ReleaseHandCurrent || HostPhasebladeAttack.Handles(combat.Player.HeldItem.shoot) && combat.Player.itemAnimation>0);
         }
         private bool PrismBasicMembers(Player player,Item item,bool consumer)
         {

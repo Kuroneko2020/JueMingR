@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using HarmonyLib;
 using JueMingR.Features.CoinDeposit;
 using Terraria;
@@ -29,18 +30,21 @@ namespace NativeWorldTextProbe
                 Call(context, "UpdateRuntime");
                 int[] ids = { PlayerItemSlotID.Bank1_0, PlayerItemSlotID.Bank2_0, PlayerItemSlotID.Bank3_0, PlayerItemSlotID.Bank4_0 };
                 int[] tiles = { 29, 97, 463, 491 };
-                for (int scenario = 0; scenario < 5; scenario++)
+                for (int scenario = 0; scenario < 8; scenario++)
                 {
-                    int b=scenario%4;bool seed=scenario==4;
+                    int b=scenario%4;bool seed=scenario>=4;
                     NativeCoinMatrix.Reset(p, host); Main.tile[40, 40].type = (ushort)tiles[b];
-                    p.inventory[50] = Coin(73, 1); if(!seed) Bank(p, b).item[0] = Coin(71, 1);
+                    p.inventory[50] = Coin(73, 1);
+                    if(!seed) { Bank(p, b).item[0] = Coin(72, 99); Bank(p, b).item[1] = Coin(71, 100); }
                     Main.clientPlayer = new Player(); typeof(Main).GetMethod("TrySyncingMyPlayer", Flags).Invoke(null, null); packets.Clear();
                     NativeCoinMatrix.Tick(host, 0, 150);
-                    Require(Total(p.inventory, 58) == 0 && Total(Bank(p, b).item, 40) == (seed?10000:10001), "ordinary client real personal-bank deposit " + b+"; first="+seed);
+                    Require(Total(p.inventory, 58) == 0 && Total(Bank(p, b).item, 40) == (seed?10000:20000), "ordinary client real personal-bank deposit " + b+"; first="+seed);
                     Require(!packets.Any(row => row[2] == 32), "personal bank does not emit an invented world-chest transaction");
                     typeof(Main).GetMethod("TrySyncingMyPlayer", Flags).Invoke(null, null);
                     Require(packets.Any(row => Slot(row) == PlayerItemSlotID.Inventory0 + 50 && Type(row) == 0), "real inventory removal serialized " + b);
                     Require(packets.Any(row => Slot(row) >= ids[b] && Slot(row) < ids[b] + 40 && Type(row) == 73), "real selected bank serialized " + b);
+                    if(!seed) Require(packets.Any(row => Slot(row) == ids[b] + 1 && Type(row) == 0), "native carry clears an old coin slot through this bank's own Air slot ID " + b);
+                    Require(!packets.Any(row => Enumerable.Range(0,4).Any(a => a!=b && Slot(row)>=ids[a] && Slot(row)<ids[a]+40)), "unchanged other banks do not acquire target sync slots " + b);
                     foreach (var row in packets.Where(row => row[2] == 5))
                     {
                         int slot = Slot(row);
@@ -53,7 +57,28 @@ namespace NativeWorldTextProbe
                 }
                 NativeCoinMatrix.Reset(p, host);
                 Chest chest = Chest.CreateWorldChest(0, 40, 40); chest.item[0] = Coin(72, 5); p.chest = 0; packets.Clear();
-                ChestUI.LootAll();
+                // LootAll's real GetItem uses PopupText.NewText. The complete
+                // coin matrix initializes native popup members, but this leaf
+                // can also run independently through the consumer-tail scope.
+                // Supply only that missing native fixture, retaining/restoring
+                // any caller-owned popup array rather than suppressing text.
+                PopupText[] oldPopups = PopupText.popupText;
+                bool missingPopups = oldPopups == null || oldPopups.Any(text => text == null);
+                Console.WriteLine("COIN NETWORK native LootAll fixture popupMembersMissing=" + missingPopups + " chestNull=" + (Main.chest[0] == null) +
+                    " sourceMembersMissing=" + chest.item.Any(item => item == null) + " loggerNull=" + (Player.GetItemLogger == null));
+                bool logged = false;
+                EventHandler<FirstChanceExceptionEventArgs> firstChance = (sender, args) =>
+                {
+                    if (!logged && args.Exception is NullReferenceException)
+                    { logged = true; Console.Error.WriteLine("COIN NETWORK native LootAll first-chance: " + args.Exception); }
+                };
+                AppDomain.CurrentDomain.FirstChanceException += firstChance;
+                try
+                {
+                    if (missingPopups) { PopupText.popupText = new PopupText[20]; for (int i = 0; i < 20; i++) PopupText.popupText[i] = new PopupText(); }
+                    ChestUI.LootAll();
+                }
+                finally { AppDomain.CurrentDomain.FirstChanceException -= firstChance; if (missingPopups) PopupText.popupText = oldPopups; }
                 Require(((CoinIntent)Get(host, "Intent")).Protected && Total(chest.item, 40) == 0 && Total(p.inventory, 58) == 500,
                     "client world-chest local application establishes real withdrawal before any fictional ACK");
                 Require(packets.Any(row => row[2] == 32), "original world chest publishes its changed slot");
