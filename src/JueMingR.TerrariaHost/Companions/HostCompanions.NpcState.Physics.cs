@@ -10,9 +10,10 @@ namespace JueMingR.TerrariaHost.Companions
     {
         private bool PrepareRemainingNpcState(NPC npc,NpcState state,bool decoded)
         {
-            // Only field production is reproduced here. The received target,
-            // AI values and sample clock remain server observations;
-            // this is not another AI action or a prediction-eligibility gate.
+            // Most families prepare their received phase's physical inputs.
+            // StatueMimic and Snail also need the ordinary client's local
+            // movement/shape action, once at the real NPC world step. Neither
+            // path runs a second world update or publishes server results.
             // A successful call must either produce definite physical fields
             // or preserve qualified history from this same observation owner.
             bool known=true;
@@ -48,7 +49,7 @@ namespace JueMingR.TerrariaHost.Companions
                     known=PrepareWalkerPhysics(npc,state,decoded);
                     break;
                 case 126:
-                    known=PrepareStatuePhysics(npc,state);
+                    if(!decoded)known=AdvanceStatuePhysics(npc);
                     break;
             }
 
@@ -70,11 +71,19 @@ namespace JueMingR.TerrariaHost.Companions
                     if(!decoded)npc.velocity=Vector2.Zero;
                 }
             }
-            else if(npc.type==359 && npc.ai[3]!=0f)
+            else if(npc.type==359)
             {
-                // AI_067 takes an absolute synchronized scale, not a factor
-                // to multiply into the previous received shape.
-                npc.scale=npc.ai[3];npc.width=npc.height=(int)(12f*npc.scale);
+                // GetData23 retains the receiver's current local shape. Only
+                // its next AI_067 action applies ai3. The caller must preserve
+                // this live shape instead of resetting defaults every step.
+                if(!decoded && npc.ai[3]!=0f)
+                {
+                    npc.scale=npc.ai[3];int size=(int)(12f*npc.scale);
+                    if(size!=npc.width)
+                    {npc.position.X=npc.position.X+(float)(npc.width/2)-(float)size-2f;npc.width=size;}
+                    if(size!=npc.height)
+                    {npc.position.Y=npc.position.Y+(float)npc.height-(float)size;npc.height=size;}
+                }
             }
             else if(npc.type==371)
             {
@@ -170,28 +179,80 @@ namespace JueMingR.TerrariaHost.Companions
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         private static Vector2 StoreNpcPhysicsPoint(float x,float y){return new Vector2(x,y);}
 
-        private static bool PrepareStatuePhysics(NPC npc,NpcState state)
+        private static bool AdvanceStatuePhysics(NPC npc)
         {
-            if(npc.ai[0]==0f)return state.PhysicsKnown;
-            if(npc.velocity.Y<0f){npc.noTileCollide=true;return true;}
-            var target=ObservedPhysicsTarget(npc);
-            // A clear BODY does not establish whether the target is above it.
-            // Missing target data must not revoke a held jump-through flag.
+            // AI_126 has no client-side spawn/loot/random transition. Reuse its
+            // native target primitive and reproduce only the local movement
+            // and clocks, omitting sounds and the server-only sleeping search.
+            // The caller has already established THIS action's native gravity;
+            // its common gravity/collision tail still runs exactly once later.
+            npc.oldTarget=npc.target;npc.oldDirection=npc.direction;npc.oldDirectionY=npc.directionY;
+            if(npc.noTileCollide)npc.wet=false;
+            if(npc.ai[0]==0f)
+            {
+                npc.timeLeft=60;npc.TargetClosest();npc.direction=npc.oldDirection;return true;
+            }
+            // Native uses the numbered target even if it has just died or is
+            // the sentinel body; active-only filtering changes this action
+            // before TargetClosest is actually called at the jump boundary.
+            var target=npc.target>=0 && npc.target<Main.player.Length?Main.player[npc.target]:null;
             if(target==null)return false;
-            bool above=npc.Right.X>=target.Left.X && npc.Left.X<=target.Right.X && npc.Bottom.Y<target.Top.Y;
-            if(npc.velocity.Y>0f && above){npc.noTileCollide=true;return true;}
-            // A dead target's departure clock can also establish flag3 even
-            // without horizontal overlap. That local clock is not inferred
-            // from a fresh packet or replaced with a permanent alignment.
-            if(target.dead && npc.Bottom.Y<target.Top.Y)return false;
-            // Falling inside solid retains the SAME observation's jump flag;
-            // only a known-clear footprint revokes it. No primary-slot copy.
-            if(npc.velocity.Y>0f)
+            bool overlap=npc.Right.X>=target.Left.X && npc.Left.X<=target.Right.X;
+            bool aligned=overlap || target.dead && (npc.ai[3]==0f || npc.ai[3]>200f);
+            bool below=npc.velocity.Y>0f && npc.Top.Y>target.Bottom.Y;
+            bool needsSolid=below || npc.velocity.Y!=0f && !(aligned && npc.Bottom.Y<target.Top.Y) &&
+                (npc.velocity.Y>0f || target.dead && aligned && npc.Bottom.Y<target.Bottom.Y);
+            bool solid=false;
+            // These are the only terrain reads in the local movement action.
+            // Do not advance half an action before discovering missing tiles.
+            if(needsSolid)
             {
                 if(!ObservationBodyKnown(npc))return false;
-                if(!Collision.SolidCollision(npc.position,npc.width,npc.height)){npc.noTileCollide=false;return true;}
+                solid=Collision.SolidCollision(npc.position,npc.width,npc.height);
             }
-            return state.PhysicsKnown;
+            if(npc.localAI[2]==0f)npc.localAI[2]=1f;
+            bool jump=below && solid;
+            if(!below && npc.velocity.Y==0f)
+            {
+                npc.velocity.X=0f;npc.ai[2]-=1f;
+                if(npc.ai[2]<=0f){npc.ai[2]=20f;jump=true;}
+            }
+            if(overlap && npc.Bottom.Y<target.Top.Y)
+            {
+                npc.velocity.X*=.75f;if(npc.velocity.Y<0f)npc.velocity.Y*=.75f;
+            }
+            if(target.dead)
+            {
+                if(npc.ai[3]==0f)npc.ai[3]=300f;
+                if(npc.ai[3]>200f)npc.ai[3]-=1f;
+            }
+            else if(npc.ai[3]>0f)npc.ai[3]-=1f;
+            if(jump)
+            {
+                npc.noTileCollide=true;npc.TargetClosest();target=Main.player[npc.target];
+                float height=(npc.Bottom.Y-target.Bottom.Y)/40f;
+                height=target.dead?0f:Utils.Clamp(height,0f,10f);
+                npc.velocity.Y=-9.01f-height;
+                float distance=Math.Abs(npc.Center.X-target.Center.X)/50f;if(distance>12f)distance=12f;
+                npc.velocity.X=(4f+distance)*(float)npc.direction;
+                // A local client can jump again without receiving a new23.
+                // netUpdate is a server publication request, not an output
+                // which this observation table sends into the real world.
+                return true;
+            }
+            if(npc.velocity.Y==0f)return true;
+            if(target.dead && aligned && npc.Bottom.Y<target.Bottom.Y || aligned && npc.Bottom.Y<target.Top.Y)npc.velocity.Y=16f;
+            else
+            {
+                if(npc.velocity.Y>0f)npc.velocity.Y+=(float)gravityField.GetValue(null);
+                if(!target.dead && (npc.direction>0 && npc.Center.X>target.Center.X || npc.direction<0 && npc.Center.X<target.Center.X))
+                    npc.velocity=StoreNpcPhysicsPoint(npc.velocity.X*.96f,npc.velocity.Y*.96f);
+            }
+            if(npc.velocity.Y<0f || aligned && npc.Bottom.Y<target.Top.Y)npc.noTileCollide=true;
+            else if(!solid)npc.noTileCollide=false;
+            // Embedded falling retains THIS client's field, including defaults
+            // false. It does not require a hidden server flag or an attack ban.
+            return true;
         }
 
         private static bool PrepareWalkerPhysics(NPC npc,NpcState state,bool decoded)

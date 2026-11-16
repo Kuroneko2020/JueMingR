@@ -29,10 +29,10 @@ namespace NativeWorldTextProbe
             }
             throw new InvalidDataException("fixture stream did not contain requested native packet "+id);
         }
-        private static void InterestReentry(object host,TcpListener listener,Player first,Player second)
+        private static void InterestReentry(object host,TcpListener listener,Player first,Player second,bool firstEntry=false)
         {
             var human=Main.LocalPlayer;var positions=new[]{human.position,first.position,second.position};var oldNpcs=new[]{Main.npc[24],Main.npc[25]};var sourceNpcs=new NPC[2];var friend=Main.player[4];var profiles=Get(host,"profiles");
-            int width=Main.maxTilesX,height=Main.maxTilesY,sx=Main.maxSectionsX,sy=Main.maxSectionsY;float right=Main.rightWorld,bottom=Main.bottomWorld;var tile=Main.tile;var sections=Main.sectionManager;var clients=Netplay.Clients;var buffers=NetMessage.buffer;
+            int width=Main.maxTilesX,height=Main.maxTilesY,sx=Main.maxSectionsX,sy=Main.maxSectionsY,spawn=Main.spawnTileX;float right=Main.rightWorld,bottom=Main.bottomWorld;var tile=Main.tile;var sections=Main.sectionManager;var clients=Netplay.Clients;var buffers=NetMessage.buffer;
             var packets=new Harmony("JueMingR.Tests.CompanionInterestSnapshot");CompanionProfile profile=null;object actor=null;int snapshots=0;var bestiary=Main.BestiaryTracker;var pylons=Main.PylonSystem;
             var oldProjectiles=(Projectile[])Main.projectile.Clone();var initiallyActive=Main.projectile.Select(p=>p.active).ToArray();var fired=new List<Projectile>();
             try
@@ -49,15 +49,20 @@ namespace NativeWorldTextProbe
                 serverFrames=new Dictionary<int,List<byte[]>>();packets.Patch(AccessTools.Method(typeof(NetMessage),"SendPacket"),prefix:new HarmonyMethod(typeof(NativeCompanionCoreNetworkChecks),nameof(CaptureServer)){priority=Priority.First,before=new[]{"JueMingR.Tests.QuickItemOutlets"}});
                 human.position=new Vector2(1000,918);first.position=new Vector2(5000,918);second.position=new Vector2(5200,918);Call(host,"ClearWorldSources");
                 for(int slot=24;slot<=25;slot++){var n=(NPC)AccessTools.Method(typeof(NPC),"NewNPCInstanceInSlot").Invoke(null,new object[]{slot,(byte)100});sourceNpcs[slot-24]=n;n.SetDefaults(NPCID.Mimic);n.active=true;n.position=new Vector2(300+(slot-24)*30,960-n.height);n.UpdateNPC(slot);n.AddBuff(BuffID.Ichor,500);Require(n.target==4 && n.ai[0]==0 && n.velocity==Vector2.Zero && n.FindBuffIndex(BuffID.Ichor)>=0,"real dormant Mimic remains active/stationary with a native accepted buff and closer ordinary friend outside its wake rectangle");}
-                Require((bool)Call(host,"Create","兴趣返回"),"create one baseline profile for a real connection");PumpUntil(host,()=>{profile=((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().FirstOrDefault(p=>p.Name=="兴趣返回");return profile!=null && (bool)Call(profiles,"IsSaved",profile.Id);});
+                if(firstEntry)Main.spawnTileX=175;
+                string name=firstEntry?"兴趣首次":"兴趣返回";Require((bool)Call(host,"Create",name),"create one baseline profile for a real connection");PumpUntil(host,()=>{profile=((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().FirstOrDefault(p=>p.Name==name);return profile!=null && (bool)Call(profiles,"IsSaved",profile.Id);});
                 Require((bool)Call(host,"Join",profile.Id),"one real Join establishes the actor, never used as a reentry repair");NativeQuickItemChecks.Until(()=>listener.Pending());
                 using(var remote=listener.AcceptTcpClient())
                 {
                     var stream=remote.GetStream();Write(stream,Frame(3,w=>w.Write((byte)3)));PumpUntil(host,()=>Call(host,"OwnedSlot",3)!=null);Write(stream,World(Main.ActiveWorldFileData.UniqueId));foreach(int slot in new[]{24,25}){Write(stream,Native(23,slot));Write(stream,Native(54,slot));}Write(stream,Frame(49));Write(stream,Frame(129));
-                    PumpUntil(host,()=>{actor=Call(host,"OwnedSlot",3);return actor!=null && (bool)Get(actor,"Ready");});var role=(Player)Get(actor,"Body");role.position=new Vector2(700,918);Call(host,"SetBehavior",profile.Id,new CompanionBehavior{Follow=false,AttackEnabled=false});
+                    PumpUntil(host,()=>{actor=Call(host,"OwnedSlot",3);return actor!=null && (bool)Get(actor,"Ready");});var role=(Player)Get(actor,"Body");role.position=new Vector2(firstEntry?2800:700,918);Call(host,"SetBehavior",profile.Id,new CompanionBehavior{Follow=false,AttackEnabled=false});
                     var observations=(NPC[])Get(host,"observedNpcs");var identities=new[]{observations[24],observations[25]};var connection=Get(actor,"Connection");var flow=Get(actor,"WorldSource");
                     Console.WriteLine("INTEREST INITIAL spawn="+Get(actor,"SpawnSent")+" ready="+Get(actor,"Ready")+" active="+observations[24].active+"/"+observations[25].active+" buff="+observations[24].FindBuffIndex(BuffID.Ichor)+" sourceBuff="+Main.npc[24].FindBuffIndex(BuffID.Ichor)+" body="+role.position);
-                    Require((bool)Get(actor,"SpawnSent") && (bool)Get(actor,"Ready") && observations[24].active && observations[25].active && observations[24].FindBuffIndex(BuffID.Ichor)>=0,"initial real 3/7/23/54/49/129 provides both current NPC baselines");
+                    if(firstEntry)
+                    {
+                        Require((bool)Get(actor,"Ready") && !observations[24].active && !observations[25].active && ((long[])Get(host,"observedRevisions"))[24]==0 && !(bool)Get(((IDictionary)Get(host,"npcSources"))[24],"NpcBaseline") && (bool)Get(((IDictionary)Get(host,"npcSources"))[24],"FilteredCandidate"),"first real distant23 is filtered: no NPC was decoded, no revision/baseline was fabricated, only its bounded real candidate remains");
+                    }
+                    else Require((bool)Get(actor,"SpawnSent") && (bool)Get(actor,"Ready") && observations[24].active && observations[25].active && observations[24].FindBuffIndex(BuffID.Ichor)>=0,"initial real 3/7/23/54/49/129 provides both current NPC baselines");
                     bool quietWindow=true;int quietSteps=0;
                     Action step=()=>
                     {
@@ -67,8 +72,12 @@ namespace NativeWorldTextProbe
                         if(quietWindow){quietSteps++;Require(sourceNpcs.All(n=>n.active && n.ai[0]==0 && n.velocity==Vector2.Zero && n.target==4) && !serverFrames.Values.SelectMany(p=>p).Any(p=>p[2]==23),"actual original server NPC.Update keeps the same friend target and emits no ordinary23 while the actor leaves/returns");}
                         Call(host,"AdvanceNpcObservation");Call(host,"FlushSourceRequests");
                     };
-                    first.position=role.position;role.position=new Vector2(2800,918);step();Require(observations[24].active && (long)Get(flow,"Sent")==0,"another teammate retaining interest avoids an unnecessary whole snapshot");first.position=new Vector2(5000,918);step();
-                    Require(!observations[24].active && !observations[25].active && (bool)Get(((IDictionary)Get(host,"npcSources"))[24],"InterestRetired"),"same active actor's actual departure retires both known observations");
+                    if(!firstEntry)
+                    {
+                        first.position=role.position;role.position=new Vector2(2800,918);step();Require(observations[24].active && (long)Get(flow,"Sent")==0,"another teammate retaining interest avoids an unnecessary whole snapshot");first.position=new Vector2(5000,918);step();
+                        Require(!observations[24].active && !observations[25].active && (bool)Get(((IDictionary)Get(host,"npcSources"))[24],"InterestRetired"),"same active actor's actual departure retires both known observations");
+                    }
+                    else{step();Require((long)Get(flow,"Sent")==0 && ((long[])Get(host,"observedRevisions"))[24]==0,"staying outside the first filtered region creates no polling snapshot or synthetic observation");}
                     Require(Netplay.GetSectionX((int)role.Center.X/16)==0 && Main.sectionManager.SectionLoaded(0,0),"departure remains in the same already-loaded section");role.position=new Vector2(700,918);step();
                     Console.WriteLine("INTEREST REENTRY actor="+role.position+" desiredSame="+ReferenceEquals(Call(host,"Observer",identities[0].Center),actor)+" sent="+Get(flow,"Sent")+" outstanding="+Get(flow,"Outstanding"));
                     Require(ReferenceEquals(Call(host,"Observer",identities[0].Center),actor) && (long)Get(flow,"Sent")==1 && (bool)Get(flow,"Outstanding"),"two reentering slots coalesce into one source barrier");
@@ -84,7 +93,8 @@ namespace NativeWorldTextProbe
                         respond(request);Require(serverFrames[3].Count(p=>p[2]==49)==1 && !serverFrames[3].Any(p=>p[2]==10),"actual native8 completes enumeration without retransmitting already-sent terrain");
                         PumpUntil(host,()=>!(bool)Get(flow,"Snapshot"));
                     };
-                    snapshot();Require(observations[24].active && observations[25].active && observations[24].FindBuffIndex(BuffID.Ichor)>=0 && ReferenceEquals(observations[24],identities[0]) && ReferenceEquals(Get(actor,"Connection"),connection) && ReferenceEquals(Call(host,"OwnedSlot",3),actor) && (bool)Get(actor,"Ready") && ReferenceEquals(Main.npc[24],sourceNpcs[0]) && ReferenceEquals(Main.npc[25],sourceNpcs[1]),"real post-barrier23/54/49 restores same actors/identities without Join/Ready or NPC respawn");
+                    snapshot();if(firstEntry){Require(((long[])Get(host,"observedRevisions"))[24]>0,"only the actual native snapshot response creates the first consumed NPC revision");identities=new[]{observations[24],observations[25]};}
+                    Require(observations[24].active && observations[25].active && observations[24].FindBuffIndex(BuffID.Ichor)>=0 && ReferenceEquals(observations[24],identities[0]) && ReferenceEquals(Get(actor,"Connection"),connection) && ReferenceEquals(Call(host,"OwnedSlot",3),actor) && (bool)Get(actor,"Ready") && ReferenceEquals(Main.npc[24],sourceNpcs[0]) && ReferenceEquals(Main.npc[25],sourceNpcs[1]),"real post-barrier23/54/49 restores same actors/identities without Join/Ready or NPC respawn");
                     var humanNpc=Main.npc[24];Require(humanNpc.type==NPCID.Mimic && humanNpc.ai[0]==0,"baseline request never wakes or replaces the original human NPC");
                     // End the same reentry chain at the actual player consumer.
                     // No new Join, extraNPC23 or fabricated ammo deduction.
@@ -96,12 +106,12 @@ namespace NativeWorldTextProbe
                     role.position=new Vector2(2800,918);step();Require(!observations[24].active,"second real departure re-arms the interest edge");quietWindow=false;Main.npc[24].position=new Vector2(8000,918);Main.npc[25].active=false;role.position=new Vector2(700,918);step();snapshot();
                     Require(!observations[24].active && !observations[25].active,"native snapshot filters the moved-out NPC and confirms the truly inactive slot absent");
                     for(int i=0;i<50;i++)step();Require((long)Get(flow,"Sent")==2 && snapshots==2 && !(bool)Get(flow,"Outstanding") && !(bool)Get(flow,"Requested") && !(bool)Get(flow,"Snapshot"),"completed filtered/absent enumeration terminates without every-frame full refresh");
-                    Console.WriteLine("NPC INTEREST sameActor=True sameLoadedSection=True coalescedSlots=2 snapshots="+snapshots+" nativeQuietSteps="+quietSteps+" natural23=0 targetFriend=4 steady50AdditionalRequests=0 humanOriginal=True");
+                    Console.WriteLine("NPC INTEREST firstFilteredEntry="+firstEntry+" sameActor=True sameLoadedSection=True coalescedSlots=2 snapshots="+snapshots+" nativeQuietSteps="+quietSteps+" natural23=0 targetFriend=4 steady50AdditionalRequests=0 humanOriginal=True");
                 }
             }
             finally
             {
-                Main.netMode=1;packets.UnpatchAll(packets.Id);try{if(profile!=null){Call(host,"Recall",profile.Id);PumpUntil(host,()=>!((IDictionary)Get(host,"actors")).Contains(profile.Id));}}finally{foreach(var shot in fired){shot.active=false;Main.projectile[shot.whoAmI]=oldProjectiles[shot.whoAmI];}serverFrames=null;Main.npc[24]=oldNpcs[0];Main.npc[25]=oldNpcs[1];Call(host,"ClearWorldSources");Main.player[4]=friend;human.position=positions[0];first.position=positions[1];second.position=positions[2];Main.tile=tile;Main.maxTilesX=width;Main.maxTilesY=height;Main.maxSectionsX=sx;Main.maxSectionsY=sy;Main.rightWorld=right;Main.bottomWorld=bottom;Main.sectionManager=sections;Netplay.Clients=clients;NetMessage.buffer=buffers;Main.BestiaryTracker=bestiary;Main.PylonSystem=pylons;}
+                Main.netMode=1;packets.UnpatchAll(packets.Id);try{if(profile!=null){Call(host,"Recall",profile.Id);PumpUntil(host,()=>!((IDictionary)Get(host,"actors")).Contains(profile.Id));}}finally{foreach(var shot in fired){shot.active=false;Main.projectile[shot.whoAmI]=oldProjectiles[shot.whoAmI];}serverFrames=null;Main.npc[24]=oldNpcs[0];Main.npc[25]=oldNpcs[1];Call(host,"ClearWorldSources");Main.player[4]=friend;human.position=positions[0];first.position=positions[1];second.position=positions[2];Main.tile=tile;Main.maxTilesX=width;Main.maxTilesY=height;Main.maxSectionsX=sx;Main.maxSectionsY=sy;Main.spawnTileX=spawn;Main.rightWorld=right;Main.bottomWorld=bottom;Main.sectionManager=sections;Netplay.Clients=clients;NetMessage.buffer=buffers;Main.BestiaryTracker=bestiary;Main.PylonSystem=pylons;}
             }
         }
     }

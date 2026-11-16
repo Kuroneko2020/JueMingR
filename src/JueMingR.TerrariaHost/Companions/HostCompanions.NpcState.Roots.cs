@@ -41,7 +41,7 @@ namespace JueMingR.TerrariaHost.Companions
             state.Root=state.Previous=null;
         }
         private void ReleaseNpcDependencies(int slot)
-        {if(npcStates!=null && npcStates[slot]!=null){ReleaseNpcDependencies(npcStates[slot]);npcStates[slot].RootRefreshIssued=false;npcStates[slot].PhaseReady=npcStates[slot].PhysicsKnown=npcStates[slot].BattleReady=npcStates[slot].ArmedHistory=false;}}
+        {if(npcStates!=null && npcStates[slot]!=null){ReleaseNpcDependencies(npcStates[slot]);npcStates[slot].RootRefreshIssued=false;npcStates[slot].PhaseReady=npcStates[slot].PhysicsKnown=npcStates[slot].BattleReady=false;}}
         private static int NpcLink(float value,int self)
         {return value>=0 && value<Main.maxNPCs && value==(int)value && value!=self?(int)value:-1;}
         private bool NpcBaselineCurrent(int slot)

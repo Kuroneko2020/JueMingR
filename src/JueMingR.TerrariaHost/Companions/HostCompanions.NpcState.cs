@@ -17,7 +17,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal NPC Root,Previous;internal byte RootGeneration,PreviousGeneration;
             internal bool RootBlocked,BeforeRootBlock,WallDependency;
             internal bool PhaseReady,PhysicsKnown;internal float PhaseToken,ExplosionClock;internal int PhaseTarget=-1;
-            internal bool BattleReady,ArmedHistory;internal int BattlePhase,ArmedDamage;internal float BattleSample;
+            internal bool BattleReady;internal int BattlePhase;internal float BattleSample;
         }
         private NpcState[] npcStates;
         private static readonly int[] ogreContactDurations={4,4,8,2,4,4,4,2,8,4};
@@ -50,7 +50,6 @@ namespace JueMingR.TerrariaHost.Companions
             if(decoded)
             {
                 bool sourceChanged=!ReferenceEquals(state.Source,source);
-                if(sourceChanged)state.ArmedHistory=false;
                 if(npc.type==482)
                 {
                     int phase=npc.ai[2]<0?-1:1;
@@ -102,7 +101,11 @@ namespace JueMingR.TerrariaHost.Companions
             // The walker predicate reads its PRE-expansion body. Preserve that
             // current shape until the accepted explosion action below expands
             // it; all other forms still derive absolute defaults dimensions.
-            if(decoded || (npc.type!=572 && npc.type!=573) || npc.ai[1]!=2f){npc.width=width;npc.height=height;}npc.scale=scale;
+            //359's client applies its shape during its first LOCAL action,
+            // with a position correction only when its live size changes.
+            // The native decoder already preserves/reset this same instance's
+            // applied shape. Restoring defaults here would repeat that shift.
+            if(npc.type!=359){if(decoded || (npc.type!=572 && npc.type!=573) || npc.ai[1]!=2f){npc.width=width;npc.height=height;}npc.scale=scale;}
             // AI87's raw phase does not identify whether its publishing action
             // has already established the next action's flags/knockback. Keep
             // this instance's current local fields on23. Its first REAL NPC
@@ -176,22 +179,13 @@ namespace JueMingR.TerrariaHost.Companions
             }
             else if(npc.type>=430 && npc.type<=436 || npc.type==494 || npc.type==495 || npc.type==591)
             {
-                // ai2=1 is the entry action and still uses base damage. The
-                // current stable swing uses1.5. A fresh terminal raw0 is not
-                // uniquely qualified by23: retain that publication limitation
-                // in evidence rather than claim exact server contact there.
-                bool swing=decoded?npc.ai[2]>1f:state.BattleCounter!=0f;
-                if(decoded && npc.ai[2]==0f && state.ArmedHistory)npc.damage=state.ArmedDamage;
-                else npc.damage=(int)(npc.defDamage*(swing?1.5:1.0));
-                if(!decoded || npc.ai[2]!=0f){state.ArmedDamage=npc.damage;state.ArmedHistory=true;}
-                if(!decoded && swing)
-                {state.BattleCounter++;if(state.BattleCounter>=20f || npc.velocity.Y!=0f || Main.IsItDay() && npc.position.Y<Main.worldSurface*16.0)state.BattleCounter=0f;}
-                // This same necessary contact clock is read directly by native
-                // GetMeleeCollisionData for the Armed extension/multiplier.
-                // Advance the accepted attack only, never decide a new one.
-                // A later23 overwrites ai2 from the real source; the revision
-                // remains advanced and cannot masquerade as a fresh sample.
-                if(!decoded)npc.ai[2]=state.BattleCounter;
+                //23 updates the AI clock but not current damage. Like an
+                // ordinary client, retain defaults/this instance's last local
+                // action on decode. Fresh terminal0 can correctly remain14
+                // even when the publishing server's unsent history left21.
+                // Real local actions may enter another close swing: merely
+                // decrementing an accepted first attack would stop forever.
+                if(!decoded)AdvanceArmedContact(npc);
             }
             else if(npc.type==419)
             {
@@ -209,6 +203,40 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 npc.reflectsProjectiles=reflect;npc.takenDamageMultiplier=reflect?3f:1f;
             }
+        }
+        private static void AdvanceArmedContact(NPC npc)
+        {
+            // In the ordinary non-despawning Fighter phase the current local
+            // action acquires facing/target before evaluating its swing. A
+            // player may cross sides after23; the old wire direction must not
+            // determine the following contact extension indefinitely.
+            if(npc.ai[3]<60f && NPC.DespawnEncouragement_AIStyle3_Fighters_NotDiscouraged(npc.type,npc.position,npc))
+            {npc.TargetClosest();if(npc.directionY>0 && Main.player[npc.target].Center.Y<=npc.Bottom.Y)npc.directionY=-1;}
+            if(npc.ai[2]==0f)
+            {
+                npc.damage=npc.defDamage;float speed=1f+(1f-npc.scale);
+                if(npc.velocity.X<-speed || npc.velocity.X>speed){if(npc.velocity.Y==0f)npc.velocity*=.8f;}
+                else if(npc.velocity.X<speed && npc.direction==1)npc.velocity.X=Math.Min(speed,npc.velocity.X+.07f);
+                else if(npc.velocity.X>-speed && npc.direction==-1)npc.velocity.X=Math.Max(-speed,npc.velocity.X-.07f);
+                var target=ObservedPhysicsTarget(npc);int reach=npc.type>=494 && npc.type<=495?42:50;
+                if(npc.velocity.Y==0f && (!Main.IsItDay() || npc.position.Y>Main.worldSurface*16.0) && target!=null && !target.dead &&
+                    Vector2.Distance(npc.Center,target.Center)<reach && ObservationSightKnown(npc.Center,target.Center) && Collision.CanHit(npc.Center,1,1,target.Center,1,1))
+                {npc.velocity.X*=.7f;npc.ai[2]=1f;}
+            }
+            else
+            {
+                npc.damage=(int)(npc.defDamage*1.5);npc.ai[3]=1f;npc.velocity.X*=.9f;if(Math.Abs(npc.velocity.X)<.1)npc.velocity.X=0;
+                npc.ai[2]++;if(npc.ai[2]>=20f || npc.velocity.Y!=0f || Main.IsItDay() && npc.position.Y<Main.worldSurface*16.0)npc.ai[2]=0;
+            }
+            // The same local clock feeds native GetMeleeCollisionData. There
+            // is no extra gravity/collision, server send or sample re-stamp.
+        }
+        private static void FinishNpcLocalContact(NPC npc)
+        {
+            // Native FindFrame changes Armed facing only outside the swing,
+            // AFTER collision. GetMeleeCollisionData consumes this direction,
+            // so the next local swing must keep its correct extended side.
+            if((npc.type>=430 && npc.type<=436 || npc.type==494 || npc.type==495 || npc.type==591) && npc.ai[2]<=0f && npc.velocity.Y==0f && (npc.direction==1 || npc.direction==-1))npc.spriteDirection=npc.direction;
         }
         private static void PrepareNpcExplosion(NPC npc,NpcState state,bool decoded)
         {

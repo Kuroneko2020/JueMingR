@@ -56,6 +56,17 @@ namespace JueMingR.TerrariaHost.Companions
                 lease.NpcBaseline=false;lease.AwaitBaseline=true;
             }
         }
+        private void RememberFilteredNpc(int slot,Vector2 point)
+        {
+            WorldLease lease;if(!npcSources.TryGetValue(slot,out lease)){lease=new WorldLease();npcSources.Add(slot,lease);}
+            // Metadata only: do not decode a distant NPC or fabricate its
+            // revision/position just to make the existing-body edge fire.
+            // At most one actual filtered candidate exists per native slot.
+            lease.FilteredCandidate=true;lease.FilteredPoint=point;
+            // Keep never-consumed and genuinely retired baselines distinct:
+            // the first later usable23 may still seed the original Ready path.
+            lease.InterestInside=false;lease.AwaitBaseline=true;
+        }
         private static void PrepareNpcObservationPhysics(NPC npc)
         {
             // 23 carries AI state, not these AI_002-established physics flags.
@@ -86,16 +97,17 @@ namespace JueMingR.TerrariaHost.Companions
         internal void AdvanceNpcObservation()
         {
             if(Main.netMode!=1 || observedNpcs==null || observationStep==Main.GameUpdateCount)return;observationStep=Main.GameUpdateCount;
-            // Server snapshots supply decisions/phase/velocity. Between them,
-            // reuse only native gravity/collision motion, never NPC.Update/AI,
-            // DOT damage, loot or network code. Advance this one team table
-            // once at the real outer world step, not once per consuming role.
+            //23 supplies a native receiver's input, not a full AI snapshot.
+            // Its defaults/history and necessary local contact/movement phases
+            // can enter another swing/jump, followed by ONE physics tail.
+            // Never run a second complete NPC.Update/AI, DOT/loot or network
+            // producer. Advance this team table once per actual world step.
             var previous=Main.npc;Main.npc=observedNpcs;bool reading=ReadingObservation;ReadingObservation=true;
             bool stair=Collision.stair,fall=Collision.stairFall,honey=Collision.honey,shimmer=Collision.shimmer,sloping=Collision.sloping,mine=Collision.landMine,up=Collision.up,down=Collision.down;
             float previousGravity=(float)gravityField.GetValue(null);
             try{foreach(var npc in observedNpcs)
             {
-                if(!npc.active){if(observedRevisions[npc.whoAmI]!=0)CheckNpcInterestReentry(npc);continue;}
+                if(!npc.active){CheckNpcInterestReentry(npc);continue;}
                 bool interested=NeededNpc(npc.Center);if(!interested)ReleaseNpcDependencies(npc.whoAmI);if(!interested && !RequiredNpcSlot(npc.whoAmI)){RetireNpcInterest(npc.whoAmI);continue;}
                 advancedRevisions[npc.whoAmI]=observedRevisions[npc.whoAmI];
                 if(NPC.offSetDelayTime>0 || Main.multiplayerNPCSmoothingRange<=0 || NPCID.Sets.NoMultiplayerSmoothingByType[npc.type] || NPCID.Sets.NoMultiplayerSmoothingByAI[npc.aiStyle] || npc.townNPC && npc.ai[0]==25f)npc.netOffset=Vector2.Zero;
@@ -114,10 +126,15 @@ namespace JueMingR.TerrariaHost.Companions
                 if(x<2 || y<2 || x>=Main.maxTilesX-2 || y>=Main.maxTilesY-2 || Main.tile[x,y]==null)continue;
                 if(Main.sectionManager!=null && !Main.sectionManager.TileLoaded(x,y))continue;
                 bool local=LocalNpcPhase(npc);if(local)npcStates[npc.whoAmI].PhaseReady=false;
+                // AI126 uses the gravity value established BEFORE its local
+                // movement action as well as the common tail. Compute that
+                // producer once; do not add the physical tail a second time.
+                float maximum=0;bool actionGravity=npc.aiStyle==126;if(actionGravity)npcGravity(npc,out maximum);
                 bool physicalKnown=PrepareNpcObservationState(npc,false);
                 if(!npc.active)continue;
-                float maximum;npcGravity(npc,out maximum);if(!npc.noGravity)npc.velocity.Y=Math.Min(maximum,npc.velocity.Y+(float)gravityField.GetValue(null));
+                if(!actionGravity)npcGravity(npc,out maximum);if(!npc.noGravity)npc.velocity.Y=Math.Min(maximum,npc.velocity.Y+(float)gravityField.GetValue(null));
                 if(npc.noTileCollide){npc.oldPosition=npc.position;npc.position+=npc.velocity;}else moveNpc(npc);
+                FinishNpcLocalContact(npc);
                 npcStates[npc.whoAmI].PhysicsKnown=physicalKnown;
                 if(local)npcStates[npc.whoAmI].PhaseReady=physicalKnown && NpcBaselineCurrent(npc.whoAmI);
                 if(npc.type==482)npcStates[npc.whoAmI].BattleReady=NpcBaselineCurrent(npc.whoAmI);
@@ -130,7 +147,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(!HasActors || ReadingObservation || length<3)return;
             EnsureNpcObservation();int slot=packet[start]==54?BitConverter.ToInt16(packet,start+1):packet[start+1];if(slot<0 || slot>=observedNpcs.Length)return;
-            if(packet[start]==23 && length>=19 && !RequiredNpcSlot(slot) && !RequiredNpcPacket(packet,start,length) && !NeededNpc(new Microsoft.Xna.Framework.Vector2(BitConverter.ToSingle(packet,start+3),BitConverter.ToSingle(packet,start+7)))){RetireNpcInterest(slot,false);return;}
+            if(packet[start]==23 && length>=19 && !RequiredNpcSlot(slot) && !RequiredNpcPacket(packet,start,length))
+            {var point=new Vector2(BitConverter.ToSingle(packet,start+3),BitConverter.ToSingle(packet,start+7));if(!NeededNpc(point)){RetireNpcInterest(slot,false);RememberFilteredNpc(slot,point);return;}}
             var previous=Main.npc;var decoding=Decoding;int previousSlot=observationDecodeSlot;Main.npc=observedNpcs;ReadingObservation=true;Decoding=source;observationDecodeSlot=packet[start]==23?slot:-1;
             try
             {
@@ -145,7 +163,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if(length>21 && (packet[start+21]&128)!=0)observedNpcs[slot].life=observedNpcs[slot].lifeMax;
                     observedTicks[slot]=sampleTick;observedRevisions[slot]=++nextObservationRevision;
                     WorldLease lease;if(npcSources.TryGetValue(slot,out lease) && ReferenceEquals(lease.Source,source) && !lease.Waiting)
-                    {lease.NpcBaseline=true;lease.AwaitBaseline=lease.InterestRetired=lease.InactiveBaseline=lease.RequiredBaseline=false;lease.InterestInside=true;}
+                    {lease.NpcBaseline=true;lease.AwaitBaseline=lease.InterestRetired=lease.InactiveBaseline=lease.RequiredBaseline=lease.FilteredCandidate=false;lease.InterestInside=true;}
                 }
             }
             finally{observationDecodeSlot=previousSlot;Decoding=decoding;ReadingObservation=false;Main.npc=previous;}

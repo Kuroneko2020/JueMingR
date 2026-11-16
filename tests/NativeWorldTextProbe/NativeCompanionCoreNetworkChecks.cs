@@ -27,7 +27,7 @@ namespace NativeWorldTextProbe
         private static string specialistLeaf;
         internal static void RunSpecialist(object host,Player first,Guid other,string leaf)
         {
-            if(leaf!="movement planning independent of attack" && leaf!="held player continuation without another NPC23" && leaf!="primary one-shot projectile update" && leaf!="npc observation physical properties" && leaf!="npc observation shared state" && leaf!="npc observation slot isolation" && leaf!="npc observation interest reentry" && leaf!="npc observation source ambiguity" && leaf!="npc observation publication ambiguity" && leaf!="npc observation current geometry" && leaf!="npc observation club contact" && leaf!="npc observation linked health" && leaf!="npc observation battle state" && leaf!="npc observation shape phases" && leaf!="npc observation support flags" && leaf!="npc observation zero root" && leaf!="npc observation wall root" && leaf!="npc observation mimic local phase" && leaf!="npc observation battle publication" && leaf!="npc observation armed history" && leaf!="npc observation armed fresh contact" && leaf!="npc observation conditional phase" && leaf!="npc observation explosion window" && leaf!="npc observation hit generation")throw new ArgumentException("Unknown companion specialist leaf");
+            if(leaf!="movement planning independent of attack" && leaf!="held player continuation without another NPC23" && leaf!="primary one-shot projectile update" && leaf!="npc observation physical properties" && leaf!="npc observation shared state" && leaf!="npc observation slot isolation" && leaf!="npc observation interest reentry" && leaf!="npc observation source ambiguity" && leaf!="npc observation publication ambiguity" && leaf!="npc observation current geometry" && leaf!="npc observation club contact" && leaf!="npc observation linked health" && leaf!="npc observation battle state" && leaf!="npc observation shape phases" && leaf!="npc observation support flags" && leaf!="npc observation zero root" && leaf!="npc observation wall root" && leaf!="npc observation mimic local phase" && leaf!="npc observation battle publication" && leaf!="npc observation armed history" && leaf!="npc observation armed fresh contact" && leaf!="npc observation conditional phase" && leaf!="npc observation explosion window" && leaf!="npc observation hit generation" && leaf!="npc observation first interest" && leaf!="npc observation statue client" && leaf!="npc observation snail client")throw new ArgumentException("Unknown companion specialist leaf");
             specialistLeaf=leaf;Console.WriteLine("SPECIALIST ONLY "+leaf+"; not the complete network group");
             try{Run(host,first,other);}finally{specialistLeaf=null;}
         }
@@ -106,6 +106,9 @@ namespace NativeWorldTextProbe
                 leaf("npc observation shared state",()=>NativeCompanionNpcStateChecks.Run(host,first,second,a,b,slot=>Apply(Native(23,slot)),slot=>{Queue(ca,Native(23,slot));Call(host,"PumpConnection",a);}));
                 leaf("npc observation slot isolation",()=>NativeCompanionNpcStateChecks.Run(host,first,second,a,b,slot=>Apply(Native(23,slot)),slot=>{Queue(ca,Native(23,slot));Call(host,"PumpConnection",a);},true));
                 leaf("npc observation interest reentry",()=>InterestReentry(host,listener,first,second));
+                leaf("npc observation first interest",()=>InterestReentry(host,listener,first,second,true));
+                leaf("npc observation statue client",()=>NativeCompanionNpcStateChecks.LocalState(host,first,second,slot=>Native(23,slot),Apply));
+                leaf("npc observation snail client",()=>NativeCompanionNpcStateChecks.LocalState(host,first,second,slot=>Native(23,slot),Apply,true));
                 // Hand-selected source-domain diagnostics are retained for
                 // explicit investigation only. They prove no natural-domain
                 // impossibility and are not product correctness gates.
@@ -117,8 +120,8 @@ namespace NativeWorldTextProbe
                 leaf("npc observation explosion window",()=>NativeCompanionNpcStateChecks.Explosion(host,first,second,a,slot=>Apply(Native(23,slot))));
                 leaf("npc observation hit generation",()=>NativeCompanionNpcStateChecks.HitGeneration(host,first,second,a,slot=>Native(23,slot),packet=>{Queue(ca,packet);Call(host,"PumpConnection",a);},Apply,fa));
                 leaf("npc observation battle publication",()=>NativeCompanionNpcStateChecks.BattlePublication(host,first,second,a,b,slot=>Apply(Native(23,slot)),fa,fb));
-                leaf("npc observation armed history",()=>NativeCompanionNpcStateChecks.ArmedCycle(host,first,second,a,slot=>Apply(Native(23,slot))));
-                leaf("npc observation armed fresh contact",()=>NativeCompanionNpcStateChecks.ArmedCycle(host,first,second,a,slot=>Apply(Native(23,slot)),true));
+                leaf("npc observation armed history",()=>NativeCompanionNpcStateChecks.ArmedCycle(host,first,second,a,Apply));
+                leaf("npc observation armed fresh contact",()=>NativeCompanionNpcStateChecks.ArmedCycle(host,first,second,a,Apply,true));
                 leaf("npc observation mimic local phase",()=>NativeCompanionNpcStateChecks.MimicPhase(host,first,second,a,b,slot=>Apply(Native(23,slot)),fa,fb));
                 leaf("npc observation support flags",()=>NativeCompanionNpcStateChecks.Shape(host,first,second,slot=>Apply(Native(23,slot)),true));
                 leaf("npc observation shape phases",()=>NativeCompanionNpcStateChecks.Shape(host,first,second,slot=>Apply(Native(23,slot))));

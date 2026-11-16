@@ -20,6 +20,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             internal Actor Source,Pending;internal bool Waiting,AwaitBaseline,Terminated,NpcBaseline;internal long Barrier;
             internal bool InterestRetired,InterestInside,InactiveBaseline,RequiredBaseline;
+            internal bool FilteredCandidate;internal Vector2 FilteredPoint;
             internal int Key;
 
         }
@@ -47,7 +48,7 @@ namespace JueMingR.TerrariaHost.Companions
             // Identity evidence must not retain a retired role/body through
             // otherwise inactive NPC metadata after its save has released it.
             if(npcStates!=null)foreach(var state in npcStates)if(state!=null)
-            {if(ReferenceEquals(state.Source,actor)){state.Source=null;state.PhaseReady=state.PhysicsKnown=state.BattleReady=state.ArmedHistory=false;}if(ReferenceEquals(state.SnapshotSource,actor)){state.SnapshotSource=null;state.SnapshotComplete=false;state.Snapshot=0;}}
+            {if(ReferenceEquals(state.Source,actor)){state.Source=null;state.PhaseReady=state.PhysicsKnown=state.BattleReady=false;}if(ReferenceEquals(state.SnapshotSource,actor)){state.SnapshotSource=null;state.SnapshotComplete=false;state.Snapshot=0;}}
         }
         private void RetireLease(WorldLease lease,Actor actor)
         {
@@ -125,8 +126,13 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void CheckNpcInterestReentry(NPC npc)
         {
-            WorldLease lease;if(!npcSources.TryGetValue(npc.whoAmI,out lease) || !lease.InterestRetired)return;
-            bool inside=NeededNpc(npc.Center);
+            WorldLease lease;if(!npcSources.TryGetValue(npc.whoAmI,out lease) || !lease.InterestRetired && !lease.FilteredCandidate)return;
+            // A real23 filtered before its first decode has no NPC body,
+            // revision or consumed baseline. Its bounded slot candidate still
+            // records a real region worth enumerating when a live role enters.
+            // This is separate from terrain loading and from old-body reentry.
+            var point=lease.FilteredCandidate?lease.FilteredPoint:npc.Center;
+            bool inside=NeededNpc(point);
             if(!inside){lease.InterestInside=false;return;}
             if(lease.InterestInside)return;
             lease.InterestInside=true;
@@ -134,7 +140,7 @@ namespace JueMingR.TerrariaHost.Companions
             // in-flight barrier/snapshot lane even for the SAME live actor and
             // an already loaded section. Coalesce entries behind its next ping;
             // an older snapshot/49 cannot complete this newer restoration.
-            var desired=Observer(npc.Center);var flow=Flow(desired);
+            var desired=Observer(point);var flow=Flow(desired);
             lease.Pending=desired;lease.Waiting=lease.AwaitBaseline=true;
             lease.Barrier=flow.Sent+1;flow.Requested=true;
         }
@@ -229,7 +235,7 @@ namespace JueMingR.TerrariaHost.Companions
                     // An ordered complete enumeration can confirm absence.
                     // Keep source authority without inventing a decoded23 or
                     // repeatedly requesting a body that is actually inactive.
-                    if(lease.InterestRetired){lease.InterestRetired=false;lease.InterestInside=true;lease.InactiveBaseline=true;}
+                    if(lease.InterestRetired || lease.FilteredCandidate){lease.InterestRetired=lease.FilteredCandidate=false;lease.InterestInside=true;lease.InactiveBaseline=true;}
                 }
                 lease.AwaitBaseline=false;
             }
