@@ -48,6 +48,17 @@ namespace JueMingR.TerrariaHost.Companions
             // A later ready actor needs a usable initial baseline again.
             WorldLease lease;if(npcSources.TryGetValue(slot,out lease)){lease.NpcBaseline=false;lease.AwaitBaseline=true;}
         }
+        private static void PrepareNpcObservationPhysics(NPC npc)
+        {
+            // 23 carries AI state, not these AI_002-established physics flags.
+            // Prepare the decoded instance for ALL shared consumers, including
+            // basic aim and native contact, without running another AI action.
+            if(npc.aiStyle!=2)return;
+            npc.noGravity=true;
+            // This is the received phase, not the next CanHit/counter decision.
+            // Reapply both directions after sync/recreation and before motion.
+            if(npc.type==170 || npc.type==171 || npc.type==180)npc.noTileCollide=npc.ai[1]!=0f;
+        }
         internal void AdvanceNpcObservation()
         {
             if(Main.netMode!=1 || observedNpcs==null || observationStep==Main.GameUpdateCount)return;observationStep=Main.GameUpdateCount;
@@ -77,6 +88,7 @@ namespace JueMingR.TerrariaHost.Companions
                 int x=(int)(npc.Center.X/16),y=(int)(npc.Center.Y/16);
                 if(x<2 || y<2 || x>=Main.maxTilesX-2 || y>=Main.maxTilesY-2 || Main.tile[x,y]==null)continue;
                 if(Main.sectionManager!=null && !Main.sectionManager.TileLoaded(x,y))continue;
+                PrepareNpcObservationPhysics(npc);
                 float maximum;npcGravity(npc,out maximum);if(!npc.noGravity)npc.velocity.Y=Math.Min(maximum,npc.velocity.Y+(float)gravityField.GetValue(null));
                 if(npc.noTileCollide){npc.oldPosition=npc.position;npc.position+=npc.velocity;}else moveNpc(npc);
             }}
@@ -95,6 +107,7 @@ namespace JueMingR.TerrariaHost.Companions
                 Buffer.BlockCopy(packet,start,observationDecoder.readBuffer,0,length);observationDecoder.ResetReader();int id;observationDecoder.GetData(0,length,out id);
                 if(id==23)
                 {
+                    PrepareNpcObservationPhysics(observedNpcs[slot]);
                     observedTicks[slot]=sampleTick;observedRevisions[slot]=++nextObservationRevision;
                     WorldLease lease;if(npcSources.TryGetValue(slot,out lease) && ReferenceEquals(lease.Source,source) && !lease.Waiting)
                     {lease.NpcBaseline=true;lease.AwaitBaseline=false;}

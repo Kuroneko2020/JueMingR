@@ -27,7 +27,7 @@ namespace NativeWorldTextProbe
         private static string specialistLeaf;
         internal static void RunSpecialist(object host,Player first,Guid other,string leaf)
         {
-            if(leaf!="movement planning independent of attack" && leaf!="held player continuation without another NPC23" && leaf!="primary one-shot projectile update")throw new ArgumentException("Unknown companion specialist leaf");
+            if(leaf!="movement planning independent of attack" && leaf!="held player continuation without another NPC23" && leaf!="primary one-shot projectile update" && leaf!="npc observation physical properties")throw new ArgumentException("Unknown companion specialist leaf");
             specialistLeaf=leaf;Console.WriteLine("SPECIALIST ONLY "+leaf+"; not the complete network group");
             try{Run(host,first,other);}finally{specialistLeaf=null;}
         }
@@ -101,6 +101,7 @@ namespace NativeWorldTextProbe
                     Require(fa.Any(p=>p[2]==134 && p[3]==first.whoAmI) && !fb.Any(p=>p[2]==134 && p[3]==first.whoAmI) && !primary.Any(p=>p[2]==134 && p[3]==first.whoAmI) && !(bool)Get(first,"luckNeedsSync"),"native UpdateBuffs -> UpdateLuck consumes own dirty flag and sends134 only to own stream");
                 });
                 leaf("initial baseline and terminal failures",()=>BaselineAndFailures(host,listener));
+                leaf("npc observation physical properties",()=>{NativeCompanionNpcPhysicsChecks.Run(host,first,second,a,b,slot=>Apply(Native(23,slot)));HeldContinuation(host,first,second,a,b,true);});
                 leaf("movement planning independent of attack",()=>NativeCompanionCoreLifecycleChecks.Planning(host,first,second));
                 leaf("prediction real receive/player phases and two-role fairness",()=>Prediction(host,first,second,a,b,ca,cb));
                 leaf("held player continuation without another NPC23",()=>HeldContinuation(host,first,second,a,b));
@@ -283,7 +284,7 @@ namespace NativeWorldTextProbe
             var lease=((IDictionary)Get(host,"npcSources"))[slot];var source=GetOptional(lease,"Source");
             if(source==null)Apply(frame);else{var connection=ReferenceEquals(source,a)?ca:cb;Queue(connection,frame);Call(host,"PumpConnection",source);}
         }
-        private static void HeldContinuation(object host,Player first,Player second,object a,object b)
+        private static void HeldContinuation(object host,Player first,Player second,object a,object b,bool floating=false)
         {
             var human=Main.LocalPlayer;var bodies=new[]{human,first,second};var positions=bodies.Select(p=>p.position).ToArray();var velocities=bodies.Select(p=>p.velocity).ToArray();
             var behaviorA=((CompanionProfile)Get(a,"Profile")).Behavior;var behaviorB=((CompanionProfile)Get(b,"Profile")).Behavior;var brainA=Get(a,"Behavior");var brainB=Get(b,"Behavior");
@@ -302,7 +303,7 @@ namespace NativeWorldTextProbe
             try
             {
                 Main.worldSurface=40;
-                foreach(bool laterSlot in new[]{false,true})
+                foreach(bool laterSlot in floating?new[]{false}:new[]{false,true})
                 {
                     Call(host,"ClearWorldSources");foreach(var actor in new[]{a,b}){Set(actor,"Target",null);Set(actor,"AimTimeline",null);Set(actor,"AimTerrain",null);Set(actor,"AimPlayer",null);Set(actor,"HasAim",false);}
                     human.position=new Vector2(laterSlot?1240:1200,918);first.position=new Vector2(1000,918);second.position=new Vector2(laterSlot?1200:1240,918);
@@ -312,7 +313,7 @@ namespace NativeWorldTextProbe
                     Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=true,PreferOwner=false});
                     Call(host,"SetBehavior",((CompanionProfile)Get(b,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=false});
                     NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",0UL);foreach(var p in bodies)p.Update(p.whoAmI);
-                    var controlled=laterSlot?second:human;Console.WriteLine("HELD PREMISE slot="+controlled.whoAmI+" pos="+controlled.position+" velocity="+controlled.velocity+" solid="+Collision.SolidCollision(controlled.position,controlled.width,controlled.height)+" bounds="+Main.leftWorld+","+Main.rightWorld);Require(!Collision.SolidCollision(controlled.position,controlled.width,controlled.height),"ordinary held player has an actual clear body after native world-border clamp");var npc=(NPC)AccessTools.Method(typeof(NPC),"NewNPCInstanceInSlot").Invoke(null,new object[]{21,(byte)(laterSlot?11:10)});npc.SetDefaults(NPCID.Zombie);npc.active=true;npc.position=new Vector2(1110,960-npc.height);npc.velocity=new Vector2(2-npc.scale,0);npc.TargetClosest();Require(npc.target==controlled.whoAmI,"native TargetClosest actually chooses the intended earlier/later player before its real23 baseline");
+                    var controlled=laterSlot?second:human;Console.WriteLine("HELD PREMISE slot="+controlled.whoAmI+" pos="+controlled.position+" velocity="+controlled.velocity+" solid="+Collision.SolidCollision(controlled.position,controlled.width,controlled.height)+" bounds="+Main.leftWorld+","+Main.rightWorld);Require(!Collision.SolidCollision(controlled.position,controlled.width,controlled.height),"ordinary held player has an actual clear body after native world-border clamp");var npc=(NPC)AccessTools.Method(typeof(NPC),"NewNPCInstanceInSlot").Invoke(null,new object[]{21,(byte)(laterSlot?11:10)});npc.SetDefaults(floating?NPCID.DemonEye:NPCID.Zombie);npc.active=true;npc.position=new Vector2(1110,floating?878:960-npc.height);npc.velocity=floating?new Vector2(4*(2-npc.scale),1.5f*(2-npc.scale)):new Vector2(2-npc.scale,0);if(floating){npc.UpdateNPC(21);Require(npc.noGravity,"real original AI_002 prepares the flying source before23");}else npc.TargetClosest();Require(npc.target==controlled.whoAmI,"native TargetClosest actually chooses the intended earlier/later player before its real23 baseline");
                     uint sample=Main.GameUpdateCount;Apply(Native(23,21));heldBody=first;heldResumeTick=heldShotTick=UInt32.MaxValue;
                     NpcTrajectory captured=null;int resumed=0;bool agedShot=false;var seen=new HashSet<int>(Main.projectile.Where(p=>p.active).Select(p=>(int)p.key));
                     // Cold enhancement may legally defer first publication.
