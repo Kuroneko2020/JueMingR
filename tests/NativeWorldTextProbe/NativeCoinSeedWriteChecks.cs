@@ -14,7 +14,7 @@ namespace NativeWorldTextProbe
     internal static class NativeCoinSeedWriteChecks
     {
         private const BindingFlags Flags=BindingFlags.Static|BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
-        private static int mode,step;
+        private static int mode,step,targetKind;
         private static object currentHost;
         private static Item source,postNativeEmpty;
         internal static void Run(object context,object host)
@@ -28,15 +28,16 @@ namespace NativeWorldTextProbe
             audit.Patch(restore,prefix:new HarmonyMethod(typeof(NativeCoinSeedWriteChecks).GetMethod(nameof(BeforeRestore),Flags)));
             try
             {
-                for(int test=1;test<=9;test++)
+                for(int test=1;test<=11;test++)
                 {
-                    NativeCoinSeedAdmissionChecks.Fresh(context,host);step=0;mode=test;
-                    long total=Total(p.inventory,58)+Total(p.bank.item,40),calls=(long)Get(transfer,"NativeCalls");
+                    targetKind=test>9?2:0;
+                    NativeCoinSeedAdmissionChecks.Fresh(context,host,targetKind);step=0;mode=test==10?1:test==11?3:test;
+                    long total=Total(p.inventory,58)+Total(Bank(p,targetKind).item,40),calls=(long)Get(transfer,"NativeCalls");
                     string result=NativeCoinSeedChecks.Execute(host);
-                    if(test==1||test==2||test==7)
+                    if(test==1||test==2||test==7||test==10)
                     {
                         Require(result=="Failed" && !((CoinIntent)Get(host,"Intent")).Faulted && ReferenceEquals(p.inventory[50],source) &&
-                            ReferenceEquals(p.bank.item[1],postNativeEmpty) && Total(p.inventory,58)+Total(p.bank.item,40)==total,
+                            ReferenceEquals(Bank(p,targetKind).item[1],postNativeEmpty) && Total(p.inventory,58)+Total(Bank(p,targetKind).item,40)==total,
                             "exact exclusive interrupted seed restores only its two current post-native objects: "+test);
                     }
                     else
@@ -50,7 +51,7 @@ namespace NativeWorldTextProbe
             }
             finally
             {
-                mode=0;currentHost=null;source=postNativeEmpty=null;
+                mode=targetKind=0;currentHost=null;source=postNativeEmpty=null;
                 audit.Unpatch(write,HarmonyPatchType.All,audit.Id);audit.Unpatch(restore,HarmonyPatchType.All,audit.Id);
                 Main.gamePaused=true;Main.ActiveWorldFileData=originalWorld;Call(context,"UpdateRuntime");Main.gamePaused=false;NativeCoinMatrix.Reset(p,host);
             }
@@ -58,7 +59,7 @@ namespace NativeWorldTextProbe
         }
         private static void Before()
         {
-            source=Main.LocalPlayer.inventory[50];postNativeEmpty=Main.LocalPlayer.bank.item[1];
+            source=Main.LocalPlayer.inventory[50];postNativeEmpty=Bank(Main.LocalPlayer,targetKind).item[1];
             if(mode==7)throw new InvalidOperationException("before-seed-write");
         }
         private static IEnumerable<CodeInstruction> AfterStores(IEnumerable<CodeInstruction> instructions)

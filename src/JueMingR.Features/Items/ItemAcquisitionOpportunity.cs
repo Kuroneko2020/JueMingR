@@ -4,7 +4,8 @@ using JueMingR.Platform.Items;
 namespace JueMingR.Features.Items
 {
     // Values owned only by ItemAutomationFeature. A causal acquisition can admit
-    // current whole stacks; a later observation can only remove these members.
+    // current whole stacks; ordinary observations only remove members. One
+    // proven local two-slot transfer may map an existing member, never recapture.
     // No unit history, slot reservation or permanent type permission lives here.
     internal sealed class ItemAcquisitionOpportunity
     {
@@ -37,6 +38,14 @@ namespace JueMingR.Features.Items
         {
             for (int i = members.Count - 1; i >= 0; i--)
                 if (members[i].Slot == slot.Slot && members[i].Instance == slot.Instance) members.RemoveAt(i);
+        }
+        internal bool MapTransfer(ItemSlotObservation source, ItemSlotObservation target, ItemSlotObservation remaining, ItemSlotObservation combined)
+        {
+            if (!Contains(source)) return false;
+            Retire(source); Retire(target);
+            if (combined.IsCandidate) members.Add(combined);
+            if (remaining.IsCandidate) members.Add(remaining);
+            return true;
         }
         private static bool Matches(ItemSlotObservation member, ItemSlotObservation current)
         {

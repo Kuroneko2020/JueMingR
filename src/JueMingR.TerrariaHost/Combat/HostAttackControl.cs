@@ -59,9 +59,9 @@ namespace JueMingR.TerrariaHost.Combat
         private bool Allowed(Source source)
         {
 #if JMR_AIM_LIGHT
-            if(Prediction.AimLightTrace.PrismConsuming && Prediction.AimLightTrace.PrismSourceMatches(source))return Observed(source) && Prediction.AimLightTrace.Gate(Prediction.AimLightTrace.PrismGate.Aim,observation.Options.Aim) && combat.Admitted(combat.Player);
+            if(Prediction.AimLightTrace.PrismConsuming && Prediction.AimLightTrace.PrismSourceMatches(source))return Observed(source) && Prediction.AimLightTrace.Gate(Prediction.AimLightTrace.PrismGate.Aim,observation.Options.Aim) && combat.AimAdmitted(combat.Player);
 #endif
-            return Observed(source) && observation.Options.Aim && combat.Admitted(combat.Player);}
+            return Observed(source) && observation.Options.Aim && combat.AimAdmitted(combat.Player);}
         internal bool Pending
         {get{foreach(var entry in shots.Values)if((entry.Type==444 || HostGuidedAttack.Handles(entry.Type) && HostGuidedAttack.Consumes(combat.Player,entry.Shot) || HostWhipAttack.Pending(entry.Shot) || HostFlailAttack.Handles(entry.Type) || HostDirectionalControl.Handles(entry.Type) && HostDirectionalControl.Pending(combat.Player,entry.Shot)) && Valid(entry))return true;return false;}}
         // Scheduling reads an already prepared input, never mints permission.

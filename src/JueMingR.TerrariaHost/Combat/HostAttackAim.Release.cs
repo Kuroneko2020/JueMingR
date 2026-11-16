@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Combat
             internal long Session,Frame;internal ulong Tick;internal NpcIdentity Target;
         }
         private bool ReleaseAdmission(Player player)
-        {return player!=null && ReferenceEquals(player,combat.Player) && observation.SelectionAvailable && observation.Settings.CanRun && observation.Options.Aim && combat.Admitted(player) && CurrentReceiver;}
+        {return player!=null && ReferenceEquals(player,combat.Player) && observation.SelectionAvailable && observation.Settings.CanRun && observation.Options.Aim && combat.AimAdmitted(player) && CurrentReceiver;}
         // ShootsOnUseRelease suppresses vanilla Shoot while Use is held. Its
         // already started native hand remains a real source after release;
         // a bare mouse-up or an unrelated animation never creates this lease.

@@ -71,6 +71,8 @@ namespace JueMingR.TerrariaHost.Items
             Storage = new ItemNearbyStorage(World, Ownership);
             Operations.Store = Storage.Execute;
             Feature = new ItemAutomationFeature(World, Operations, canStartActions,()=>FishingClock?.Invoke()??Tick);
+            Storage.Consolidated = Feature.MapConsolidatedAcquisition;
+            Storage.CanConsolidate = () => !Feature.HasFailed;
             var file = new AtomicFileDocument(Path.Combine(verifiedGameDirectory,
                 "JueMingRData", "config", "features", "item-automation.json"), 65536, true, ".schema1-original");
             preferences = new PreferenceDocument<ItemAutomationSettings>(file, new RetiringItemCodec(file), ItemAutomationSettings.Default);
@@ -128,7 +130,7 @@ namespace JueMingR.TerrariaHost.Items
         {get{return !stopping && Available && Preferences.IsLoaded && Runtime.IsSessionActive && Thread.CurrentThread.ManagedThreadId==ThreadId && World.Player!=null && !World.AutomaticOperation;}}
         internal bool CanCaptureFishing {get{return SourceAvailable && Feature.FishingStorageEnabled;}}
         internal bool CanObserve
-        { get { return SourceAvailable && (Feature.OrdinaryEnabled || (ObservesProcessing?.Invoke()??false)); } }
+        { get { return SourceAvailable && (Feature.OrdinaryEnabled || Storage.HasPendingReception || (ObservesProcessing?.Invoke()??false)); } }
         public void OnSessionStarted()
         { SourceMessage = null; Ownership.SetSession(Runtime.Generation); World.BeginSession(); actionPlayerAvailable = World.Player != null; Feature.OnSessionStarted(); }
         public void OnSessionEnded()
@@ -141,7 +143,7 @@ namespace JueMingR.TerrariaHost.Items
             Storage.Tick = tick; Storage.Update();UpdateFishingStorage?.Invoke(); Feature.Update(tick);
             if (Feature.HasFailed && CapabilityError == null) CapabilityError = "物品信息读取出错，自动处理已停止；结果未确认的操作不会自动重试。"; }
         internal void DiscardUnsubmittedAcquisitions()
-        { Feature.DiscardPendingAcquisitions(); World.DiscardUnsubmittedObservation(); ItemSourceHooks.CancelPendingAcquisition(); }
+        { Feature.DiscardPendingAcquisitions(); Storage.DiscardReceptions(); World.DiscardUnsubmittedObservation(); ItemSourceHooks.CancelPendingAcquisition(); }
         public void FailClosed()
         {
             Feature.FailClosed();

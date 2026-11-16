@@ -35,6 +35,16 @@ namespace JueMingR.TerrariaHost.AfkMode
         internal Func<bool> OperationInterfaceOpen;
         internal Exception SetupError {get;private set;}
         internal bool Running {get{return player!=null;}}
+        // Queried before native HandleInput/world advancement. A prior
+        // focus pause cannot veto the demand needed to resume that world.
+        internal bool WantsBackground {get{return ModeEnabled && everStarted && Identity() && !Unusable(player);}}
+        internal bool AllowsAim(Player p){return CanOutput(p) && ReferenceEquals(p.HeldItem,source) && p.selectedItem==slot;}
+        // Only the native Draw-owned mouse flag write gets this exemption.
+        // Main.blockMouse and every real UI/source/step gate remain vetoes.
+        internal bool IgnoreBackgroundDrawMouse(Player p)
+        {return Running && ReferenceEquals(p,player) && everStarted && Identity() && !Unusable(p) &&
+            !Tools.Input.IsFocused && sampled==Tools.Input.Frame && Tools.Input.CanRunAutomaticActions &&
+            !p.HasLockedInventory() && !manual && !Borrowed && !Main.blockMouse && (Tools.CanMouseInterface?.Invoke()??false);}
         // A pending borrower still leaves the original startup tail owned by
         // this run. Physical combat must not acquire it as a competing hold.
         internal bool ControlsUse {get{return Running && !manual && (!Borrowed || initialHold);}}
@@ -97,12 +107,12 @@ namespace JueMingR.TerrariaHost.AfkMode
         {
             if(!Running || session!=Tools.Runtime.Generation || !ReferenceEquals(player,Tools.Player) || slot<0 || slot>=player.inventory.Length)return false;
             Item item=player.inventory[slot];
-            return item!=null && item.type==type && item.stack>0 && (slot==58 || ReferenceEquals(item,source));
+            return item!=null && item.type==type && item.stack>0 && item.fishingPole<=0 && (slot==58 || ReferenceEquals(item,source));
         }
         private bool Unusable(Player p)
         {
             return p==null || !Tools.Runtime.IsSessionActive || Main.gameMenu || Main.dedServ || Main.netMode==2 ||
-                p.dead || p.ghost || p.CCed || p.cursed || p.noItems || p.HasLockedInventory() || p.isControlledByFilm || p.isOperatingAnotherEntity ||
+                p.dead || p.ghost || p.CCed || p.cursed || p.noItems || p.isControlledByFilm || p.isOperatingAnotherEntity ||
                 Main.mapFullscreen || Main.blockInput || Main.drawingPlayerChat || Main.editSign || Main.editChest || PlayerInput.WritingText ||
                 p.chest>=0 || p.talkNPC>=0 || p.sign>=0 || Main.npcShop!=0 || (OperationInterfaceOpen?.Invoke()??true);
         }
@@ -112,19 +122,21 @@ namespace JueMingR.TerrariaHost.AfkMode
         internal void Sample()
         {
             sampled=Tools.Input.Frame;var p=Tools.Player;
-            if(!ModeEnabled || failed || Unusable(p) || !Tools.Input.CanRetainIntent){Stop();return;}
+            // Focus quarantine revokes this sample's output, not an already
+            // accepted run. Start still requires a new trusted physical edge.
+            if(!ModeEnabled || failed || Unusable(p)){Stop();return;}
             if(Running && !Identity()){Stop();return;}
             bool fresh=Tools.Input.CanStartActions && Tools.Input.Hotkeys.IsNew(256) && PlayerInput.Triggers.Current.MouseLeft;
             if(!Running)
             {
-                if(!fresh || CombatUse.NativeHoldBlocked(p) || !(Tools.CanMouseInterface?.Invoke()??false) || Tools.Items.Ownership.HasUse || p.selectedItemState.HasActiveOverride && p.selectedItem!=58 || p.selectedItemState.HasBufferedChange)return;
+                if(!fresh || p.HasLockedInventory() || CombatUse.NativeHoldBlocked(p) || !(Tools.CanMouseInterface?.Invoke()??false) || Tools.Items.Ownership.HasUse || p.selectedItemState.HasActiveOverride && p.selectedItem!=58 || p.selectedItemState.HasBufferedChange)return;
                 Item item=p.HeldItem;int selected=p.selectedItem;
-                if(item==null || item.IsAir || item.useStyle<=0 || item.useAnimation<=0 || selected<0 || selected>=50 && selected!=58)return;
+                if(item==null || item.IsAir || item.fishingPole>0 || item.useStyle<=0 || item.useAnimation<=0 || selected<0 || selected>=50 && selected!=58)return;
                 player=p;slot=selected;source=item;type=item.type;session=Tools.Runtime.Generation;point=PhysicalWorldPoint(p);
                 initialHold=true;manual=yieldRequested=quickRequested=false;ResetOperation();
                 return;
             }
-            if(initialHold && !Tools.Input.RawMouseLeft)initialHold=false;
+            if(initialHold && Tools.Input.CanStartActions && !Tools.Input.RawMouseLeft)initialHold=false;
             if(fresh && !initialHold || Tools.Input.CanStartActions && PlayerInput.Triggers.Current.MouseRight)
             {manual=true;ReleaseLease();}
             if(Borrowed)ReleaseLease();
@@ -137,6 +149,9 @@ namespace JueMingR.TerrariaHost.AfkMode
         {
             if(!Running || !ReferenceEquals(p,player))return false;
             if(!ModeEnabled || !Identity() || Unusable(p)){Stop();return false;}
+            // A multiplayer transaction owns its original locks and receipt.
+            // Yield this output, retaining source, bodies and completion time.
+            if(p.HasLockedInventory())return false;
             if(CombatUse.NativeHoldBlocked(p)){if(!everStarted)Stop();return false;}
             return sampled==Tools.Input.Frame && Tools.Input.CanRunAutomaticActions && !Main.gamePaused && Main.CanUpdateGameplay && !manual && !Borrowed && (Tools.CanMouseInterface?.Invoke()??false);
         }

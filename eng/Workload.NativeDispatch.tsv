@@ -403,3 +403,9 @@ leaf	AfkModeCpu	afk-mode
 leaf	AfkModeVisual	afk-ui
 leaf	AfkModeCompletionCpu	afk-completion
 leaf	AfkModeBorrowCpu	afk-borrow
+leaf	AfkModeBackgroundCpu	afk-background
+leaf	CoinContinuationCpu	coin-continuation
+leaf	InventoryStackingCpu	inventory-stacking
+leaf	FishingBackgroundRecoveryCpu	fishing-background-recovery
+leaf	AfkOuterBackground	afk-outer-background
+leaf	CoinConsumersCpu	coin-consumers

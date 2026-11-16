@@ -67,15 +67,15 @@ namespace NativeWorldTextProbe
             }
             Console.WriteLine("PASS: actual native zero-path seed rejects replacement, slot/value mutation, identities, locks, protection, occupancy, exception and unreadable results; no old request rebinding.");
         }
-        internal static void Fresh(object context, object host)
+        internal static void Fresh(object context, object host, int kind=0)
         {
             Main.gamePaused=true;
             Main.ActiveWorldFileData=new Terraria.IO.WorldFileData(System.IO.Path.Combine(Terraria.Program.SavePath,"seed-"+Guid.NewGuid().ToString("N")+".wld"),false);
             Call(context,"UpdateRuntime"); Main.gamePaused=false;
             Player p=Main.LocalPlayer; NativeCoinMatrix.Reset(p,host); Array.Clear(p.inventoryChestStack,0,p.inventoryChestStack.Length);
-            Main.tile[40,40].type=29; p.inventory[50]=Coin(73,2); p.inventory[51]=Coin(72,3);
-            p.bank.item[0].SetDefaults(8);p.bank.item[0].stack=9;
-            p.bank2.item[0].SetDefaults(8);p.bank2.item[0].stack=3;
+            Main.tile[40,40].type=(ushort)new[]{29,97,463,491}[kind]; p.inventory[50]=Coin(73,2); p.inventory[51]=Coin(72,3);
+            Bank(p,kind).item[0].SetDefaults(8);Bank(p,kind).item[0].stack=9;
+            Bank(p,(kind+1)%4).item[0].SetDefaults(8);Bank(p,(kind+1)%4).item[0].stack=3;
         }
         private static void Reject(object context,object host,string name,Action mutation,bool onRelease=false)
         {

@@ -41,6 +41,7 @@ namespace JueMingR.TerrariaHost.Fishing
         {
             Tools=tools;Settings=new FishingSettings(new AtomicFileDocument(Path.Combine(directory,"JueMingRData","config","features","fishing.json"),FishingCodec.MaximumBytes));
             Session=new FishingSession(this);
+            tools.FishingBackgroundDemand=()=>Session.WantsBackground;
             Rename=new PlayerRename(this);
             tools.Items.UpdateFishingStorage=SyncStorage;
             tools.Items.FishingClock=()=>Tools.Tick;

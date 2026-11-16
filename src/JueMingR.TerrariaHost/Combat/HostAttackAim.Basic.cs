@@ -43,8 +43,8 @@ namespace JueMingR.TerrariaHost.Combat
 #if JMR_AIM_LIGHT
             if(Prediction.AimLightTrace.PrismConsuming)return PrismBasicPermission();
 #endif
-            return observation.SelectionAvailable && observation.Settings.CanRun && observation.Options.Aim && combat.Player!=null && combat.Admitted(combat.Player) &&
-            (combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active || Control.Pending || ReleaseHandCurrent || HostPhasebladeAttack.Handles(combat.Player.HeldItem.shoot) && combat.Player.itemAnimation>0);}}
+            return observation.SelectionAvailable && observation.Settings.CanRun && observation.Options.Aim && combat.Player!=null && combat.AimAdmitted(combat.Player) &&
+            (combat.AutomaticAim || combat.Left || combat.Player.controlUseItem || combat.Player.channel || combat.Use.Active || Control.Pending || ReleaseHandCurrent || HostPhasebladeAttack.Handles(combat.Player.HeldItem.shoot) && combat.Player.itemAnimation>0);}}
         internal bool TryBasicInput(Player player,Item item,Projectile source,HostAttackPhase phase,out HostAttackInput input)
         {return TryBasicInputCore(player,item,source,phase,true,out input);}
         internal bool TryBasicPreviewInput(Player player,Item item,Projectile source,HostAttackPhase phase,out HostAttackInput input)

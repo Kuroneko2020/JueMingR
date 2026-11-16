@@ -16,6 +16,10 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
         private static int fault;
         internal static void Run(object context, object host)
+        { Run(context, host, true); }
+        internal static void RunTransactionFaults(object context, object host)
+        { Run(context, host, false); }
+        private static void Run(object context, object host, bool worldRecovery)
         {
             var p = Main.LocalPlayer; var intent = (CoinIntent)Get(host, "Intent"); var transfer = Get(host, "Transfer");
             NativeCoinMatrix.Reset(p, host);
@@ -56,9 +60,16 @@ namespace NativeWorldTextProbe
                 var ownership = (JueMingR.Platform.Items.ItemOperationOwnership)Get(Get(host, "Items"), "Ownership");
                 ulong held = ownership.ProtectedSlots;
                 Require(held == 1UL << 50, "unknown transaction owns only its actual original source");
+                if (!worldRecovery)
+                {
+                    Require(ownership.SaleBlocked && !ownership.TryBeginSale(ownership.Session), "unknown transaction retains current source sale protection");
+                    Console.WriteLine("PASS: finite native alias, post-write exception, conservation, off/on no replay and exact source/sale protection; null-world/new-world recovery NOT_EVALUATED.");
+                    return;
+                }
                 var world = Main.ActiveWorldFileData;
-                Main.ActiveWorldFileData = null; Call(context, "UpdateRuntime");
-                Main.ActiveWorldFileData = world; Call(context, "UpdateRuntime");
+                try { Main.ActiveWorldFileData = null; Call(context, "UpdateRuntime"); }
+                finally { Main.ActiveWorldFileData = world; }
+                Call(context, "UpdateRuntime");
                 Require(intent.Faulted && ownership.ProtectedSlots == held && ownership.SaleBlocked && !ownership.TryBeginSale(ownership.Session),
                     "same native session recovery retains unknown transaction resource protection");
                 Require((long)Get(transfer, "NativeCalls") == calls, "resource retention never restores an old transaction permit");
