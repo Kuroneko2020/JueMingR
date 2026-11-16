@@ -38,7 +38,11 @@ namespace JueMingR.TerrariaHost.AfkMode
         // Queried before native HandleInput/world advancement. A prior
         // focus pause cannot veto the demand needed to resume that world.
         internal bool WantsBackground {get{return ModeEnabled && everStarted && Identity() && !Unusable(player);}}
-        internal bool AllowsAim(Player p){return CanOutput(p) && ReferenceEquals(p.HeldItem,source) && p.selectedItem==slot;}
+        // Native cursor use clones slot 58 every frame. Only this run's real
+        // input lease may aim through its existing continuous cursor identity;
+        // carried slots still require the original exact source instance.
+        internal bool AllowsAim(Player p){return CanOutput(p) && p.selectedItem==slot &&
+            (slot==58?Tools.Items.Ownership.OwnsUse(session,token):ReferenceEquals(p.HeldItem,source));}
         // Only the native Draw-owned mouse flag write gets this exemption.
         // Main.blockMouse and every real UI/source/step gate remain vetoes.
         internal bool IgnoreBackgroundDrawMouse(Player p)

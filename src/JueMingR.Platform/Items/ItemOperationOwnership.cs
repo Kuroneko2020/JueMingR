@@ -145,6 +145,10 @@ namespace JueMingR.Platform.Items
         public bool SaleBlocked { get { return ProtectedSlots != 0; } }
         public bool DiscardBlocked { get { return discardSlots != 0; } }
         public bool StoreBlocked { get { return storeSlots != 0; } }
+        // A retained/timed-out Store keeps its exact source mask until its own
+        // settlement. Other operation masks cannot authorize batch reception.
+        public bool OwnsStore(long generation, int slot)
+        { return generation > 0 && generation == Session && slot >= 0 && slot < 58 && (storeSlots & (1UL << slot)) != 0; }
 
         public void SetSession(long generation)
         {

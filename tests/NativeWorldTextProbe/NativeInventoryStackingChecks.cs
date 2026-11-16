@@ -45,6 +45,14 @@ namespace NativeWorldTextProbe
                 NativeFishingChecks.InitializeNativeEnvironment();
                 Terraria.UI.ItemSorting.SetupWhiteLists();
                 NativeQuickItemChecks.Until(() => { Call(items, "PollPreferences"); return (bool)Get(Get(items, "Preferences"), "IsLoaded"); });
+                var gapFailures = new List<Exception>();
+                foreach (string gap in new[] { "growth", "first", "late" })
+                {
+                    try { ReplyGap(context, tools, input, items, world, storage, feature, ownership, gap); }
+                    catch (JueMingR.Testing.BusinessAssertionException error)
+                    { Console.WriteLine("FAIL native receive/pickup/update " + gap + ": " + error.Message); gapFailures.Add(error); }
+                }
+                if (gapFailures.Count != 0) throw new AggregateException("native reply-gap reception", gapFailures);
                 foreach (string scenario in new[] { "zero", "partial", "all", "many", "limit", "favorite", "replace", "manual", "foreign", "lease", "disabled", "unknown", "late", "ammo", "server-zero", "server-partial", "server-all", "death", "bag", "full", "void" })
                 {
                     Main.netMode = 0; Call(context, "UpdateRuntime");
@@ -197,6 +205,56 @@ namespace NativeWorldTextProbe
             Main.item[drop.whoAmI] = drop;
             typeof(Player).GetMethod("PickupItem", Flags).Invoke(player, new object[] { drop });
             Require(drop.IsAir, "real PickupItem consumes the accepted world source");
+        }
+        private static void ReplyGap(object context, object tools, object input, object items, object world, object storage,
+            ItemAutomationFeature feature, ItemOperationOwnership ownership, string scenario)
+        {
+            Main.netMode = 0; Call(context, "UpdateRuntime");
+            Player p = NativeToolExecutionChecks.Reset(context, tools, input, ItemID.CopperPickaxe, 0, 0);
+            Netplay.Connection = new RemoteServer { PendingTermination = true }; NetMessage.buffer[256] = new MessageBuffer();
+            Main.sectionManager = new WorldSections(1, 1); Main.sectionManager.SetAllSectionsLoaded(); Main.netMode = 1; Call(context, "UpdateRuntime");
+            feature.Configure(ItemAutomationSettings.Default.WithEnabled(ItemActionKind.Stack, true));
+            p.inventory[12].SetDefaults(ItemID.DirtBlock); p.inventory[12].stack = 100; Call(world, "InvalidateObservation");
+            object[] observed = { null }; Require((bool)Call(world, "TryObserveAcquisition", observed), "gap source observation");
+            var inventory = (ItemInventoryObservation)observed[0];
+            var request = new StoreItemsRequest(inventory.Session, inventory.Slots.Where(s => s.Slot == 12).ToArray());
+            Require(((ItemOperationResult)Call(storage, "Execute", request)).State == ItemOperationState.Executing, "gap starts actual store");
+            bool existing = scenario != "first";
+            if (existing) Pickup(p, ItemID.DirtBlock, 1);
+            var acquisitions = (IDictionary)Get(feature, "acquisitions"); var identity = new ItemIdentity(ItemID.DirtBlock, 0);
+            object chance = acquisitions[identity]; ulong started = chance == null ? 0 : (ulong)Get(chance, "Started");
+            if (existing)
+            {
+                NativeToolsChecks.Frame(context, input);
+                Require((ulong)Get(items, "Tick") > started && ownership.StoreBlocked && p.inventoryChestStack[12],
+                    "a real pending native frame separates the acquisition ages before Receive(5)");
+            }
+            if (scenario == "late")
+            {
+                Set(storage, "Tick", (ulong)Get(Get(storage, "pending"), "Started") + 600); Call(storage, "Update");
+                Require(ownership.StoreResult.State == ItemOperationState.TimedOut && ownership.StoreBlocked, "timeout retains this original store source");
+            }
+            var receiver = new MessageBuffer { whoAmI = 256 };
+            NativeChestLocatorChecks.Receive(receiver, 5, w => { w.Write((byte)p.whoAmI); w.Write((short)(PlayerItemSlotID.Inventory0 + 12)); w.Write((short)60); w.Write((byte)0); w.Write((short)ItemID.DirtBlock); w.Write((byte)0); });
+            Require(!p.inventoryChestStack[12] && ownership.StoreBlocked && p.inventory[12].stack == 60,
+                "real Receive(5) unlocks native slot before this pending Store is settled");
+            Pickup(p, ItemID.DirtBlock, 2); // No Storage.Update or Runtime update between reply and pickup.
+            int fragment = Enumerable.Range(0, 58).First(i => i != 12 && p.inventory[i].type == ItemID.DirtBlock);
+            int gained = existing ? 3 : 2;
+            Require(p.inventory[12].stack == 60 && p.inventory[fragment].stack == gained, "original Store protection keeps real late pickup separate");
+            if (chance == null) { chance = acquisitions[identity]; started = (ulong)Get(chance, "Started"); }
+            else Require(ReferenceEquals(chance, acquisitions[identity]), "new growth retains the same live acquisition opportunity");
+            Call(storage, "Update");
+            Require(!ownership.StoreBlocked && ownership.StoreResult.ConfirmedQuantity == 40 && p.inventory[12].stack == 60 + gained && p.inventory[fragment].IsAir,
+                "receive/pickup/update merges confirmed new quantities after sealing only the original forty stored items");
+            object[] mapped = { null }; Require((bool)Call(world, "TryObserveAcquisition", mapped), "gap mapped observation");
+            var destination = ((ItemInventoryObservation)mapped[0]).Slots.First(s => s.Slot == 12);
+            if (scenario == "late") Require(acquisitions.Count == 0, "late physical cleanup does not renew an expired opportunity");
+            else Require(ReferenceEquals(chance, acquisitions[identity]) && (ulong)Get(chance, "Started") == started && (bool)Call(chance, "Contains", destination),
+                "reply gap mapping preserves opportunity age and its exact surviving member");
+            Require(p.inventory.Where(i => i.type == ItemID.DirtBlock).Sum(i => i.stack) + ownership.StoreResult.ConfirmedQuantity == 100 + gained,
+                "reply gap server movement and inventory conserve all old and newly accepted units");
+            Console.WriteLine("PASS native receive/pickup/update " + scenario + " received=60 new=" + gained + " stored=40");
         }
         private static void Fishing(object context, object items, object storage, object world, ItemAutomationFeature feature)
         {

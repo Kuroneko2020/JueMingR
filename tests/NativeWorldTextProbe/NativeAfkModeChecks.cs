@@ -112,6 +112,14 @@ namespace NativeWorldTextProbe
             focusBoundary.Patch(AccessTools.Method(typeof(FocusHelper),"UpdateFocus"),transpiler:new HarmonyMethod(typeof(NativeAfkModeChecks),nameof(FocusOsBoundary)));
             try
             {
+                var cursorFailures=new List<Exception>();
+                foreach(int weapon in new[]{98,3541})
+                    try{AimConsumption(context,true,true,weapon);}
+                    catch(JueMingR.Testing.BusinessAssertionException error){Console.WriteLine("FAIL native cursor background aim weapon="+weapon+": "+error.Message);cursorFailures.Add(error);}
+                if(cursorFailures.Count!=0)throw new AggregateException("native cursor background aim",cursorFailures);
+                var replaced=Reset(context,98,0);Step(context,true);for(int i=0;i<15;i++)Step(context,false);
+                replaced.inventory[0]=replaced.inventory[0].Clone();Step(context,false);
+                Require(!(bool)Get(owner,"Running"),"same-type replacement in a carried slot never inherits cursor identity");
                 foreach(int gap in new[]{0,200})foreach(bool stale in new[]{false,true})
                 {
                     osFocused=true;Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;
@@ -283,12 +291,13 @@ namespace NativeWorldTextProbe
                 "zero-gap latch yields actual shared use token to native herb harvest/return then retains AFK run");
             NativeToolsChecks.SetMode(tools,1,0);
         }
-        private static void AimConsumption(object context,bool background=false)
+        private static void AimConsumption(object context,bool background=false,bool cursor=false,int cursorWeapon=0)
         {
             var observation=Get(context,"CombatObservation");
-            foreach(int weapon in new[]{98,3541})
+            foreach(int weapon in cursor?new[]{cursorWeapon}:new[]{98,3541})
             {
                 var p=Reset(context,weapon,200);
+                if(cursor){Main.playerInventory=true;Main.mouseItem=new Item();Main.mouseItem.SetDefaults(weapon);}
                 var target=Main.npc[2];target.SetDefaults(3);target.whoAmI=2;target.active=true;
                 target.Center=p.Center+new Vector2(160,-100);target.velocity=target.netOffset=Vector2.Zero;target.aiStyle=-1;target.noGravity=true;
                 target.life=target.lifeMax=100000;target.knockBackResist=0;Array.Clear(target.immune,0,target.immune.Length);
@@ -296,6 +305,8 @@ namespace NativeWorldTextProbe
                 var basePoint=p.Center+new Vector2(-180,0);
                 for(int i=0;i<12;i++)NativeCombatSelectionPreviewChecks.Step(context,basePoint,false);
                 NativeCombatSelectionPreviewChecks.Step(context,basePoint,true);
+                if(cursor)Require(p.selectedItem==58 && p.selectedItemState.HasActiveOverride && (int)Get(owner,"slot")==58 && (bool)Get(owner,"Running"),
+                    "original cursor selection starts AFK from actual slot 58");
                 var saved=(Vector2)Get(owner,"point");
                 var input=Get(context,"Input");var foreground=Get(input,"foregroundWindow");
                 uint backgroundStart=0;
@@ -319,9 +330,28 @@ namespace NativeWorldTextProbe
                 if(background)Require(weapon==3541?lastPrismBackground && lastPrismStep>backgroundStart:lastBulletBackground && lastBulletStep>backgroundStart,
                     "the asserted direction is a real post-focus-loss bullet/control consumer, not the last foreground value");
                 float toward=Vector2.Dot(actual.SafeNormalize(Vector2.UnitY),wanted);
+                if(cursor)Require(p.selectedItem==58 && !ReferenceEquals(p.HeldItem,Get(owner,"source")) && (bool)Get(owner,"Running"),
+                    "native dropItemCheck/ItemCheck cloning keeps the accepted cursor run alive");
                 Require(toward>.94f && ((Vector2)Get(owner,"point"))==saved,"existing ordinary/continuous aim wins after AFK base projection and fixed run point remains intact: weapon="+weapon+" dot="+toward);
-                Console.WriteLine("AFK actual aim consumer weapon="+weapon+" targetDot="+toward+" preservedWorld="+saved);
+                Console.WriteLine("AFK actual aim consumer weapon="+weapon+" cursor="+cursor+" backgroundStep="+(weapon==3541?lastPrismStep:lastBulletStep)+" targetDot="+toward+" preservedWorld="+saved);
+                if(cursor)
+                {
+                    // Observe real lease acquisition, then let a different
+                    // exact source own input. No Running/token field is forged.
+                    for(int i=0;i<50 && (long)Get(owner,"token")==0;i++)NativeCombatSelectionPreviewChecks.Step(context,basePoint,false);
+                    var ownership=(JueMingR.Platform.Items.ItemOperationOwnership)Get(Get(Get(context,"Tools"),"Items"),"Ownership");
+                    long generation=(long)Get(owner,"session"),ownToken=(long)Get(owner,"token");
+                    Require(ownToken>0 && ownership.OwnsUse(generation,ownToken),"cursor negative starts from a real AFK use lease");
+                    ownership.EndUse(generation,ownToken);long foreign=ownership.NewUseToken();
+                    Require(ownership.TryBeginUse(generation,12,foreign) && !(bool)Call(owner,"AllowsAim",p),"foreign source lease never inherits cursor AFK aim");
+                    try{int count=starts.Count;for(int i=0;i<4;i++)NativeCombatSelectionPreviewChecks.Step(context,basePoint,false);
+                        Require(starts.Count==count && ownership.OwnsUse(generation,foreign),"native frames cannot restart AFK through a foreign use lease");}
+                    finally{ownership.EndUse(generation,foreign);}
+                    Main.mapFullscreen=true;try{Require(!(bool)Call(owner,"AllowsAim",p) && !(bool)Get(owner,"Running"),"real fullscreen map boundary cancels cursor aim/run");}
+                    finally{Main.mapFullscreen=false;}
+                }
                 Call(owner,"SetModeEnabled",false);NativeCombatObservationChecks.Save(observation,new JueMingR.Features.Combat.ObservationOptions());
+                if(cursor){Main.mouseItem=new Item();Main.playerInventory=false;}
                 if(background)
                 {
                     var combat=Get(context,"Combat");NativeCombatCadenceChecks.Save(combat,new JueMingR.Features.Combat.CombatOptions(1));

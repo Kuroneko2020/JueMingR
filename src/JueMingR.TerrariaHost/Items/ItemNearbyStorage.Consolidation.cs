@@ -41,10 +41,18 @@ namespace JueMingR.TerrariaHost.Items
                 !ReferenceEquals(world.SessionPlayer, player) || input == null) return null;
             bool eligible = false;
             if (origin != null && input.maxStack > 1 && !input.IsAir)
-                foreach (ItemSlotObservation source in batch.Request.Sources)
+                for (int i = 0; i < batch.Request.Sources.Count; i++)
                 {
+                    ItemSlotObservation source = batch.Request.Sources[i];
                     Item old = player.inventory[source.Slot];
-                    if (player.inventoryChestStack[source.Slot] && old != null && !old.IsAir && old.stack < old.maxStack && Item.CanStack(old, input))
+                    // Native Receive(5) unlocks before Storage.Update seals the
+                    // batch. Its Store source ownership survives that gap (and
+                    // a timed-out wait); no foreign Use/Recovery mask qualifies.
+                    bool held = ownership.OwnsStore(batch.Request.Session, source.Slot) &&
+                        (player.inventoryChestStack[source.Slot] || batch.Received[i] && ReferenceEquals(old, batch.RepliedItems[i]) &&
+                            old != null && old.stack == batch.Remaining[i] && old.stack <= source.Stack);
+                    if (held && old != null && !old.IsAir && old.type == source.Identity.Type && old.prefix == source.Identity.Prefix &&
+                        old.maxStack == source.MaximumStack && old.stack < old.maxStack && Item.CanStack(old, input))
                     { eligible = true; break; }
                 }
             // A foreign GetItem still observes touched tracked slots so a
