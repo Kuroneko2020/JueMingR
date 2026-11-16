@@ -135,6 +135,10 @@ namespace JueMingR.TerrariaHost.Companions
                 if(!actionGravity)npcGravity(npc,out maximum);if(!npc.noGravity)npc.velocity.Y=Math.Min(maximum,npc.velocity.Y+(float)gravityField.GetValue(null));
                 if(npc.noTileCollide){npc.oldPosition=npc.position;npc.position+=npc.velocity;}else moveNpc(npc);
                 FinishNpcLocalContact(npc);
+                // Native UpdateNPC retires this input AFTER its action and
+                // collision. AI003 must consume it once, not keep suppressing
+                // every later unstuck attempt between network samples.
+                if(npc.aiStyle==3)npc.justHit=false;
                 npcStates[npc.whoAmI].PhysicsKnown=physicalKnown;
                 if(local)npcStates[npc.whoAmI].PhaseReady=physicalKnown && NpcBaselineCurrent(npc.whoAmI);
                 if(npc.type==482)npcStates[npc.whoAmI].BattleReady=NpcBaselineCurrent(npc.whoAmI);

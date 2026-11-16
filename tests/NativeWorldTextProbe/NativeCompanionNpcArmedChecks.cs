@@ -57,33 +57,40 @@ namespace NativeWorldTextProbe
                 if(fresh)
                 {
                     var victim=plain[Slot].Hitbox;var box=new Rectangle(victim.X,victim.Y,first.width,first.height);float ordinary=contact(box,true),actual=contact(box,false);Require(ordinary==actual && actual==plain[Slot].defDamage,"fresh raw0 contact matches the ordinary receiver14, not server-only current21");
-                    // The selected fresh responsibility is decode/current
-                    // contact, not a new complete Fighter movement model.
-                    // The earlier fresh1/2 extended run is retained: its next
-                    // ordinary action takes the generic AI003 zero-vx/ai3=1
-                    // unstuck hop (NPC.cs57577/60723), outside the Armed
-                    // producer. Stable-history second swings are proved by
-                    // the separate actual subscription window below.
-                    Console.WriteLine("NPC ARMED FRESH ordinaryContact="+ordinary+" productContact="+actual+" serverOnlyDamage="+source.damage+" sameDecodePhase=True nextGenericFighterMovementNotSelected=True nativeAi3="+plain[Slot].ai[3]+" vx="+plain[Slot].velocity.X+" justHit="+plain[Slot].justHit+" direction/sprite="+plain[Slot].direction+"/"+plain[Slot].spriteDirection);
-                    return;
+                    Console.WriteLine("NPC ARMED FRESH ordinaryContact="+ordinary+" productContact="+actual+" serverOnlyDamage="+source.damage+" sameDecodePhase=True continueSharedFighterMotion=True nativeAi3="+plain[Slot].ai[3]+" vx="+plain[Slot].velocity.X+" justHit="+plain[Slot].justHit+" direction/sprite="+plain[Slot].direction+"/"+plain[Slot].spriteDirection);
                 }
-                float previous=plain[Slot].ai[2];bool crossed=false,rightExtension=false;
+                float previous=plain[Slot].ai[2];bool crossed=false,rightExtension=false,freshHop=false;int freshContacts=0,hitInputs=0;
                 for(int action=0;action<46;action++)
                 {
                     NativeQuickItemChecks.BeginWorldStep();armedPackets.Clear();server(()=>source.UpdateNPC(Slot));published+=armedPackets.Count(p=>p[2]==23);packets();
                     if(action==22){human.Center=plain[Slot].Center+new Vector2(20,0);crossed=true;}
+                    if(fresh && action==5)
+                    {
+                        // The same actual local hit input on each receiving
+                        // body, not hand-filled justHit/ai3. Zero knockback
+                        // isolates its one-action stuck-clock/reset lifetime.
+                        PlainNpc(host,plain,()=>plain[Slot].StrikeNPC(1,0f,1,false,true));
+                        PlainNpc(host,(NPC[])Get(host,"observedNpcs"),()=>observed.StrikeNPC(1,0f,1,false,true));
+                        Require(plain[Slot].justHit && observed.justHit,"native Strike establishes the same actual hit input before the Fighter action");hitInputs++;
+                    }
                     PlainNpc(host,plain,()=>plain[Slot].UpdateNPC(Slot));Call(host,"AdvanceNpcObservation");observed=((NPC[])Get(host,"observedNpcs"))[Slot];var ordinary=plain[Slot];
+                    if(observed.position!=ordinary.position || observed.velocity!=ordinary.velocity || observed.ai[3]!=ordinary.ai[3])Console.WriteLine("NPC FIGHTER MOTION fresh="+fresh+" action="+action+" ordinary="+ordinary.position+"/"+ordinary.velocity+" ai3="+ordinary.ai[3]+" old="+ordinary.oldPosition+" product="+observed.position+"/"+observed.velocity+" ai3="+observed.ai[3]+" old="+observed.oldPosition);
+                    Require(observed.position==ordinary.position && observed.velocity==ordinary.velocity && observed.ai[3]==ordinary.ai[3],"same packets/history/player/terrain and phase preserve ordinary Fighter geometry, velocity and ai3 through fresh unstuck and subsequent swings");
+                    Require(observed.justHit==ordinary.justHit && !observed.justHit,"the native hit input is retired once after this local action and its one physics tail");
+                    if(fresh && action==0){Require(ordinary.velocity.Y<0f && observed.velocity.Y==ordinary.velocity.Y,"the former fresh failure now takes the same real supported entry-zero-velocity unstuck hop");freshHop=true;Console.WriteLine("NPC FIGHTER FIRST HOP ordinary="+ordinary.position+"/"+ordinary.velocity+" product="+observed.position+"/"+observed.velocity);}
                     Require(observed.ai[2]==ordinary.ai[2] && observed.damage==ordinary.damage,"same actual packet/history/input/consumer phase keeps the ordinary contact clock and damage across subsequent local swings");
                     Require(observed.target==ordinary.target && observed.direction==ordinary.direction && (!crossed || ordinary.direction==1),"a real player crosses after packet consumption but before the local NPC action: the same native target primitive updates the current direction for both receivers");
                     if(previous==0 && ordinary.ai[2]>0)starts++;previous=ordinary.ai[2];var body=ordinary.Hitbox;var victim=new Rectangle(ordinary.spriteDirection<0?body.X-first.width-1:body.Right+1,body.Y+4,first.width,first.height);int expectedSetter=0,actualSetter=0;float expectedMultiplier=1,actualMultiplier=1;var expected=body;var actual=observed.Hitbox;
                     PlainNpc(host,plain,()=>NPC.GetMeleeCollisionData(victim,Slot,ref expectedSetter,ref expectedMultiplier,ref expected));using((IDisposable)hooks.GetMethod("Enter",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic).Invoke(null,new object[]{actor,first.Center,false}))NPC.GetMeleeCollisionData(victim,Slot,ref actualSetter,ref actualMultiplier,ref actual);
                     if(expected!=actual || expectedMultiplier!=actualMultiplier || expectedSetter!=actualSetter)Console.WriteLine("NPC ARMED RECT action="+action+" sourceClock="+source.ai[2]+" published="+published+" ordinary="+ordinary.position+"/"+ordinary.velocity+" size="+ordinary.Size+" direction="+ordinary.direction+" sprite="+ordinary.spriteDirection+" clock="+ordinary.ai[2]+" rect="+expected+" product="+observed.position+"/"+observed.velocity+" size="+observed.Size+" direction="+observed.direction+" sprite="+observed.spriteDirection+" clock="+observed.ai[2]+" rect="+actual);
                     Require(expected==actual && expectedMultiplier==actualMultiplier && expectedSetter==actualSetter,"the actual native extended contact rectangle/multiplier matches the ordinary receiver's second and later local swing");
+                    if(fresh && action<2)
+                    {var box=new Rectangle(body.X,body.Y,first.width,first.height);float expectedInput=contact(box,true),actualInput=contact(box,false);Require(actualInput==expectedInput && actualInput==ordinary.damage*expectedMultiplier,"post-hop native contact consumes the same current local damage and geometry");freshContacts++;}
                     if(starts>=2 && ordinary.ai[2]==6){float expectedInput=contact(victim,true),actualInput=contact(victim,false);Require(!body.Intersects(victim) && actualInput==expectedInput && actualInput==ordinary.damage*expectedMultiplier,"second swing extended-only native contact reaches the same DamageVar input and real Hurt");extendedHits++;rightExtension|=crossed && ordinary.spriteDirection==1;}
-                    var clock=observed.ai[2];Call(host,"AdvanceNpcObservation");Require(observed.ai[2]==clock,"same world step cannot advance the necessary local attack twice");
+                    var clock=observed.ai[2];var motion=observed.position;var velocity=observed.velocity;var stuckClock=observed.ai[3];Call(host,"AdvanceNpcObservation");Require(observed.ai[2]==clock && observed.ai[3]==stuckClock && observed.position==motion && observed.velocity==velocity,"same world step cannot advance the local attack, movement or physics tail twice");
                 }
-                Require(starts>=2 && extendedHits>0 && rightExtension && received==published+1,"two real local swing entries and a new-side extended contact are proved, and no actual window23 was withheld from either receiver");
-                Console.WriteLine("NPC ARMED PARITY fresh="+fresh+" serverMode2=True receiverState10/Connected/Broadcast/ActiveSection=True naturalWindow23="+published+" npc23Delivered="+received+" localSwingEntries="+starts+" laterExtendedHurt="+extendedHits+" duplicateWorldStepNoAdvance=True");
+                Require(received==published+1 && (fresh?freshHop && freshContacts==2 && hitInputs==1:starts>=2 && extendedHits>0 && rightExtension),"fresh supported hop/actions/native contact or stable subsequent swings/new-side extended Hurt are proved, with every actual window23 delivered to both receivers");
+                Console.WriteLine("NPC ARMED PARITY fresh="+fresh+" actions=46 exactGeometryVelocityAi3=True serverMode2=True receiverState10/Connected/Broadcast/ActiveSection=True naturalWindow23="+published+" npc23Delivered="+received+" localSwingEntries="+starts+" laterExtendedHurt="+extendedHits+" freshPostHopContacts="+freshContacts+" nativeHitInputs="+hitInputs+" duplicateWorldStepNoAdvance=True");
             }
             finally
             {

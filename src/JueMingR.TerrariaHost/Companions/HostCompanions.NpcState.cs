@@ -206,6 +206,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private static void AdvanceArmedContact(NPC npc)
         {
+            bool entryStuck=BeginFighterMotion(npc);
             // In the ordinary non-despawning Fighter phase the current local
             // action acquires facing/target before evaluating its swing. A
             // player may cross sides after23; the old wire direction must not
@@ -228,6 +229,7 @@ namespace JueMingR.TerrariaHost.Companions
                 npc.damage=(int)(npc.defDamage*1.5);npc.ai[3]=1f;npc.velocity.X*=.9f;if(Math.Abs(npc.velocity.X)<.1)npc.velocity.X=0;
                 npc.ai[2]++;if(npc.ai[2]>=20f || npc.velocity.Y!=0f || Main.IsItDay() && npc.position.Y<Main.worldSurface*16.0)npc.ai[2]=0;
             }
+            FinishFighterMotion(npc,entryStuck);
             // The same local clock feeds native GetMeleeCollisionData. There
             // is no extra gravity/collision, server send or sample re-stamp.
         }
