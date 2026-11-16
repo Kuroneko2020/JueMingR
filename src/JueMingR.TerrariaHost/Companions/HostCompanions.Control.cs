@@ -32,7 +32,7 @@ namespace JueMingR.TerrariaHost.Companions
             p.controlLeft=frame.Move<0;p.controlRight=frame.Move>0;p.controlJump=frame.Jump;p.controlDown=frame.Drop;
             if(frame.Heal)using(CompanionHooks.Enter(a,a.Aim))p.QuickHeal();
             if(!behavior.AttackEnabled){a.Target=null;IdleAim(a);p.channel=false;a.Status=frame.Status;return;}
-            bool valid=a.Target!=null && a.TargetGeneration==a.Target.generation && CombatSelection.Receives(a.Target,false) && !PredictionDead(a,a.Target) && Vector2.DistanceSquared(p.Center,a.Target.Center)<1600*1600;
+            bool valid=a.Target!=null && ReferenceEquals(Main.npc[a.Target.whoAmI],a.Target) && a.TargetGeneration==a.Target.generation && CombatSelection.Receives(a.Target,false) && ObservedNpcCombatReady(a.Target) && !PredictionDead(a,a.Target) && Vector2.DistanceSquared(p.Center,a.Target.Center)<1600*1600;
             if(!valid || ReferenceEquals(a,planningActor))SelectTarget(a);
             if(a.Target!=null)
             {
@@ -56,7 +56,7 @@ namespace JueMingR.TerrariaHost.Companions
             NPC selected=null;float best=Single.MaxValue;
             for(int i=0;i<Main.maxNPCs;i++)
             {
-                var n=Main.npc[i];if(!CombatSelection.Receives(n,false) || n.townNPC || PredictionDead(a,n))continue;
+                var n=Main.npc[i];if(!CombatSelection.Receives(n,false) || !ObservedNpcCombatReady(n) || n.townNPC || PredictionDead(a,n))continue;
                 float own=Vector2.DistanceSquared(n.Center,p.Center);if(own>1600*1600)continue;
                 if(behavior.SelfDefense && own>400*400 && (owner==null || Vector2.DistanceSquared(n.Center,owner.Center)>400*400))continue;
                 float score=Vector2.DistanceSquared(n.Center,center)+own*.1f;
@@ -68,7 +68,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal void PrepareUse(Actor a)
         {
-            if(a.Target==null)return;
+            if(a.Target==null || !NpcTilePhysicsKnown(a.Target))return;
             bool fresh=FreshNpcObservation(a.Target);
             if(fresh && aimStep!=Main.GameUpdateCount && aimSelectionStep!=Main.GameUpdateCount)
             {
@@ -79,7 +79,7 @@ namespace JueMingR.TerrariaHost.Companions
                 foreach(var candidate in actors.Values)
                 {
                     var p=candidate.Body;var n=candidate.Target;
-                    if(!candidate.Ready || candidate.Closing || candidate.Faulted || p.dead || !candidate.Profile.Behavior.AttackEnabled || p.noItems || p.CCed || n==null || candidate.TargetGeneration!=n.generation || !CombatSelection.Receives(n,false) || n.townNPC || PredictionDead(candidate,n) || Vector2.DistanceSquared(p.Center,n.Center)>=1600*1600 || !FreshNpcObservation(n) || p.HeldItem.shoot<=0 || p.HeldItem.damage<=0)continue;
+                    if(!candidate.Ready || candidate.Closing || candidate.Faulted || p.dead || !candidate.Profile.Behavior.AttackEnabled || p.noItems || p.CCed || n==null || candidate.TargetGeneration!=n.generation || !CombatSelection.Receives(n,false) || !ObservedNpcCombatReady(n) || n.townNPC || PredictionDead(candidate,n) || Vector2.DistanceSquared(p.Center,n.Center)>=1600*1600 || !FreshNpcObservation(n) || p.HeldItem.shoot<=0 || p.HeldItem.damage<=0)continue;
                     if(aimSelected==null || candidate.LastAimAttempt<aimSelected.LastAimAttempt)aimSelected=candidate;
                 }
             }

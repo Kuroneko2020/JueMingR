@@ -15,7 +15,10 @@ namespace JueMingR.TerrariaHost.Companions
         private static readonly FieldInfo[] npcFields=typeof(NPC).GetFields(BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic);
         private static readonly FieldInfo pendingList=AccessTools.Field(typeof(NPC),"pendingDamages");
         internal bool PredictionDead(Actor a,NPC real)
-        {PredictedNpc view;return a.NpcViews.TryGetValue(real.whoAmI,out view) && view.Generation==real.generation && (!view.Body.active || view.Body.life<=0);}
+        {
+            PredictedNpc view;if(a.NpcViews.TryGetValue(real.whoAmI,out view) && view.Generation==real.generation && (!view.Body.active || view.Body.life<=0))return true;
+            if(real.realLife>=0 && real.realLife!=real.whoAmI){var root=Main.npc[real.realLife];return a.NpcViews.TryGetValue(root.whoAmI,out view) && view.Generation==root.generation && (!view.Body.active || view.Body.life<=0);}return false;
+        }
         internal NPC PredictionNpc(Actor a,NPC real)
         {
             PredictedNpc view;

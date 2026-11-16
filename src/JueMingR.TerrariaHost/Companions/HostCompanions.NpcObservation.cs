@@ -14,7 +14,10 @@ namespace JueMingR.TerrariaHost.Companions
         private NPC[] observedNpcs;
         private uint[] observedTicks;private long[] observedRevisions,advancedRevisions;private long nextObservationRevision;
         private uint observationStep=UInt32.MaxValue;
+        private int observationDecodeSlot=-1;
         internal bool ReadingObservation {get;private set;}
+        internal bool DecodingObservationSlot(int slot)
+        {return ReadingObservation && observationDecodeSlot==slot && ReferenceEquals(Main.npc,observedNpcs);}
         private readonly MessageBuffer observationDecoder=new MessageBuffer{whoAmI=256};
         private delegate void NpcGravity(NPC npc,out float maxFallSpeed);
         private static readonly Action<NPC> resetNpcBuffs=AccessTools.MethodDelegate<Action<NPC>>(AccessTools.Method(typeof(NPC),"UpdateNPC_BuffFlagsReset")),clearNpcBuffs=AccessTools.MethodDelegate<Action<NPC>>(AccessTools.Method(typeof(NPC),"UpdateNPC_BuffClearExpiredBuffs")),moveNpc=AccessTools.MethodDelegate<Action<NPC>>(AccessTools.Method(typeof(NPC),"UpdateCollision"));
@@ -41,23 +44,44 @@ namespace JueMingR.TerrariaHost.Companions
             foreach(var actor in actors.Values)if(actor.Ready && !actor.Closing && Microsoft.Xna.Framework.Vector2.DistanceSquared(actor.Body.Center,point)<2200*2200)return true;
             return false;
         }
-        private void RetireNpcInterest(int slot)
+        private void RetireNpcInterest(int slot,bool leftInterest=true)
         {
+            ReleaseNpcDependencies(slot);
             observedNpcs[slot].active=false;
             // Interest eviction is not a consumed native inactive/death state.
             // A later ready actor needs a usable initial baseline again.
-            WorldLease lease;if(npcSources.TryGetValue(slot,out lease)){lease.NpcBaseline=false;lease.AwaitBaseline=true;}
+            WorldLease lease;if(npcSources.TryGetValue(slot,out lease))
+            {
+                if(lease.NpcBaseline || lease.InterestRetired){lease.InterestRetired=true;if(leftInterest)lease.InterestInside=false;}
+                lease.NpcBaseline=false;lease.AwaitBaseline=true;
+            }
         }
         private static void PrepareNpcObservationPhysics(NPC npc)
         {
             // 23 carries AI state, not these AI_002-established physics flags.
             // Prepare the decoded instance for ALL shared consumers, including
             // basic aim and native contact, without running another AI action.
-            if(npc.aiStyle!=2)return;
-            npc.noGravity=true;
-            // This is the received phase, not the next CanHit/counter decision.
-            // Reapply both directions after sync/recreation and before motion.
-            if(npc.type==170 || npc.type==171 || npc.type==180)npc.noTileCollide=npc.ai[1]!=0f;
+            switch(npc.aiStyle)
+            {
+                case 2:
+                    npc.noGravity=true;
+                    if(npc.type==170 || npc.type==171 || npc.type==180)npc.noTileCollide=npc.ai[1]!=0f;
+                    break;
+                case 14:case 44:case 49:npc.noGravity=true;break;
+                case 23:case 57:case 61:case 86:npc.noGravity=npc.noTileCollide=true;break;
+                case 17:npc.noGravity=npc.ai[0]!=0f;break;
+                case 50:npc.noTileCollide=npc.type!=261;break;
+                case 80:npc.noTileCollide=npc.ai[0]==2f;break;
+                case 85:npc.noTileCollide=npc.ai[0]==2f;break;
+                case 91:npc.noGravity=npc.ai[0]!=-1f;npc.noTileCollide=npc.ai[0]==2f;break;
+            }
+            if(npc.type==461 || npc.type==586)npc.noGravity=npc.ai[3]==-.10101f;
+            else if(npc.type==469)npc.noGravity=npc.ai[2]==1f;
+            else if(npc.type==471)
+            {
+                npc.noGravity=npc.noTileCollide=npc.ai[3]<0f;
+                npc.defense=npc.ai[3]<0f?(int)(npc.defDefense*1.1):npc.defDefense+(npc.ai[3]==1f?10:0);
+            }
         }
         internal void AdvanceNpcObservation()
         {
@@ -71,7 +95,8 @@ namespace JueMingR.TerrariaHost.Companions
             float previousGravity=(float)gravityField.GetValue(null);
             try{foreach(var npc in observedNpcs)
             {
-                if(!npc.active)continue;if(!NeededNpc(npc.Center)){RetireNpcInterest(npc.whoAmI);continue;}
+                if(!npc.active){if(observedRevisions[npc.whoAmI]!=0)CheckNpcInterestReentry(npc);continue;}
+                bool interested=NeededNpc(npc.Center);if(!interested)ReleaseNpcDependencies(npc.whoAmI);if(!interested && !RequiredNpcSlot(npc.whoAmI)){RetireNpcInterest(npc.whoAmI);continue;}
                 advancedRevisions[npc.whoAmI]=observedRevisions[npc.whoAmI];
                 if(NPC.offSetDelayTime>0 || Main.multiplayerNPCSmoothingRange<=0 || NPCID.Sets.NoMultiplayerSmoothingByType[npc.type] || NPCID.Sets.NoMultiplayerSmoothingByAI[npc.aiStyle] || npc.townNPC && npc.ai[0]==25f)npc.netOffset=Vector2.Zero;
                 else if(Terraria.Testing.DebugOptions.FakeNetOffset!=Vector2.Zero)npc.netOffset=Terraria.Testing.DebugOptions.FakeNetOffset;
@@ -88,9 +113,14 @@ namespace JueMingR.TerrariaHost.Companions
                 int x=(int)(npc.Center.X/16),y=(int)(npc.Center.Y/16);
                 if(x<2 || y<2 || x>=Main.maxTilesX-2 || y>=Main.maxTilesY-2 || Main.tile[x,y]==null)continue;
                 if(Main.sectionManager!=null && !Main.sectionManager.TileLoaded(x,y))continue;
-                PrepareNpcObservationPhysics(npc);
+                bool local=LocalNpcPhase(npc);if(local)npcStates[npc.whoAmI].PhaseReady=false;
+                bool physicalKnown=PrepareNpcObservationState(npc,false);
+                if(!npc.active)continue;
                 float maximum;npcGravity(npc,out maximum);if(!npc.noGravity)npc.velocity.Y=Math.Min(maximum,npc.velocity.Y+(float)gravityField.GetValue(null));
                 if(npc.noTileCollide){npc.oldPosition=npc.position;npc.position+=npc.velocity;}else moveNpc(npc);
+                npcStates[npc.whoAmI].PhysicsKnown=physicalKnown;
+                if(local)npcStates[npc.whoAmI].PhaseReady=physicalKnown && NpcBaselineCurrent(npc.whoAmI);
+                if(npc.type==482)npcStates[npc.whoAmI].BattleReady=NpcBaselineCurrent(npc.whoAmI);
             }}
             finally{Main.npc=previous;ReadingObservation=reading;gravityField.SetValue(null,previousGravity);Collision.stair=stair;Collision.stairFall=fall;Collision.honey=honey;Collision.shimmer=shimmer;Collision.sloping=sloping;Collision.landMine=mine;Collision.up=up;Collision.down=down;}
         }
@@ -100,20 +130,25 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(!HasActors || ReadingObservation || length<3)return;
             EnsureNpcObservation();int slot=packet[start]==54?BitConverter.ToInt16(packet,start+1):packet[start+1];if(slot<0 || slot>=observedNpcs.Length)return;
-            if(packet[start]==23 && length>=19 && !NeededNpc(new Microsoft.Xna.Framework.Vector2(BitConverter.ToSingle(packet,start+3),BitConverter.ToSingle(packet,start+7)))){RetireNpcInterest(slot);return;}
-            var previous=Main.npc;var decoding=Decoding;Main.npc=observedNpcs;ReadingObservation=true;Decoding=source;
+            if(packet[start]==23 && length>=19 && !RequiredNpcSlot(slot) && !RequiredNpcPacket(packet,start,length) && !NeededNpc(new Microsoft.Xna.Framework.Vector2(BitConverter.ToSingle(packet,start+3),BitConverter.ToSingle(packet,start+7)))){RetireNpcInterest(slot,false);return;}
+            var previous=Main.npc;var decoding=Decoding;int previousSlot=observationDecodeSlot;Main.npc=observedNpcs;ReadingObservation=true;Decoding=source;observationDecodeSlot=packet[start]==23?slot:-1;
             try
             {
                 Buffer.BlockCopy(packet,start,observationDecoder.readBuffer,0,length);observationDecoder.ResetReader();int id;observationDecoder.GetData(0,length,out id);
                 if(id==23)
                 {
-                    PrepareNpcObservationPhysics(observedNpcs[slot]);
+                    AcceptObservedNpcHitGeneration(slot,observedNpcs[slot].generation,previous);
+                    PrepareNpcObservationState(observedNpcs[slot],true,source,new Vector2(BitConverter.ToSingle(packet,start+3),BitConverter.ToSingle(packet,start+7)));
+                    // The native full-health bit means the CURRENT form's
+                    // maximum, not the pre-AI SetDefaults maximum. Numeric
+                    // injured health is already decoded and is never scaled.
+                    if(length>21 && (packet[start+21]&128)!=0)observedNpcs[slot].life=observedNpcs[slot].lifeMax;
                     observedTicks[slot]=sampleTick;observedRevisions[slot]=++nextObservationRevision;
                     WorldLease lease;if(npcSources.TryGetValue(slot,out lease) && ReferenceEquals(lease.Source,source) && !lease.Waiting)
-                    {lease.NpcBaseline=true;lease.AwaitBaseline=false;}
+                    {lease.NpcBaseline=true;lease.AwaitBaseline=lease.InterestRetired=lease.InactiveBaseline=lease.RequiredBaseline=false;lease.InterestInside=true;}
                 }
             }
-            finally{Decoding=decoding;ReadingObservation=false;Main.npc=previous;}
+            finally{observationDecodeSlot=previousSlot;Decoding=decoding;ReadingObservation=false;Main.npc=previous;}
         }
         internal void PrimaryNpcApplied(byte[] packet,int start,int length)
         {

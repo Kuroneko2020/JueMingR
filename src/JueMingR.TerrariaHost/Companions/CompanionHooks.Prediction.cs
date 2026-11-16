@@ -33,15 +33,23 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool ProjectilePredictionBefore(Projectile __instance,ref NPC targetNPC,Rectangle projRectangle,ref PredictionStep __state)
         {
             if(Main.netMode!=1 || current==null || current.Actor.Connection==null)return true;
-            if(host.PredictionDead(current.Actor,targetNPC))return false;
+            if(!host.ObservedNpcCombatReady(targetNPC) || host.PredictionDead(current.Actor,targetNPC))return false;
+            // A missing AI126 collision history cannot justify bypassing LOS.
+            // Independent projectile hits remain available; only the native
+            // ownerHitCheck path needs this unknown noTile input.
+            if(!host.NpcTilePhysicsKnown(targetNPC) && targetNPC.noTileCollide && __instance.ownerHitCheck && !__instance.CanHitWithMeleeWeapon(targetNPC))return false;
             var rectangle=targetNPC.getRect();if(targetNPC.type==414)rectangle.Inflate(8,8);
             if(!__instance.Colliding(projRectangle,rectangle))return true;
             PredictionBefore(ref __state);targetNPC=PredictionTargetNpc(targetNPC);return true;
         }
         private static bool DirectPredictionBefore(ref NPC npc,ref PredictionStep __state)
-        {if(Main.netMode==1 && current!=null && host.PredictionDead(current.Actor,npc))return false;PredictionBefore(ref __state);if(__state!=null)npc=PredictionTargetNpc(npc);return true;}
-        private static bool MeleePredictionBefore(int npcIndex,ref PredictionStep __state)
-        {if(Main.netMode==1 && current!=null && host.PredictionDead(current.Actor,Main.npc[npcIndex]))return false;PredictionBefore(ref __state);return true;}
+        {if(Main.netMode==1 && current!=null && (!host.ObservedNpcCombatReady(npc) || host.PredictionDead(current.Actor,npc)))return false;PredictionBefore(ref __state);if(__state!=null)npc=PredictionTargetNpc(npc);return true;}
+        private static bool MeleePredictionBefore(Player __instance,int npcIndex,ref PredictionStep __state)
+        {
+            if(Main.netMode==1 && current!=null)
+            {var npc=Main.npc[npcIndex];if(!host.ObservedNpcCombatReady(npc) || host.PredictionDead(current.Actor,npc) || !host.NpcTilePhysicsKnown(npc) && npc.noTileCollide && !__instance.CanHit(npc))return false;}
+            PredictionBefore(ref __state);return true;
+        }
         private static Exception PredictionFinal(Exception __exception,PredictionStep __state)
         {__state?.Restore();return __exception;}
         private static NPC PredictionTargetNpc(NPC target)

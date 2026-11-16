@@ -54,6 +54,11 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(NetMessage),"SendPacketToServer",nameof(Send));
             Patch(typeof(MessageBuffer),"GetData",nameof(Packet),nameof(PacketAfter));
             Patch(typeof(NPC),"GetPendingDamage",nameof(ObservationPending));
+            Patch(typeof(NPC),"ResetNPCSlotData",nameof(ObservationSlotReset),args:new[]{typeof(int)});
+            Patch(typeof(NPC),"NewNPCInstanceInSlot",nameof(NpcBirthBefore),finalizer:nameof(NpcBirthFinal));
+            Patch(typeof(Projectile),"ResetNPCSlotData",nameof(PrimaryProjectileSlotReset),transpiler:nameof(NpcStaticImmunityWrites),args:new[]{typeof(int)});
+            Patch(typeof(Player),"ResetNPCSlotData",nameof(PrimaryPlayerSlotReset),args:new[]{typeof(int)});
+            Patch(typeof(Projectile),"ResetStaticImmunityMatching",transpiler:nameof(NpcStaticImmunityWrites));
             Patch(typeof(NPC),"HitEffect",nameof(ObservationVisual));
             Patch(typeof(NPC),"TransformVisuals",nameof(ObservationVisual));
             Patch(typeof(NPC),"OnSpawn",nameof(ObservationVisual));
@@ -62,7 +67,7 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(WorldGen),"SaveAndQuit",nameof(Leaving),args:new[]{typeof(Action)});
 
             Patch(typeof(NPC),"PushPendingDamage",postfix:nameof(PredictionPending));
-            Patch(typeof(Projectile),"Damage_PVE_Inner",nameof(ProjectilePredictionBefore),finalizer:nameof(PredictionFinal));
+            Patch(typeof(Projectile),"Damage_PVE_Inner",nameof(ProjectilePredictionBefore),finalizer:nameof(PredictionFinal),transpiler:nameof(NpcStaticImmunityWrites));
             Patch(typeof(Player),"ProcessHitAgainstNPC",nameof(MeleePredictionBefore),finalizer:nameof(PredictionFinal),transpiler:nameof(PredictionTarget));
             Patch(typeof(Player),"ApplyDamageToNPC",nameof(DirectPredictionBefore),finalizer:nameof(PredictionFinal),args:new[]{typeof(NPC),typeof(int),typeof(float),typeof(int),typeof(bool),typeof(PlayerNPCHitSource)});
             installed=true;
@@ -76,6 +81,11 @@ namespace JueMingR.TerrariaHost.Companions
         internal static void Uninstall(){Harmony.UnpatchAll(Harmony.Id);installed=false;host=null;}
         internal static void ProjectileBorn(Player player,Projectile projectile){host?.ProjectileBorn(player,projectile);}
         internal static Scope Enter(HostCompanions.Actor actor,Vector2 point,bool inventory=false){return new Scope(actor,point,inventory,false);}
+        // NewNPCInstanceInSlot must still allocate the decoded instance and
+        // preserve its generation. Only its global human-world slot cleanup is
+        // omitted for this exact observation23 decode; real births stay native.
+        private static bool ObservationSlotReset(int npcIndex)
+        {return !(host?.DecodingObservationSlot(npcIndex)??false);}
         internal static Scope EnterWithPersonalItems(HostCompanions.Actor actor){return new Scope(actor,actor.Aim,false,true);}
         internal sealed class Scope : IDisposable
         {
@@ -84,12 +94,13 @@ namespace JueMingR.TerrariaHost.Companions
             private readonly int oldPlayer,x,y,tileX,tileY;private readonly bool map;private readonly Item mouse;private bool ended;
             private readonly int life,mana;private readonly bool inventory;private readonly ulong resources;
             private readonly NPC[] npcTable;
+            private readonly uint[,] staticHits;
             private readonly IDisposable personalView;
             private static ulong Resources(Player p){unchecked{ulong value=1469598103934665603;for(int i=0;i<p.inventory.Length;i++){var item=p.inventory[i];value=(value^(uint)(item.type*31+item.stack))*1099511628211;}return value;}}
             internal Scope(HostCompanions.Actor actor,Vector2 aim,bool inventory,bool personalItems)
             {
                 this.inventory=inventory;life=actor.Body.statLife;mana=actor.Body.statMana;if(inventory)resources=Resources(actor.Body);
-                npcTable=host.EnterNpcObservation();
+                staticHits=host.EnterObservedNpcHitState(Main.npc);npcTable=host.EnterNpcObservation();
                 Actor=actor;previous=current;current=this;oldPlayer=Main.myPlayer;x=Main.mouseX;y=Main.mouseY;tileX=Player.tileTargetX;tileY=Player.tileTargetY;map=Main.mapFullscreen;mouse=Main.mouseItem;
                 // Map input belongs to the human. Native actor consumers (for
                 // example flails) see their own non-map input, while finally
@@ -116,18 +127,18 @@ namespace JueMingR.TerrariaHost.Companions
                     // but cannot restore this scope's mouse or Send routing.
                     // Nested scopes return to their exact prior owner even if
                     // observation/cleanup fails; the exception still propagates.
-                    try{try{personalView?.Dispose();}finally{host.LeaveNpcObservation(npcTable);}}
+                    try{try{personalView?.Dispose();}finally{try{host.LeaveNpcObservation(npcTable);}finally{host.LeaveObservedNpcHitState(staticHits);}}}
                     finally{Main.myPlayer=oldPlayer;Main.mouseX=x;Main.mouseY=y;Player.tileTargetX=tileX;Player.tileTargetY=tileY;Main.mapFullscreen=map;Main.mouseItem=mouse;current=previous;}
                 }
             }
         }
-        private sealed class PlayerStep {internal int X,Y;internal NPC[] Npcs;}
+        private sealed class PlayerStep {internal int X,Y;internal NPC[] Npcs;internal uint[,] StaticHits;}
         private static bool PlayerBefore(Player __instance,ref PlayerStep __state)
         {
             var a=host?.Owned(__instance);if(a==null)return true;
             if(!a.Ready || a.Closing || a.Faulted)return false;
             if(a.LastUpdate==Main.GameUpdateCount)return false;
-            __state=new PlayerStep{X=Player.tileTargetX,Y=Player.tileTargetY,Npcs=host.EnterNpcObservation()};
+            __state=new PlayerStep{X=Player.tileTargetX,Y=Player.tileTargetY,StaticHits=host.EnterObservedNpcHitState(Main.npc)};__state.Npcs=host.EnterNpcObservation();
             a.LastUpdate=Main.GameUpdateCount;
             host.Control(a);
             return true;
@@ -139,12 +150,12 @@ namespace JueMingR.TerrariaHost.Companions
         private static void PersonalItemsAfter(){host?.AdvancePersonalItems();}
         private static Exception PlayerFinal(Exception __exception,Player __instance,PlayerStep __state)
         {
-            if(__state!=null){host.LeaveNpcObservation(__state.Npcs);Player.tileTargetX=__state.X;Player.tileTargetY=__state.Y;}
+            if(__state!=null){try{host.LeaveNpcObservation(__state.Npcs);}finally{host.LeaveObservedNpcHitState(__state.StaticHits);Player.tileTargetX=__state.X;Player.tileTargetY=__state.Y;}}
             if(__exception!=null){var a=host?.Owned(__instance);if(a!=null){
                 a.Status="人物更新失败："+__exception.Message;a.Faulted=true;a.Body.controlUseItem=false;a.Body.channel=false;return null;}}return __exception;
         }
         private static void UseBefore(Player __instance,MethodBase __originalMethod,ref Scope __state)
-        {var a=host?.Owned(__instance);if(a!=null && a.Ready && !a.Closing){bool use=__originalMethod.Name=="ItemCheck";if(use)host.PrepareUse(a);__state=new Scope(a,a.Aim,__originalMethod.Name=="PickupItem" || use && (__instance.controlUseItem || __instance.itemAnimation>0 || __instance.channel),__originalMethod.Name=="GrabItems");}}
+        {var a=host?.Owned(__instance);if(a!=null && a.Ready && !a.Closing){bool use=__originalMethod.Name=="ItemCheck";if(use){var hits=host.EnterObservedNpcHitState(Main.npc);var table=host.EnterNpcObservation();try{host.PrepareUse(a);}finally{try{host.LeaveNpcObservation(table);}finally{host.LeaveObservedNpcHitState(hits);}}}__state=new Scope(a,a.Aim,__originalMethod.Name=="PickupItem" || use && (__instance.controlUseItem || __instance.itemAnimation>0 || __instance.channel),__originalMethod.Name=="GrabItems");}}
         private static void FastUse(ref bool __result){if(current!=null)__result=false;}
         private static bool EndFastUse(){return current==null;}
         private static bool PendingInventory(ref bool __result){if(current==null)return true;__result=false;return false;}

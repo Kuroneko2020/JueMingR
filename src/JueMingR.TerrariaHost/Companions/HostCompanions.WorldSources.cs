@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.Companions
         private sealed class WorldLease
         {
             internal Actor Source,Pending;internal bool Waiting,AwaitBaseline,Terminated,NpcBaseline;internal long Barrier;
+            internal bool InterestRetired,InterestInside,InactiveBaseline,RequiredBaseline;
             internal int Key;
 
         }
@@ -33,15 +34,20 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(!HasActors)
             {
+                ClearNpcHitState();
                 // No released role remains retained by an idle world lease.
                 // Keep only ping markers already on the primary wire so their
                 // replies can drain without becoming vanilla user pings.
                 npcSources.Clear();projectileSources.Clear();
-                observedNpcs=null;observationStep=UInt32.MaxValue;
+                observedNpcs=null;npcStates=null;npcDependencies.Clear();observedWallHead=-1;observationStep=UInt32.MaxValue;
                 primarySource.Snapshot=primarySource.Requested=false;primarySource.SeenNpc.Clear();return;
             }
             foreach(var lease in npcSources.Values)RetireLease(lease,actor);
             foreach(var lease in projectileSources.Values)RetireLease(lease,actor);
+            // Identity evidence must not retain a retired role/body through
+            // otherwise inactive NPC metadata after its save has released it.
+            if(npcStates!=null)foreach(var state in npcStates)if(state!=null)
+            {if(ReferenceEquals(state.Source,actor)){state.Source=null;state.PhaseReady=state.PhysicsKnown=state.BattleReady=state.ArmedHistory=false;}if(ReferenceEquals(state.SnapshotSource,actor)){state.SnapshotSource=null;state.SnapshotComplete=false;state.Snapshot=0;}}
         }
         private void RetireLease(WorldLease lease,Actor actor)
         {
@@ -97,7 +103,9 @@ namespace JueMingR.TerrariaHost.Companions
             if(length<3)return false;int slot=data[start+1];WorldLease lease;
             if(data[start]==23 && Flow(source).Snapshot)Flow(source).SeenNpc.Add(slot);
             if(!npcSources.TryGetValue(slot,out lease)){lease=new WorldLease{Source=source,AwaitBaseline=true};npcSources.Add(slot,lease);}
-            if(data[start]==23 && !lease.NpcBaseline)
+            if(RequiredNpcPacket(data,start,length) && Flow(source).Snapshot)
+            {lease.Source=source;lease.Pending=null;lease.Waiting=false;lease.RequiredBaseline=lease.AwaitBaseline=true;return true;}
+            if(data[start]==23 && !lease.NpcBaseline && !lease.InterestRetired && !lease.InactiveBaseline && !lease.RequiredBaseline)
             {
                 // A routed primary packet can have been filtered before any
                 // ready actor needed it. That source record owns no consumed
@@ -105,11 +113,30 @@ namespace JueMingR.TerrariaHost.Companions
                 // An actually decoded inactive/dead NPC is still a baseline.
                 lease.Source=source;lease.Pending=null;lease.Waiting=false;lease.AwaitBaseline=true;return true;
             }
+            // A requested coherent root baseline has already crossed its source
+            // barrier. Consume that enumeration before ordinary distance-based
+            // handoff can choose another stream for one of its linked slots.
+            if(data[start]==23 && lease.RequiredBaseline && !lease.Waiting && ReferenceEquals(lease.Source,source) && Flow(source).Snapshot)return true;
             var npc=observedNpcs==null?Main.npc[slot]:observedNpcs[slot];
             var point=data[start]==23 && length>=19?new Vector2(BitConverter.ToSingle(data,start+3),BitConverter.ToSingle(data,start+7)):npc.Center;
             bool accepted=Route(lease,source,point,data[start]==23);
             if(accepted && data[start]==23)lease.AwaitBaseline=true;
             return accepted && (data[start]==23 || npc.generation==data[start+2]);
+        }
+        private void CheckNpcInterestReentry(NPC npc)
+        {
+            WorldLease lease;if(!npcSources.TryGetValue(npc.whoAmI,out lease) || !lease.InterestRetired)return;
+            bool inside=NeededNpc(npc.Center);
+            if(!inside){lease.InterestInside=false;return;}
+            if(lease.InterestInside)return;
+            lease.InterestInside=true;
+            // Interest is not terrain knowledge. Reuse the source's single
+            // in-flight barrier/snapshot lane even for the SAME live actor and
+            // an already loaded section. Coalesce entries behind its next ping;
+            // an older snapshot/49 cannot complete this newer restoration.
+            var desired=Observer(npc.Center);var flow=Flow(desired);
+            lease.Pending=desired;lease.Waiting=lease.AwaitBaseline=true;
+            lease.Barrier=flow.Sent+1;flow.Requested=true;
         }
         private bool RouteProjectile(Actor source,byte[] data,int start,int length)
         {
@@ -190,8 +217,20 @@ namespace JueMingR.TerrariaHost.Companions
             var flow=Flow(source);if(!flow.Snapshot)return;flow.Snapshot=false;
             foreach(var pair in npcSources)
             {
-                var lease=pair.Value;if(lease.Waiting || !lease.AwaitBaseline || !ReferenceEquals(lease.Source,source))continue;
-                if(!flow.SeenNpc.Contains(pair.Key) && observedNpcs!=null)observedNpcs[pair.Key].active=false;
+                var lease=pair.Value;
+                // Only the real matching49 commits a coherent enumeration.
+                // Successful23 has already cleared AwaitBaseline, but still
+                // needs this end marker before it can qualify linked health.
+                var state=npcStates?[pair.Key];if(!lease.Waiting && ReferenceEquals(lease.Source,source) && state!=null && flow.SeenNpc.Contains(pair.Key) && state.Snapshot==flow.Completed && ReferenceEquals(state.SnapshotSource,source))state.SnapshotComplete=true;
+                if(lease.Waiting || !lease.AwaitBaseline || !ReferenceEquals(lease.Source,source))continue;
+                if(!flow.SeenNpc.Contains(pair.Key) && observedNpcs!=null)
+                {
+                    observedNpcs[pair.Key].active=false;
+                    // An ordered complete enumeration can confirm absence.
+                    // Keep source authority without inventing a decoded23 or
+                    // repeatedly requesting a body that is actually inactive.
+                    if(lease.InterestRetired){lease.InterestRetired=false;lease.InterestInside=true;lease.InactiveBaseline=true;}
+                }
                 lease.AwaitBaseline=false;
             }
             flow.SeenNpc.Clear();
@@ -207,6 +246,6 @@ namespace JueMingR.TerrariaHost.Companions
             issuingPrimaryBarrier=true;try{NetMessage.SendData(154);}finally{issuingPrimaryBarrier=false;}
         }
         private void ClearWorldSources()
-        {npcSources.Clear();terrainRequested.Clear();projectileSources.Clear();observedNpcs=null;observationStep=UInt32.MaxValue;primarySource.Pings.Clear();primarySource.SeenNpc.Clear();primarySource.Sent=primarySource.Completed=0;primarySource.Snapshot=primarySource.Requested=primarySource.Outstanding=false;}
+        {ClearNpcHitState();npcSources.Clear();terrainRequested.Clear();projectileSources.Clear();observedNpcs=null;npcStates=null;npcDependencies.Clear();observedWallHead=-1;observationStep=UInt32.MaxValue;primarySource.Pings.Clear();primarySource.SeenNpc.Clear();primarySource.Sent=primarySource.Completed=0;primarySource.Snapshot=primarySource.Requested=primarySource.Outstanding=false;}
     }
 }

@@ -20,14 +20,14 @@ using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
 {
-    internal static class NativeCompanionCoreNetworkChecks
+    internal static partial class NativeCompanionCoreNetworkChecks
     {
         private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic;
         private static List<byte[]> primary;
         private static string specialistLeaf;
         internal static void RunSpecialist(object host,Player first,Guid other,string leaf)
         {
-            if(leaf!="movement planning independent of attack" && leaf!="held player continuation without another NPC23" && leaf!="primary one-shot projectile update" && leaf!="npc observation physical properties")throw new ArgumentException("Unknown companion specialist leaf");
+            if(leaf!="movement planning independent of attack" && leaf!="held player continuation without another NPC23" && leaf!="primary one-shot projectile update" && leaf!="npc observation physical properties" && leaf!="npc observation shared state" && leaf!="npc observation slot isolation" && leaf!="npc observation interest reentry" && leaf!="npc observation source ambiguity" && leaf!="npc observation publication ambiguity" && leaf!="npc observation current geometry" && leaf!="npc observation club contact" && leaf!="npc observation linked health" && leaf!="npc observation battle state" && leaf!="npc observation shape phases" && leaf!="npc observation support flags" && leaf!="npc observation zero root" && leaf!="npc observation wall root" && leaf!="npc observation mimic local phase" && leaf!="npc observation battle publication" && leaf!="npc observation armed history" && leaf!="npc observation armed fresh contact" && leaf!="npc observation conditional phase" && leaf!="npc observation explosion window" && leaf!="npc observation hit generation")throw new ArgumentException("Unknown companion specialist leaf");
             specialistLeaf=leaf;Console.WriteLine("SPECIALIST ONLY "+leaf+"; not the complete network group");
             try{Run(host,first,other);}finally{specialistLeaf=null;}
         }
@@ -68,6 +68,7 @@ namespace NativeWorldTextProbe
         private static int Wood(Player p){return p.inventory.Where(i=>i.type==ItemID.Wood).Sum(i=>i.stack);}
         internal static void Run(object host,Player first,Guid other)
         {
+            var restoreNpcSlots=NativeCompanionNpcStateChecks.PreserveNativeSlotData();
             Require((bool)Call(host,"Join",other),"second profile joins native network consumer fixture");
             var second=(Player)Call(host,"GetBody",other);var a=Call(host,"Owned",first);var b=Call(host,"Owned",second);
             var fa=new List<byte[]>();var fb=new List<byte[]>();primary=new List<byte[]>();
@@ -102,6 +103,29 @@ namespace NativeWorldTextProbe
                 });
                 leaf("initial baseline and terminal failures",()=>BaselineAndFailures(host,listener));
                 leaf("npc observation physical properties",()=>{NativeCompanionNpcPhysicsChecks.Run(host,first,second,a,b,slot=>Apply(Native(23,slot)));HeldContinuation(host,first,second,a,b,true);});
+                leaf("npc observation shared state",()=>NativeCompanionNpcStateChecks.Run(host,first,second,a,b,slot=>Apply(Native(23,slot)),slot=>{Queue(ca,Native(23,slot));Call(host,"PumpConnection",a);}));
+                leaf("npc observation slot isolation",()=>NativeCompanionNpcStateChecks.Run(host,first,second,a,b,slot=>Apply(Native(23,slot)),slot=>{Queue(ca,Native(23,slot));Call(host,"PumpConnection",a);},true));
+                leaf("npc observation interest reentry",()=>InterestReentry(host,listener,first,second));
+                // Hand-selected source-domain diagnostics are retained for
+                // explicit investigation only. They prove no natural-domain
+                // impossibility and are not product correctness gates.
+                if(specialistLeaf=="npc observation source ambiguity")leaf(specialistLeaf,()=>NativeCompanionNpcStateChecks.SourceAmbiguity(host,slot=>Native(23,slot)));
+                if(specialistLeaf=="npc observation publication ambiguity")leaf(specialistLeaf,()=>NativeCompanionNpcStateChecks.PublicationAmbiguity(host,slot=>Native(23,slot)));
+                leaf("npc observation current geometry",()=>NativeCompanionNpcStateChecks.Geometry(host,first,second,a,b,slot=>Apply(Native(23,slot))));
+                leaf("npc observation club contact",()=>NativeCompanionNpcStateChecks.Geometry(host,first,second,a,b,slot=>Apply(Native(23,slot)),true));
+                leaf("npc observation conditional phase",()=>NativeCompanionNpcStateChecks.Conditional(host,first,second,slot=>Apply(Native(23,slot))));
+                leaf("npc observation explosion window",()=>NativeCompanionNpcStateChecks.Explosion(host,first,second,a,slot=>Apply(Native(23,slot))));
+                leaf("npc observation hit generation",()=>NativeCompanionNpcStateChecks.HitGeneration(host,first,second,a,slot=>Native(23,slot),packet=>{Queue(ca,packet);Call(host,"PumpConnection",a);},Apply,fa));
+                leaf("npc observation battle publication",()=>NativeCompanionNpcStateChecks.BattlePublication(host,first,second,a,b,slot=>Apply(Native(23,slot)),fa,fb));
+                leaf("npc observation armed history",()=>NativeCompanionNpcStateChecks.ArmedCycle(host,first,second,a,slot=>Apply(Native(23,slot))));
+                leaf("npc observation armed fresh contact",()=>NativeCompanionNpcStateChecks.ArmedCycle(host,first,second,a,slot=>Apply(Native(23,slot)),true));
+                leaf("npc observation mimic local phase",()=>NativeCompanionNpcStateChecks.MimicPhase(host,first,second,a,b,slot=>Apply(Native(23,slot)),fa,fb));
+                leaf("npc observation support flags",()=>NativeCompanionNpcStateChecks.Shape(host,first,second,slot=>Apply(Native(23,slot)),true));
+                leaf("npc observation shape phases",()=>NativeCompanionNpcStateChecks.Shape(host,first,second,slot=>Apply(Native(23,slot))));
+                leaf("npc observation battle state",()=>NativeCompanionNpcStateChecks.Battle(host,first,second,a,slot=>Apply(Native(23,slot)),fa));
+                leaf("npc observation zero root",()=>RootHealth(host,first,second,a,b,ca,cb,fa,fb,0,true));
+                leaf("npc observation wall root",()=>RootHealth(host,first,second,a,b,ca,cb,fa,fb,24,true));
+                leaf("npc observation linked health",()=>RootHealth(host,first,second,a,b,ca,cb,fa,fb));
                 leaf("movement planning independent of attack",()=>NativeCompanionCoreLifecycleChecks.Planning(host,first,second));
                 leaf("prediction real receive/player phases and two-role fairness",()=>Prediction(host,first,second,a,b,ca,cb));
                 leaf("held player continuation without another NPC23",()=>HeldContinuation(host,first,second,a,b));
@@ -112,7 +136,7 @@ namespace NativeWorldTextProbe
             finally
             {
                 Main.netMode=mode;Main.sectionManager=sections;NetMessage.buffer[256]=buffer;Netplay.Connection.Socket=socket;
-                patch.UnpatchAll(patch.Id);Call(host,"Recall",other);client.Close();peer.Close();listener.Stop();
+                patch.UnpatchAll(patch.Id);try{Call(host,"Recall",other);}finally{client.Close();peer.Close();listener.Stop();restoreNpcSlots();}
             }
             if(failures.Count!=0)throw failures[0];
         }
@@ -455,12 +479,12 @@ namespace NativeWorldTextProbe
         internal static void CheckIdle(object host)
         {
             Require(((IDictionary)Get(host,"actors")).Count==0,"idle workload has no live or pending roles");
-            var items=Main.item;var npcs=Main.npc;var gate=new Harmony("JueMingR.Tests.CompanionIdleWork");idleItemUpdates=0;
+            var items=Main.item;var npcs=Main.npc;var staticHits=Projectile.perIDStaticNPCImmunity;var gate=new Harmony("JueMingR.Tests.CompanionIdleWork");idleItemUpdates=0;
             gate.Patch(AccessTools.Method(typeof(WorldItem),"UpdateItem"),prefix:new HarmonyMethod(typeof(NativeCompanionCoreNetworkChecks),nameof(IdleUpdate)));
             try
             {
                 for(int i=0;i<100;i++){NativeQuickItemChecks.BeginWorldStep();Call(host,"AdvancePersonalItems");Call(host,"AdvanceNpcObservation");}
-                Require(idleItemUpdates==0 && GetOptional(host,"observedNpcs")==null && GetOptional(host,"aimSelected")==null && ReferenceEquals(items,Main.item) && ReferenceEquals(npcs,Main.npc),"zero roles create/update no personal or observation world and retain no scheduler role");
+                Require(idleItemUpdates==0 && GetOptional(host,"observedNpcs")==null && GetOptional(host,"observedNpcStaticHits")==null && GetOptional(host,"primaryNpcStaticHits")==null && GetOptional(host,"aimSelected")==null && ReferenceEquals(items,Main.item) && ReferenceEquals(npcs,Main.npc) && ReferenceEquals(staticHits,Projectile.perIDStaticNPCImmunity),"zero roles create/update no personal or observation world, retain no hit-state matrix/scheduler role and restore the exact native static table");
                 Console.WriteLine("PASS cost zero roles: 100 real clock steps, private item updates=0, observation/scheduler absent; no FPS claim.");
             }
             finally{gate.UnpatchAll(gate.Id);}
