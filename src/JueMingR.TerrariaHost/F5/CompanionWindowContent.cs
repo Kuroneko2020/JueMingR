@@ -88,7 +88,12 @@ namespace JueMingR.TerrariaHost.F5
             if (owner)ownerHero=hero;else companionHero=hero;
             if(!owner&&CurrentProfile()!=null) {
                 var stateRect=new F5Rect(displayPanel.X+5,displayPanel.Bottom-21,displayPanel.Width-10,18);
-                if(ActorVisible(stateRect,view)) {var c=Button("actor-state",ActorStatus(),stateRect,()=>Command(()=>host.IsJoined(selected)?host.Recall(selected):host.Join(selected)),host.IsJoined(selected)||!CurrentProfile().PermanentlyDead);c.ActorOverlay=c.ActorState=true;c.Hint=host.IsJoined(selected)?"点击收回人物":"点击加入当前世界";c.Element=new F5Element(F5ElementKind.Button,stateRect,"",default(F5Size),.55f,F5Command.None);}
+                bool joined=host.IsJoined(selected);Guid target=selected;
+                // A press owns this operation and actual activation. Natural
+                // detach/rejoin/respawn must retire it, rather than choosing
+                // the opposite operation on release. Timers/text keep the key.
+                string stateKey="actor-state/"+(joined?"recall":"join")+"/"+host.ActivationGeneration(target);
+                if(ActorVisible(stateRect,view)) {var c=Button(stateKey,ActorStatus(),stateRect,()=>Command(()=>joined?host.Recall(target):host.Join(target)),joined||!CurrentProfile().PermanentlyDead);c.ActorOverlay=c.ActorState=true;c.Hint=joined?"点击收回人物":"点击加入当前世界";c.Element=new F5Element(F5ElementKind.Button,stateRect,"",default(F5Size),.55f,F5Command.None);}
                 string[] teams={"无队伍","红队","绿队","蓝队","黄队","粉队"};
                 for(int i=0;i<6;i++){int team=i;var r=new F5Rect(displayPanel.X-52+i%2*24,displayPanel.Y+22+i/2*24,20,20);if(ActorVisible(r,view)){var c=Button("team:"+i,"",r,()=>Command(()=>host.SetTeam(selected,team)),true,body!=null&&body.team==team);c.ActorOverlay=true;c.TeamIcon=i;c.Hint=teams[i];}}
             }

@@ -133,6 +133,7 @@ namespace NativeWorldTextProbe
                 NativeCompanionFeedbackChecks.Run(host,id);managerClick("team:4");Require(((Player)Call(host,"GetBody",id)).team==4,"backpack native team glyph updates AI's real team");
                 graphics.Image(Path.Combine(output,"companion-live-management.png"),()=>Call(window,"Draw"),Main.UIScaleMatrix,1366,900);
                 Require(playerFiles==0&&ReferenceEquals(Main.PendingPlayer,pending)&&Main.player[Main.myPlayer]==human,"live native page never enters human file save/PendingPlayer ownership");
+                NativeCompanionUiChecks.StatusPressIdentity(shell,id);Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(1366,900));
                 managerClick("actor-state");NativeQuickItemChecks.Until(()=>{Call(host,"Update",(ulong)Main.GameUpdateCount);return !(bool)Call(host,"IsJoined",id);});
                 managerClick("create");creator=(UICharacterCreation)Main.InGameUI.CurrentState;Click(Snap(creator,"Back",0),graphics);Require(Session(host)==null&&(bool)Get(window,"Visible"),"actual native Back exits without world replay");
                 Require(Main.player.SequenceEqual(ownerArray),"after actual recall, native UI keeps all human/other player array identities");

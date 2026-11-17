@@ -405,6 +405,30 @@ namespace NativeWorldTextProbe
             }
             finally {body.dead=dead;Call(window,"Close");NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
         }
+        internal static void StatusPressIdentity(object shell,Guid id)
+        {
+            var host=Get(shell,"Companions");var window=Get(shell,"CompanionUi");var actors=(IDictionary)Get(host,"actors");var actor=actors[id];
+            var body=(Player)Call(host,"GetBody",id);long activation=(long)Get(actor,"Generation");int timer=body.respawnTimer;bool dead=body.dead;
+            var screen=new Vector2(1280,900);Action prepare=()=>Call(window,"PrepareLayout",Matrix.Identity,screen);
+            Func<object> status=()=>Controls(window).Single(c=>((string)Get(c,"Key")).StartsWith("actor-state/",StringComparison.Ordinal));
+            Action<Vector2,bool> sample=(p,left)=>{NativeToolsUiChecks.Mouse(p,left);Call(window,"ProcessLayoutInput",true,new KeyboardState(),p,Matrix.Identity,screen,true,0);};
+            try
+            {
+                Require(actor!=null,"status press projection starts from the actual joined activation");
+                body.dead=true;Call(window,"Close");NativeToolsUiChecks.Mouse(Vector2.Zero,false);Call(window,"Toggle",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));Set(window,"selected",id);Set(window,"page",0);prepare();
+                var p=NativeToolsUiChecks.Point(Get(status(),"Rect"));sample(p,false);sample(p,true);var pressed=Get(window,"armedKey");
+                body.respawnTimer=timer+7;prepare();Require(pressed!=null&&Equals(Get(window,"armedKey"),pressed),"ordinary countdown/status refresh retains the valid pressed operation");
+                // Change only the real Host membership projection; do not run
+                // lifecycle/network work while its dictionary is temporarily
+                // absent. Restore the exact actor before leaving this check.
+                actors.Remove(id);prepare();Require(GetOptional(window,"armedKey")==null,"natural membership identity change retires an armed recall");sample(p,false);
+                Require(!(bool)Call(host,"IsJoined",id),"release after recall-to-offline transition cannot reverse into Join");actors[id]=actor;prepare();
+                p=NativeToolsUiChecks.Point(Get(status(),"Rect"));sample(p,false);sample(p,true);Set(actor,"Generation",activation+1);prepare();Require(GetOptional(window,"armedKey")==null,"same-body actual activation change retires the old pressed operation");sample(p,false);
+                Require(ReferenceEquals(actors[id],actor),"release of retired activation cannot recall the replacement activation");
+                Console.WriteLine("PASS bounded inventory status press identity: timer keeps press; membership and actual activation retire it; no death/network lifecycle claim.");
+            }
+            finally {actors[id]=actor;Set(actor,"Generation",activation);body.respawnTimer=timer;body.dead=dead;Call(window,"Close");NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
+        }
         internal static void Equipment(object shell, Guid id)
         {
             var host = Get(shell, "Companions"); var window = Get(shell, "CompanionUi"); var layout = Get(Get(shell, "State"), "Layout");

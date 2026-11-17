@@ -158,17 +158,25 @@ namespace JueMingR.TerrariaHost.F5
             private readonly UnifiedRandom random;
             private readonly int shader;
             private readonly PointerScope pointer;
+            private readonly TriggersSet triggers;
+            private readonly bool triggerLeft,triggerRight;
             internal DispatchScope(CompanionCreationSession s,bool drawing)
             {
                 s.Adapt();
                 session=s;draw=drawing;hair=Main.Hairstyles;dirty=(bool)Dirty.GetValue(null);
                 Main.Hairstyles=s.Hairstyles;Dirty.SetValue(null,s.dirty);
-                if(draw){pointer=new PointerScope(s);random=Main.rand;shader=Mount.currentShader;Main.rand=s.previewRandom;s.DrawDepth++;}
+                if(draw){pointer=new PointerScope(s);triggers=PlayerInput.Triggers.Current;triggerLeft=triggers.MouseLeft;triggerRight=triggers.MouseRight;
+                    // Native colored/pitch sliders read Current.MouseLeft in
+                    // DrawSelf as well as Main.mouseLeft. Borrow only these two
+                    // trusted buttons for this exact owned draw, then restore
+                    // the already-consumed world sample even if a callback exits.
+                    triggers.MouseLeft=Main.mouseLeft;triggers.MouseRight=Main.mouseRight;
+                    random=Main.rand;shader=Mount.currentShader;Main.rand=s.previewRandom;s.DrawDepth++;}
             }
             public void Dispose()
             {
                 session.dirty=(bool)Dirty.GetValue(null);Dirty.SetValue(null,dirty);Main.Hairstyles=hair;
-                if(draw){session.DrawDepth--;Main.rand=random;Mount.currentShader=shader;pointer.Dispose();}
+                if(draw){session.DrawDepth--;Main.rand=random;Mount.currentShader=shader;triggers.MouseLeft=triggerLeft;triggers.MouseRight=triggerRight;pointer.Dispose();}
             }
         }
         private sealed class PointerScope : IDisposable
