@@ -254,7 +254,7 @@ namespace JueMingR.TerrariaHost.Companions
         private void Exit(object sender,EventArgs args){Dispose();}
         // CLR shutdown never reads native objects. Normal game-thread leaving
         // captures characters first; disposal only drains accepted bytes/locks.
-        public void Dispose(){F5.CompanionCreationSession.DisposeFor(this);AppDomain.CurrentDomain.ProcessExit-=Exit;steam.Dispose();profiles.Dispose();}
+        public void Dispose(){AppDomain.CurrentDomain.ProcessExit-=Exit;steam.Dispose();profiles.Dispose();}
         internal Actor Owned(Player p){Actor a;return p!=null && bodies.TryGetValue(p,out a) && p.whoAmI>=0 && p.whoAmI<Main.maxPlayers && ReferenceEquals(Main.player[p.whoAmI],p)?a:null;}
         internal Actor OwnedSlot(int slot){Actor a;return slots.TryGetValue(slot,out a) && ReferenceEquals(Owned(a.Body),a)?a:null;}
     }

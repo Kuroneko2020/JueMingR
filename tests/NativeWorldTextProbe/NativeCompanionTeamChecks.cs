@@ -135,7 +135,12 @@ namespace NativeWorldTextProbe
                     table[humanSlot]=Replica(human);table[actorSlot]=Replica(actorBody);table[otherSlot]=Replica(other);table[observerSlot]=new Player{active=true,whoAmI=observerSlot};
                     table[actorSlot].team=0;Put(table[humanSlot].inventory,40,ItemID.Wood,7);Put(table[actorSlot].inventory,42,ItemID.DirtBlock,5);table[humanSlot].trashItem=new Item(ItemID.StoneBlock){stack=3};
                 }
-                Netplay.Clients=new RemoteClient[256];NetMessage.buffer=new MessageBuffer[257];for(int i=0;i<257;i++)NetMessage.buffer[i]=new MessageBuffer{whoAmI=i};
+                // The original server broadcast loop also reads State on idle
+                // slots before testing message type. Native startup creates all
+                // RemoteClient entries; null placeholders silently abort the
+                // TrySendData broadcast before a later observer can receive it.
+                Netplay.Clients=new RemoteClient[256];for(int i=0;i<256;i++)Netplay.Clients[i]=new RemoteClient{Id=i};
+                NetMessage.buffer=new MessageBuffer[257];for(int i=0;i<257;i++)NetMessage.buffer[i]=new MessageBuffer{whoAmI=i};
                 foreach(var pair in new[]{Tuple.Create(humanSlot,ownerWire.Peer),Tuple.Create(actorSlot,aiPeer),Tuple.Create(observerSlot,observerWire.Peer)})
                 {Netplay.Clients[pair.Item1]=new RemoteClient{Id=pair.Item1,State=10,Socket=new TcpSocket(pair.Item2)};NetMessage.buffer[pair.Item1].broadcast=true;}
                 Main.netMode=2;Main.dedServ=true;Main.myPlayer=255;Main.player=server;

@@ -166,7 +166,7 @@ namespace JueMingR.TerrariaHost.F5
             // A readable native ten-slot row fixes the desired column width;
             // actual native segment rows and slot groups determine the height.
             // Current life, countdowns, item counts and saves never resize it.
-            float width=Math.Min(104+2*(10*44+16),logical.X-24);
+            float width=Math.Min(104+2*(10*44+24),logical.X-24);
             float height=Math.Min(PreferredHeight(width,rowHeight),logical.Y-24);
             if (width < 520 || height < 270) { Close(); return; }
             if (dragging && (matrix != transform || screen != physical || skin != renderer.Generation)) dragging = false;

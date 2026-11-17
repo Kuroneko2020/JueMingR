@@ -154,12 +154,40 @@ namespace NativeWorldTextProbe
                 Require((bool)Call(host,"Join",id),"new native-created AI can join through the actual host");
                 Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(Main.screenWidth,Main.screenHeight));
                 graphics.Image(Path.Combine(output,"companion-native-created-joined.png"),()=>Call(window,"Draw"),Main.UIScaleMatrix,Main.screenWidth,Main.screenHeight);
-                CheckStackPictures(window,host,id,graphics,output);Call(host,"Recall",id);
+                CheckConfigurationRespawn(window,host,id,graphics,output);CheckStackPictures(window,host,id,graphics,output);Call(host,"Recall",id);
+                NativeQuickItemChecks.Until(()=>{Call(host,"Update",(ulong)Main.GameUpdateCount);return !(bool)Call(host,"IsJoined",id);});
+                Set(window,"page",1);Set(window,"bodyOffset",0);Call(window,"Invalidate");Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(Main.screenWidth,Main.screenHeight));Require(RespawnLabel(window)=="","configuration clears respawn tag for actual recalled archive");
                 Require(playerFiles==0&&ReferenceEquals(Main.ActivePlayerFileData.Player,originalPlayer)&&ReferenceEquals(Main.PendingPlayer,pending)&&Main.player.SequenceEqual(originalArray),"AI native UI never borrows owner/PendingPlayer/player slots or reaches ordinary player-file save");
                 Require(ReferenceEquals(Main.Hairstyles,originalHair)&&Equals(dirty.GetValue(null),originalDirty),"native creator/keyboard exit restores original hairstyle helper and static dirty state");
                 Console.WriteLine("PASS original ingame UICharacterCreation real Update/Draw/clicks, native keyboard Chinese queue, cancel/return, four difficulty controls, full hair grid, cloth/colors/voice, unique AI archive/Join and owner/file/global isolation; no OS IME claim.");
             }
             finally {var session=Session(host);if(session!=null)Call(session,"Cancel");guard.UnpatchAll(guard.Id);Main.rand=originalRng;Mount.currentShader=originalShader;Main.mouseLeft=false;PlayerInput.Triggers.Current.MouseLeft=false;NativeToolsUiChecks.Mouse(Vector2.Zero,false);currentContext=null;}
+        }
+        private static string RespawnLabel(object window)
+        {return (string)Get(((IEnumerable)Get(window,"labels")).Cast<object>().ElementAt((int)Get(window,"respawnLabel")),"Text");}
+        private static void CheckConfigurationRespawn(object window,object host,Guid id,ProbeGraphics graphics,string output)
+        {
+            var actor=((IDictionary)Get(host,"actors"))[id];var body=(Player)Get(actor,"Body");bool dead=body.dead,pending=(bool)Get(actor,"PermanentDeathPending");int timer=body.respawnTimer;
+            var original=((IEnumerable)Get(host,"Profiles")).Cast<JueMingR.Platform.Companions.CompanionProfile>().Single(p=>p.Id==id).Behavior;
+            var screen=new Vector2(Main.screenWidth,Main.screenHeight);
+            try
+            {
+                // This bounded projection check changes only the already-tested
+                // actor's real scalar predicates. It runs no KillMe/Player.Update
+                // and makes no new death-lifecycle or revival claim.
+                body.dead=true;body.respawnTimer=122;Set(window,"page",1);Set(window,"bodyOffset",0);Call(window,"Invalidate");Call(window,"Prepare",Main.UIScaleMatrix,screen);
+                Require(RespawnLabel(window)=="复活：3秒","configuration has an independent name-side live native respawn countdown");
+                var follow=Controls(window).Single(c=>((string)Get(c,"Key")).StartsWith("follow/",StringComparison.Ordinal));var point=NativeToolsUiChecks.Point(Get(follow,"Rect"));
+                foreach(bool left in new[]{false,true}) {NativeToolsUiChecks.Mouse(point,left);Call(window,"Process",true,new Microsoft.Xna.Framework.Input.KeyboardState(),point,Main.UIScaleMatrix,screen,true,0);}
+                body.respawnTimer=61;Call(window,"Prepare",Main.UIScaleMatrix,screen);Require(RespawnLabel(window)=="复活：2秒"&&GetOptional(window,"armedKey")!=null,"real timer text refresh leaves the valid configuration press armed");
+                NativeToolsUiChecks.Mouse(point,false);Call(window,"Process",true,new Microsoft.Xna.Framework.Input.KeyboardState(),point,Main.UIScaleMatrix,screen,true,0);
+                var disabled=original.Clone();disabled.AutoRespawn=false;Require((bool)Call(host,"SetBehavior",id,disabled),"existing behavior owner accepts auto-respawn preference");Call(window,"Prepare",Main.UIScaleMatrix,screen);
+                Require(RespawnLabel(window)=="自动复活已关闭","configuration reflects real disabled preference");
+                graphics.Image(Path.Combine(output,"companion-config-respawn-off.png"),()=>Call(window,"Draw"),Main.UIScaleMatrix,Main.screenWidth,Main.screenHeight);
+                Set(actor,"PermanentDeathPending",true);Call(window,"Prepare",Main.UIScaleMatrix,screen);Require(RespawnLabel(window)=="","terminal actor predicate suppresses false configuration countdown");
+                Console.WriteLine("PASS configuration live countdown/off/terminal binding and timer refresh preserves pressed control; UI projection only, no death matrix rerun.");
+            }
+            finally {Set(actor,"PermanentDeathPending",pending);body.dead=dead;body.respawnTimer=timer;Call(host,"SetBehavior",id,original);Set(window,"page",0);Set(window,"bodyOffset",0);Call(window,"Invalidate");Call(window,"Prepare",Main.UIScaleMatrix,screen);NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
         }
         private static void CheckStackPictures(object window,object host,Guid id,ProbeGraphics graphics,string output)
         {

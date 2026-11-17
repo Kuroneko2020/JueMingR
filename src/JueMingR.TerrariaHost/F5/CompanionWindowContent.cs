@@ -33,7 +33,14 @@ namespace JueMingR.TerrariaHost.F5
                 return;
             }
             if (profile == null) { BodyText(pendingCreatedName??"点击左下角＋创建队友", row); FinishBody(); return; }
-            selectedStatusLabel=labels.Count; BodyText(profile.Name + " · " + host.Status(selected), row);
+            var nameRect=new F5Rect(bodyView.X+12,contentY,bodyView.Width-24,row);
+            float nameWidth=Math.Min(nameRect.Width*.6f,Math.Max(80,measure(profile.Name,.85f).Width+14));
+            if(FullyVisible(nameRect)) {
+                Text(profile.Name,new F5Rect(nameRect.X,nameRect.Y,nameWidth,row),.85f);
+                respawnLabel=labels.Count;labels.Add(new F5Element(F5ElementKind.Text,new F5Rect(nameRect.X+nameWidth+12,nameRect.Y,nameRect.Width-nameWidth-12,row),host.RespawnStatus(selected),default(F5Size),.65f,F5Command.None));
+            }
+            contentY+=row+4;
+            selectedStatusLabel=labels.Count;BodyText(host.Status(selected),row);
             if (host.SaveFailed(selected)) BodyButton("retry-save", "保存失败 · 重试保存", row, () => Command(() => host.RetrySave(selected)));
             Pair("join", "加入当前世界", () => Command(() => host.Join(selected)), false,
                 "recall", "收回", () => Command(() => host.Recall(selected)), false, row);
@@ -41,27 +48,27 @@ namespace JueMingR.TerrariaHost.F5
         }
         private float SharedResources(float paneWidth)
         {
-            float width=Math.Max(20,paneWidth-16-76);var owner=Main.LocalPlayer;var ai=host.GetBody(selected);
+            float width=Math.Max(20,paneWidth-24-76);var owner=Main.LocalPlayer;var ai=host.GetBody(selected);
             var own=owner==null?default(CompanionResourceDisplay.Blocks):CompanionResourceDisplay.MeasureBlocks(owner,width);
             var companion=ai==null?default(CompanionResourceDisplay.Blocks):CompanionResourceDisplay.MeasureBlocks(ai,width);
             sharedLifeHeight=Math.Max(own.Life,companion.Life);
             return Math.Max(108,sharedLifeHeight+Math.Max(own.Mana,companion.Mana));
         }
         private static float GridHeight(float paneWidth,int count)
-        {int columns=Math.Max(1,Math.Min(10,(int)((paneWidth-16)/40)));float cell=Math.Min(44,(paneWidth-16)/columns);return (float)Math.Ceiling((double)count/columns)*cell+4;}
+        {int columns=Math.Max(1,Math.Min(10,(int)((paneWidth-24)/40)));float cell=Math.Min(44,(paneWidth-24)/columns);return (float)Math.Ceiling((double)count/columns)*cell+4;}
         private float SharedEquipment(float paneWidth)
         {return 2*Math.Max(GridHeight(paneWidth,ownerGearPage==2?5:10),GridHeight(paneWidth,companionGearPage==2?5:10));}
         private float PreferredHeight(float width,float row)
         {
             float pane=(width-104)/2;
-            float header=4+row+6+(pane-16<300?24:0)+SharedResources(pane)+4;
+            float header=4+row+6+(pane-24<300?24:0)+SharedResources(pane)+4;
             return row+53+header+6+(4+26+6+SharedEquipment(pane))+6+(4+GridHeight(pane,50))+6+(4+GridHeight(pane,8))+8;
         }
         private void BuildActor(Player body, bool owner, F5Rect view, int offset, float row)
         {
             // The same final rectangles determine visible cells, clipping and hit
             // targets. Scrolling projects native slot identities; it never renumbers them.
-            float headerTop=view.Y-offset,y=headerTop+4,x=view.X+8,width=view.Width-16;
+            float headerTop=view.Y-offset,y=headerTop+4,x=view.X+12,width=view.Width-24;
             string name = owner ? Main.LocalPlayer?.name ?? "我的人物" : CurrentProfile()?.Name ?? pendingCreatedName ?? "AI 队友";
             bool wrapStatus=width<300;
             var nameRect=new F5Rect(x,y,Math.Max(40,width-(owner?0:wrapStatus?76:196)),row);
@@ -69,7 +76,7 @@ namespace JueMingR.TerrariaHost.F5
             if (!owner && CurrentProfile() != null)
             {
                 bool joined = host.IsJoined(selected);
-                var r = new F5Rect(view.Right - 76,y,68,row);
+                var r = new F5Rect(view.Right - 80,y,68,row);
                 if (ActorVisible(r,view)) Button(joined ? "recall" : "join", joined ? "收回" : "加入",r,
                     () => Command(() => host.IsJoined(selected) ? host.Recall(selected) : host.Join(selected)));
             }
@@ -78,7 +85,7 @@ namespace JueMingR.TerrariaHost.F5
             float resources=sharedResourcesHeight;
             float heroHeight=resources;
             var hero = new F5Rect(x,y,width,heroHeight);
-            var portrait=new F5Rect(x,y+(resources-108)/2,68,108);
+            var portrait=new F5Rect(view.Right-68,y+(resources-108)/2,68,108);
             if (owner) {ownerHero=hero;ownerPortrait=portrait;} else {companionHero=hero;companionPortrait=portrait;}
             AddActorHeader(new F5Rect(view.X+4,headerTop,view.Width-8,4+row+6+(wrapStatus?24:0)+heroHeight+4),view);
             y+=heroHeight+4+6;
@@ -86,7 +93,9 @@ namespace JueMingR.TerrariaHost.F5
             // Subtabs and their native equipment/dye cells are one module.
             // This same group origin drives background, clipping and hit tests.
             var tabs = new[] { "饰品", "时装", "装备" }; int gear = owner ? ownerGearPage : companionGearPage;
-            float tabX=x;
+            float totalTabs=8;foreach(string text in tabs)totalTabs+=Math.Max(46,measure(text,.7f).Width+18);
+            int columns=Math.Max(1,Math.Min(10,(int)(width/40)));float gridWidth=columns*Math.Min(44,width/columns)-3;
+            float tabX=x+Math.Max(0,gridWidth-totalTabs);
             for (int t=0;t<3;t++)
             {
                 int target=t;float tw=Math.Max(46,measure(tabs[t],.7f).Width+18);var r=new F5Rect(tabX,y,tw,26);tabX+=tw+4;
@@ -115,13 +124,13 @@ namespace JueMingR.TerrariaHost.F5
         {
             // Ten native inventory columns remain readable; a narrow viewport
             // shows fewer columns using the same layout, with vertical scrolling.
-            int columns=Math.Max(1,Math.Min(10,(int)((view.Width-16)/40)));
-            float cell=Math.Min(44,(view.Width-16)/columns);
+            int columns=Math.Max(1,Math.Min(10,(int)((view.Width-24)/40)));
+            float cell=Math.Min(44,(view.Width-24)/columns);
             for(int i=0;i<count;i++)
             {
                 int slot=start+i;
                 float inset=count<columns?(columns-count)*cell/2:0;
-                var rect=new F5Rect(view.X+8+inset+i%columns*cell,y+i/columns*cell,cell-3,cell-3);
+                var rect=new F5Rect(view.X+12+inset+i%columns*cell,y+i/columns*cell,cell-3,cell-3);
                 if(!ActorVisible(rect,view)) continue;
                 Item item=ReadSlotPreview(body,owner,area,slot);
                 var c=Button("slot:"+owner+":"+area+":"+slot,"",rect,null,true,
@@ -219,7 +228,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if(hero.Bottom<=view.Y||hero.Y>=view.Bottom) return;
             renderer.Pass(matrix,view,()=> {
-                if(source!=null) resourceDisplay.Draw(renderer,source,new F5Rect(hero.X+76,hero.Y,Math.Max(20,hero.Width-76),hero.Height),sharedLifeHeight);
+                if(source!=null) resourceDisplay.Draw(renderer,source,new F5Rect(hero.X,hero.Y,Math.Max(20,hero.Width-76),hero.Height),sharedLifeHeight);
             });
             var clip=new F5Rect(Math.Max(view.X,portrait.X),Math.Max(view.Y,portrait.Y),Math.Min(view.Right,portrait.Right)-Math.Max(view.X,portrait.X),Math.Min(view.Bottom,portrait.Bottom)-Math.Max(view.Y,portrait.Y));
             if(clip.Width>0&&clip.Height>0) renderer.Pass(matrix,clip,()=>preview.Draw(portraits,portrait,matrix));

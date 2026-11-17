@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
@@ -22,11 +22,11 @@ namespace NativeWorldTextProbe
         {
             Require(Main.cursorScale>=.8f,"native resource pulse has its normal neutral draw prerequisite");
             var pixels=graphics.Pixels(()=>Call(window,"Draw"),Main.UIScaleMatrix,1280,800);var hero=Get(window,"companionHero");
-            int x=(int)(float)Get(hero,"X")+76,y=(int)(float)Get(hero,"Y");int sharedLife=(int)(float)Get(window,"sharedLifeHeight");
+            int x=(int)(float)Get(hero,"X"),y=(int)(float)Get(hero,"Y");int sharedLife=(int)(float)Get(window,"sharedLifeHeight");
             Func<int,int,int,int,Func<Color,bool>,int> count=(px,py,w,h,predicate)=>{int n=0;for(int yy=py;yy<py+h;yy++)for(int xx=px;xx<px+w;xx++)if(predicate(pixels[yy*1280+xx]))n++;return n;};
             int lastHeart=count(x+4*27,y+20,26,29,c=>c.R>150&&c.R>c.G*1.5f&&c.R>c.B*1.5f);
             int onlyStar=count(x,y+sharedLife+20,26,29,c=>c.B>120&&c.B>c.R*1.15f);
-            var ownerHero=Get(window,"ownerHero");int ox=(int)(float)Get(ownerHero,"X")+76,oy=(int)(float)Get(ownerHero,"Y");
+            var ownerHero=Get(window,"ownerHero");int ox=(int)(float)Get(ownerHero,"X"),oy=(int)(float)Get(ownerHero,"Y");
             int life=Main.LocalPlayer.statLife;Color[] empty,full;
             try {Main.LocalPlayer.statLife=450;empty=graphics.Pixels(()=>Call(window,"Draw"),Main.UIScaleMatrix,1280,800);Main.LocalPlayer.statLife=480;full=graphics.Pixels(()=>Call(window,"Draw"),Main.UIScaleMatrix,1280,800);}
             finally {Main.LocalPlayer.statLife=life;}
@@ -164,6 +164,9 @@ namespace NativeWorldTextProbe
             {
                 var tab=Get(tabs.First(c=>((string)Get(c,"Key")).StartsWith("gear:"+owner+":",StringComparison.Ordinal)),"Rect");
                 var dye=Get(Controls(window).First(c=>((string)Get(c,"Key")).StartsWith("slot:"+owner+":Dye:0/",StringComparison.Ordinal)),"Rect");
+                var rightTab=Get(tabs.Single(c=>((string)Get(c,"Key")).StartsWith("gear:"+owner+":2/",StringComparison.Ordinal)),"Rect");
+                var lastDye=Get(Controls(window).Single(c=>((string)Get(c,"Key")).StartsWith("slot:"+owner+":Dye:9/",StringComparison.Ordinal)),"Rect");
+                Require(Math.Abs((float)Get(rightTab,"Right")-(float)Get(lastDye,"Right"))<.01f,"compact tab group ends at the real slot grid right edge");
                 Require(((IEnumerable)Get(window,"groups")).Cast<object>().Any(group=>(float)Get(group,"X")<=(float)Get(tab,"X")&&(float)Get(group,"Y")<=(float)Get(tab,"Y")&&(float)Get(group,"Right")>=(float)Get(dye,"Right")&&(float)Get(group,"Bottom")>=(float)Get(dye,"Bottom")),"actual compact tabs and corresponding equipment/dye rows share one module background and border");
             }
 

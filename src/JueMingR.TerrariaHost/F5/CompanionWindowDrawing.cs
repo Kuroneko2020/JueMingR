@@ -12,7 +12,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             foreach(var c in controls) if(c.ProfileId!=Guid.Empty)
             { c.Joined=host.IsJoined(c.ProfileId);string state=host.Status(c.ProfileId);if(c.StateText!=state){c.StateText=state;c.Hint=c.Text+"\n"+state;} }
-            UpdateLabel(selectedStatusLabel,CurrentProfile()?.Name+" · "+host.Status(selected));
+            UpdateLabel(selectedStatusLabel,host.Status(selected));
             UpdateLabel(respawnLabel,host.RespawnStatus(selected));
         }
         private void UpdateLabel(int index,string value)
