@@ -25,6 +25,14 @@ namespace NativeWorldTextProbe
         private static object currentContext;
         private static int playerFiles;
         private static bool proveWorldUse;
+        private static UIColoredSlider observedSlider;
+        private static object observedSession;
+        private static int sliderTraces;
+        private static void TraceSlider(UIColoredSlider __instance)
+        {
+            if(!ReferenceEquals(__instance,observedSlider)||sliderTraces++>=12)return;
+            Console.WriteLine("NATIVE-SLIDER-DRAW point="+Main.mouseX+","+Main.mouseY+" mainLeft="+Main.mouseLeft+" triggerLeft="+PlayerInput.Triggers.Current.MouseLeft+" locked="+ReferenceEquals(UISliderBase.CurrentLockedSlider,__instance)+" aimed="+ReferenceEquals(UISliderBase.CurrentAimedSlider,__instance)+" gamepad="+PlayerInput.UsingGamepad+" trusted="+Get(observedSession,"InputAllowed")+" flushed="+Get(observedSession,"flushedFrame")+" frame="+Get(Get(observedSession,"input"),"Frame")+" rect="+__instance.GetDimensions().ToRectangle()+" hair="+((Player)Get(observedSession,"Draft")).hairColor);
+        }
         private static bool FrozenKeyboard(ref Microsoft.Xna.Framework.Input.KeyboardState __result) {__result=Main.keyState;return false;}
         private static bool RejectPlayerFile() {playerFiles++;throw new InvalidOperationException("native AI creator reached ordinary PlayerFileData.CreateAndSave");}
         private static void TraceSpawnFailure(Exception __exception,MethodBase __originalMethod)
@@ -108,8 +116,10 @@ namespace NativeWorldTextProbe
                 var creator=(UICharacterCreation)Main.InGameUI.CurrentState;var session=Session(host);var draft=(Player)Get(session,"Draft");
                 Click((UIElement)Get(creator,"_clothingStylesCategoryButton"),graphics);Require(Convert.ToInt32(Get(creator,"_selectedPicker"))==1,"real pre-input native UI update followed by host finalized dispatch accepts actual category click");
                 Click(((UIColoredImageButton[])Get(creator,"_colorPickers"))[3],graphics);var slider=Descendants(creator).OfType<UIColoredSlider>().First();var rect=slider.GetDimensions();var color=draft.hairColor;
+                observedSlider=slider;observedSession=session;sliderTraces=0;guard.Patch(AccessTools.Method(typeof(UIColoredSlider),"DrawSelf"),postfix:new HarmonyMethod(typeof(NativeCompanionNativeCreationChecks),nameof(TraceSlider)));
+                Console.WriteLine("NATIVE-SLIDER-TARGET picker="+Get(creator,"_selectedPicker")+" color="+color+" hsl="+Get(creator,"_currentColorHSL")+" rect="+rect.ToRectangle()+" barWidth="+TextureWidth("ColorBar"));
                 var a=new Vector2(rect.X+rect.Width-10-TextureWidth("ColorBar")+20,rect.Y+14);var b=a+new Vector2(105,0);
-                Step(a,false,graphics);Step(a,true,graphics);Step(b,true,graphics);Step(b,false,graphics);Require(draft.hairColor!=color,"native held-left color slider Draw consumes its trusted private pointer after world input was cleared");
+                Step(a,false,graphics);Step(a,true,graphics);Step(b,true,graphics);Step(b,false,graphics);Capture(graphics,output,"companion-live-slider-diagnostic");Require(draft.hairColor!=color,"native held-left color slider Draw consumes its trusted private pointer after world input was cleared");observedSlider=null;observedSession=null;
                 Capture(graphics,output,"companion-live-creation-color");
                 Click((UIElement)Get(creator,"_charInfoCategoryButton"),graphics);Click((UIElement)Get(creator,"_charName"),graphics);
                 var keyboard=Main.InGameUI.CurrentState;Require(keyboard is UIVirtualKeyboard,"real naming click opens native keyboard");Capture(graphics,output,"companion-live-name-keyboard");
@@ -139,7 +149,7 @@ namespace NativeWorldTextProbe
                 Require(Main.player.SequenceEqual(ownerArray),"after actual recall, native UI keeps all human/other player array identities");
                 Console.WriteLine("PASS true native early-UI -> mapping/final sample -> production context dispatch, physical UI1.25/worldZoom1.5, real plus/category/held-slider/keyboard cancel-submit/Back, world CopyInto+ItemCheck and neutral tails, embedded state/team and feedback; no OS IME/installed-game claim.");
             }
-            finally {proveWorldUse=false;inventoryBindings.Clear();inventoryBindings.AddRange(originalInventoryKeys);Set(input,"foregroundWindow",foreground);var s=Session(host);if(s!=null)Call(s,"Cancel");Call(window,"Close");guard.UnpatchAll(guard.Id);human.inventory[0]=item;human.selectedItemState.Select(selected);human.name=ownerName;Main.GameViewMatrix.Zoom=zoom;currentContext=null;NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
+            finally {proveWorldUse=false;observedSlider=null;observedSession=null;inventoryBindings.Clear();inventoryBindings.AddRange(originalInventoryKeys);Set(input,"foregroundWindow",foreground);var s=Session(host);if(s!=null)Call(s,"Cancel");Call(window,"Close");guard.UnpatchAll(guard.Id);human.inventory[0]=item;human.selectedItemState.Select(selected);human.name=ownerName;Main.GameViewMatrix.Zoom=zoom;currentContext=null;NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
         }
         internal static void Run(object context,ProbeGraphics graphics,string output)
         {
