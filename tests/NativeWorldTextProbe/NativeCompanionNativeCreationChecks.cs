@@ -25,6 +25,8 @@ namespace NativeWorldTextProbe
         private static object currentContext;
         private static int playerFiles;
         private static bool RejectPlayerFile() {playerFiles++;throw new InvalidOperationException("native AI creator reached ordinary PlayerFileData.CreateAndSave");}
+        private static void TraceSpawnFailure(Exception __exception,MethodBase __originalMethod)
+        {if(__exception!=null)Console.Error.WriteLine("NATIVE-CREATOR actual spawn failure "+__originalMethod.DeclaringType.FullName+"."+__originalMethod.Name+": "+__exception);}
         private static object Session(object host)
         {return host.GetType().Assembly.GetType("JueMingR.TerrariaHost.F5.CompanionCreationSession",true).GetProperty("Active",BindingFlags.Static|BindingFlags.NonPublic).GetValue(null);}
         private static IEnumerable<UIElement> Descendants(UIElement parent)
@@ -155,6 +157,8 @@ namespace NativeWorldTextProbe
                 // This step intentionally enters the real AI Spawn, matching
                 // the established creation/session fixtures, so retire that prefix.
                 new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player),"Spawn"),HarmonyPatchType.Prefix,"JueMingR.Tests.QuickItemOutlets");
+                foreach(var method in new[]{AccessTools.Method(typeof(Player),"Spawn"),AccessTools.Method(host.GetType(),"Spawn")})
+                    guard.Patch(method,finalizer:new HarmonyMethod(typeof(NativeCompanionNativeCreationChecks),nameof(TraceSpawnFailure)));
                 Require((bool)Call(host,"Join",id),"new native-created AI can join through the actual host: "+Get(host,"Feedback"));
                 Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(Main.screenWidth,Main.screenHeight));
                 graphics.Image(Path.Combine(output,"companion-native-created-joined.png"),()=>Call(window,"Draw"),Main.UIScaleMatrix,Main.screenWidth,Main.screenHeight);
