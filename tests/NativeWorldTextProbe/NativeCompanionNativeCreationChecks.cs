@@ -162,7 +162,7 @@ namespace NativeWorldTextProbe
                 Require((bool)Call(host,"Join",id),"new native-created AI can join through the actual host: "+Get(host,"Feedback"));
                 Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(Main.screenWidth,Main.screenHeight));
                 graphics.Image(Path.Combine(output,"companion-native-created-joined.png"),()=>Call(window,"Draw"),Main.UIScaleMatrix,Main.screenWidth,Main.screenHeight);
-                CheckConfigurationRespawn(window,host,id,graphics,output);CheckStackPictures(window,host,id,graphics,output);Call(host,"Recall",id);
+                CheckAvatarSelection(window,id,graphics);CheckConfigurationRespawn(window,host,id,graphics,output);CheckStackPictures(window,host,id,graphics,output);Call(host,"Recall",id);
                 NativeQuickItemChecks.Until(()=>{Call(host,"Update",(ulong)Main.GameUpdateCount);return !(bool)Call(host,"IsJoined",id);});
                 Set(window,"page",1);Set(window,"bodyOffset",0);Call(window,"Invalidate");Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(Main.screenWidth,Main.screenHeight));Require(RespawnLabel(window)=="","configuration clears respawn tag for actual recalled archive");
                 Require(playerFiles==0&&ReferenceEquals(Main.ActivePlayerFileData.Player,originalPlayer)&&ReferenceEquals(Main.PendingPlayer,pending)&&Main.player.SequenceEqual(originalArray),"AI native UI never borrows owner/PendingPlayer/player slots or reaches ordinary player-file save");
@@ -170,6 +170,18 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS original ingame UICharacterCreation real Update/Draw/clicks, native keyboard Chinese queue, cancel/return, four difficulty controls, full hair grid, cloth/colors/voice, unique AI archive/Join and owner/file/global isolation; no OS IME claim.");
             }
             finally {var session=Session(host);if(session!=null)Call(session,"Cancel");guard.UnpatchAll(guard.Id);Main.rand=originalRng;Mount.currentShader=originalShader;Main.mouseLeft=false;PlayerInput.Triggers.Current.MouseLeft=false;NativeToolsUiChecks.Mouse(Vector2.Zero,false);currentContext=null;}
+        }
+        private static void CheckAvatarSelection(object window,Guid id,ProbeGraphics graphics)
+        {
+            var card=Controls(window).Single(c=>(Guid)Get(c,"ProfileId")==id);Require((bool)Get(card,"Selected")&&(bool)Get(card,"Joined"),"same avatar represents both selected and joined states");
+            var rect=Get(card,"Rect");float x=(float)Get(rect,"X"),y=(float)Get(rect,"Y"),w=(float)Get(rect,"Width"),h=(float)Get(rect,"Height"),scale=Main.UIScaleMatrix.M11;
+            var pixels=graphics.Pixels(()=>Call(window,"Draw"),Main.UIScaleMatrix,Main.screenWidth,Main.screenHeight);
+            Func<float,float,bool> green=(px,py)=>{var c=pixels[(int)py*Main.screenWidth+(int)px];return c.R==Color.LightGreen.R&&c.G==Color.LightGreen.G&&c.B==Color.LightGreen.B;};
+            float centerX=(float)Math.Round((x+w/2)*scale),centerY=(float)Math.Round((y+h/2)*scale);
+            bool top=green(centerX,(float)Math.Round((y+6)*scale)+1),left=green((float)Math.Round((x+6)*scale)+1,centerY),right=green((float)Math.Round((x+w-6-2/scale)*scale)+1,centerY);
+            bool oldBottom=green(centerX,(float)Math.Round((y+h-6-2/scale)*scale)+1),joined=green(centerX,(float)Math.Round((y+h-3-2/scale)*scale)+1);
+            Require(top&&!left&&!right&&!oldBottom&&joined,"actual avatar pixels keep only the selected top inset line and an independent joined underline");
+            Console.WriteLine("PASS avatar actual selected top-only green line and separate joined underline coexist; former left/right/bottom marker pixels absent.");
         }
         private static string RespawnLabel(object window)
         {return (string)Get(((IEnumerable)Get(window,"labels")).Cast<object>().ElementAt((int)Get(window,"respawnLabel")),"Text");}

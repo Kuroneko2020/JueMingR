@@ -62,7 +62,7 @@ namespace NativeWorldTextProbe
             AppDomain.CurrentDomain.FirstChanceException+=trace;
             try {enabled=(bool)Call(journey,"SetEnabled",true);}
             finally {AppDomain.CurrentDomain.FirstChanceException-=trace;}
-            Require(enabled,"real Journey activates before AI death: "+Get(journey,"LastFailure"));
+            Require(enabled,"real Journey activates before AI death: "+GetOptional(journey,"LastFailure"));
             try {Scenario(context,journey);}finally{Call(journey,"SetEnabled",false);}
         }
         private static void Scenario(object context,object journey)

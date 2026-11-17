@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
@@ -29,11 +29,8 @@ namespace JueMingR.TerrariaHost.F5
         private void DrawAvatarSelection(F5Rect r)
         {
             float thickness=2/matrix.M11,length=Snap(14),inset=6;
-            float cx=Snap(r.X+r.Width/2-length/2),cy=Snap(r.Y+r.Height/2-length/2);
+            float cx=Snap(r.X+r.Width/2-length/2);
             Fill(new F5Rect(cx,Snap(r.Y+inset),length,thickness),Color.LightGreen);
-            Fill(new F5Rect(cx,Snap(r.Bottom-inset-thickness),length,thickness),Color.LightGreen);
-            Fill(new F5Rect(Snap(r.X+inset),cy,thickness,length),Color.LightGreen);
-            Fill(new F5Rect(Snap(r.Right-inset-thickness),cy,thickness,length),Color.LightGreen);
         }
         private void DrawJoinedUnderline(F5Rect r)
         {Fill(new F5Rect(Snap(r.X+8),Snap(r.Bottom-3-2/matrix.M11),Snap(r.Width-16),2/matrix.M11),Color.LightGreen);}
