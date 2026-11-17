@@ -49,8 +49,8 @@ namespace JueMingR.TerrariaHost.F5
         private float SharedResources(float paneWidth)
         {
             float width=ResourceWidth(paneWidth);var owner=Main.LocalPlayer;var ai=host.GetBody(selected);
-            var own=owner==null?default(CompanionResourceDisplay.Blocks):CompanionResourceDisplay.MeasureBlocks(owner,width);
-            var companion=ai==null?default(CompanionResourceDisplay.Blocks):CompanionResourceDisplay.MeasureBlocks(ai,width);
+            var own=owner==null?default(CompanionResourceDisplay.Blocks):resourceDisplay.MeasureBlocks(owner,width);
+            var companion=ai==null?default(CompanionResourceDisplay.Blocks):resourceDisplay.MeasureBlocks(ai,width);
             sharedLifeHeight=Math.Max(own.Life,companion.Life);
             return Math.Max(108,sharedLifeHeight+Math.Max(own.Mana,companion.Mana));
         }

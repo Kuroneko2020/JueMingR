@@ -113,7 +113,7 @@ foreach($privateHelper in @('tests/NativeWorldTextProbe/NativeBlueprintSettledPa
     foreach($consumer in $expectedPrivate){Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore $consumer) -cne (Get-WorkloadCheckFingerprint $privateAfter $consumer)) ('private admission bytes invalidate actual consumer '+$consumer)}
     Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore 'native-BlueprintSupplyContinuationCpu') -ceq (Get-WorkloadCheckFingerprint $privateAfter 'native-BlueprintSupplyContinuationCpu')) ('private admission helper preserves unrelated SupplyRepair '+$privateHelper)
 }
-foreach($scope in @('CompanionShowcaseVisual','CompanionNetworkCpu','CompanionSessionCpu','CompanionNavigationCpu','CompanionCreationCpu','CompanionItemsCpu','CompanionCpu','AfkModeCompletionCpu','AfkModeBorrowCpu','BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
+foreach($scope in @('CompanionResourceBarsVisual','CompanionShowcaseVisual','CompanionNetworkCpu','CompanionSessionCpu','CompanionNavigationCpu','CompanionCreationCpu','CompanionItemsCpu','CompanionCpu','AfkModeCompletionCpu','AfkModeBorrowCpu','BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
     $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-'+$scope))
     Assert-Route ($plan.Count -eq 1 -and $plan[0].name -ceq ('native-'+$scope) -and $plan[0].arguments[-1] -ceq $scope) ('exact new native scope '+$scope)
     Assert-Route ($null -ne (Get-WorkloadExpectedNativeLeaf ('native-'+$scope))) ('new scope completion registered '+$scope)
@@ -130,6 +130,7 @@ foreach($pair in @(@('Team','Network'),@('Navigation','Navigation'),@('Session',
 }
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionUiV3Checks.cs') -join '|') -ceq 'native-CompanionVisual') 'V3 graphics helper selects the actual Draw consumer'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionPetPreviewChecks.cs') -join '|') -ceq 'native-CompanionVisual|native-CompanionShowcaseVisual') 'native pet dummy graphics helper selects its actual consumer'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionResourceBarChecks.cs') -join '|') -ceq 'native-CompanionResourceBarsVisual') 'native resource delegate oracle selects its exact graphical consumer'
 $supply='native-BlueprintSupplyContinuationCpu'
 Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeBlueprintConstructionDoorChecks.cs') -notcontains $supply) 'Door private body does not select SupplyRepair'
 foreach($helper in @('SupplyConversion','SupplyHandoff','SupplyReady','PostProcessingContinuity','Build','Construction','WorldMatch','ConstructionAppearance')){

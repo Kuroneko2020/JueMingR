@@ -118,6 +118,12 @@ namespace NativeWorldTextProbe
             if(Terraria.Main.ResourceSetsManager==null) Terraria.Main.ResourceSetsManager=new Terraria.GameContent.UI.ResourceSets.PlayerResourceSetsManager();
             Terraria.Main.ResourceSetsManager.LoadContent(AssetRequestMode.ImmediateLoad);
         }
+        internal void LoadCompanionBarAssets()
+        {
+            EnsureNativeAssets();
+            foreach(string name in new[]{"HP_Fill","HP_Fill_Honey","MP_Fill","Panel_Left","HP_Panel_Middle","HP_Panel_Right","MP_Panel_Middle","MP_Panel_Right"})
+                screenEffectsRepository.Request<Texture2D>("Images/UI/PlayerResourceSets/HorizontalBars/"+name,AssetRequestMode.ImmediateLoad);
+        }
         internal void LoadMoonDeathAssets()
         {
             // AI77's death explosion is a real visual outlet. Keep its native

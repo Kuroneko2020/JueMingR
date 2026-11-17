@@ -417,3 +417,4 @@ leaf	CompanionNavigationCpu	companions-navigation
 leaf	CompanionSessionCpu	companions-session
 leaf	CompanionNetworkCpu	companions-network
 leaf	CompanionShowcaseVisual	companions-showcase
+leaf	CompanionResourceBarsVisual	companions-resource-bars

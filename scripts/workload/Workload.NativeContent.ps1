@@ -1,12 +1,16 @@
 # These ordinary mixed scopes really construct ProbeGraphics. Keep resource
 # admission in this separately bound owner, not in a pure plan projection.
 function Get-WorkloadNativeContentScopes {
-    return @('CompanionShowcaseVisual','CompanionVisual','BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
+    return @('CompanionResourceBarsVisual','CompanionShowcaseVisual','CompanionVisual','BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
 }
 function Get-WorkloadNativeContentFiles {
     param([string]$Scope)
     if($Scope -cnotin @(Get-WorkloadNativeContentScopes)){return @()}
     $files=@('Fonts/Mouse_Text.xnb','Fonts/Item_Stack.xnb','Fonts/Combat_Text.xnb','Fonts/Combat_Crit.xnb','Images/Item_8.xnb','Images/Inventory_Back.xnb','Images/MagicPixel.xnb')
+    if($Scope -ceq 'CompanionResourceBarsVisual'){
+        foreach($name in @('HP_Fill','HP_Fill_Honey','MP_Fill','Panel_Left','HP_Panel_Middle','HP_Panel_Right','MP_Panel_Middle','MP_Panel_Right')){$files+='Images/UI/PlayerResourceSets/HorizontalBars/'+$name+'.xnb'}
+        return $files
+    }
     if($Scope -cin @('CompanionVisual','CompanionShowcaseVisual')){
         # Bind resources actually requested by the original player initializer,
         # six resource sets and the finite native creation/profile fixture.

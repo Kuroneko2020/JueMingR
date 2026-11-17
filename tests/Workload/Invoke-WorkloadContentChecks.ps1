@@ -14,6 +14,9 @@ try{
     $showcaseAssets=@(Get-WorkloadNativeContentFiles 'CompanionShowcaseVisual')
     Assert-Content ($showcaseAssets -ccontains 'Images/Projectile_111.xnb' -and $showcaseAssets -ccontains 'Images/Projectile_380.xnb') 'bounded showcase binds both actual native pet textures'
     Assert-Content ($showcaseAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb' -and $showcaseAssets -cnotcontains 'Images/Armor_Head_3.xnb') 'showcase does not acquire unrelated Journey or original armor-trial consumers'
+    $barAssets=@(Get-WorkloadNativeContentFiles 'CompanionResourceBarsVisual')
+    Assert-Content ($barAssets -ccontains 'Images/UI/PlayerResourceSets/HorizontalBars/HP_Panel_Right.xnb' -and $barAssets -ccontains 'Images/UI/PlayerResourceSets/HorizontalBars/MP_Fill.xnb') 'bounded resource bars bind the actual original panel and fill textures'
+    Assert-Content ($barAssets -cnotcontains 'Images/Projectile_111.xnb' -and $barAssets -cnotcontains 'Images/Player_Hair_1.xnb') 'resource-only oracle does not acquire character or pet graphics preparation'
     Put-ContentFixture 'external/TerrariaRefs/Terraria.exe' 'identity fixture only; never executed'
     Put-ContentFixture 'original/Terraria.exe' 'identity fixture only; never executed'
     $gameHash=(Get-FileHash (Join-Path $fixture 'original/Terraria.exe')).Hash

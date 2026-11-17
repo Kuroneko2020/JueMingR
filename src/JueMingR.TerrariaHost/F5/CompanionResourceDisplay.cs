@@ -47,17 +47,18 @@ namespace JueMingR.TerrariaHost.F5
         private Texture2D Texture(string folder,string name) { return assets["Images/UI/PlayerResourceSets/"+folder+"/"+name].Value; }
         internal struct Blocks
         {internal float Life,Mana;}
-        internal static Blocks MeasureBlocks(Player player,float width)
+        internal Blocks MeasureBlocks(Player player,float width)
         {
             var s=new PlayerStatsSnapshot(player);string k=Main.ResourceSetsManager?.ActiveSetKeyName??"Default";
             bool bars=k.StartsWith("HorizontalBars",StringComparison.Ordinal),fancy=k=="New"||k=="NewWithText";
             bool lifeText=k=="Default"||k=="NewWithText"||k=="HorizontalBarsWithText"||k=="HorizontalBarsWithFullText";
             bool manaText=k=="Default"||k=="NewWithText"||k=="HorizontalBarsWithFullText";
-            float health=bars?34:(float)Math.Ceiling(Math.Ceiling(s.LifeMax/Math.Max(1,s.LifePerSegment))/10)*RowHeight(width,fancy)+5;
-            float mana=bars?34:(float)Math.Ceiling(Math.Ceiling(s.ManaMax/Math.Max(1,s.ManaPerSegment))/10)*RowHeight(width,fancy);
+            if(bars)Prepare();
+            float health=bars?BarHeight(s.LifeMax,s.LifePerSegment,width,false):(float)Math.Ceiling(Math.Ceiling(s.LifeMax/Math.Max(1,s.LifePerSegment))/10)*RowHeight(width,fancy)+5;
+            float mana=bars?BarHeight(s.ManaMax,s.ManaPerSegment,width,true):(float)Math.Ceiling(Math.Ceiling(s.ManaMax/Math.Max(1,s.ManaPerSegment))/10)*RowHeight(width,fancy);
             return new Blocks{Life=health+(lifeText?20:0),Mana=mana+(manaText?20:0)};
         }
-        internal static float MeasureHeight(Player player,float width) {var blocks=MeasureBlocks(player,width);return blocks.Life+blocks.Mana;}
+        internal float MeasureHeight(Player player,float width) {var blocks=MeasureBlocks(player,width);return blocks.Life+blocks.Mana;}
         internal void Draw(ItemsRenderer renderer,Player player,F5Rect rect,float sharedLife=-1)
         {
             var stats=new PlayerStatsSnapshot(player); var text=TextValues(player,stats);
@@ -66,7 +67,7 @@ namespace JueMingR.TerrariaHost.F5
             bool manaText=key=="Default"||key=="NewWithText"||key=="HorizontalBarsWithFullText";
             float y=rect.Y;
             if(lifeText) { renderer.Text(text.LifeText,new F5Rect(rect.X,y,rect.Width,20),Color.White,.6f); y+=20; }
-            if(bars) { Bar(stats.Life,stats.LifeMax,stats.LifePerSegment,stats.LifeFruitCount,rect.X,y,rect.Width,false); y+=34; }
+            if(bars) { Bar(stats.Life,stats.LifeMax,stats.LifePerSegment,stats.LifeFruitCount,rect.X,y,rect.Width,false); y+=BarHeight(stats.LifeMax,stats.LifePerSegment,rect.Width,false); }
             else y+=Icons(stats.Life,stats.LifeMax,stats.LifePerSegment,stats.LifeFruitCount,rect.X,y,rect.Width,false,fancy)+5;
             if(sharedLife>=0)y=rect.Y+sharedLife;
             if(manaText) { renderer.Text(text.ManaText,new F5Rect(rect.X,y,rect.Width,20),Color.White,.6f); y+=20; }
@@ -123,29 +124,45 @@ namespace JueMingR.TerrariaHost.F5
             }
             return (float)Math.Ceiling((double)count/columns)*row;
         }
-        private void Bar(int current,int maximum,float per,int fruit,float x,float y,float width,bool mana)
+        private struct BarGeometry
+        {internal int Count;internal float Left,Top,Height,Scale;}
+        private BarGeometry Geometry(int maximum,float per,float width,bool mana)
         {
-            int count=Math.Max(1,(int)Math.Ceiling(maximum/Math.Max(1,per)));
+            int count=Math.Max(0,(int)(maximum/Math.Max(1,per)));
             var fill=Texture("HorizontalBars",mana?"MP_Fill":"HP_Fill");
             var middle=Texture("HorizontalBars",mana?"MP_Panel_Middle":"HP_Panel_Middle");
             var left=Texture("HorizontalBars","Panel_Left"); var right=Texture("HorizontalBars",mana?"MP_Panel_Right":"HP_Panel_Right");
-            float natural=count*fill.Width+left.Width+right.Width;
-            float scale=Math.Min(1,width/Math.Max(1,natural));
-            float step=fill.Width*scale;
-            DrawTexture(left,new F5Rect(x,y,left.Width*scale,middle.Height*scale),Color.White,1); x+=left.Width*scale;
-            for(int i=0;i<count;i++)
-            {
-                var r=new F5Rect(x+i*step,y,step,middle.Height*scale); DrawTexture(middle,r,Color.White,1);
-                var f=mana?fill:i<fruit?Texture("HorizontalBars","HP_Fill_Honey"):fill;
-                DrawTexture(f,new F5Rect(r.X,r.Y+Math.Max(0,(middle.Height-fill.Height)*scale/2),step,fill.Height*scale),Color.White,MathHelper.Clamp((current-i*per)/Math.Max(1,per),0,1));
-            }
-            DrawTexture(right,new F5Rect(x+count*step,y,right.Width*scale,right.Height*scale),Color.White,1);
+            float capX=left.Width+count*middle.Width-16,capY=mana?-6:-10;
+            float minX=Math.Min(0,capX),minY=Math.Min(0,capY);
+            float maxX=Math.Max(left.Width+count*middle.Width,capX+right.Width);
+            float maxY=Math.Max(Math.Max(left.Height,middle.Height),capY+right.Height);
+            if(count>0){maxX=Math.Max(maxX,6+count*fill.Width);maxY=Math.Max(maxY,6+fill.Height);}
+            return new BarGeometry{Count=count,Left=minX,Top=minY,Height=maxY-minY,Scale=Math.Min(1,width/Math.Max(1,maxX-minX))};
         }
-        private static void DrawTexture(Texture2D texture,F5Rect rect,Color color,float fill)
+        private float BarHeight(int maximum,float per,float width,bool mana)
+        {var g=Geometry(maximum,per,width,mana);return g.Height*g.Scale+6;}
+        private void Bar(int current,int maximum,float per,int fruit,float x,float y,float width,bool mana)
         {
-            if(texture==null||texture.IsDisposed||fill<=0||rect.Width<=0||rect.Height<=0) return;
-            int cropped=Math.Max(1,(int)Math.Round(texture.Width*fill));
-            Main.spriteBatch.Draw(texture,new Rectangle((int)rect.X,(int)rect.Y,(int)(rect.Width*fill),(int)rect.Height),new Rectangle(0,0,cropped,texture.Height),color);
+            var g=Geometry(maximum,per,width,mana);var anchor=new Vector2(x-g.Left*g.Scale,y-g.Top*g.Scale);
+            var left=Texture("HorizontalBars","Panel_Left");var middle=Texture("HorizontalBars",mana?"MP_Panel_Middle":"HP_Panel_Middle");var right=Texture("HorizontalBars",mana?"MP_Panel_Right":"HP_Panel_Right");
+            // Native panels are one strip: advance by panel texture widths and
+            // overlap/lift the end ornament. Reserve its full negative-y extent
+            // above in Geometry, so it cannot cover the preceding value label.
+            DrawBarPart(left,anchor,Vector2.Zero,null,g.Scale);
+            for(int i=0;i<g.Count;i++)DrawBarPart(middle,anchor,new Vector2(left.Width+i*middle.Width,0),null,g.Scale);
+            DrawBarPart(right,anchor,new Vector2(left.Width+g.Count*middle.Width-16,mana?-6:-10),null,g.Scale);
+            // Match native FillBarByValues: drain from the left, retain filling
+            // next to the ornament, and assign fruit-gold to the final HP cells.
+            float missing=maximum>0?1-current/(float)maximum:1;
+            int fillStep=Texture("HorizontalBars",mana?"MP_Fill":"HP_Fill").Width;
+            for(int i=0;i<g.Count;i++) {
+                var fill=Texture("HorizontalBars",mana?"MP_Fill":i>=g.Count-fruit?"HP_Fill_Honey":"HP_Fill");
+                float segment=1f/g.Count,amount=1-Utils.GetLerpValue(segment*i,segment*(i+1),missing,true);
+                int crop=(int)(fill.Width*(1-amount));if(crop>=fill.Width)continue;
+                DrawBarPart(fill,anchor,new Vector2(6+i*fillStep+crop,6),new Rectangle(crop,0,fill.Width-crop,fill.Height),g.Scale);
+            }
         }
+        private static void DrawBarPart(Texture2D texture,Vector2 anchor,Vector2 offset,Rectangle? source,float scale)
+        {Main.spriteBatch.Draw(texture,anchor+offset*scale,source,Color.White,0,Vector2.Zero,scale,SpriteEffects.None,0);}
     }
 }

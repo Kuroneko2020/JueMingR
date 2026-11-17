@@ -28,6 +28,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionTeamChecks.cs'=@('native-CompanionNetworkCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNavigationChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNativeCreationChecks.cs'=@('native-CompanionVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionResourceBarChecks.cs'=@('native-CompanionResourceBarsVisual')
         'tests/NativeWorldTextProbe/NativeCompanionPetPreviewChecks.cs'=@('native-CompanionVisual','native-CompanionShowcaseVisual')
         'tests/NativeWorldTextProbe/NativeCompanionSessionChecks.cs'=@('native-CompanionSessionCpu','native-CompanionVisual')
         'tests/NativeWorldTextProbe/NativeCompanionChecks.cs'=@('native-CompanionCpu')
@@ -188,7 +189,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintReachAdmissionChecks.cs'=@('native-BlueprintNearQueueCpu')
         # This owner authenticates only actual Content consumers; CPU fixtures
         # keep their original argument and proof projection.
-        'scripts/workload/Workload.NativeContent.ps1'=@('native-CompanionVisual','native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','native-NpcReviewedParticle','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
+        'scripts/workload/Workload.NativeContent.ps1'=@('native-CompanionResourceBarsVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','native-NpcReviewedParticle','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
         'tests/Workload/Invoke-WorkloadContentChecks.ps1'=@('workload-Evidence')
         'tests/NativeWorldTextProbe/NativeMovementJumpChecks.cs'=@('native-MovementJumpCpu')
         'tests/NativeWorldTextProbe/NativeMovementJumpHandoffChecks.cs'=@('native-MovementJumpCpu')
@@ -636,6 +637,7 @@ function Get-WorkloadNativeScopes {
         'CompanionNetworkCpu'=@('companion-host','shared-host');
         'CompanionSessionCpu'=@('companion-host','shared-host','journey-host');
         'CompanionNavigationCpu'=@('companion-host','shared-host');
+        'CompanionResourceBarsVisual'=@('companion-host','shared-host');
         'CompanionShowcaseVisual'=@('companion-host','shared-host');
         'CompanionVisual'=@('companion-host','shared-host');
         'CompanionItemsCpu'=@('companion-host','items','shared-host');
