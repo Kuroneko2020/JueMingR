@@ -28,7 +28,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal CompanionBehaviorHost Behavior=new CompanionBehaviorHost();
             internal bool WaitingPassword,HasAim;internal Item AimWeapon;internal Vector2 AimOrigin,AimTarget,AimVelocity;
             internal bool Dirty,Faulted,WasUsing;
-            internal bool DeathObserved;
+            internal bool DeathObserved,PermanentDeathPending;
             internal readonly MinionRespawner Minions=new MinionRespawner();
             internal readonly Dictionary<int,WorldItem> PersonalItems=new Dictionary<int,WorldItem>();
             internal uint PersonalItemsStep=UInt32.MaxValue;
@@ -48,6 +48,7 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly Dictionary<Player,Actor> bodies=new Dictionary<Player,Actor>();
         private readonly Dictionary<int,Actor> slots=new Dictionary<int,Actor>();
         private readonly Dictionary<Guid,Player> previews=new Dictionary<Guid,Player>();
+        private readonly Dictionary<Guid,long> previewRevisions=new Dictionary<Guid,long>();
         private readonly Dictionary<Guid,string> states=new Dictionary<Guid,string>();
         private readonly HashSet<Guid> resetAfterRecall=new HashSet<Guid>();
         private readonly NpcPredictionSource prediction=new NpcPredictionSource();
@@ -73,11 +74,11 @@ namespace JueMingR.TerrariaHost.Companions
         internal Player GetBody(Guid id)
         {
             Actor a;if(actors.TryGetValue(id,out a))return a.Body;
-            Player p;if(previews.TryGetValue(id,out p))return p;var profile=Find(id);if(profile==null)return null;
-            try{p=profiles.LoadBody(profile);previews[id]=p;return p;}catch(Exception e){Feedback=e.Message;return null;}
+            Player p;var profile=Find(id);if(profile==null)return null;long revision;if(previews.TryGetValue(id,out p) && previewRevisions.TryGetValue(id,out revision) && revision==profile.Revision)return p;
+            try{p=profiles.LoadBody(profile);previews[id]=p;previewRevisions[id]=profile.Revision;return p;}catch(Exception e){Feedback=e.Message;return null;}
         }
-        internal string Status(Guid id){Actor a;actors.TryGetValue(id,out a);if(profiles.SaveFailed(id))return (a?.TerminalFailure==null?"":a.TerminalFailure+"；")+"保存失败，请重试";string state;return a!=null?a.Status:states.TryGetValue(id,out state)?state:"已收回";}
-        internal bool CanTransfer(Guid id){Actor a;return actors.TryGetValue(id,out a) && a.Ready && !a.Closing && a.Body.active && !a.Body.dead && ReferenceEquals(owner,Main.LocalPlayer) && ReferenceEquals(world,Main.ActiveWorldFileData);}
+        internal string Status(Guid id){Actor a;actors.TryGetValue(id,out a);if(profiles.SaveFailed(id))return (a?.TerminalFailure==null?"":a.TerminalFailure+"；")+"保存失败，请重试";string state;return a!=null?a.Status:states.TryGetValue(id,out state)?state:Find(id)?.PermanentlyDead==true?"已永久死亡":"已收回";}
+        internal bool CanTransfer(Guid id){Actor a;return actors.TryGetValue(id,out a) && a.Ready && !a.Closing && a.Body.active && !a.Body.dead && !a.Profile.PermanentlyDead && ReferenceEquals(owner,Main.LocalPlayer) && ReferenceEquals(world,Main.ActiveWorldFileData);}
         private CompanionProfile Find(Guid id){return Profiles.FirstOrDefault(p=>p.Id==id);}
         private bool Result(bool value,string text){Feedback=text;return value;}
         internal bool Create(string name)
@@ -89,6 +90,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(failed || Main.gameMenu || owner==null || !ReferenceEquals(owner,Main.LocalPlayer))return Result(false,"当前不能加入队友。");
             if(actors.ContainsKey(id))return Result(false,"该人物已加入或正在加入。");var profile=Find(id);if(profile==null)return Result(false,"人物不存在。");
+            if(profile.PermanentlyDead)return Result(false,"该人物已永久死亡；明确清空人物后可重新创建身体。");
             long reservation=0;
             try
             {
@@ -115,6 +117,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void Attach(Actor a,int slot)
         {
+            if(a.Profile.PermanentlyDead)throw new InvalidOperationException("已永久死亡的人物不能加入。");
             if(slot<0 || slot>=Main.maxPlayers || slot==Main.myPlayer || actors.Values.Any(x=>x!=a && x.Body.whoAmI==slot && x.Ready))throw new InvalidOperationException("服务器分配了冲突的玩家槽位。");
             a.Previous=Main.player[slot];a.Body.whoAmI=slot;a.Body.active=true;a.Body.ghost=false;Main.player[slot]=a.Body;
             a.NetworkSlotIds=NetworkSlots(a.Body);
@@ -131,8 +134,9 @@ namespace JueMingR.TerrariaHost.Companions
             a.Closing=true;a.Body.controlUseItem=false;a.Body.channel=false;
             try
             {
+                if(a.PermanentDeathPending){a.Profile=profiles.MarkPermanentDeath(a.Profile.Id,a.Generation);a.PermanentDeathPending=false;}
                 RetireProjectiles(a);profiles.EndPlay(a.Body);
-                a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);a.CloseCaptured=true;
+                a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);ItemCaptureSucceeded(a.Profile.Id);a.CloseCaptured=true;
                 a.Status=a.TerminalFailure??"正在保存并收回";
                 // Success here means the latest snapshot was accepted for
                 // closing/retry, not that the original connection succeeded.
@@ -151,6 +155,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void Detach(Actor a)
         {
+            CancelItemGestureForActor(a);
             if(ReferenceEquals(planningActor,a))planningActor=null;
             if(ReferenceEquals(aimSelected,a)){aimSelected=null;aimSelectionStep=UInt32.MaxValue;}
             a.Minions.Clear();
@@ -165,7 +170,7 @@ namespace JueMingR.TerrariaHost.Companions
         private void Release(Actor a,bool saved)
         {
             Detach(a);var p=a.Body;
-            profiles.Release(a.Profile,a.Generation);actors.Remove(a.Profile.Id);previews[a.Profile.Id]=p;states[a.Profile.Id]=a.TerminalFailure??(saved?"已收回":"加入失败");
+            profiles.Release(a.Profile,a.Generation);actors.Remove(a.Profile.Id);previews[a.Profile.Id]=p;previewRevisions[a.Profile.Id]=a.Profile.Revision;states[a.Profile.Id]=a.Profile.PermanentlyDead?"已永久死亡":a.TerminalFailure??(saved?"已收回":"加入失败");
             if(saved && resetAfterRecall.Remove(a.Profile.Id)){profiles.Reset(a.Profile.Id);previews.Remove(a.Profile.Id);Feedback="人物已清空，正在保存。";}
             if(actors.Count==0){prediction.EndWorld();CompanionThreatField.Reset();planningTurn=0;}
         }
@@ -175,8 +180,8 @@ namespace JueMingR.TerrariaHost.Companions
             try{profiles.Reset(id);previews.Remove(id);return Result(true,"人物已清空，正在保存。");}catch(Exception e){return Result(false,e.Message);}
         }
         internal bool RestoreBehavior(Guid id){return SetBehavior(id,new CompanionBehavior());}
-        internal bool SaveFailed(Guid id){Actor a;return profiles.SaveFailed(id) || actors.TryGetValue(id,out a) && a.Closing && !a.CloseCaptured;}
-        internal bool RetrySave(Guid id){try{Actor a;if(actors.TryGetValue(id,out a) && a.Closing && !a.CloseCaptured)return CloseActor(a,a.TerminalFailure);profiles.RetrySave(id);return Result(true,"正在重试保存。");}catch(Exception e){return Result(false,e.Message);}}
+        internal bool SaveFailed(Guid id){Actor a;return HasPendingItemCapture(id) || profiles.SaveFailed(id) || actors.TryGetValue(id,out a) && a.Closing && !a.CloseCaptured;}
+        internal bool RetrySave(Guid id){try{Actor a;if(actors.TryGetValue(id,out a) && a.Closing && !a.CloseCaptured)return CloseActor(a,a.TerminalFailure);if(HasPendingItemCapture(id))return RetryItemCapture(id);profiles.RetrySave(id);return Result(true,"正在重试保存。");}catch(Exception e){return Result(false,e.Message);}}
         internal bool SetBehavior(Guid id,CompanionBehavior behavior)
         {
             var p=Find(id);if(p==null)return false;try{var revised=profiles.SetBehavior(id,behavior);Actor a;if(actors.TryGetValue(id,out a))a.Profile=revised;return Result(true,"行为设置已更新。");}catch(Exception e){return Result(false,e.Message);}
@@ -195,10 +200,12 @@ namespace JueMingR.TerrariaHost.Companions
         internal void HumanAccepted(){if(ReferenceEquals(passwordConnection,Netplay.Connection)){acceptedPassword=candidatePassword;candidatePassword=null;}}
         public void OnSessionEnded()
         {
+            CancelItemGesture();
             foreach(var id in actors.Keys.ToArray())if(!actors[id].Closing)Recall(id);owner=null;world=null;password="";prediction.EndWorld();CompanionThreatField.Reset();steam.Dispose();ClearWorldSources();
         }
         public void Update(ulong updateTick)
         {
+            ValidateItemGesture();
             profiles.Pump();foreach(var closing in actors.Values.Where(a=>a.Closing && a.CloseCaptured).ToArray())if(profiles.IsSaved(closing.Profile.Id))Release(closing,true);if(!String.IsNullOrEmpty(profiles.Error))Feedback=profiles.Error;if(failed)return;
             steam.Pump();
             if(Main.gameMenu || owner==null || !ReferenceEquals(world,Main.ActiveWorldFileData) || !ReferenceEquals(owner,Main.LocalPlayer))return;
@@ -221,7 +228,7 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     if(a.Closing)continue;
                     if(a.Connection!=null){PumpConnection(a);if(a.Connection.Finished){CloseActor(a,a.Connection.Error??"连接已结束");continue;}}
-                    if(a.Ready && a.Dirty && !profiles.SaveFailed(a.Profile.Id) && Main.GameUpdateCount>=a.NextSave){a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);a.Dirty=false;a.NextSave=Main.GameUpdateCount+300;}
+                    if(a.Ready && a.Dirty && !profiles.SaveFailed(a.Profile.Id) && Main.GameUpdateCount>=a.NextSave){a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);ItemCaptureSucceeded(a.Profile.Id);a.Dirty=false;a.NextSave=Main.GameUpdateCount+300;}
                 }
                 catch(Exception e){CloseActor(a,e.Message);}
             }

@@ -15,7 +15,7 @@ function Get-WorkloadLeafChecks {
     # This asset initializer is also called by the narrow combat fixture.
     # Preserve its worker consumers when adding the explicit combat leaf;
     # the combat scope itself must not inherit the legacy-worker group.
-    $workerAssetConsumers=@('native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
+    $workerAssetConsumers=@('native-CompanionCreationCpu','native-CompanionItemsCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
     foreach($scope in (Get-WorkloadNativeScopes).GetEnumerator()){
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
@@ -23,9 +23,11 @@ function Get-WorkloadLeafChecks {
         # These leaves are called only by the companion CPU dispatcher. Shared
         # NativeChecks/Program/fixture inputs retain their existing propagation.
         'tests/Companions/CompanionCoreChecks.cs'=@('CompanionCoreChecks')
+        'tests/NativeWorldTextProbe/NativeCompanionItemGestureChecks.cs'=@('native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCreationChecks.cs'=@('native-CompanionCreationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionTileContextChecks.cs'=@('native-CompanionCpu')
-        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
         'tests/NativeWorldTextProbe/NativeCompanionCoreNetworkChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNpcPhysicsChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNpcStateChecks.cs'=@('native-CompanionCpu')
@@ -51,6 +53,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionPredictionChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionTransportChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionUiChecks.cs'=@('native-CompanionCpu','native-CompanionVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionUiV3Checks.cs'=@('native-CompanionVisual')
         'tests/JueMingR.ArchitectureTests/BlueprintHoikSceneChecks.cs'=@('BlueprintHoikSceneChecks')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikMixedChecks.cs'=@('native-BlueprintHoikCpu')
@@ -614,8 +617,9 @@ function Get-WorkloadLeafChecks {
         $leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu','native-AfkModeBackgroundCpu')
     }
     foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-FishingBackgroundRecoveryCpu','native-InventoryStackingCpu','native-AfkOuterBackground')}
-    $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CoinContinuationCpu','native-CoinConsumersCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CoinContinuationCpu','native-CoinConsumersCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
     $leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs'])+@('native-InventoryStackingCpu')
+    foreach($path in @("tests/NativeWorldTextProbe/NativeCombatAimFixture.cs")){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@("native-CompanionCreationCpu","native-CompanionItemsCpu")}
     return $leaves
 }
 function Get-WorkloadNativeScopes {
@@ -624,6 +628,8 @@ function Get-WorkloadNativeScopes {
     # in test-world-object-text. Impact/AimUi/Visual need matching real Content
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
+        'CompanionItemsCpu'=@('companion-host','items','shared-host');
+        'CompanionCreationCpu'=@('companion-host','shared-host');
         'CompanionCpu'=@('companion-host','combat-host','shared-host');
         'AfkModeBackgroundCpu'=@('afk-host','combat-host','tools-host','fishing-host','shared-host');
         'InventoryStackingCpu'=@('items','tools-host','fishing-host','shared-host');

@@ -7,6 +7,21 @@ function Get-WorkloadNativeContentFiles {
     param([string]$Scope)
     if($Scope -cnotin @(Get-WorkloadNativeContentScopes)){return @()}
     $files=@('Fonts/Mouse_Text.xnb','Fonts/Item_Stack.xnb','Fonts/Combat_Text.xnb','Fonts/Combat_Crit.xnb','Images/Item_8.xnb','Images/Inventory_Back.xnb','Images/MagicPixel.xnb')
+    if($Scope -ceq 'CompanionVisual'){
+        # Bind resources actually requested by the original player initializer,
+        # six resource sets and the finite native creation/profile fixture.
+        $files+=@('PixelShader.xnb','Images/Heart.xnb','Images/Heart2.xnb','Images/Mana.xnb')
+        $files+=@(3507,3509,3506 | ForEach-Object {'Images/Item_'+$_+'.xnb'})
+        foreach($hair in 1..228){$files+=@('Images/Player_Hair_'+$hair+'.xnb','Images/Player_HairAlt_'+$hair+'.xnb')}
+        $variants=@{
+            0=@(0..13)+@(15);1=@(4,6,8,11,12,13);2=@(4,6,8,11,12,13);3=@(4,6,8,11,12,13,14);
+            4=@(3..13);5=@(4,6,8,11,12,13);6=@(4,6,8,11,12,13);7=@(4,6,8,11,12,13,14);
+            8=@(4,6,8,11,12,13,14);9=@(4,6,8,11,12,13);10=@(0,2,3,5,7,9,10);11=@(3,5,7,9,10)
+        }
+        foreach($variant in $variants.Keys){foreach($piece in $variants[$variant]){$files+='Images/Player_'+$variant+'_'+$piece+'.xnb'}}
+        foreach($name in @('Heart_Left','Heart_Middle','Heart_Right','Heart_Right_Fancy','Heart_Fill','Heart_Fill_B','Heart_Single_Fancy','Star_A','Star_B','Star_C','Star_Single','Star_Fill')){$files+='Images/UI/PlayerResourceSets/FancyClassic/'+$name+'.xnb'}
+        foreach($name in @('HP_Fill','HP_Fill_Honey','MP_Fill','Panel_Left','HP_Panel_Middle','HP_Panel_Right','MP_Panel_Middle','MP_Panel_Right')){$files+='Images/UI/PlayerResourceSets/HorizontalBars/'+$name+'.xnb'}
+    }
     if($Scope -ceq 'NpcReviewedParticle'){$files+=@('Images/Projectile_228.xnb','Images/NPC_48.xnb')}
     if($Scope -ceq 'BlueprintInput'){
         # Host70 selects the first seventy distinct consumable wall identities

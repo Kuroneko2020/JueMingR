@@ -2,11 +2,26 @@ using System;
 using System.Collections.Generic;
 using Terraria;
 using Terraria.ID;
+using JueMingR.Platform.Companions;
 
 namespace JueMingR.TerrariaHost.Companions
 {
     internal sealed partial class HostCompanions
     {
+        internal static int NetworkSlot(CompanionInventoryArea area, int slot)
+        {
+            // The same native mapping serves either identity. In particular,
+            // owner equipment/misc is not an inventory packet with its index.
+            switch (area)
+            {
+                case CompanionInventoryArea.Inventory: return PlayerItemSlotID.Inventory0 + slot;
+                case CompanionInventoryArea.Armor: return PlayerItemSlotID.Armor0 + slot;
+                case CompanionInventoryArea.Dye: return PlayerItemSlotID.Dye0 + slot;
+                case CompanionInventoryArea.Misc: return PlayerItemSlotID.Misc0 + slot;
+                case CompanionInventoryArea.MiscDye: return PlayerItemSlotID.MiscDye0 + slot;
+                default: throw new ArgumentOutOfRangeException(nameof(area));
+            }
+        }
         private static int[] NetworkSlots(Player body)
         {
             // 1.4.5.8 reserves 200 protocol IDs for each bank, while native

@@ -132,7 +132,7 @@ namespace JueMingR.Features.Companions
         public bool TryReserve(Guid id, out long generation)
         {
             generation = 0; Entry entry;
-            if (!entries.TryGetValue(id, out entry) || entry.Profile.OwnerId != OwnerId || entry.SavedRevision == 0 || entry.Activation != 0) return false;
+            if (!entries.TryGetValue(id, out entry) || entry.Profile.OwnerId != OwnerId || entry.Profile.PermanentlyDead || entry.SavedRevision == 0 || entry.Activation != 0) return false;
             entry.Activation = generation = checked(++nextActivation); return true;
         }
         public bool OwnsActivation(Guid id, long generation)

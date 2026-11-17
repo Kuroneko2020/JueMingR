@@ -1,5 +1,6 @@
 using System;
 using JueMingR.Platform.Companions;
+using JueMingR.TerrariaHost.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
 
@@ -9,18 +10,6 @@ namespace JueMingR.TerrariaHost.F5
     {
         private float contentY;
         private bool bodyOffsetClamped;
-        private void BuildCreate(float row)
-        {
-            contentY = bodyView.Y - bodyOffset;
-            BodyText("创建队友", row);
-            BodyText("人物名字", row);
-            field = BodyRect(row);
-            Button("name", editor == null ? "点击输入名字" : "", field, () => BeginEdit("name", ""));
-            contentY += row + 8;
-            BodyButton("save-create", "创建", row, () => RequestFinish());
-            BodyButton("cancel-create", "取消", row, () => { CancelEdit(); creating = false; Invalidate(); });
-            FinishBody();
-        }
         private CompanionProfile CurrentProfile()
         {
             var profiles = host.Profiles;
@@ -31,92 +20,129 @@ namespace JueMingR.TerrariaHost.F5
         {
             field = default(F5Rect); contentY = bodyView.Y - bodyOffset;
             var profile = CurrentProfile();
+            if (page == 0)
+            {
+                BuildActor(Main.LocalPlayer, true, ownerView, ownerOffset, row);
+                BuildActor(profile == null ? null : host.GetBody(selected), false, companionView, bodyOffset, row);
+                return;
+            }
             if (profile == null) { BodyText("点击左下角＋创建队友", row); FinishBody(); return; }
-            var body = host.GetBody(selected);
             BodyText(profile.Name + " · " + host.Status(selected), row);
             if (host.SaveFailed(selected)) BodyButton("retry-save", "保存失败 · 重试保存", row, () => Command(() => host.RetrySave(selected)));
-            if (body != null) BodyText("生命 " + body.statLife + "/" + body.statLifeMax2 + "　魔力 " + body.statMana + "/" + body.statManaMax2, row);
-            bool online = host.CanTransfer(selected);
             Pair("join", "加入当前世界", () => Command(() => host.Join(selected)), false,
                 "recall", "收回", () => Command(() => host.Recall(selected)), false, row);
-            if (page == 0) BuildInventory(body, online, row);
-            else BuildConfiguration(profile, row);
-            FinishBody();
+            BuildConfiguration(profile, row); FinishBody();
         }
-        private void BuildInventory(Player body, bool online, float row)
+        private void BuildActor(Player body, bool owner, F5Rect view, int offset, float row)
         {
-            if (!online) BodyText(host.Status(selected) == "已收回" ? "已收回，加入后可转移" : "当前不可转移：" + host.Status(selected), row);
-            if (sourceSlot >= 0)
+            // The same final rectangles determine visible cells, clipping and hit
+            // targets. Scrolling projects native slot identities; it never renumbers them.
+            float y = view.Y - offset, x = view.X + 8, width = view.Width - 16;
+            string name = owner ? Main.LocalPlayer?.name ?? "我的人物" : CurrentProfile()?.Name ?? "AI 队友";
+            ActorText(name, new F5Rect(x,y,width - (owner ? 0 : 74),row), view);
+            if (!owner && CurrentProfile() != null)
             {
-                Item source = SourceItem(body);
-                if (source == null || source.IsAir || Identity(source) != sourceIdentity)
-                { sourceSlot = -1; sourceIdentity = null; Invalidate(); }
-                else
-                {
-                    BodyText((sourceOwner ? "给队友：" : "取回：") + source.Name + " ×" + source.stack, row);
-                    Pair("transfer-one:" + sourceIdentity, "转移 1 个", () => Transfer(false), false,
-                        "transfer-stack:" + sourceIdentity, "转移整组", () => Transfer(true), false, row, online);
-                    if (sourceArea != CompanionInventoryArea.Inventory && !sourceOwner)
-                        BodyButton("unequip:" + sourceIdentity, "卸下", row, () => Command(() => host.Unequip(selected, sourceArea, sourceSlot)), online);
-                    else if (sourceArea == CompanionInventoryArea.Inventory)
-                    {
-                        BodyButton("equip:" + sourceIdentity, "装备", row, () => Command(() => host.Equip(selected, sourceOwner, sourceSlot)), online);
-                        if (!sourceOwner && sourceSlot < 50) BodyButton("weapon:" + sourceIdentity, "设为武器", row,
-                            () => Command(() => host.SelectWeapon(selected, sourceSlot)), online);
-                    }
-                }
+                bool joined = host.CanTransfer(selected);
+                var r = new F5Rect(view.Right - 76,y,68,row);
+                if (ActorVisible(r,view)) Button(joined ? "recall" : "join", joined ? "收回" : "加入",r,
+                    () => Command(() => joined ? host.Recall(selected) : host.Join(selected)));
             }
-            BodyText("队友背包", row);
-            if (body != null) Slots(body.inventory, false, CompanionInventoryArea.Inventory, 58);
-            BodyText("装备", row);
-            if (body != null) Slots(body.armor, false, CompanionInventoryArea.Armor, body.armor.Length);
-            BodyText("装备染料", row);
-            if (body != null) Slots(body.dye, false, CompanionInventoryArea.Dye, body.dye.Length);
-            BodyText("宠物、坐骑与钩爪", row);
-            if (body != null) Slots(body.miscEquips, false, CompanionInventoryArea.Misc, body.miscEquips.Length);
-            BodyText("特殊装备染料", row);
-            if (body != null) Slots(body.miscDyes, false, CompanionInventoryArea.MiscDye, body.miscDyes.Length);
-            BodyText("我的背包", row);
-            if (Main.LocalPlayer != null) Slots(Main.LocalPlayer.inventory, true, CompanionInventoryArea.Inventory, 58);
-            BodyText("点击物品后选择转移数量；装备可选中后卸下。", row);
-        }
-        private void Slots(Item[] items, bool owner, CompanionInventoryArea area, int count)
-        {
-            count = Math.Min(count, items.Length);
-            int columns = Math.Max(1, (int)(bodyView.Width / 44));
-            float size = Math.Min(44, bodyView.Width / columns);
-            for (int i = 0; i < count; i++)
+            y += row + 4;
+            float heroHeight=Math.Max(150,body==null?150:CompanionResourceDisplay.MeasureHeight(body,Math.Max(20,width-98))+8);
+            var hero = new F5Rect(x,y,width,heroHeight);
+            if (owner) ownerHero = hero; else companionHero = hero;
+            y += heroHeight+4;
+            if (!owner && !host.CanTransfer(selected)) { ActorText(host.Status(selected),new F5Rect(x,y,width,26),view); y += 28; }
+            var tabs = new[] { "装备", "时装", "特殊" }; int gear = owner ? ownerGearPage : companionGearPage;
+            float tw = Math.Min(86,(width - 8) / 3);
+            for (int t=0;t<3;t++)
             {
-                int slot = i; Item item = items[i];
-                var rect = new F5Rect(bodyView.X + i % columns * size, contentY + i / columns * size, size - 3, size - 3);
-                if (!FullyVisible(rect)) continue;
-                string identity = Identity(item);
-                var c = Button("slot:" + owner + ":" + area + ":" + slot + ":" + identity, "", rect, () =>
-                {
-                    sourceOwner = owner; sourceArea = area; sourceSlot = slot; sourceIdentity = identity; Invalidate();
-                }, item != null && !item.IsAir, sourceSlot == slot && sourceOwner == owner && sourceArea == area);
-                c.Element = null;
-                c.ItemType = item?.type ?? 0; c.Stack = item?.stack ?? 0;
-                c.Hint = item == null || item.IsAir ? null : item.Name + " ×" + item.stack;
-                icons.AddVisible(c.ItemType);
+                int target=t; var r = new F5Rect(x+t*(tw+4),y,tw,28);
+                if (ActorVisible(r,view)) Button("gear:"+owner+":"+t,tabs[t],r,() => {
+                    host.CancelItemGesture(); if(owner) ownerGearPage=target; else companionGearPage=target; Invalidate();
+                },true,gear==t);
             }
-            contentY += (float)Math.Ceiling((double)count / columns) * size + 8;
+            y += 32;
+            if (body != null)
+            {
+                if (gear == 0) { ActorSlots(body,owner,CompanionInventoryArea.Armor,0,Math.Min(10,body.armor.Length),ref y,view); ActorSlots(body,owner,CompanionInventoryArea.Dye,0,body.dye.Length,ref y,view); }
+                else if (gear == 1) { ActorSlots(body,owner,CompanionInventoryArea.Armor,10,Math.Max(0,body.armor.Length-10),ref y,view); ActorSlots(body,owner,CompanionInventoryArea.Dye,0,body.dye.Length,ref y,view); }
+                else { ActorSlots(body,owner,CompanionInventoryArea.Misc,0,body.miscEquips.Length,ref y,view); ActorSlots(body,owner,CompanionInventoryArea.MiscDye,0,body.miscDyes.Length,ref y,view); }
+            }
+            ActorText("背包",new F5Rect(x,y,width,26),view); y += 28;
+            if (body != null) ActorSlots(body,owner,CompanionInventoryArea.Inventory,0,50,ref y,view);
+            ActorText("钱币 / 弹药",new F5Rect(x,y,width,26),view); y += 28;
+            if (body != null) ActorSlots(body,owner,CompanionInventoryArea.Inventory,50,8,ref y,view);
+            if (!owner && body != null)
+            {
+                string weaponName = body.selectedItem >= 0 && body.selectedItem < 50 ? body.inventory[body.selectedItem]?.Name : "";
+                ActorText("武器："+weaponName,new F5Rect(x,y,width,28),view); y+=30;
+            }
+            int maximum=Math.Max(0,(int)Math.Ceiling(y + offset + 8 - view.Bottom));
+            if (owner) { ownerMaximum=maximum; if(ownerOffset>maximum) { ownerOffset=maximum; bodyOffsetClamped=true; Invalidate(); } }
+            else { bodyMaximum=maximum; if(bodyOffset>maximum) { bodyOffset=maximum; bodyOffsetClamped=true; Invalidate(); } }
         }
-        private Item SourceItem(Player body)
+        private void ActorSlots(Player body, bool owner, CompanionInventoryArea area, int start, int count, ref float y, F5Rect view)
         {
-            var player = sourceOwner ? Main.LocalPlayer : body;
-            if (player == null || sourceSlot < 0) return null;
-            var items = Companions.CompanionResources.Items(player, sourceArea);
-            return sourceSlot < items.Length ? items[sourceSlot] : null;
+            // Ten native inventory columns remain readable; a narrow viewport
+            // shows fewer columns using the same layout, with vertical scrolling.
+            int columns=Math.Max(1,Math.Min(10,(int)((view.Width-16)/40)));
+            float cell=Math.Min(44,(view.Width-16)/columns);
+            for(int i=0;i<count;i++)
+            {
+                int slot=start+i;
+                var rect=new F5Rect(view.X+8+i%columns*cell,y+i/columns*cell,cell-3,cell-3);
+                if(!ActorVisible(rect,view)) continue;
+                Item item=host.ItemPreview(selected,owner,area,slot);
+                var c=Button("slot:"+owner+":"+area+":"+slot,"",rect,null,true,
+                    !owner && area==CompanionInventoryArea.Inventory && slot==body.selectedItem);
+                bool locked=(area==CompanionInventoryArea.Armor||area==CompanionInventoryArea.Dye)&&!body.IsItemSlotUnlockedAndUsable(slot);
+                c.Enabled=(owner||host.CanTransfer(selected))&&!locked;
+                c.IsSlot=true; c.Owner=owner; c.Area=area; c.Slot=slot; c.Element=null;
+                c.ItemType=item?.type??0; c.Stack=item?.stack??0;
+                c.Hint=locked?"此饰品槽尚未解锁。":!owner&&!host.CanTransfer(selected)?"未加入，只能查看。":SlotHint(area,slot,item,owner); icons.AddVisible(c.ItemType);
+                if(c.ItemType==0) c.Placeholder=area==CompanionInventoryArea.Dye||area==CompanionInventoryArea.MiscDye?"染":area==CompanionInventoryArea.Misc?new[]{"宠","光","车","坐","钩"}[slot]:area==CompanionInventoryArea.Armor?(slot%10==0?"头":slot%10==1?"衣":slot%10==2?"裤":"饰"):area==CompanionInventoryArea.Inventory&&slot>=50?(slot<54?"币":"弹"):null;
+            }
+            y+=(float)Math.Ceiling((double)count/columns)*cell+4;
         }
-        private static string Identity(Item item)
-        { return item == null || item.IsAir ? "empty" : item.type + ":" + item.prefix + ":" + item.stack; }
-        private void Transfer(bool whole)
+        private static string SlotHint(CompanionInventoryArea area,int slot,Item item,bool owner)
         {
-            // The release key contains the observed source identity; the Host
-            // additionally arbitrates current use/consumption on the game thread.
-            if (sourceSlot < 0) return;
-            Command(() => host.Transfer(selected, sourceOwner, sourceArea, sourceSlot, whole));
+            string text=item==null||item.IsAir ? area==CompanionInventoryArea.Dye||area==CompanionInventoryArea.MiscDye ? "染料" : "空格" : item.Name+" ×"+item.stack;
+            if (!owner && area==CompanionInventoryArea.Inventory && slot<50 && item!=null && !item.IsAir) text+="\nAlt＋左键设为武器";
+            return text;
+        }
+        private static bool ActorVisible(F5Rect rect,F5Rect view) { return rect.Y>=view.Y && rect.Bottom<=view.Bottom && rect.X>=view.X && rect.Right<=view.Right; }
+        private void ActorText(string text,F5Rect rect,F5Rect view) { if(ActorVisible(rect,view)) Text(text,rect,.65f); }
+        private void ProcessItemInput(Control hit, Microsoft.Xna.Framework.Input.KeyboardState keys, bool left,bool right,bool wasDragging)
+        {
+            if(creating||page!=0||editor!=null||wasDragging) { host.EndItemRepeat(); rightSlot=null; return; }
+            if(hit==null||!hit.IsSlot) { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; return; }
+            if(left&&!previousLeft)
+            {
+                armedKey=null;
+                if((keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.LeftAlt)||keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.RightAlt)) && !hit.Owner && hit.Area==CompanionInventoryArea.Inventory && hit.Slot<50 && !host.HasItemGesture)
+                    Command(()=>host.SelectWeapon(selected,hit.Slot));
+                else { bool shift=keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.LeftShift)||keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.RightShift);
+                    host.ItemGesture(selected,hit.Owner,hit.Area,hit.Slot,shift?CompanionItemGesture.Shift:CompanionItemGesture.Left); Invalidate(); }
+            }
+            if(right)
+            {
+                bool fresh=!previousRight;
+                if(fresh) { host.EndItemRepeat(); rightSlot=hit.Key; rightRepeat=0; }
+                if(rightSlot!=null&&rightSlot!=hit.Key) { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; }
+                if(rightSlot==hit.Key && (fresh||++rightRepeat>=18 && (rightRepeat-18)%6==0))
+                { host.ItemGesture(selected,hit.Owner,hit.Area,hit.Slot,CompanionItemGesture.Right); Invalidate(); }
+            }
+            else { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; }
+        }
+        private void DrawHero(F5Rect view,F5Rect hero,CompanionPreview preview,Player source)
+        {
+            if(hero.Bottom<=view.Y||hero.Y>=view.Bottom) return;
+            renderer.Pass(matrix,view,()=> {
+                var portrait=new F5Rect(hero.X,hero.Y,90,hero.Height);
+                renderer.Panel(portrait); preview.Draw(portraits,portrait,matrix);
+                if(source!=null) resourceDisplay.Draw(renderer,source,new F5Rect(hero.X+98,hero.Y+4,Math.Max(20,hero.Width-98),hero.Height-8));
+            });
         }
         private void BuildConfiguration(CompanionProfile profile, float row)
         {
@@ -148,7 +174,7 @@ namespace JueMingR.TerrariaHost.F5
             else
             {
                 BodyText("将清空物品、装备、成长和 AI 设置。", row);
-                BodyText("保留名字、外观和归属。", row);
+                BodyText("保留名字、外观、难度和归属。", row);
                 Pair("confirm-reset", "确认重置", () => { if (host.Reset(selected)) confirmingReset = false; notice = null; Invalidate(); }, false,
                     "cancel-reset", "取消", () => { confirmingReset = false; Invalidate(); }, false, row);
             }

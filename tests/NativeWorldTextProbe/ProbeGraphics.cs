@@ -61,6 +61,29 @@ namespace NativeWorldTextProbe
             previousAssets=Terraria.Main.Assets;previousScreenShader=Terraria.Main.ScreenShaderRef;
             Terraria.Main.Assets=screenEffectsRepository;
         }
+        internal void LoadCompanionAssets()
+        {
+            EnsureNativeAssets();
+            Terraria.Main.PixelShaderRef=screenEffectsRepository.Request<Effect>("PixelShader",AssetRequestMode.ImmediateLoad);
+            Terraria.Main.spriteBuffer=new Terraria.DataStructures.SpriteDrawBuffer(GraphicsDevice);
+            Terraria.Initializers.PlayerDataInitializer.Load();
+            for(int variant=0;variant<Terraria.ID.PlayerVariantID.Count;variant++)
+                for(int piece=0;piece<Terraria.ID.PlayerTextureID.Count;piece++)
+                { var asset=Terraria.GameContent.TextureAssets.Players[variant,piece]; if(asset!=null && asset!=Asset<Texture2D>.Empty) screenEffectsRepository.Request<Texture2D>(asset.Name,AssetRequestMode.ImmediateLoad); }
+            for(int i=0;i<Terraria.GameContent.TextureAssets.PlayerHair.Length;i++)
+            {
+                Terraria.GameContent.TextureAssets.PlayerHair[i]=screenEffectsRepository.Request<Texture2D>("Images/Player_Hair_"+(i+1),AssetRequestMode.ImmediateLoad);
+                Terraria.GameContent.TextureAssets.PlayerHairAlt[i]=screenEffectsRepository.Request<Texture2D>("Images/Player_HairAlt_"+(i+1),AssetRequestMode.ImmediateLoad);
+            }
+            LoadTexture("Heart","Images/Heart"); LoadTexture("Heart2","Images/Heart2"); LoadTexture("Mana","Images/Mana");
+            // Native render paths use these tables even for an empty armor set.
+            foreach(var pair in new[]{new[]{"ArmorHead","Armor_Head_"},new[]{"ArmorBody","Armor_Body_"},new[]{"ArmorArm","Armor_Arm_"},new[]{"ArmorLeg","Armor_Legs_"},new[]{"ArmorBodyComposite","Armor/Armor_"}})
+            {
+                var field=typeof(Terraria.GameContent.TextureAssets).GetField(pair[0]); var values=(Asset<Texture2D>[])field.GetValue(null);
+                for(int i=0;i<values.Length;i++) if(File.Exists(Path.Combine(contentDirectory,"Images",pair[1]+i+".xnb"))) values[i]=screenEffectsRepository.Request<Texture2D>("Images/"+pair[1]+i,AssetRequestMode.DoNotLoad);
+            }
+            Terraria.Main.ResourceSetsManager.LoadContent(AssetRequestMode.ImmediateLoad);
+        }
         internal void LoadMoonDeathAssets()
         {
             // AI77's death explosion is a real visual outlet. Keep its native

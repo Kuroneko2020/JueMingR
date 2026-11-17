@@ -19,7 +19,7 @@ namespace JueMingR.ArchitectureTests
             string parent = Path.GetFullPath(Path.GetTempPath());
             string root = Path.GetFullPath(Path.Combine(parent, "JueMingR-companion-checks-" + Guid.NewGuid().ToString("N")));
             Directory.CreateDirectory(root);
-            try { ArchiveRoundTrip(root); FailedCreation(root); CoalescedReset(root); CorruptIsolation(root); MenuMigration(root); ContinuousJump(); RejectedTakeoff(); }
+            try { ArchiveRoundTrip(root); FailedCreation(root); CoalescedReset(root); CorruptIsolation(root); MenuMigration(root); TerminalArchive(root); LegacyArchive(root); ContinuousJump(); RejectedTakeoff(); }
             catch (Exception exception) { failures.Add("companion core: " + exception); }
             finally
             {
@@ -52,6 +52,53 @@ namespace JueMingR.ArchitectureTests
                 Require(local.OwnerId == owner && cloud.OwnerId == owner && local.Profiles.Count == 1 && cloud.Profiles.Count == 1, "explicit native-file migration preserves one owner and profile");
                 Require(local.Profiles[0].Id == id && local.Profiles[0].NativeData.SequenceEqual(new byte[] { 150 }) && !local.Profiles[0].Behavior.Follow, "new archive instance loads the one latest resource revision with matching preferences");
                 Require(archive.LoadOwner("different-real-character-file").Profiles.Count == 0, "a different file cannot claim companions by display name");
+            }
+        }
+        private static void LegacyArchive(string root)
+        {
+            string game=Path.Combine(root,"v1");Guid owner,id=Guid.NewGuid();
+            using(var archive=new FileCompanionArchive(game)){owner=archive.LoadOwner("legacy").OwnerId;}
+            string folder=Path.Combine(game,"JueMingRData","companions","characters",owner.ToString("N"));Directory.CreateDirectory(folder);
+            string path=Path.Combine(folder,id.ToString("N")+".bin");
+            using(var stream=new MemoryStream())using(var writer=new BinaryWriter(stream,new System.Text.UTF8Encoding(false,true)))
+            {
+                // Independent v1 fixture: identity/settings/native length+bytes,
+                // with no terminal marker, followed by the historical digest.
+                writer.Write("JueMingR.Companion");writer.Write(1);writer.Write(id.ToByteArray());writer.Write(owner.ToByteArray());
+                writer.Write("旧人物");writer.Write(1L);writer.Write(1L);writer.Write(true);writer.Write(true);writer.Write(false);writer.Write(true);
+                writer.Write(2);writer.Write(new byte[]{44,55});writer.Flush();
+                using(var sha=System.Security.Cryptography.SHA256.Create())writer.Write(sha.ComputeHash(stream.ToArray()));writer.Flush();File.WriteAllBytes(path,stream.ToArray());
+            }
+            using(var archive=new FileCompanionArchive(game))
+            {
+                var old=archive.LoadOwner("legacy").Profiles.Single();Require(!old.PermanentlyDead && old.NativeData.SequenceEqual(new byte[]{44,55}),"v1 archive preserves existing native bytes and reads as nonterminal");
+                archive.Save(old.Revise(old.NativeData));
+            }
+            using(var archive=new FileCompanionArchive(game))Require(!archive.LoadOwner("legacy").Profiles.Single().PermanentlyDead,"normal next revision upgrades v1 without rewriting its resource semantics");
+        }
+        private static void TerminalArchive(string root)
+        {
+            string game = Path.Combine(root,"terminal"); Guid id = Guid.NewGuid();
+            using (var archive = new FileCompanionArchive(game))
+            using (var manager = new CompanionProfileManager(archive))
+            {
+                manager.SetOwner("creator"); Wait(manager,()=>manager.Ready);
+                var profile = new CompanionProfile(id,manager.OwnerId,"硬核终局",1,1,new CompanionBehavior(),new byte[]{2});
+                manager.Add(profile); Wait(manager,()=>manager.IsSaved(id)); long generation;
+                Require(manager.TryReserve(id,out generation),"living hardcore archive can activate");
+                profile=profile.Revise(new byte[]{0},permanentlyDead:true); manager.Update(profile); manager.Release(id,generation);
+                Require(!manager.TryReserve(id,out generation),"terminal marker immediately blocks activation before disk completion");
+                Wait(manager,()=>manager.IsSaved(id));
+            }
+            using(var archive = new FileCompanionArchive(game))
+            {
+                var profile=archive.LoadOwner("creator").Profiles.Single();
+                Require(profile.PermanentlyDead && profile.NativeData[0]==0,"terminal marker and final resources survive a fresh archive reader");
+                var behavior=profile.Revise(profile.NativeData,new CompanionBehavior());
+                Require(behavior.PermanentlyDead,"behavior restoration cannot revive terminal character");
+                var reset=behavior.Revise(new byte[]{100},reset:true);
+                Require(!reset.PermanentlyDead && reset.DataEpoch==profile.DataEpoch+1,"only explicit reset creates a fresh lifecycle epoch");
+                archive.Save(reset);
             }
         }
         private static void FailedCreation(string root)

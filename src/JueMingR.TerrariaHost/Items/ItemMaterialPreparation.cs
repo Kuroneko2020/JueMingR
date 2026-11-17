@@ -371,6 +371,15 @@ namespace JueMingR.TerrariaHost.Items
             internal int[] Slots, Types, Stacks;
             internal bool[] Favorites;
         }
+        internal void AfterManualReplacement(Item before, Item after, bool mainInventory)
+        {
+            if (!OnGameThread || NativeMutation || !mainInventory || guardPlayer == null ||
+                before == null || ReferenceEquals(before, after)) return;
+            // The panel commits preallocated replacements, unlike ItemSlot's
+            // reference swap. Only an actual changed source loses its abandoned
+            // return duty; cloning an unrelated slot is not manual acceptance.
+            abandonedDisplaced.Remove(before);
+        }
         internal ManualSortState ManualSortItems()
         {
             if (abandonedDisplaced.Count == 0 || NativeMutation || guardInventory == null) return null;

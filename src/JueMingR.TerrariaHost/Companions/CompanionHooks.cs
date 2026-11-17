@@ -42,6 +42,7 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player),"UpdateLuck",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Terraria.DataStructures.MinionRespawner),"CollectMinionsFor",nameof(CollectMinions));
             Patch(typeof(Player),"KillMe",nameof(DeathBefore),finalizer:nameof(DeathFinal));
+            Patch(typeof(Player),"KillMeForGood",nameof(PermanentDeath));
             Patch(typeof(Player),"Spawn",transpiler:nameof(SpawnLocals));
             Patch(typeof(Player),"PickupItem",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Player),"GrabItems",nameof(UseBefore),finalizer:nameof(ScopeFinal));
@@ -204,6 +205,11 @@ namespace JueMingR.TerrariaHost.Companions
             return code;
         }
         private static Exception ScopeFinal(Exception __exception,Scope __state){__state?.Dispose();return __exception;}
+        // KillMeForGood otherwise deletes Main.playerPathName and clears the human
+        // ActivePlayerFileData even inside an AI identity scope. Match the exact
+        // owned body, leave native drops/penalty intact, and retire its own archive.
+        private static bool PermanentDeath(Player __instance)
+        {var a=host?.Owned(__instance);if(a==null)return true;a.PermanentDeathPending=true;return false;}
         private static void DeathBefore(Player __instance,ref Scope __state){var a=host?.Owned(__instance);if(a!=null && a.Ready && !a.Closing)__state=Enter(a,a.Aim);}
         private static bool CollectMinions(Terraria.DataStructures.MinionRespawner __instance,Player player)
         {

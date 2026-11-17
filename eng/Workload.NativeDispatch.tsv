@@ -411,3 +411,5 @@ leaf	InventoryStackingCpu	inventory-stacking
 leaf	FishingBackgroundRecoveryCpu	fishing-background-recovery
 leaf	AfkOuterBackground	afk-outer-background
 leaf	CoinConsumersCpu	coin-consumers
+leaf	CompanionCreationCpu	companions-creation
+leaf	CompanionItemsCpu	companions-items

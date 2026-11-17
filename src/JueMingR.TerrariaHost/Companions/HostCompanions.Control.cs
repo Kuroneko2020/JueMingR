@@ -116,6 +116,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal void AfterBody(Actor a)
         {
+            if(a.Profile.PermanentlyDead || a.PermanentDeathPending)return;
             a.Behavior.ObserveCapabilities(a.Body);
             // Native skip sets the timer to one. Do not reset the zero reached
             // by the next native UpdateDead, or a legally skipped death never ends.
@@ -130,7 +131,15 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal void ObserveDeath(Actor a)
         {
+            if(a.Closing)return;
+            if(a.PermanentDeathPending)
+            {
+                // Only the actual native terminal exit sets this marker. The
+                // surviveHardcoreDeath life-loss exception never reaches it.
+                CancelItemGestureForActor(a);CloseActor(a,"已永久死亡");return;
+            }
             if(!a.Body.dead || a.DeathObserved)return;a.DeathObserved=true;
+            CancelItemGestureForActor(a);
             a.Target=null;a.Body.controlUseItem=false;a.Body.channel=false;a.Status="等待复活";
             RetireProjectiles(a);
             a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);

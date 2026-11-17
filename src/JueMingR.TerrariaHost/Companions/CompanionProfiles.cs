@@ -51,13 +51,17 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool OwnsActivation(Guid id, long generation) { return manager.OwnsActivation(id, generation); }
 
         internal CompanionProfile Create(string name, bool journey)
+        { return CreateDraft(CompanionCreation.Draft(name, (byte)(journey ? 3 : 0))); }
+
+        internal CompanionProfile CreateDraft(Player draft)
         {
+            CompanionCreation.Validate(draft);
+            string name = draft.name.Trim();
             if (!Ready) throw new InvalidOperationException("队友档案尚未就绪。");
-            name = (name ?? "").Trim();
-            if (name.Length == 0 || name.Length > Player.nameLen) throw new InvalidOperationException("请输入 1 至 20 个字符的人物名字。");
             var existing = manager.FindName(name);
             if (existing != null) throw new InvalidOperationException("已有此人物，请在左侧选择。");
-            Player body = NewCharacter(name, journey);
+            Player body = NewCharacter(name, draft.difficulty);
+            CompanionCreation.CopyAppearance(draft, body);
             var profile = new CompanionProfile(Guid.NewGuid(), OwnerId, name, 1, 1, new CompanionBehavior(), Capture(body));
             manager.Add(profile); return profile;
         }
@@ -78,7 +82,10 @@ namespace JueMingR.TerrariaHost.Companions
                 if (stream.Position != stream.Length) throw new InvalidDataException("队友人物数据含未读取内容。");
             }
             if (!String.Equals(body.name, profile.Name, StringComparison.Ordinal)) throw new InvalidDataException("队友人物名称与档案不符。");
-            files.Add(body, file); body.PlayerFrame(); return body;
+            // Loading an offline archive is data restoration, not a world frame.
+            // Native PlayerFrame can emit particles and advance counters; UI
+            // prepares its own display copy, while Join uses the real Spawn.
+            files.Add(body, file); return body;
         }
         internal void BeginPlay(Player body) { File(body).StartPlayTimer(); }
         internal void EndPlay(Player body) { File(body).PausePlayTimer(); }
@@ -87,6 +94,16 @@ namespace JueMingR.TerrariaHost.Companions
             var current = manager.Find(id);
             if (current == null || !manager.OwnsActivation(id, activation)) throw new InvalidOperationException("队友实例已失效，未保存旧身体。");
             var revised = current.Revise(Capture(body)); manager.Update(revised); return revised;
+        }
+        internal CompanionProfile MarkPermanentDeath(Guid id, long activation)
+        {
+            var current = manager.Find(id);
+            if (current == null || !manager.OwnsActivation(id, activation)) throw new InvalidOperationException("队友实例已失效。");
+            // Publish terminal identity before attempting native capture. If capture
+            // fails, the existing close retry retains the one final body; old
+            // bytes can never be joined as a living character in the meantime.
+            if (current.PermanentlyDead) return current;
+            var revised = current.Revise(current.NativeData, permanentlyDead: true); manager.Update(revised); return revised;
         }
         internal CompanionProfile SetBehavior(Guid id, CompanionBehavior behavior)
         {
@@ -98,7 +115,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var current = manager.Find(id);
             if (current == null) throw new InvalidOperationException("未找到自己的队友。");
-            Player previous = LoadBody(current), body = NewCharacter(current.Name, previous.difficulty == 3);
+            Player previous = LoadBody(current), body = NewCharacter(current.Name, previous.difficulty);
             body.hair = previous.hair; body.hairDye = previous.hairDye; body.skinVariant = previous.skinVariant;
             body.hairColor = previous.hairColor; body.skinColor = previous.skinColor; body.eyeColor = previous.eyeColor;
             body.shirtColor = previous.shirtColor; body.underShirtColor = previous.underShirtColor;
@@ -121,9 +138,10 @@ namespace JueMingR.TerrariaHost.Companions
                 writer.Flush(); return stream.ToArray();
             }
         }
-        private static Player NewCharacter(string name, bool journey)
+        private static Player NewCharacter(string name, byte difficulty)
         {
-            var body = new Player { whoAmI = 255, name = name, difficulty = (byte)(journey ? 3 : 0), statLife = 100, statLifeMax = 100, statMana = 20, statManaMax = 20 };
+            bool journey = difficulty == 3;
+            var body = new Player { whoAmI = 255, name = name, difficulty = difficulty, statLife = 100, statLifeMax = 100, statMana = 20, statManaMax = 20 };
             body.savedPerPlayerFieldsThatArentInThePlayerClass = new Player.SavedPlayerDataWithAnnoyingRules();
             // UICharacterCreation's 1.4.5.8 defaults, without constructing a menu
             // or invoking CreateAndSave against a real player's directory. This

@@ -22,13 +22,13 @@ namespace JueMingR.Platform.Companions
         private readonly byte[] nativeData;
         private readonly CompanionBehavior behavior;
         public CompanionProfile(Guid id, Guid ownerId, string name, long revision, long dataEpoch,
-            CompanionBehavior behavior, byte[] nativeData)
+            CompanionBehavior behavior, byte[] nativeData, bool permanentlyDead = false)
         {
             if (id == Guid.Empty || ownerId == Guid.Empty) throw new ArgumentException("Character identity is required.");
             if (String.IsNullOrWhiteSpace(name) || name.Length > 20) throw new ArgumentException("Invalid character name.");
             if (revision <= 0 || dataEpoch <= 0) throw new ArgumentOutOfRangeException(nameof(revision));
             if (nativeData == null || nativeData.Length == 0) throw new ArgumentException("Native character data is required.");
-            Id = id; OwnerId = ownerId; Name = name; Revision = revision; DataEpoch = dataEpoch;
+            Id = id; OwnerId = ownerId; Name = name; Revision = revision; DataEpoch = dataEpoch; PermanentlyDead = permanentlyDead;
             this.behavior = (behavior ?? throw new ArgumentNullException(nameof(behavior))).Clone();
             this.nativeData = (byte[])nativeData.Clone();
         }
@@ -37,10 +37,11 @@ namespace JueMingR.Platform.Companions
         public string Name { get; }
         public long Revision { get; }
         public long DataEpoch { get; }
+        public bool PermanentlyDead { get; }
         public CompanionBehavior Behavior { get { return behavior.Clone(); } }
         public byte[] NativeData { get { return (byte[])nativeData.Clone(); } }
-        public CompanionProfile Revise(byte[] data, CompanionBehavior preferences = null, bool reset = false)
-        { return new CompanionProfile(Id, OwnerId, Name, checked(Revision + 1), reset ? checked(DataEpoch + 1) : DataEpoch, preferences ?? behavior, data); }
+        public CompanionProfile Revise(byte[] data, CompanionBehavior preferences = null, bool reset = false, bool? permanentlyDead = null)
+        { return new CompanionProfile(Id, OwnerId, Name, checked(Revision + 1), reset ? checked(DataEpoch + 1) : DataEpoch, preferences ?? behavior, data, reset ? false : permanentlyDead ?? PermanentlyDead); }
     }
 
     public sealed class CompanionOwnerArchive

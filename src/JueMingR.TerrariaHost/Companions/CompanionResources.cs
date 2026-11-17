@@ -97,21 +97,7 @@ namespace JueMingR.TerrariaHost.Companions
         { return slot >= 0 && slot < inventory.Length && (area != CompanionInventoryArea.Inventory || slot < 58); }
         private static bool Blocked(Player body, CompanionInventoryArea area, int slot, ItemOperationOwnership operations)
         {
-            if (operations != null)
-            {
-                if (area == CompanionInventoryArea.Inventory && operations.IsProtected(slot)) return true;
-                if (area == CompanionInventoryArea.Armor && operations.IsProtected(5, slot)) return true;
-                if (area == CompanionInventoryArea.Misc && operations.IsProtected(6, slot)) return true;
-            }
-            if (!body.UsingOrReusingItem && !body.channel) return false;
-            if (area != CompanionInventoryArea.Inventory) return false;
-            if (slot == body.selectedItem) return true;
-            if (body.selectedItem < 0 || body.selectedItem >= body.inventory.Length) return false;
-            // Ammo cycling can choose a different matching stack at the next
-            // native debit. Protect only that weapon's eligible ammunition;
-            // unrelated bag slots and the actor's movement remain available.
-            Item held = body.inventory[body.selectedItem], candidate = body.inventory[slot];
-            return held.useAmmo > 0 && !candidate.IsAir && candidate.ammo == held.useAmmo;
+            return CompanionItemRules.Blocked(body, area, slot, operations);
         }
         private sealed class Placement
         { internal int Slot; internal Item NewItem; }
@@ -126,7 +112,7 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     Item target = destination.inventory[slot];
                     if (ReferenceEquals(source, target) || Blocked(destination, CompanionInventoryArea.Inventory, slot, operations)) continue;
-                    if (slot >= 50 && slot < 54 && !source.IsACoin || slot >= 54 && source.ammo == 0) continue;
+                    if (slot >= 50 && slot < 54 && !source.IsACoin || slot >= 54 && !source.FitsAmmoSlot()) continue;
                     if (pass == 0 && (target.IsAir || !Item.CanStack(source, target))) continue;
                     if (pass == 1 && !target.IsAir) continue;
                     int capacity = Math.Max(0, source.maxStack - (target.IsAir ? 0 : target.stack));

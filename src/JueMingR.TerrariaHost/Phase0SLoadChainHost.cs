@@ -975,7 +975,7 @@ namespace JueMingR.TerrariaHost
                     Combat=new Combat.HostCombat(gameDirectory,Tools);runtime.SharedRuntime.AddFeature(Combat);
                     Combat.Handoff.Attach(Processing,QuickItems);
                     Afk=new AfkMode.HostAfkMode(gameDirectory,Tools);Afk.Attach(QuickItems,Processing);runtime.SharedRuntime.AddFeature(Afk);
-                    Companions=new Companions.HostCompanions(gameDirectory){OwnerOperations=items.Ownership};runtime.SharedRuntime.AddFeature(Companions);
+                    Companions=new Companions.HostCompanions(gameDirectory){OwnerOperations=items.Ownership,OwnerItems=items};runtime.SharedRuntime.AddFeature(Companions);
                     CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory),PackageId,exactPredictionComparison,hiddenAccess){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
                     Combat.Attack=CombatObservation.Attack=new Combat.HostAttackAim(Combat,CombatObservation);
                     CombatExperiments=new Combat.HostCombatExperiments(gameDirectory,Combat,CombatObservation,hiddenAccess);

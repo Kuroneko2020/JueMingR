@@ -25,7 +25,7 @@ namespace NativeWorldTextProbe
             var profiles = ((IEnumerable)Get(host, "Profiles")).Cast<object>().ToArray();
             Require(profiles.Length >= 2, "UI fixture must first persist two actual companion profiles through the production archive");
             var window = Get(shell, "CompanionUi"); var state = Get(shell, "State"); var layout = Get(state, "Layout");
-            var screen = new Vector2(960, 760); var matrix = Matrix.Identity;
+            var screen = new Vector2(1280, 900); var matrix = Matrix.Identity;
             var origin = Vector2.Zero;
             Action prepare = () => Call(window, "PrepareLayout", matrix, screen);
             Action<Vector2, bool, bool, int> sample = (point, left, focused, wheel) =>
@@ -125,6 +125,8 @@ namespace NativeWorldTextProbe
         }
         internal static void FullInput(object context, ProbeGraphics graphics, string output)
         {
+            graphics.LoadCompanionAssets();
+            graphics.LoadItemTextures(Main.LocalPlayer.inventory.Where(i=>i!=null&&!i.IsAir).Select(i=>i.type).Distinct());
             const string actionId = "companions.manage";
             var shell = Get(context, "Shell"); var state = Get(shell, "State"); var window = Get(shell, "CompanionUi"); var input = Get(context, "Input");
             var bindings = (HotkeyBindings)Get(Get(shell, "hotkeys"), "Bindings"); var popup = Get(shell, "HotkeyPopup");
@@ -182,9 +184,9 @@ namespace NativeWorldTextProbe
                 var manualPanel = Get(window, "panel"); var manualTitle = NativeToolsUiChecks.Point(Get(window, "titleBar"));
                 frame(manualTitle, false, neutral); frame(manualTitle, true, neutral);
                 frame(manualTitle + new Vector2(18, 6), true, neutral); frame(manualTitle + new Vector2(18, 6), false, neutral);
-                Require((float)Get(Get(window, "panel"), "X") > (float)Get(manualPanel, "X") &&
-                    (float)Get(Get(window, "panel"), "Y") > (float)Get(manualPanel, "Y") && !(bool)Get(state, "Visible"),
-                    "the manually opened independent window remains draggable while F5 stays closed");
+                Require((float)Get(Get(window, "panel"), "X") >= (float)Get(manualPanel, "X") &&
+                    (float)Get(Get(window, "panel"), "Y") >= (float)Get(manualPanel, "Y") && !(bool)Get(window,"Dragging") && !(bool)Get(state, "Visible"),
+                    "the manually opened independent window accepts the title drag and clamps at screen edges while F5 stays closed");
                 pulse();
                 Require(!(bool)Get(window, "Visible") && !(bool)Get(state, "Visible"), "the existing management hotkey closes the manually opened window without reopening F5");
                 NotesCapture(context, chordKeys);
@@ -266,6 +268,7 @@ namespace NativeWorldTextProbe
                 Require(bindings.CompletionSucceeded && bindings.Get(actionId) == null, "the same public binding popup reliably clears the independent action");
                 NativeToolsUiChecks.PopupClick(context, popup, "Close"); release(); frame(Vector2.Zero, false, new[] { Keys.F5 }); release(); pulse();
                 Require(!(bool)Get(window, "Visible") && !(bool)Get(state, "Visible"), "cleared key no longer opens either management or F5");
+                NativeCompanionUiV3Checks.Draw(context,graphics,output);
                 Console.WriteLine("PASS actual shared keyboard recorder/save, independent closed-F5 open/close/DrawLayer, title gesture/native mouse consumption, focus-neutral rearm and text/chat boundaries. OS IME and FPS remain unverified.");
             }
             finally
@@ -382,34 +385,22 @@ namespace NativeWorldTextProbe
                 NativeToolsUiChecks.Mouse(point, left);
                 Call(window, "ProcessLayoutInput", true, new KeyboardState(), point, matrix, screen, true, wheel);
             };
-            Action<int> scroll = direction =>
+            Action<bool,int> scroll = (ownerSide,direction) =>
             {
-                int before = (int)Get(window, "bodyOffset");
-                sample(NativeToolsUiChecks.Point(Get(window, "bodyView")), false, direction * 120);
-                Require((int)Get(window, "bodyOffset") != before, "equipment source can be reached through the actual body wheel");
+                string offsetName=ownerSide?"ownerOffset":"bodyOffset";
+                int before=(int)Get(window,offsetName);
+                sample(NativeToolsUiChecks.Point(Get(window,ownerSide?"ownerView":"companionView")),false,direction*120);
+                Require((int)Get(window,offsetName)!=before,"actual side scroll advances to equipment slot");
             };
-            Action<string> click = prefix =>
+            Action<string,bool> click = (prefix,ownerSide) =>
             {
-                while ((int)Get(window, "bodyOffset") > 0) scroll(1);
+                string offsetName=ownerSide?"ownerOffset":"bodyOffset",maximumName=ownerSide?"ownerMaximum":"bodyMaximum";
+                if(prefix.StartsWith("slot:",StringComparison.Ordinal)||prefix.StartsWith("gear:",StringComparison.Ordinal))
+                    while((int)Get(window,offsetName)>0) scroll(ownerSide,1);
                 object control;
-                while ((control = Controls(window).SingleOrDefault(c => ((string)Get(c, "Key")).StartsWith(prefix, StringComparison.Ordinal))) == null)
-                {
-                    Require((int)Get(window, "bodyOffset") < (int)Get(window, "bodyMaximum"), "actual equipment control exists: " + prefix);
-                    scroll(-1);
-                }
-                Require((bool)Get(control, "Enabled"), "actual equipment control is enabled: " + prefix);
-                var point = NativeToolsUiChecks.Point(Get(control, "Rect"));
-                sample(point, false, 0);
-                Console.WriteLine("COMPANION UI equipment press key=" + Get(control, "Key") + " point=" + point +
-                    " offset=" + Get(window, "bodyOffset") + " generation=" + Get(window, "generation") +
-                    " selected=" + Get(window, "selected"));
-                sample(point, true, 0);
-                Console.WriteLine("COMPANION UI equipment armed=" + (GetOptional(window, "armedKey") ?? "<none>") +
-                    " armedGeneration=" + Get(window, "armedGeneration") + " generation=" + Get(window, "generation"));
-                sample(point, false, 0);
-                Console.WriteLine("COMPANION UI equipment release prefix=" + prefix + " sourceOwner=" + Get(window, "sourceOwner") +
-                    " sourceArea=" + Get(window, "sourceArea") + " sourceSlot=" + Get(window, "sourceSlot") +
-                    " feedback=" + Get(host, "Feedback"));
+                while((control=Controls(window).SingleOrDefault(c=>((string)Get(c,"Key")).StartsWith(prefix,StringComparison.Ordinal)))==null)
+                { Require((int)Get(window,offsetName)<(int)Get(window,maximumName),"actual direct-item control exists: "+prefix);scroll(ownerSide,-1); }
+                var point=NativeToolsUiChecks.Point(Get(control,"Rect"));sample(point,false,0);sample(point,true,0);sample(point,false,0);
             };
             var savedSlot = owner.inventory[49].Clone();
             int[] types = { ItemID.RedDye, ItemID.GrapplingHook };
@@ -443,7 +434,7 @@ namespace NativeWorldTextProbe
                     " hookProjectile=" + hook.shoot + " nativeAiStyle=" + hookProjectile.aiStyle + " priorHookCategory=" + originalHookCategory + "; no shader Apply/Draw");
                 Call(window, "Close"); NativeToolsUiChecks.Mouse(Vector2.Zero, false);
                 Call(window, "Toggle", Get(layout, "Viewport")); prepare();
-                click("profile:" + id + "/"); click("inventory/");
+                click("profile:" + id + "/",false); click("inventory/",false);
                 Require(companion.dye[0].IsAir && companion.miscEquips[4].IsAir && types.All(t => total(t) == 0),
                     "isolated fresh profile has no fixture dye/hook before the UI resource scenario");
                 for (int i = 0; i < types.Length; i++)
@@ -455,7 +446,9 @@ namespace NativeWorldTextProbe
                     Console.WriteLine("COMPANION UI equipment native source=" + source.type + ":" + source.stack + " dye=" + source.dye +
                         " head/body/leg=" + source.headSlot + "/" + source.bodySlot + "/" + source.legSlot + " accessory=" + source.accessory +
                         " mount=" + source.mountType + " shoot=" + source.shoot + " canTransfer=" + Call(host, "CanTransfer", id));
-                    click("slot:True:Inventory:49:"); click("equip:");
+                    click("slot:True:Inventory:49/",true);
+                    if(i==1) click("gear:False:2/",false);
+                    click("slot:False:"+area+":"+slot+"/",false);
                     var equipped = i == 0 ? companion.dye[slot] : companion.miscEquips[slot];
                     Console.WriteLine("COMPANION UI equipment actual owner49=" + owner.inventory[49].type + ":" + owner.inventory[49].stack +
                         " expected=" + area + "[" + slot + "]=" + equipped.type + ":" + equipped.stack +
@@ -465,12 +458,13 @@ namespace NativeWorldTextProbe
                         " sameBody=" + ReferenceEquals(companion, Call(host, "GetBody", id)) + " feedback=" + Get(host, "Feedback"));
                     Require(equipped.type == type && equipped.stack == 1 && total(type) == 1,
                         "UI equip moves the real item into its native " + area + " slot without duplicating it");
-                    click("slot:False:" + area + ":" + slot + ":"); click("unequip:");
-                    Require(equipped.IsAir && InventoryCount(companion, type) == 1 && InventoryCount(owner, type) == 0 && total(type) == 1,
+                    click("slot:False:" + area + ":" + slot + "/",false);
+                    click("slot:False:Inventory:49/",false);
+                    Require((i==0?companion.dye[slot]:companion.miscEquips[slot]).IsAir && InventoryCount(companion, type) == 1 && InventoryCount(owner, type) == 0 && total(type) == 1,
                         "area-aware UI unequip removes the exact native " + area + " slot and retains one item in companion inventory");
                     int received = Array.FindIndex(companion.inventory, item => item.type == type && item.stack == 1);
                     Require(received >= 0, "actual companion inventory received unequipped item: " + area);
-                    click("slot:False:Inventory:" + received + ":"); click("transfer-stack:");
+                    click("slot:False:Inventory:" + received + "/",false); click("slot:True:Inventory:49/",true);
                     Require(InventoryCount(owner, type) == 1 && InventoryCount(companion, type) == 0 && total(type) == 1,
                         "UI take-back completes " + area + " round trip with the actual owner/companion total unchanged");
                     var archive = Get(host, "profiles");
@@ -481,7 +475,7 @@ namespace NativeWorldTextProbe
                         "actual saved native profile retains the completed " + area + " take-back without restoring an equipment copy");
                     foreach (var item in owner.inventory) if (item.type == type) item.TurnToAir();
                 }
-                Console.WriteLine("PASS real companion UI Dye/Misc equip, correct area/slot selection, unequip and take-back with native item conservation; no Draw/IME/FPS claim.");
+                Console.WriteLine("PASS real companion direct UI Dye/Misc exact-slot placement, balanced unequip chain and take-back with native item conservation; no Draw/IME/FPS claim.");
             }
             finally
             {

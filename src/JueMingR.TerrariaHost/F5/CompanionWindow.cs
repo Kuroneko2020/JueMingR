@@ -28,7 +28,13 @@ namespace JueMingR.TerrariaHost.F5
             internal int ItemType, Stack;
             internal Player Portrait;
             internal F5Element Element;
-            internal string Hint;
+            internal string Hint, Placeholder;
+            internal bool IsSlot, Owner;
+            internal CompanionInventoryArea Area;
+            internal int Slot;
+            internal int HairPreview=-1, VariantPreview=-1, ColorRamp=-1;
+            internal Color? Swatch;
+            internal float RampValue;
         }
         private readonly HostCompanions host;
         private readonly HostInputState input;
@@ -49,7 +55,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly List<string> visibleNames = new List<string>();
         private readonly List<Player> visibleBodies = new List<Player>();
         private readonly List<int> itemValues = new List<int>();
-        private int preparedGeneration = -1, previousProfileCount = -1, life, mana, maximumLife, maximumMana, weapon;
+        private int preparedGeneration = -1, previousProfileCount = -1, maximumLife, maximumMana, weapon;
         private long profileRevision;
         private bool transferable, editing, saveFailed;
         private string feedbackValue, noticeValue, selectedStatus;
@@ -63,7 +69,19 @@ namespace JueMingR.TerrariaHost.F5
         private TextEditBuffer editor;
         private string editKind, armedKey, notice, pendingCreatedName;
         private F5Rect panel, listView, bodyView, field;
-        private F5Rect titleBar;
+        private F5Rect titleBar, ownerView, companionView;
+        private int ownerOffset, ownerMaximum, ownerGearPage, companionGearPage;
+        private bool previousRight;
+        private int rightRepeat;
+        private string rightSlot;
+        private long gestureRevision;
+        private int ownerLifeMax, ownerManaMax;
+        private string resourceStyle;
+        private readonly CompanionPreview ownerPreview = new CompanionPreview(), companionPreview = new CompanionPreview(), creationPreview = new CompanionPreview();
+        private readonly CompanionResourceDisplay resourceDisplay = new CompanionResourceDisplay();
+        private F5Rect ownerHero, companionHero, creationHero;
+        private Player creationDraft;
+        private int creationPage, creationColor, creationHairOffset;
         private Vector2 requestedPosition, grabOffset, dragStartPosition;
         private bool dragging, userPositioned, dragStartPositioned;
         private Matrix matrix;
@@ -71,10 +89,6 @@ namespace JueMingR.TerrariaHost.F5
         private Guid selected;
         private int page, listOffset, bodyOffset, listMaximum, bodyMaximum, generation, armedGeneration, skin;
         private bool previousLeft, leftTail, rightTail, ready, creating, confirmingReset;
-        private bool sourceOwner;
-        private CompanionInventoryArea sourceArea;
-        private int sourceSlot = -1;
-        private string sourceIdentity;
         public TextEditBuffer Editor { get { return editor; } }
         internal bool Visible { get; private set; }
         internal bool Captured { get { return dragging || armedKey != null || leftTail || rightTail; } }
@@ -108,6 +122,7 @@ namespace JueMingR.TerrariaHost.F5
             // The entry's release belongs to the entry. A held button cannot
             // become a fresh slot press when this upper surface appears.
             previousLeft = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed;
+            previousRight = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed; rightRepeat=0; rightSlot=null;
             armedKey = null; generation++;
         }
         internal bool Contains(float x, float y) { return Visible && ready && panel.Contains(x, y); }
@@ -122,7 +137,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (!Visible && !ready && editor == null) return;
             Visible = false; ready = false; armedKey = null; creating = confirmingReset = dragging = false;
-            CancelEdit(); icons.Clear(); renderer.Dispose(); controls.Clear(); labels.Clear(); generation++;
+            host.CancelItemGesture(); host.EndItemRepeat(); rightSlot=null; rightRepeat=0; creationDraft = null; ownerPreview.Clear(); companionPreview.Clear(); creationPreview.Clear(); CancelEdit(); icons.Clear(); renderer.Dispose(); controls.Clear(); labels.Clear(); generation++;
             // Keep already owned physical tails until the shared trusted sample
             // observes release, including close, lost focus and world departure.
         }
@@ -133,7 +148,7 @@ namespace JueMingR.TerrariaHost.F5
             if (!Visible) return;
             if (resources && !renderer.Refresh() || transform.M11 <= 0 || transform.M22 <= 0) { Close(); return; }
             Vector2 logical = physical / transform.M11;
-            float width = Math.Min(860, logical.X - 24), height = Math.Min(710, logical.Y - 24);
+            float width = Math.Min(1160, logical.X - 24), height = Math.Min(760, logical.Y - 24);
             if (width < 520 || height < 270) { Close(); return; }
             if (dragging && (matrix != transform || screen != physical || skin != renderer.Generation)) dragging = false;
             Vector2 origin = userPositioned ? requestedPosition : new Vector2((logical.X - width) / 2, (logical.Y - height) / 2);
@@ -149,21 +164,24 @@ namespace JueMingR.TerrariaHost.F5
                 if (resources) icons.Prepare(); return;
             }
             if (!panel.Equals(next) || matrix != transform || screen != physical || skin != renderer.Generation)
-            { armedKey = null; generation++; }
+            { host.CancelItemGesture(); armedKey = null; rightSlot = null; generation++; }
             if (skin != renderer.Generation) { sizes70.Clear(); sizes65.Clear(); hint.Clear(); editRevision = -1; }
             if (skin != renderer.Generation || rowHeight == 0) rowHeight = Math.Max(34, measure("主人附近优先", .7f).Height + 14);
             panel = next; matrix = transform; screen = physical; skin = renderer.Generation;
             float row = rowHeight;
             titleBar = new F5Rect(panel.X + 8, panel.Y + 4, width - 56, row);
-            listView = new F5Rect(panel.X + 10, panel.Y + row + 8, Math.Max(142, width * .24f), height - row * 2 - 28);
-            bodyView = new F5Rect(listView.Right + 12, listView.Y + row + 8, panel.Right - listView.Right - 24, panel.Bottom - listView.Y - row - 64);
+            listView = new F5Rect(panel.X + 10, panel.Y + row + 8, 54, height - row * 2 - 28);
+            bodyView = new F5Rect(listView.Right + 12, listView.Y + row + 8, panel.Right - listView.Right - 28, panel.Bottom - listView.Y - row - 52);
+            float half = (bodyView.Width - 12) / 2;
+            ownerView = new F5Rect(bodyView.X, bodyView.Y, half, bodyView.Height);
+            companionView = new F5Rect(bodyView.X + half + 12, bodyView.Y, half, bodyView.Height);
             if (ready && !ViewChanged()) { if (resources) icons.Prepare(); PrepareEditPresentation(); return; }
             controls.Clear(); labels.Clear(); icons.BeginVisibleSet();
             Text("AI 队友", new F5Rect(panel.X + 12, panel.Y + 4, width - 64, row));
             Button("close", "×", new F5Rect(panel.Right - 40, panel.Y + 4, 30, row), Close);
             BuildList(row);
             viewDataEpoch = CurrentProfile()?.DataEpoch ?? 0;
-            Button("create", "＋", new F5Rect(listView.X, panel.Bottom - row - 12, listView.Width, row), () => { creating = true; confirmingReset = false; bodyOffset = 0; BeginEdit("name", ""); Invalidate(); });
+            Button("create", "＋", new F5Rect(listView.X, panel.Bottom - row - 12, listView.Width, row), StartCreation);
             Button("inventory", "背包", new F5Rect(bodyView.X, listView.Y, bodyView.Width / 2 - 3, row), () => SelectPage(0), true, page == 0);
             Button("configuration", "配置", new F5Rect(bodyView.X + bodyView.Width / 2 + 3, listView.Y, bodyView.Width / 2 - 3, row), () => SelectPage(1), true, page == 1);
             int bodyControlStart = controls.Count, bodyLabelStart = labels.Count;
@@ -179,7 +197,7 @@ namespace JueMingR.TerrariaHost.F5
                 icons.BeginVisibleSet(); bodyOffsetClamped = false;
                 if (creating) BuildCreate(row); else BuildSelected(row);
             }
-            Text(notice ?? textInput.Error ?? editor?.Error ?? host.Feedback, new F5Rect(bodyView.X, panel.Bottom - 54, bodyView.Width, 44), .65f);
+            Text(host.HasItemGesture ? "未放完时，离开窗口会取消本次操作。" : notice ?? textInput.Error ?? editor?.Error ?? host.Feedback, new F5Rect(bodyView.X, panel.Bottom - 38, bodyView.Width, 30), .65f);
             icons.EndVisibleSet(); if (resources) icons.Prepare(); ready = true; LayoutBuilds++; CaptureView(); PrepareEditPresentation();
         }
         private void BuildList(float row)
@@ -187,12 +205,12 @@ namespace JueMingR.TerrariaHost.F5
             var profiles = host.Profiles;
             if (pendingCreatedName != null) for (int i = 0; i < profiles.Count; i++)
                 if (String.Equals(profiles[i].Name, pendingCreatedName, StringComparison.OrdinalIgnoreCase))
-                { selected = profiles[i].Id; pendingCreatedName = null; sourceSlot = -1; break; }
+                { selected = profiles[i].Id; pendingCreatedName = null; break; }
             int visible = Math.Max(1, (int)(listView.Height / (row + 16)));
             listMaximum = Math.Max(0, profiles.Count - visible); listOffset = Math.Max(0, Math.Min(listOffset, listMaximum));
             if (profiles.Count == 0) { Text("点击左下角＋创建队友", listView, .65f); return; }
             bool found = false; for (int i = 0; i < profiles.Count; i++) if (profiles[i].Id == selected) found = true;
-            if (!found) { selected = profiles[0].Id; sourceSlot = -1; confirmingReset = false; }
+            if (!found) { selected = profiles[0].Id; confirmingReset = false; }
             for (int i = listOffset; i < Math.Min(profiles.Count, listOffset + visible); i++)
             {
                 var profile = profiles[i]; Guid id = profile.Id;
@@ -201,19 +219,19 @@ namespace JueMingR.TerrariaHost.F5
                 c.Portrait = host.GetBody(id);
                 c.Hint = profile.Name + "\n" + host.Status(id);
                 c.Element = null;
-                Text(profile.Name, new F5Rect(rect.X + 42, rect.Y + 1, rect.Width - 44, row / 2 + 8), .65f);
-                Text(host.Status(id), new F5Rect(rect.X + 42, rect.Y + row / 2 + 5, rect.Width - 44, row / 2 + 5), .58f);
+
             }
         }
         private void SelectProfile(Guid id)
-        { CancelEdit(); selected = id; creating = confirmingReset = false; sourceSlot = -1; bodyOffset = 0; notice = null; Invalidate(); }
+        { host.CancelItemGesture(); CancelEdit(); creationDraft = null; selected = id; creating = confirmingReset = false; bodyOffset = 0; notice = null; Invalidate(); }
         private void SelectPage(int value)
-        { CancelEdit(); creating = confirmingReset = false; page = value; bodyOffset = 0; Invalidate(); }
+        { host.CancelItemGesture(); CancelEdit(); creationDraft = null; creating = confirmingReset = false; page = value; bodyOffset = 0; Invalidate(); }
         private void Invalidate() { armedKey = null; generation++; }
         private void Translate(float x, float y)
         {
             panel = panel.Offset(x, y); listView = listView.Offset(x, y); bodyView = bodyView.Offset(x, y);
             titleBar = titleBar.Offset(x, y); field = field.Offset(x, y); contentY += y;
+            ownerView = ownerView.Offset(x,y); companionView = companionView.Offset(x,y); ownerHero = ownerHero.Offset(x,y); companionHero = companionHero.Offset(x,y); creationHero = creationHero.Offset(x,y);
             foreach (var c in controls) { c.Rect = c.Rect.Offset(x, y); if (c.Element != null) c.Element = Move(c.Element, x, y); }
             for (int i = 0; i < labels.Count; i++) labels[i] = Move(labels[i], x, y);
             if (editElement != null) editElement = Move(editElement, x, y);
@@ -246,13 +264,17 @@ namespace JueMingR.TerrariaHost.F5
             }
             var profile = CurrentProfile(); var body = host.GetBody(selected);
             if ((profile?.Revision ?? 0) != profileRevision || !ReferenceEquals(body, selectedBody) || host.CanTransfer(selected) != transferable || host.SaveFailed(selected) != saveFailed || host.Status(selected) != selectedStatus) return true;
-            if (body != null && (life != body.statLife || mana != body.statMana || maximumLife != body.statLifeMax2 || maximumMana != body.statManaMax2 || weapon != body.selectedItem)) return true;
+            if (gestureRevision != host.ItemGestureRevision || resourceStyle != (Main.ResourceSetsManager?.ActiveSetKeyName??"Default") || ownerLifeMax != (Main.LocalPlayer?.statLifeMax2??0) || ownerManaMax != (Main.LocalPlayer?.statManaMax2??0) || body != null && (weapon != body.selectedItem || maximumLife != body.statLifeMax2 || maximumMana != body.statManaMax2)) return true;
             int offset = 0;
             if (!InventoryMatches(body?.inventory, 58, ref offset) || !InventoryMatches(body?.armor, body?.armor?.Length ?? 0, ref offset) ||
                 !InventoryMatches(body?.dye, body?.dye?.Length ?? 0, ref offset) ||
                 !InventoryMatches(body?.miscEquips, body?.miscEquips?.Length ?? 0, ref offset) ||
                 !InventoryMatches(body?.miscDyes, body?.miscDyes?.Length ?? 0, ref offset) ||
-                !InventoryMatches(Main.LocalPlayer?.inventory, 58, ref offset)) return true;
+                !InventoryMatches(Main.LocalPlayer?.inventory, 58, ref offset) ||
+                !InventoryMatches(Main.LocalPlayer?.armor, Main.LocalPlayer?.armor?.Length ?? 0, ref offset) ||
+                !InventoryMatches(Main.LocalPlayer?.dye, Main.LocalPlayer?.dye?.Length ?? 0, ref offset) ||
+                !InventoryMatches(Main.LocalPlayer?.miscEquips, Main.LocalPlayer?.miscEquips?.Length ?? 0, ref offset) ||
+                !InventoryMatches(Main.LocalPlayer?.miscDyes, Main.LocalPlayer?.miscDyes?.Length ?? 0, ref offset)) return true;
             return offset != itemValues.Count;
         }
         private bool InventoryMatches(Item[] items, int count, ref int offset)
@@ -267,19 +289,20 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void CaptureView()
         {
-            preparedGeneration = generation; editing = editor != null; feedbackValue = host.Feedback; noticeValue = notice; editError = textInput.Error ?? editor?.Error;
+            resourceStyle=Main.ResourceSetsManager?.ActiveSetKeyName??"Default"; ownerLifeMax=Main.LocalPlayer?.statLifeMax2??0; ownerManaMax=Main.LocalPlayer?.statManaMax2??0; gestureRevision = host.ItemGestureRevision; preparedGeneration = generation; editing = editor != null; feedbackValue = host.Feedback; noticeValue = notice; editError = textInput.Error ?? editor?.Error;
             var profiles = host.Profiles; previousProfileCount = profiles.Count;
             visibleIds.Clear(); visibleNames.Clear(); visibleStatuses.Clear(); visibleBodies.Clear();
             int count = Math.Max(1, (int)(listView.Height / (rowHeight + 16)));
             for (int i = listOffset; i < Math.Min(profiles.Count, listOffset + count); i++)
             { var p = profiles[i]; visibleIds.Add(p.Id); visibleNames.Add(p.Name); visibleStatuses.Add(host.Status(p.Id)); visibleBodies.Add(host.GetBody(p.Id)); }
             profileRevision = CurrentProfile()?.Revision ?? 0; selectedBody = host.GetBody(selected); transferable = host.CanTransfer(selected); saveFailed = host.SaveFailed(selected); selectedStatus = host.Status(selected);
-            if (selectedBody != null) { life = selectedBody.statLife; mana = selectedBody.statMana; maximumLife = selectedBody.statLifeMax2; maximumMana = selectedBody.statManaMax2; weapon = selectedBody.selectedItem; }
+            if (selectedBody != null) { maximumLife = selectedBody.statLifeMax2; maximumMana = selectedBody.statManaMax2; weapon = selectedBody.selectedItem; }
             itemValues.Clear(); CaptureInventory(selectedBody?.inventory, 58); CaptureInventory(selectedBody?.armor, selectedBody?.armor?.Length ?? 0);
             CaptureInventory(selectedBody?.dye, selectedBody?.dye?.Length ?? 0);
             CaptureInventory(selectedBody?.miscEquips, selectedBody?.miscEquips?.Length ?? 0);
             CaptureInventory(selectedBody?.miscDyes, selectedBody?.miscDyes?.Length ?? 0);
-            CaptureInventory(Main.LocalPlayer?.inventory, 58);
+            CaptureInventory(Main.LocalPlayer?.inventory, 58); CaptureInventory(Main.LocalPlayer?.armor, Main.LocalPlayer?.armor?.Length ?? 0);
+            CaptureInventory(Main.LocalPlayer?.dye, Main.LocalPlayer?.dye?.Length ?? 0); CaptureInventory(Main.LocalPlayer?.miscEquips, Main.LocalPlayer?.miscEquips?.Length ?? 0); CaptureInventory(Main.LocalPlayer?.miscDyes, Main.LocalPlayer?.miscDyes?.Length ?? 0);
         }
         private void CaptureInventory(Item[] items, int count)
         { if (items != null) for (int i = 0; i < Math.Min(count, items.Length); i++) { var item = items[i]; itemValues.Add(item?.type ?? 0); itemValues.Add(item?.stack ?? 0); itemValues.Add(item?.prefix ?? 0); } }
@@ -312,6 +335,8 @@ namespace JueMingR.TerrariaHost.F5
             }
             if (!Visible) { previousLeft = left; ReleaseTails(left, right, true); return; }
             if (!wasEditing && editor == null && input.Hotkeys.IsNew((int)Keys.Escape)) { input.ConsumeCancellation((int)Keys.Escape); Close(); ReleaseTails(left, right, true); return; }
+            host.ValidateItemGesture();
+            if (!panel.Contains(point.X, point.Y)) host.CancelItemGesture();
             PrepareCore(transform, physical, resources);
             bool wasDragging = dragging;
             if (dragging)
@@ -325,12 +350,14 @@ namespace JueMingR.TerrariaHost.F5
             if (wheel != 0 && Contains(point.X, point.Y))
             {
                 if (!dragging && listView.Contains(point.X, point.Y)) listOffset = Math.Max(0, Math.Min(listMaximum, listOffset - Math.Sign(wheel)));
+                else if (!dragging && !creating && page == 0 && ownerView.Contains(point.X, point.Y)) ownerOffset = Math.Max(0, Math.Min(ownerMaximum, ownerOffset - Math.Sign(wheel) * 48));
                 else if (!dragging && bodyView.Contains(point.X, point.Y)) bodyOffset = Math.Max(0, Math.Min(bodyMaximum, bodyOffset - Math.Sign(wheel) * 48));
                 ConsumeWheel = true; Invalidate(); PrepareCore(transform, physical, resources);
             }
             Control hit = null;
             if (ready) foreach (var c in controls) if (c.Enabled && c.Rect.Contains(point.X, point.Y)) { hit = c; break; }
-            if (left && !previousLeft && !wasDragging)
+            ProcessItemInput(hit, keys, left, right, wasDragging);
+            if (left && !previousLeft && !wasDragging && !(hit?.IsSlot ?? false))
             {
                 if (hit == null && ready && titleBar.Contains(point.X, point.Y))
                 {
@@ -345,7 +372,7 @@ namespace JueMingR.TerrariaHost.F5
                 var execute = hit.Execute; armedKey = null; execute?.Invoke();
                 if (Visible) PrepareCore(transform, physical, resources);
             }
-            ReleaseTails(left, right, true); previousLeft = left; PrepareHint();
+            ReleaseTails(left, right, true); previousLeft = left; previousRight = right; PrepareHint();
         }
         private void ReleaseTails(bool left, bool right, bool focused)
         {
@@ -360,12 +387,7 @@ namespace JueMingR.TerrariaHost.F5
             if (editKind == "name")
             {
                 string name = editor.Text.Trim(); if (name.Length == 0) { notice = "请输入人物名字。"; return false; }
-                var existing = host.Profiles;
-                for (int i = 0; i < existing.Count; i++) if (String.Equals(existing[i].Name, name, StringComparison.OrdinalIgnoreCase))
-                { Guid id = existing[i].Id; SelectProfile(id); notice = "已有此人物。"; return true; }
-                if (!host.Create(name)) { notice = host.Feedback; return false; }
-                pendingCreatedName = name;
-                creating = false;
+                if (creationDraft != null) creationDraft.name = name;
             }
             else host.ConnectionPassword = editor.Text;
             CancelEdit(); notice = null; Invalidate(); return true;
@@ -373,7 +395,7 @@ namespace JueMingR.TerrariaHost.F5
         private void BeginEdit(string kind, string value)
         {
             if (editor != null && editKind == kind) return;
-            CancelEdit(); notice = null; editKind = kind; editor = new TextEditBuffer(value, true, kind == "name" ? 20 : 256, 1024, "输入内容过长。");
+            CancelEdit(); notice = null; editKind = kind; editor = new TextEditBuffer(value, true, kind == "name" ? Player.nameLen : 256, 1024, "输入内容过长。");
             editor.SelectAll(); textInput.PrepareEditor();
         }
         public void CancelEdit() { textInput.Release(true); editor = null; editKind = null; editRevision = -1; editElement = null; }
@@ -407,6 +429,9 @@ namespace JueMingR.TerrariaHost.F5
         internal void Draw()
         {
             if (!Visible || !ready || !renderer.ResourcesCurrent) return;
+            if (!creating && page == 0)
+            { ownerPreview.Prepare(Main.LocalPlayer); companionPreview.Prepare(host.GetBody(selected)); resourceDisplay.Prepare(); }
+            else if (creating) creationPreview.Prepare(creationDraft);
             renderer.Pass(matrix, panel, () =>
             {
                 renderer.Panel(panel); renderer.Panel(listView);
@@ -416,7 +441,12 @@ namespace JueMingR.TerrariaHost.F5
                     if (c.Element != null) renderer.Button(c.Element, c.Selected, c.Enabled, c.Off, hover);
                     else renderer.ItemButton(c.Rect, c.Enabled, hover);
                     if (c.Selected && c.Element == null) renderer.Selection(c.Rect);
-                    if (c.Portrait != null) portraits.DrawPlayerHead(Main.Camera, c.Portrait, new Vector2(c.Rect.X + 21, c.Rect.Y + c.Rect.Height / 2), 1, .7f);
+                    if (c.Portrait != null) CompanionPreview.DrawHead(portraits,c.Portrait,c.Rect,matrix);
+                    if(c.Placeholder!=null) renderer.Text(c.Placeholder,c.Rect,new Color(160,180,210),.55f);
+                    if(c.HairPreview>=0) creationPreview.DrawChoiceHead(portraits,c.HairPreview,c.Rect,matrix);
+                    if(c.VariantPreview>=0) creationPreview.DrawChoiceBody(portraits,c.VariantPreview,c.Rect,matrix);
+                    if(c.Swatch.HasValue) DrawSwatch(c.Rect,c.Swatch.Value);
+                    if(c.ColorRamp>=0) DrawColorRamp(c);
                     if (c.ItemType > 0)
                     {
                         renderer.PreparedItem(c.ItemType, icons.Get(c.ItemType), c.Rect);
@@ -426,8 +456,17 @@ namespace JueMingR.TerrariaHost.F5
                 foreach (var e in labels) renderer.Text(e.Text, e.Rect, Color.White, e.TextScale);
                 if (editor != null && field.Width > 0) DrawEditor();
                 ScrollIndicator(listView, listOffset, listMaximum);
-                ScrollIndicator(bodyView, bodyOffset, bodyMaximum);
+                if (!creating && page == 0) { ScrollIndicator(ownerView, ownerOffset, ownerMaximum); ScrollIndicator(companionView, bodyOffset, bodyMaximum); }
+                else ScrollIndicator(bodyView, bodyOffset, bodyMaximum);
             });
+            if (!creating && page == 0)
+            {
+                DrawHero(ownerView, ownerHero, ownerPreview, Main.LocalPlayer);
+                DrawHero(companionView, companionHero, companionPreview, host.GetBody(selected));
+            }
+            else if (creating && creationDraft != null) renderer.Pass(matrix, bodyView, () => creationPreview.Draw(portraits, creationHero,matrix));
+            if (host.HasItemGesture && host.CursorItem != null && !host.CursorItem.IsAir)
+                renderer.Pass(matrix, panel, () => { var r = new F5Rect(pointer.X + 10, pointer.Y + 10, 40, 40); renderer.Item(host.CursorItem.type, r); renderer.Text(host.CursorItem.stack.ToString(),r,Color.White,.55f); });
             if (hint.Visible && editor == null && !Captured) renderer.Pass(matrix, hint.Panel, () => { renderer.Panel(hint.Panel); foreach (var line in hint.Lines) renderer.Label(new F5Element(F5ElementKind.Text,line.Rect.Offset(hint.Panel.X+8,hint.Panel.Y+8),line.Text,line.TextSize,line.TextScale,F5Command.None)); });
         }
         private void DrawEditor()
