@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
@@ -125,6 +125,14 @@ namespace NativeWorldTextProbe
         }
         internal static void FullInput(object context, ProbeGraphics graphics, string output)
         {
+            // This leaf now reaches actual AI Spawn after native creation.
+            // Reuse the normal finite NativeBody startup before any ownership
+            // snapshots; null unused player slots are a headless fixture state.
+            NativeCombatAimChecks.Initialize();
+            Main.spawnTileX=60;Main.spawnTileY=58;Main.leftWorld=Main.topWorld=0;Main.rightWorld=Main.maxTilesX*16;Main.bottomWorld=Main.maxTilesY*16;
+            for(int x=2;x<118;x++){Main.tile[x,60].active(true);Main.tile[x,60].type=TileID.Stone;}
+            new HarmonyLib.Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(HarmonyLib.AccessTools.Method(typeof(Player),"Spawn"),HarmonyLib.HarmonyPatchType.Prefix,"JueMingR.Tests.QuickItemOutlets");
+            NativeCompanionCoreLifecycleChecks.PrepareHuman();
             graphics.LoadCompanionAssets();
             graphics.LoadItemTextures(Main.LocalPlayer.inventory.Where(i=>i!=null&&!i.IsAir).Select(i=>i.type).Distinct());
             const string actionId = "companions.manage";
