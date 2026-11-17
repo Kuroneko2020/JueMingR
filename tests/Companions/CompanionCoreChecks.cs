@@ -19,7 +19,7 @@ namespace JueMingR.ArchitectureTests
             string parent = Path.GetFullPath(Path.GetTempPath());
             string root = Path.GetFullPath(Path.Combine(parent, "JueMingR-companion-checks-" + Guid.NewGuid().ToString("N")));
             Directory.CreateDirectory(root);
-            try { ArchiveRoundTrip(root); FailedCreation(root); CoalescedReset(root); CorruptIsolation(root); MenuMigration(root); TerminalArchive(root); LegacyArchive(root); ContinuousJump(); RejectedTakeoff(); }
+            try { ArchiveRoundTrip(root); PreferenceRoundTrip(root); FailedCreation(root); CoalescedReset(root); CorruptIsolation(root); MenuMigration(root); TerminalArchive(root); LegacyArchive(root); ContinuousJump(); RejectedTakeoff(); }
             catch (Exception exception) { failures.Add("companion core: " + exception); }
             finally
             {
@@ -56,25 +56,44 @@ namespace JueMingR.ArchitectureTests
         }
         private static void LegacyArchive(string root)
         {
-            string game=Path.Combine(root,"v1");Guid owner,id=Guid.NewGuid();
+            foreach(int version in new[]{1,2})
+            {
+            string game=Path.Combine(root,"v"+version);Guid owner,id=Guid.NewGuid();
             using(var archive=new FileCompanionArchive(game)){owner=archive.LoadOwner("legacy").OwnerId;}
             string folder=Path.Combine(game,"JueMingRData","companions","characters",owner.ToString("N"));Directory.CreateDirectory(folder);
             string path=Path.Combine(folder,id.ToString("N")+".bin");
             using(var stream=new MemoryStream())using(var writer=new BinaryWriter(stream,new System.Text.UTF8Encoding(false,true)))
             {
-                // Independent v1 fixture: identity/settings/native length+bytes,
-                // with no terminal marker, followed by the historical digest.
-                writer.Write("JueMingR.Companion");writer.Write(1);writer.Write(id.ToByteArray());writer.Write(owner.ToByteArray());
+                // Independently encode the historical formats rather than use
+                // the current encoder to pretend it emitted a legacy file.
+                writer.Write("JueMingR.Companion");writer.Write(version);writer.Write(id.ToByteArray());writer.Write(owner.ToByteArray());
                 writer.Write("旧人物");writer.Write(1L);writer.Write(1L);writer.Write(true);writer.Write(true);writer.Write(false);writer.Write(true);
+                if(version==2)writer.Write(true);
                 writer.Write(2);writer.Write(new byte[]{44,55});writer.Flush();
                 using(var sha=System.Security.Cryptography.SHA256.Create())writer.Write(sha.ComputeHash(stream.ToArray()));writer.Flush();File.WriteAllBytes(path,stream.ToArray());
             }
             using(var archive=new FileCompanionArchive(game))
             {
-                var old=archive.LoadOwner("legacy").Profiles.Single();Require(!old.PermanentlyDead && old.NativeData.SequenceEqual(new byte[]{44,55}),"v1 archive preserves existing native bytes and reads as nonterminal");
+                var old=archive.LoadOwner("legacy").Profiles.Single();Require(old.PermanentlyDead==(version==2) && old.NativeData.SequenceEqual(new byte[]{44,55}) && old.Behavior.AutoRespawn && old.Behavior.ManualWeaponSlot==-1,"legacy archive preserves native bytes/terminal identity and defaults respawn on with no manual selection");
                 archive.Save(old.Revise(old.NativeData));
             }
-            using(var archive=new FileCompanionArchive(game))Require(!archive.LoadOwner("legacy").Profiles.Single().PermanentlyDead,"normal next revision upgrades v1 without rewriting its resource semantics");
+            using(var archive=new FileCompanionArchive(game))Require(archive.LoadOwner("legacy").Profiles.Single().PermanentlyDead==(version==2),"normal next revision upgrades legacy without rewriting terminal semantics");
+            }
+        }
+        private static void PreferenceRoundTrip(string root)
+        {
+            string game=Path.Combine(root,"preferences");Guid owner,id=Guid.NewGuid();
+            var behavior=new CompanionBehavior{AutoRespawn=false,ManualWeaponSlot=12,ManualWeaponType=39,ManualWeaponPrefix=60};
+            var clone=behavior.Clone();clone.Follow=false;
+            Require(!clone.AutoRespawn && clone.ManualWeaponSlot==12 && clone.ManualWeaponType==39 && clone.ManualWeaponPrefix==60,"editing one cloned preference preserves new settings");
+            using(var archive=new FileCompanionArchive(game))
+            {owner=archive.LoadOwner("creator").OwnerId;archive.Save(new CompanionProfile(id,owner,"偏好保存",1,1,clone,new byte[]{7,9},true));}
+            using(var archive=new FileCompanionArchive(game))
+            {
+                var profile=archive.LoadOwner("creator").Profiles.Single();var saved=profile.Behavior;
+                Require(profile.OwnerId==owner && profile.Id==id && profile.PermanentlyDead && profile.NativeData.SequenceEqual(new byte[]{7,9}) && !saved.Follow && !saved.AutoRespawn && saved.ManualWeaponSlot==12 && saved.ManualWeaponType==39 && saved.ManualWeaponPrefix==60,"one v3 record reopens settings with native/owner/terminal data intact");
+                saved.AutoRespawn=true;Require(!profile.Behavior.AutoRespawn,"caller's preference edits cannot mutate the stored profile");
+            }
         }
         private static void TerminalArchive(string root)
         {

@@ -23,7 +23,7 @@ namespace JueMingR.Features.Companions
                 // unstarted request when its own planned hold is consumed; an
                 // airborne jump still keeps its prefix until actual landing.
                 if (leftGround && observation.Grounded || !leftGround && jumpRemaining <= 0)
-                { jumping = false; jumpRemaining = 0; }
+                { jumping = leftGround = false; jumpRemaining = 0; }
                 else
                 {
                     result.Move = jumpDirection;

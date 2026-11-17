@@ -5,6 +5,10 @@ using JueMingR.Platform.Companions;
 using JueMingR.Platform.Items;
 using JueMingR.TerrariaHost.Items;
 using Terraria;
+using Terraria.ID;
+using Terraria.UI;
+using Terraria.GameInput;
+using System.Reflection;
 
 namespace JueMingR.TerrariaHost.Companions
 {
@@ -43,6 +47,48 @@ namespace JueMingR.TerrariaHost.Companions
                 itemDraft.Generation == actor.Generation && ReferenceEquals(itemDraft.Companion, actor.Body)) CancelItemGesture();
         }
         internal void EndItemRepeat() { itemDraft?.EndRepeat(); }
+
+        internal static bool QuickTrashRequested(bool control, bool shift)
+        {
+            bool ctrlTrash = ItemSlot.Options.DisableLeftShiftTrashCan && !PlayerInput.UsingGamepad;
+            return !ItemSlot.Options.DisableQuickTrash && (ctrlTrash ? control : shift || ItemSlot.ShiftForcedOn);
+        }
+
+        private delegate bool ResearchItem(ref Item item, bool onlyIfComplete);
+        private static readonly ResearchItem researchTrash = (ResearchItem)Delegate.CreateDelegate(typeof(ResearchItem),
+            typeof(ItemSlot).GetMethod("TryResearchingItem", BindingFlags.Static | BindingFlags.NonPublic, null, new[] { typeof(Item).MakeByRefType(), typeof(bool) }, null));
+
+        internal bool QuickTrashGesture(Guid id, bool fromOwner, CompanionInventoryArea area, int slot)
+        {
+            if (!ItemOwnerCurrent() || Main.mouseItem != null && !Main.mouseItem.IsAir) return Result(false, "当前不能整理物品。");
+            if (itemDraft != null) return Result(false, "请先放下手中的物品。");
+            Actor actor; actors.TryGetValue(id, out actor);
+            if (!fromOwner && !ItemActorCurrent(id, actor)) return Result(false, "队友尚未就绪，当前不能交接物品。");
+            if (OwnerOperations?.DiscardBlocked == true) return Result(false, "垃圾桶正在使用，请稍后再试。");
+            var draft = new CompanionItemDraft(owner, actor?.Body, id, actor?.Generation ?? 0, session, world,
+                (isOwner, a, s) => ItemSlotBlocked(isOwner, isOwner ? owner : actor?.Body, a, s), () => OwnerOperations?.DiscardBlocked == true);
+            if (!draft.QuickTrash(fromOwner, area, slot)) return Result(false, "该物品当前不能丢弃。");
+            List<CompanionItemChange> changes;
+            if (!draft.TryPrepare(out changes)) return Result(false, "物品已变化，请重试。");
+            Item sourceResearch = changes[0].Before.DeepClone(), oldTrash = owner.trashItem;
+            if (!ItemOwnerCurrent() || draft.Session != session || !ReferenceEquals(draft.World, world) ||
+                !ReferenceEquals(draft.Owner, owner) || !fromOwner && (!ItemActorCurrent(id, actor) || actor.Generation != draft.Generation || !ReferenceEquals(actor.Body, draft.Companion)) ||
+                OwnerOperations?.DiscardBlocked == true || !draft.Validate()) return Result(false, "物品已变化，请重试。");
+            // All allocations precede this short same-thread two-endpoint write.
+            // A retry may publish/save the new slots, never replay this debit.
+            ItemGestureRevision++;
+            foreach (var change in changes) change.Apply();
+            bool result = FinishItemCommit(actor, changes, "已丢入垃圾桶。");
+            try
+            {
+                // The native quick-trash adjacency consumes detached copies with
+                // the REAL owner identity once, only after an accepted commit.
+                researchTrash(ref sourceResearch, true); researchTrash(ref oldTrash, false);
+                ItemSlot.AnnounceTransfer(new ItemSlot.ItemTransferInfo(owner.trashItem, 0, 6));
+            }
+            catch (Exception) { Feedback = "已丢入垃圾桶，原版通知未完成。"; }
+            return result;
+        }
 
         private bool ItemOwnerCurrent()
         {
@@ -112,7 +158,7 @@ namespace JueMingR.TerrariaHost.Companions
             CancelItemGesture();
             // Every replacement is allocated and all identities/finite reads
             // are validated. No callback/I/O runs between these slot writes.
-            foreach (var change in changes) change.Array[change.Slot] = change.After;
+            foreach (var change in changes) change.Apply();
             return FinishItemCommit(actor, changes, message);
         }
 
@@ -147,12 +193,13 @@ namespace JueMingR.TerrariaHost.Companions
             foreach (var change in changes)
             {
                 companionChanged |= !change.Owner;
-                if (change.Owner)
+                if (change.Owner && !change.OwnerTrash)
                 {
                     try { OwnerItems?.NotifyManualItemReplacement(owner, change.Array, change.Slot, change.Before, change.After); }
                     catch (Exception) { failure = "物品已移动，物品状态通知失败。"; }
                 }
-                if (Main.netMode == 1) QueueItemSync(change.Owner ? owner : actor.Body, change.Owner ? null : actor, NetworkSlot(change.Area, change.Slot));
+                if (Main.netMode == 1) QueueItemSync(change.Owner ? owner : actor.Body, change.Owner ? null : actor,
+                    change.OwnerTrash ? PlayerItemSlotID.TrashItem : NetworkSlot(change.Area, change.Slot));
             }
             if (companionChanged && actor != null)
             {
@@ -160,7 +207,7 @@ namespace JueMingR.TerrariaHost.Companions
                 // captures/sends; it never executes the accepted transfer twice.
                 actor.Dirty = true;
                 pendingItemCaptures.Add(actor.Profile.Id);
-                try { actor.Profile = profiles.CaptureAndSave(actor.Profile.Id, actor.Body, actor.Generation); pendingItemCaptures.Remove(actor.Profile.Id); }
+                try { ValidateManualWeapon(actor.Profile.Id); actor.Profile = profiles.CaptureAndSave(actor.Profile.Id, actor.Body, actor.Generation); pendingItemCaptures.Remove(actor.Profile.Id); }
                 catch (Exception) { failure = "物品已移动，人物保存失败，请重试保存。"; }
             }
             FlushItemSync(true);
@@ -175,7 +222,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             Actor actor;
             if (!pendingItemCaptures.Contains(id) || !actors.TryGetValue(id, out actor) || !profiles.OwnsActivation(id, actor.Generation)) return false;
-            try { actor.Profile = profiles.CaptureAndSave(id, actor.Body, actor.Generation); pendingItemCaptures.Remove(id); return Result(true, "正在重试保存。"); }
+            try { ValidateManualWeapon(id); actor.Profile = profiles.CaptureAndSave(id, actor.Body, actor.Generation); pendingItemCaptures.Remove(id); return Result(true, "正在重试保存。"); }
             catch (Exception) { return Result(false, "人物保存失败，请重试保存。"); }
         }
 

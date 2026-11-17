@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -97,6 +97,18 @@ namespace NativeWorldTextProbe
             }
             LoadItemTextures(new[]{0}); // native HeldItem layer loads even its empty item before returning
             LoadTexture("Heart","Images/Heart"); LoadTexture("Heart2","Images/Heart2"); LoadTexture("Mana","Images/Mana");
+            LoadTexture("Extra","Images/Extra_54",54);
+            foreach(string field in new[]{"ColorBar","ColorBlip","ColorSlider"})LoadTexture(field,"Images/"+field);
+            LoadTexture("ColorHighlight","Images/UI/Slider_Highlight");
+            using(var stream=File.OpenRead(Path.Combine(contentDirectory,"Fonts","Death_Text.xnb")))Terraria.GameContent.FontAssets.DeathText=Loaded("Fonts/Death_Text",reader.FromStream<DynamicSpriteFont>(stream));
+            foreach(string name in new[]{"CategoryPanel","CategoryPanelHighlight","CategoryPanelBorder","SmallPanel","SmallPanelBorder","PanelGrayscale","Copy","Paste","Randomize","Voice","ColorHair","ColorEye","ColorEyeBack","ColorSkin","ColorShirt","ColorUndershirt","ColorPants","ColorShoes","ColorCharacter","HairStyle_Hair","HairStyle_Arrow","ClothStyleMale","ClothStyleFemale","CharInfo"})
+                screenEffectsRepository.Request<Texture2D>("Images/UI/CharCreation/"+name,AssetRequestMode.ImmediateLoad);
+            foreach(string name in new[]{"PanelBorder","PanelBackground","Scrollbar","ScrollbarInner","PlayerBackground","TexturePackButtons","TexturePackButtonsOutline","VK_Shift","VK_Backspace"})
+                screenEffectsRepository.Request<Texture2D>("Images/UI/"+name,AssetRequestMode.ImmediateLoad);
+            LoadItemTextures(new int[]{271,5660,91,239,237});
+            foreach(int type in new int[]{271,5660,91,239,237})screenEffectsRepository.Request<Texture2D>("Images/Item_"+type,AssetRequestMode.ImmediateLoad);
+            if(!Terraria.UI.Gamepad.UILinkPointNavigator.Points.ContainsKey(3000))Terraria.Initializers.UILinksInitializer.Load();
+
             // Native render paths use these tables even for an empty armor set.
             foreach(var pair in new[]{new[]{"ArmorHead","Armor_Head_"},new[]{"ArmorBody","Armor_Body_"},new[]{"ArmorArm","Armor_Arm_"},new[]{"ArmorLeg","Armor_Legs_"},new[]{"ArmorBodyComposite","Armor/Armor_"}})
             {

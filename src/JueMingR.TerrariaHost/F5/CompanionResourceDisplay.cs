@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -32,7 +32,7 @@ namespace JueMingR.TerrariaHost.F5
         private string key,preparedFolder;
         private IAssetRepository repository;
         private static readonly string[] BarTextures={"HP_Fill","HP_Fill_Honey","MP_Fill","Panel_Left","HP_Panel_Middle","HP_Panel_Right","MP_Panel_Middle","MP_Panel_Right"};
-        private static readonly string[] FancyTextures={"Heart_Single_Fancy","Heart_Fill","Heart_Fill_B","Star_Single","Star_Fill"};
+        private static readonly string[] FancyTextures={"Heart_Left","Heart_Middle","Heart_Right","Heart_Right_Fancy","Heart_Single_Fancy","Heart_Fill","Heart_Fill_B","Star_Single","Star_Fill"};
         internal string StyleKey { get { return key; } }
         internal void Prepare()
         {
@@ -45,61 +45,83 @@ namespace JueMingR.TerrariaHost.F5
             foreach(string name in names) { string path="Images/UI/PlayerResourceSets/"+folder+"/"+name; if(!assets.ContainsKey(path)) assets.Add(path,Main.Assets.Request<Texture2D>(path,AssetRequestMode.ImmediateLoad)); }
         }
         private Texture2D Texture(string folder,string name) { return assets["Images/UI/PlayerResourceSets/"+folder+"/"+name].Value; }
-        internal static float MeasureHeight(Player player,float width)
+        internal struct Blocks
+        {internal float Life,Mana;}
+        internal static Blocks MeasureBlocks(Player player,float width)
         {
-            var s=new PlayerStatsSnapshot(player); string k=Main.ResourceSetsManager?.ActiveSetKeyName??"Default";
+            var s=new PlayerStatsSnapshot(player);string k=Main.ResourceSetsManager?.ActiveSetKeyName??"Default";
             bool bars=k.StartsWith("HorizontalBars",StringComparison.Ordinal),fancy=k=="New"||k=="NewWithText";
             bool lifeText=k=="Default"||k=="NewWithText"||k=="HorizontalBarsWithText"||k=="HorizontalBarsWithFullText";
             bool manaText=k=="Default"||k=="NewWithText"||k=="HorizontalBarsWithFullText";
-            int columns=Math.Max(1,(int)(width/(fancy?25:23)));
-            float health=bars?34:(float)Math.Ceiling(Math.Ceiling(s.LifeMax/Math.Max(1,s.LifePerSegment))/columns)*24+5;
-            float mana=bars?34:(float)Math.Ceiling(Math.Ceiling(s.ManaMax/Math.Max(1,s.ManaPerSegment))/columns)*24;
-            return health+mana+(lifeText?25:0)+(manaText?25:0);
+            float health=bars?34:(float)Math.Ceiling(Math.Ceiling(s.LifeMax/Math.Max(1,s.LifePerSegment))/10)*RowHeight(width,fancy)+5;
+            float mana=bars?34:(float)Math.Ceiling(Math.Ceiling(s.ManaMax/Math.Max(1,s.ManaPerSegment))/10)*RowHeight(width,fancy);
+            return new Blocks{Life=health+(lifeText?20:0),Mana=mana+(manaText?20:0)};
         }
-        internal void Draw(ItemsRenderer renderer,Player player,F5Rect rect)
+        internal static float MeasureHeight(Player player,float width) {var blocks=MeasureBlocks(player,width);return blocks.Life+blocks.Mana;}
+        internal void Draw(ItemsRenderer renderer,Player player,F5Rect rect,float sharedLife=-1)
         {
             var stats=new PlayerStatsSnapshot(player); var text=TextValues(player,stats);
             bool bars=key!=null&&key.StartsWith("HorizontalBars",StringComparison.Ordinal), fancy=key=="New"||key=="NewWithText";
             bool lifeText=key=="Default"||key=="NewWithText"||key=="HorizontalBarsWithText"||key=="HorizontalBarsWithFullText";
             bool manaText=key=="Default"||key=="NewWithText"||key=="HorizontalBarsWithFullText";
             float y=rect.Y;
-            if(lifeText) { renderer.Text(text.LifeText,new F5Rect(rect.X,y,rect.Width,24),Color.White,.6f); y+=25; }
+            if(lifeText) { renderer.Text(text.LifeText,new F5Rect(rect.X,y,rect.Width,20),Color.White,.6f); y+=20; }
             if(bars) { Bar(stats.Life,stats.LifeMax,stats.LifePerSegment,stats.LifeFruitCount,rect.X,y,rect.Width,false); y+=34; }
             else y+=Icons(stats.Life,stats.LifeMax,stats.LifePerSegment,stats.LifeFruitCount,rect.X,y,rect.Width,false,fancy)+5;
-            if(manaText) { renderer.Text(text.ManaText,new F5Rect(rect.X,y,rect.Width,24),Color.White,.6f); y+=25; }
+            if(sharedLife>=0)y=rect.Y+sharedLife;
+            if(manaText) { renderer.Text(text.ManaText,new F5Rect(rect.X,y,rect.Width,20),Color.White,.6f); y+=20; }
             if(bars) Bar(stats.Mana,stats.ManaMax,stats.ManaPerSegment,0,rect.X,y,rect.Width,true);
             else Icons(stats.Mana,stats.ManaMax,stats.ManaPerSegment,0,rect.X,y,rect.Width,true,fancy);
         }
+        private static float RowHeight(float width,bool fancy) {return fancy?34:29;}
         private float Icons(int current,int max,float per,int fruit,float x,float y,float width,bool mana,bool fancy)
         {
             int count=Math.Max(0,(int)Math.Ceiling(max/Math.Max(1,per)));
-            if(count==0) return 0;
-            Texture2D background=fancy?Texture("FancyClassic",mana?"Star_Single":"Heart_Single_Fancy"):mana?TextureAssets.Mana.Value:TextureAssets.Heart.Value;
-            float desired=fancy?25:23;
-            int columns=Math.Max(1,(int)(width/desired));
-            // Real segment count is never truncated. Additional stars stay
-            // horizontal within each row, and wrap inside this local rectangle.
-            float cell=Math.Min(desired,width/Math.Min(columns,count));
-            for(int i=0;i<count;i++)
+            if(count==0)return 0;
+            const int columns=10;
+            float cell=Math.Min(fancy?26:27,width/columns),row=RowHeight(width,fancy);
+            if(fancy&&!mana)
+            {
+                // Vanilla panels form one connected row. Its final ornament
+                // overlaps eight pixels; fills share the original 15px anchors.
+                float unit=Math.Min(1.1f,(width-10)/Math.Max(1,Texture("FancyClassic","Heart_Left").Width*10f));
+                for(int start=0;start<count;start+=columns)
+                {
+                    int n=Math.Min(columns,count-start);float panelX=x+4*unit,fillX=x+15*unit;
+                    for(int j=0;j<n;j++)
+                    {
+                        int i=start+j;bool last=j==n-1;
+                        string name=n==1?"Heart_Single_Fancy":last?(i==count-1?"Heart_Right_Fancy":"Heart_Right"):j==0?"Heart_Left":"Heart_Middle";
+                        var panel=Texture("FancyClassic",name);float dx=n==1?-4:last&&i==count-1?-8:0,dy=n==1||last&&i==count-1?-4:0;
+                        Main.spriteBatch.Draw(panel,new Vector2(panelX+dx*unit,y+start/columns*row+dy*unit+4),null,Color.White,0,Vector2.Zero,unit,SpriteEffects.None,0);
+                        var fill=Texture("FancyClassic",i<fruit?"Heart_Fill_B":"Heart_Fill");
+                        float amount=MathHelper.Clamp((current-i*per)/Math.Max(1,per),0,1);
+                        if(amount>0)Main.spriteBatch.Draw(fill,new Vector2(fillX,y+start/columns*row+15*unit+4),null,Color.White,0,new Vector2(fill.Width/2f,fill.Height/2f),unit*amount,SpriteEffects.None,0);
+                        panelX+=panel.Width*unit;fillX+=(fill.Width+2)*unit;
+                    }
+                }
+            }
+            else for(int i=0;i<count;i++)
             {
                 float fill=MathHelper.Clamp((current-i*per)/Math.Max(1,per),0,1);
-                var r=new F5Rect(x+i%columns*cell,y+i/columns*24,cell-1,23);
+                float px=x+i%columns*cell,py=y+i/columns*row;
                 if(fancy)
                 {
-                    DrawTexture(background,r,Color.White,1);
-                    var foreground=Texture("FancyClassic",mana?"Star_Fill":i<fruit?"Heart_Fill_B":"Heart_Fill");
-                    DrawTexture(foreground,new F5Rect(r.X+3,r.Y+3,r.Width-6,r.Height-6),Color.White,fill);
+                    var panel=Texture("FancyClassic","Star_Single");var foreground=Texture("FancyClassic","Star_Fill");
+                    float scale=Math.Min(1.1f,cell/panel.Width);
+                    Main.spriteBatch.Draw(panel,new Vector2(px,py),null,Color.White,0,Vector2.Zero,scale,SpriteEffects.None,0);
+                    if(fill>0)Main.spriteBatch.Draw(foreground,new Vector2(px+panel.Width*scale/2,py+panel.Height*scale/2),null,Color.White,0,new Vector2(foreground.Width/2f,foreground.Height/2f),scale*fill,SpriteEffects.None,0);
                 }
                 else
                 {
                     var texture=mana?TextureAssets.Mana.Value:i<fruit?TextureAssets.Heart2.Value:TextureAssets.Heart.Value;
-                    int brightness=(int)(30+225*fill); float pulse=.75f+fill*.25f;
-                    if(fill>0&&fill<1||current==(i+1)*per) pulse+=Main.cursorScale-1;
-                    float w=r.Width*pulse,h=r.Height*pulse;
-                    DrawTexture(texture,new F5Rect(r.X+(r.Width-w)/2,r.Y+(r.Height-h)/2,w,h),new Color(brightness,brightness,brightness,(int)(brightness*.9f)),1);
+                    int brightness=(int)(30+225*fill);float pulse=.75f+fill*.25f;
+                    if(fill>0&&fill<1||current==(i+1)*per)pulse+=Main.cursorScale-1;
+                    float scale=Math.Min(1.1f,(cell-1)/texture.Width)*pulse;
+                    Main.spriteBatch.Draw(texture,new Vector2(px+cell/2,py+row/2),null,new Color(brightness,brightness,brightness,(int)(brightness*.9f)),0,new Vector2(texture.Width/2f,texture.Height/2f),scale,SpriteEffects.None,0);
                 }
             }
-            return (float)Math.Ceiling((double)count/columns)*24;
+            return (float)Math.Ceiling((double)count/columns)*row;
         }
         private void Bar(int current,int maximum,float per,int fruit,float x,float y,float width,bool mana)
         {

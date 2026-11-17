@@ -14,6 +14,21 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="CompanionNetworkCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCompanionTeamChecks.Run(context);NativeScopeDispatch.Enter("companions-network");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionSessionCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCompanionSessionChecks.Run(context);NativeScopeDispatch.Enter("companions-session");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionNavigationCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCompanionNavigationChecks.Run(context);NativeScopeDispatch.Enter("companions-navigation");},processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="CompanionItemsCpu")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
@@ -27,7 +42,7 @@ namespace NativeWorldTextProbe
             if(scope=="CompanionVisual")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{NativeCompanionCreationChecks.VoicePreview(NativeInformationChecks.Get(context,"Companions"));NativeCompanionCreationChecks.StoredMaxima(NativeInformationChecks.Get(context,"Companions"),output);using(var graphics=new ProbeGraphics(content))NativeCompanionUiChecks.FullInput(context,graphics,output);NativeScopeDispatch.Enter("companions-ui");},processing:true,shortFeedback:true);return 0;
+                NativeQuickItemChecks.Run(context=>{NativeCompanionCreationChecks.VoicePreview(NativeInformationChecks.Get(context,"Companions"));NativeCompanionCreationChecks.StoredMaxima(NativeInformationChecks.Get(context,"Companions"),output);using(var graphics=new ProbeGraphics(content)){NativeCompanionUiChecks.FullInput(context,graphics,output);NativeCompanionSessionChecks.Journey(context,graphics);}NativeScopeDispatch.Enter("companions-ui");},processing:true,shortFeedback:true);return 0;
             }
             if(scope=="CompanionCpu")
             {

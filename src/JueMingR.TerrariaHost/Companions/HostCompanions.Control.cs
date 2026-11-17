@@ -118,6 +118,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(a.Profile.PermanentlyDead || a.PermanentDeathPending)return;
             a.Behavior.ObserveCapabilities(a.Body);
+            if(a.Dirty)ValidateManualWeapon(a.Profile.Id);
+            if(a.Body.dead && !a.Profile.Behavior.AutoRespawn){Publish(a);return;}
             // Native skip sets the timer to one. Do not reset the zero reached
             // by the next native UpdateDead, or a legally skipped death never ends.
             if(a.Body.dead && a.Body.respawnTimer>1 && a.Body.AllowsRespawnTimerSkip())a.Body.SkipRespawnTime();
@@ -142,8 +144,13 @@ namespace JueMingR.TerrariaHost.Companions
             CancelItemGestureForActor(a);
             a.Target=null;a.Body.controlUseItem=false;a.Body.channel=false;a.Status="等待复活";
             RetireProjectiles(a);
-            a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);
-            profiles.Release(a.Profile,a.Generation);long next;if(!profiles.TryReserve(a.Profile,out next))throw new InvalidOperationException("队友复活身份不可用。");a.Generation=next;
+            ValidateManualWeapon(a.Profile.Id);
+            a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);a.TeamSavePending=false;
+            long previous=a.Generation;profiles.Release(a.Profile,previous);long next;if(!profiles.TryReserve(a.Profile,out next))throw new InvalidOperationException("队友复活身份不可用。");a.Generation=next;
+            // A legal death renews this same body's activation. Only its own
+            // latest native team intent follows that transition, never a new
+            // connection/actor that happens to reuse the player slot.
+            if(a.TeamPending && a.TeamGeneration==previous && a.TeamSession==session && ReferenceEquals(a.TeamConnection,a.Connection))a.TeamGeneration=next;
         }
         internal bool AcceptItemPacket(Actor a,byte[] p)
         {

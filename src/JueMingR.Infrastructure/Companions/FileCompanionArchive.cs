@@ -138,12 +138,13 @@ namespace JueMingR.Infrastructure.Companions
             using (var stream = new MemoryStream())
             using (var writer = new BinaryWriter(stream, new UTF8Encoding(false, true)))
             {
-                writer.Write("JueMingR.Companion"); writer.Write(2);
+                writer.Write("JueMingR.Companion"); writer.Write(3);
                 writer.Write(profile.Id.ToByteArray()); writer.Write(profile.OwnerId.ToByteArray());
                 writer.Write(profile.Name); writer.Write(profile.Revision); writer.Write(profile.DataEpoch);
                 var behavior = profile.Behavior;
                 writer.Write(behavior.Follow); writer.Write(behavior.AttackEnabled); writer.Write(behavior.SelfDefense); writer.Write(behavior.PreferOwner);
                 writer.Write(profile.PermanentlyDead);
+                writer.Write(behavior.AutoRespawn); writer.Write(behavior.ManualWeaponSlot); writer.Write(behavior.ManualWeaponType); writer.Write((byte)behavior.ManualWeaponPrefix);
                 byte[] data = profile.NativeData; writer.Write(data.Length); writer.Write(data); writer.Flush();
                 using (var sha = SHA256.Create()) writer.Write(sha.ComputeHash(stream.ToArray()));
                 writer.Flush();
@@ -165,13 +166,17 @@ namespace JueMingR.Infrastructure.Companions
             {
                 if (reader.ReadString() != "JueMingR.Companion") throw new InvalidDataException("不支持的队友档案格式。");
                 int version = reader.ReadInt32();
-                if (version != 1 && version != 2) throw new InvalidDataException("不支持的队友档案格式。");
+                if (version != 1 && version != 2 && version != 3) throw new InvalidDataException("不支持的队友档案格式。");
                 Guid id = new Guid(reader.ReadBytes(16)), owner = new Guid(reader.ReadBytes(16));
                 string name = reader.ReadString(); long revision = reader.ReadInt64(), epoch = reader.ReadInt64();
                 var behavior = new CompanionBehavior { Follow = ReadBoolean(reader), AttackEnabled = ReadBoolean(reader), SelfDefense = ReadBoolean(reader), PreferOwner = ReadBoolean(reader) };
                 // v1 had no terminal lifecycle marker. Its existing characters remain
                 // live; v2 keeps native bytes and terminal identity in one commit.
                 bool permanentlyDead = version >= 2 && ReadBoolean(reader);
+                // v1/v2 keep native bytes/ownership and default to automatic
+                // respawn with no manual weapon. One v3 revision stores both
+                // preferences atomically with the native character and terminal flag.
+                if (version >= 3) { behavior.AutoRespawn = ReadBoolean(reader); behavior.ManualWeaponSlot = reader.ReadInt32(); behavior.ManualWeaponType = reader.ReadInt32(); behavior.ManualWeaponPrefix = reader.ReadByte(); }
                 int length = reader.ReadInt32();
                 if (length <= 0 || length > MaximumBytes || length != stream.Length - stream.Position)
                     throw new InvalidDataException("队友人物数据长度不符。");

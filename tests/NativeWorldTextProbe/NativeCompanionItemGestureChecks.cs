@@ -24,6 +24,14 @@ namespace NativeWorldTextProbe
         private static bool failCapture;
         private static bool failSend;
         private static int itemClones, nativeCaptures;
+        private static ItemOperationOwnership trashGuard;
+        private static bool blockTrashDuringPrepare;
+        private static readonly List<Tuple<int,Player>> trashResearch = new List<Tuple<int,Player>>();
+        private static void ResearchObserved(ref Item item) { trashResearch.Add(Tuple.Create(item?.type ?? 0,Main.LocalPlayer)); }
+        private static void BlockTrashAfterPrepare()
+        { if(blockTrashDuringPrepare) { blockTrashDuringPrepare=false; Require(trashGuard.TryBeginDiscard(trashGuard.Session,49),"late native discard guard acquired during detached preparation"); } }
+        private static bool Trash(object host,Guid id,bool owner,int slot)
+        { return (bool)Call(host,"QuickTrashGesture",id,owner,CompanionInventoryArea.Inventory,slot); }
         private static readonly List<byte[]> primaryPackets = new List<byte[]>();
         private static void CaptureFailure() { nativeCaptures++; if (failCapture) throw new IOException("isolated item capture failure"); }
         private static void CountClone() { itemClones++; }
@@ -210,6 +218,7 @@ namespace NativeWorldTextProbe
                 Gesture(host, id, true, CompanionInventoryArea.Inventory, 33, "Left"); Gesture(host, id, true, CompanionInventoryArea.Inventory, 34, "Left");
                 Require(human.inventory[33].IsAir && human.inventory[34].stack == 4, "owner organization remains usable when AI is ineligible"); Set(actor, "Ready", true);
                 ManualNotification(context, host, id, human, ownership);
+                QuickTrash(host,profiles,id,actor,human,companion,ownership);
 
                 var fault = new Harmony("JueMingR.Tests.CompanionItemCapture");
                 fault.Patch(AccessTools.Method(profiles.GetType(), "Capture"), prefix: new HarmonyMethod(typeof(NativeCompanionItemGestureChecks), nameof(CaptureFailure)));
@@ -230,6 +239,59 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS companion items: real host bounded drafts, exact body slots/rules, right-repeat direction, conservation/cancel/conflicts, Store/Use/Recovery, partial Shift, latest archive retry. No game/Steam/FPS claim.");
             }
             finally { Call(host, "CancelItemGesture"); Main.mouseItem = nativeCursor; companion.dead = false; Call(host, "Recall", id); }
+        }
+
+        private static void QuickTrash(object host,object profiles,Guid id,object actor,Player human,Player companion,ItemOperationOwnership ownership)
+        {
+            var patch=new Harmony("JueMingR.Tests.CompanionTrash");
+            patch.Patch(typeof(Terraria.UI.ItemSlot).GetMethod("TryResearchingItem",Flags,null,new[]{typeof(Item).MakeByRefType(),typeof(bool)},null),
+                prefix:new HarmonyMethod(typeof(NativeCompanionItemGestureChecks),nameof(ResearchObserved)));
+            patch.Patch(AccessTools.Method(typeof(Item),"DeepClone"),prefix:new HarmonyMethod(typeof(NativeCompanionItemGestureChecks),nameof(BlockTrashAfterPrepare)));
+            bool disabled=Terraria.UI.ItemSlot.Options.DisableQuickTrash,ctrl=Terraria.UI.ItemSlot.Options.DisableLeftShiftTrashCan;
+            try
+            {
+                var map=host.GetType().GetMethod("QuickTrashRequested",Flags);
+                Terraria.UI.ItemSlot.Options.DisableQuickTrash=false;Terraria.UI.ItemSlot.Options.DisableLeftShiftTrashCan=true;
+                Require((bool)map.Invoke(null,new object[]{true,false}) && !(bool)map.Invoke(null,new object[]{false,true}),"current native Ctrl mapping takes one trash intent");
+                Terraria.UI.ItemSlot.Options.DisableLeftShiftTrashCan=false;
+                Require((bool)map.Invoke(null,new object[]{false,true}) && !(bool)map.Invoke(null,new object[]{true,false}),"current native Shift mapping replaces quick-transfer intent");
+                Terraria.UI.ItemSlot.Options.DisableQuickTrash=true;
+                Require(!(bool)map.Invoke(null,new object[]{true,true}),"disabled native quick trash does not enable physical Ctrl");
+                Terraria.UI.ItemSlot.Options.DisableQuickTrash=false;
+                trashResearch.Clear();trashGuard=ownership;
+                Put(human.inventory,42,ItemID.Wood,8);human.trashItem=new Item();human.trashItem.SetDefaults(ItemID.StoneBlock);human.trashItem.stack=3;
+                companion.trashItem=new Item();companion.trashItem.SetDefaults(ItemID.DirtBlock);var aiTrash=companion.trashItem;
+                Set(actor,"Ready",false);
+                Require(Trash(host,id,true,42) && human.inventory[42].IsAir && human.trashItem.type==ItemID.Wood && human.trashItem.stack==8,
+                    "offline selected AI cannot block actual owner source-to-owner scalar trash");Set(actor,"Ready",true);
+                Require(trashResearch.Count==2 && trashResearch[0].Item1==ItemID.Wood && trashResearch[1].Item1==ItemID.StoneBlock && trashResearch.All(x=>ReferenceEquals(x.Item2,human)),
+                    "accepted native research adjacency sees detached source and replaced old trash once under human identity");
+                Put(companion.inventory,42,ItemID.DirtBlock,6);var original=companion.inventory[42];var oldTrash=human.trashItem;
+                original.favorited=true;Require(!Trash(host,id,false,42),"favorite AI source cannot be quick-trashed");original.favorited=false;
+                Require(ownership.TryBeginDiscard(ownership.Session,49),"native owner discard guard acquired");
+                Require(!Trash(host,id,false,42) && ReferenceEquals(human.trashItem,oldTrash) && ReferenceEquals(companion.inventory[42],original),"AI source respects occupied real owner trash");
+                ownership.FinishDiscard(ownership.Session,new ItemOperationResult(ItemOperationState.Completed));
+                blockTrashDuringPrepare=true;
+                Require(!Trash(host,id,false,42) && ownership.DiscardBlocked && ReferenceEquals(human.trashItem,oldTrash) && companion.inventory[42].stack==6,
+                    "final guard rejects occupancy acquired after preparation with both actual endpoints unchanged");
+                ownership.FinishDiscard(ownership.Session,new ItemOperationResult(ItemOperationState.Completed));
+                Require(trashResearch.Count==2,"failed preparations never research either endpoint");
+                var fault=new Harmony("JueMingR.Tests.CompanionTrashCapture");
+                fault.Patch(AccessTools.Method(profiles.GetType(),"Capture"),prefix:new HarmonyMethod(typeof(NativeCompanionItemGestureChecks),nameof(CaptureFailure)));
+                try
+                {
+                    failCapture=true;Require(Trash(host,id,false,42),"post-commit capture fault retains accepted trash operation");
+                    Require(companion.inventory[42].IsAir && human.trashItem.type==ItemID.DirtBlock && human.trashItem.stack==6 && ReferenceEquals(companion.trashItem,aiTrash),
+                        "actual AI source is cleared into human scalar trash; AI trash remains its exact old object");
+                    int researchCount=trashResearch.Count;failCapture=false;Call(host,"RetrySave",id);Saved(host,id);
+                    var saved=((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Single(p=>p.Id==id);
+                    var reloaded=(Player)Call(profiles,"LoadBody",saved);
+                    Require(reloaded.inventory[42].IsAir && trashResearch.Count==researchCount && human.trashItem.stack==6,
+                        "archive reload and capture retry preserve debit without replaying old-trash destruction or research");
+                }
+                finally { failCapture=false;fault.UnpatchAll(fault.Id); }
+            }
+            finally { blockTrashDuringPrepare=false;trashGuard=null;patch.UnpatchAll(patch.Id);Terraria.UI.ItemSlot.Options.DisableQuickTrash=disabled;Terraria.UI.ItemSlot.Options.DisableLeftShiftTrashCan=ctrl; }
         }
 
         private static void LifecycleIsolation(object host, object profiles, Guid id, Player human, Player companion)
@@ -313,6 +375,13 @@ namespace NativeWorldTextProbe
                     Require(primaryPackets.Any(p => p[2] == 5 && p[3] == human.whoAmI && BitConverter.ToInt16(p, 4) == slot), "human native region uses correct inventory packet slot " + slot);
                 Require(frames.Any(p => p[2] == 5 && p[3] == companion.whoAmI && BitConverter.ToInt16(p, 4) == PlayerItemSlotID.Armor0) &&
                     primaryPackets.All(p => p[2] != 5 || p[3] == human.whoAmI), "AI changes use independent connection identity without impersonating human");
+                Put(companion.inventory,42,ItemID.DirtBlock,5);primaryPackets.Clear();frames.Clear();failSend=true;
+                Require(Trash(host,id,false,42) && companion.inventory[42].IsAir && human.trashItem.stack==5,"AI trash debit commits despite owner publication failure");
+                Require(frames.Any(p=>p[2]==5 && p[3]==companion.whoAmI && BitConverter.ToInt16(p,4)==PlayerItemSlotID.Inventory0+42),"source inventory publication uses actual AI connection");
+                failSend=false;Call(host,"FlushItemSync",true);
+                Require(primaryPackets.Any(p=>p[2]==5 && p[3]==human.whoAmI && BitConverter.ToInt16(p,4)==PlayerItemSlotID.TrashItem) &&
+                    companion.inventory[42].IsAir && human.trashItem.stack==5 && ((IList)Get(host,"pendingItemSync")).Count==0,
+                    "retry publishes native human trash slot on main connection without replaying source debit");
                 Put(human.inventory, 45, ItemID.Wood, 4); human.inventory[46] = new Item(); failSend = true;
                 Gesture(host, id, true, CompanionInventoryArea.Inventory, 45, "Left");
                 Require(Gesture(host, id, true, CompanionInventoryArea.Inventory, 46, "Left") && human.inventory[45].IsAir && human.inventory[46].stack == 4,

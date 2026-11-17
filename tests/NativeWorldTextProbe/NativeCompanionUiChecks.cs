@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
@@ -254,10 +254,11 @@ namespace NativeWorldTextProbe
                     "viewport/scale change cancels the old grab and clamps the entire independent panel in the new logical domain");
                 graphics.Image(Path.Combine(output, "companion-independent-native-150.png"), () => Call(shell, "DrawLayer"), transform, 1440, 900);
                 Main.screenWidth = 960; Main.screenHeight = 760; Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = 1; release();
-                var plus = NativeToolsUiChecks.Point(Get(control("create/"), "Rect")); NativeToolsUiChecks.Click(context, plus);
-                Require(GetOptional(window, "Editor") != null, "actual create click enters the shared text editor");
-                pulse(); Require((bool)Get(window, "Visible") && GetOptional(window, "Editor") != null, "text ownership blocks management hotkeys without replaying them");
-                Call(window, "CancelEdit"); release(); pulse();
+                var plus = NativeToolsUiChecks.Point(Get(control("create/"), "Rect"));
+                int worldMode=Main.GameMode;
+                try {Main.GameMode=3;NativeToolsUiChecks.Click(context,plus);NativeCompanionNativeCreationChecks.CancelEntry(context,graphics,output);}
+                finally {Main.GameMode=worldMode;}
+                release();pulse();
                 Main.drawingPlayerChat = true; release(); frame(Vector2.Zero, false, chordKeys); Main.drawingPlayerChat = false;
                 frame(Vector2.Zero, false, chordKeys); release();
                 Require(!(bool)Get(window, "Visible"), "native chat and its held edge cannot open a management window later");

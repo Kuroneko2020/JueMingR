@@ -29,6 +29,10 @@ namespace JueMingR.TerrariaHost.Companions
             internal bool WaitingPassword,HasAim;internal Item AimWeapon;internal Vector2 AimOrigin,AimTarget,AimVelocity;
             internal bool Dirty,Faulted,WasUsing;
             internal bool DeathObserved,PermanentDeathPending;
+            internal bool TeamPending,TeamSavePending;
+            internal uint NextTeamPublish;
+            internal long TeamSession,TeamGeneration;
+            internal CompanionConnection TeamConnection;
             internal readonly MinionRespawner Minions=new MinionRespawner();
             internal readonly Dictionary<int,WorldItem> PersonalItems=new Dictionary<int,WorldItem>();
             internal uint PersonalItemsStep=UInt32.MaxValue;
@@ -88,7 +92,7 @@ namespace JueMingR.TerrariaHost.Companions
             try{return Created(profiles.Create(name,Main.GameMode==3));}catch(Exception e){return Result(false,e.Message);}
         }
         private bool Created(CompanionProfile profile)
-        {savingCreation=profile.Id;return Result(true,"正在保存新人物。");}
+        {savingCreation=profile.Id;LastCreatedId=profile.Id;return Result(true,"正在保存新人物。");}
         internal bool Join(Guid id)
         {
             if(failed || Main.gameMenu || owner==null || !ReferenceEquals(owner,Main.LocalPlayer))return Result(false,"当前不能加入队友。");
@@ -139,7 +143,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 if(a.PermanentDeathPending){a.Profile=profiles.MarkPermanentDeath(a.Profile.Id,a.Generation);a.PermanentDeathPending=false;}
                 RetireProjectiles(a);profiles.EndPlay(a.Body);
-                a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);ItemCaptureSucceeded(a.Profile.Id);a.CloseCaptured=true;
+                a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);a.TeamSavePending=false;ItemCaptureSucceeded(a.Profile.Id);a.CloseCaptured=true;
                 a.Status=a.TerminalFailure??"正在保存并收回";
                 // Success here means the latest snapshot was accepted for
                 // closing/retry, not that the original connection succeeded.
@@ -158,6 +162,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void Detach(Actor a)
         {
+            a.TeamPending=false;a.TeamConnection=null;
             CancelItemGestureForActor(a);
             if(ReferenceEquals(planningActor,a))planningActor=null;
             if(ReferenceEquals(aimSelected,a)){aimSelected=null;aimSelectionStep=UInt32.MaxValue;}
@@ -183,8 +188,8 @@ namespace JueMingR.TerrariaHost.Companions
             try{profiles.Reset(id);previews.Remove(id);return Result(true,"人物已清空，正在保存。");}catch(Exception e){return Result(false,e.Message);}
         }
         internal bool RestoreBehavior(Guid id){return SetBehavior(id,new CompanionBehavior());}
-        internal bool SaveFailed(Guid id){Actor a;return HasPendingItemCapture(id) || profiles.SaveFailed(id) || actors.TryGetValue(id,out a) && a.Closing && !a.CloseCaptured;}
-        internal bool RetrySave(Guid id){try{Actor a;if(actors.TryGetValue(id,out a) && a.Closing && !a.CloseCaptured)return CloseActor(a,a.TerminalFailure);if(HasPendingItemCapture(id))return RetryItemCapture(id);profiles.RetrySave(id);return Result(true,"正在重试保存。");}catch(Exception e){return Result(false,e.Message);}}
+        internal bool SaveFailed(Guid id){Actor a;return HasPendingItemCapture(id) || profiles.SaveFailed(id) || actors.TryGetValue(id,out a) && (a.TeamSavePending || a.Closing && !a.CloseCaptured);}
+        internal bool RetrySave(Guid id){try{Actor a;if(actors.TryGetValue(id,out a) && a.Closing && !a.CloseCaptured)return CloseActor(a,a.TerminalFailure);if(HasPendingItemCapture(id))return RetryItemCapture(id);if(a!=null && a.TeamSavePending)return SaveTeam(a);profiles.RetrySave(id);return Result(true,"正在重试保存。");}catch(Exception e){return Result(false,e.Message);}}
         internal bool SetBehavior(Guid id,CompanionBehavior behavior)
         {
             var p=Find(id);if(p==null)return false;try{var revised=profiles.SetBehavior(id,behavior);Actor a;if(actors.TryGetValue(id,out a))a.Profile=revised;return Result(true,"行为设置已更新。");}catch(Exception e){return Result(false,e.Message);}
@@ -193,9 +198,12 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var p=GetBody(id);if(!CanTransfer(id) || slot<0 || slot>=50)return Result(false,"当前不能选择武器。");
             if(p.itemAnimation>0 || p.channel){p.controlUseItem=false;p.channel=false;return Result(false,"请等待本次用物结束。");}
-            p.selectedItemState.Select(slot);return Result(true,"已选择使用槽位。");
+            var a=actors[id];var behavior=a.Profile.Behavior;var item=p.inventory[slot];
+            behavior.ManualWeaponSlot=item.IsAir?-1:slot;behavior.ManualWeaponType=item.IsAir?0:item.type;behavior.ManualWeaponPrefix=item.IsAir?0:item.prefix;
+            try {a.Profile=profiles.CapturePreferencesAndSave(id,p,a.Generation,behavior);p.selectedItemState.Select(slot);return Result(true,"已选择使用槽位。");}
+            catch(Exception e){return Result(false,e.Message);}
         }
-        public void OnSessionStarted(){world=Main.ActiveWorldFileData;owner=Main.LocalPlayer;session++;password=ReferenceEquals(passwordConnection,Netplay.Connection)?acceptedPassword??"":"";}
+        public void OnSessionStarted(){world=Main.ActiveWorldFileData;owner=Main.ActivePlayerFileData?.Player;session++;password=ReferenceEquals(passwordConnection,Netplay.Connection)?acceptedPassword??"":"";}
         internal void HumanPassword(byte[] frame)
         {
             using(var s=new System.IO.MemoryStream(frame,3,frame.Length-3,false))using(var r=new System.IO.BinaryReader(s)){candidatePassword=r.ReadString();passwordConnection=Netplay.Connection;acceptedPassword=null;}
@@ -203,11 +211,13 @@ namespace JueMingR.TerrariaHost.Companions
         internal void HumanAccepted(){if(ReferenceEquals(passwordConnection,Netplay.Connection)){acceptedPassword=candidatePassword;candidatePassword=null;}}
         public void OnSessionEnded()
         {
+            F5.CompanionCreationSession.DisposeFor(this);
             CancelItemGesture();
             foreach(var id in actors.Keys.ToArray())if(!actors[id].Closing)Recall(id);owner=null;world=null;password="";prediction.EndWorld();CompanionThreatField.Reset();steam.Dispose();ClearWorldSources();
         }
         public void Update(ulong updateTick)
         {
+            F5.CompanionCreationSession.Validate(this);
             ValidateItemGesture();
             profiles.Pump();
             if(savingCreation!=Guid.Empty && profiles.IsSaved(savingCreation)){savingCreation=Guid.Empty;if(Feedback=="正在保存新人物。")Feedback="";}
@@ -233,7 +243,9 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     if(a.Closing)continue;
                     if(a.Connection!=null){PumpConnection(a);if(a.Connection.Finished){CloseActor(a,a.Connection.Error??"连接已结束");continue;}}
-                    if(a.Ready && a.Dirty && !profiles.SaveFailed(a.Profile.Id) && Main.GameUpdateCount>=a.NextSave){a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);ItemCaptureSucceeded(a.Profile.Id);a.Dirty=false;a.NextSave=Main.GameUpdateCount+300;}
+                    PublishTeam(a);
+                    if(a.TeamSavePending && Main.GameUpdateCount>=a.NextSave)SaveTeam(a);
+                    if(a.Ready && a.Dirty && !a.TeamSavePending && !profiles.SaveFailed(a.Profile.Id) && Main.GameUpdateCount>=a.NextSave){ValidateManualWeapon(a.Profile.Id);a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);ItemCaptureSucceeded(a.Profile.Id);a.Dirty=false;a.NextSave=Main.GameUpdateCount+300;}
                 }
                 catch(Exception e){CloseActor(a,e.Message);}
             }
@@ -242,7 +254,7 @@ namespace JueMingR.TerrariaHost.Companions
         private void Exit(object sender,EventArgs args){Dispose();}
         // CLR shutdown never reads native objects. Normal game-thread leaving
         // captures characters first; disposal only drains accepted bytes/locks.
-        public void Dispose(){AppDomain.CurrentDomain.ProcessExit-=Exit;steam.Dispose();profiles.Dispose();}
+        public void Dispose(){F5.CompanionCreationSession.DisposeFor(this);AppDomain.CurrentDomain.ProcessExit-=Exit;steam.Dispose();profiles.Dispose();}
         internal Actor Owned(Player p){Actor a;return p!=null && bodies.TryGetValue(p,out a) && p.whoAmI>=0 && p.whoAmI<Main.maxPlayers && ReferenceEquals(Main.player[p.whoAmI],p)?a:null;}
         internal Actor OwnedSlot(int slot){Actor a;return slots.TryGetValue(slot,out a) && ReferenceEquals(Owned(a.Body),a)?a:null;}
     }

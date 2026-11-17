@@ -93,9 +93,18 @@ namespace JueMingR.TerrariaHost.Companions
         internal void BeginPlay(Player body) { File(body).StartPlayTimer(); }
         internal void EndPlay(Player body) { File(body).PausePlayTimer(); }
         internal CompanionProfile CaptureAndSave(Guid id, Player body, long activation)
+        { return CapturePreferencesAndSave(id, body, activation, null); }
+        internal CompanionProfile CapturePreferencesAndSave(Guid id, Player body, long activation, CompanionBehavior preferences)
         {
             var current = manager.Find(id);
             if (current == null || !manager.OwnsActivation(id, activation)) throw new InvalidOperationException("队友实例已失效，未保存旧身体。");
+            var revised = current.Revise(Capture(body), preferences); manager.Update(revised); return revised;
+        }
+        internal CompanionProfile SetOfflineTeam(Guid id, int team)
+        {
+            var current = manager.Find(id);
+            if (current == null) throw new InvalidOperationException("未找到自己的队友。");
+            var body = LoadBody(current); body.team = team;
             var revised = current.Revise(Capture(body)); manager.Update(revised); return revised;
         }
         internal CompanionProfile MarkPermanentDeath(Guid id, long activation)

@@ -15,7 +15,7 @@ function Get-WorkloadLeafChecks {
     # This asset initializer is also called by the narrow combat fixture.
     # Preserve its worker consumers when adding the explicit combat leaf;
     # the combat scope itself must not inherit the legacy-worker group.
-    $workerAssetConsumers=@('native-CompanionCreationCpu','native-CompanionItemsCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
+    $workerAssetConsumers=@('native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCreationCpu','native-CompanionItemsCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
     foreach($scope in (Get-WorkloadNativeScopes).GetEnumerator()){
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
@@ -25,9 +25,13 @@ function Get-WorkloadLeafChecks {
         'tests/Companions/CompanionCoreChecks.cs'=@('CompanionCoreChecks')
         'tests/NativeWorldTextProbe/NativeCompanionItemGestureChecks.cs'=@('native-CompanionItemsCpu')
         'tests/NativeWorldTextProbe/NativeCompanionCreationChecks.cs'=@('native-CompanionCreationCpu','native-CompanionVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionTeamChecks.cs'=@('native-CompanionNetworkCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNavigationChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNativeCreationChecks.cs'=@('native-CompanionVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionSessionChecks.cs'=@('native-CompanionSessionCpu','native-CompanionVisual')
         'tests/NativeWorldTextProbe/NativeCompanionChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionTileContextChecks.cs'=@('native-CompanionCpu')
-        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
         'tests/NativeWorldTextProbe/NativeCompanionCoreNetworkChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNpcPhysicsChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNpcStateChecks.cs'=@('native-CompanionCpu')
@@ -204,7 +208,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeJourneyChecks.cs'=@('native-JourneyCpu','native-Journey','native-JourneyCloseCpu','native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu','native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu','native-JourneySinglePlayerExit')
         'tests/NativeWorldTextProbe/NativeJourneySinglePlayerExitChecks.cs'=@('native-JourneySinglePlayerExit')
         'tests/NativeWorldTextProbe/NativeRenameMapChecks.cs'=@('native-FishingAnglerContinuousCpu','native-FishingCpu','native-JourneySinglePlayerExit')
-        'tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs'=@('native-Journey','native-JourneySinglePlayerExit')
+        'tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs'=@('native-CompanionVisual','native-Journey','native-JourneySinglePlayerExit')
         'tests/NativeWorldTextProbe/NativeJourneyPredictionChecks.cs'=@('native-JourneyPredictionCpu')
         'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs'=$attackConsumers
         'src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs'=$attackConsumers
@@ -628,6 +632,9 @@ function Get-WorkloadNativeScopes {
     # in test-world-object-text. Impact/AimUi/Visual need matching real Content
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
+        'CompanionNetworkCpu'=@('companion-host','shared-host');
+        'CompanionSessionCpu'=@('companion-host','shared-host','journey-host');
+        'CompanionNavigationCpu'=@('companion-host','shared-host');
         'CompanionVisual'=@('companion-host','shared-host');
         'CompanionItemsCpu'=@('companion-host','items','shared-host');
         'CompanionCreationCpu'=@('companion-host','shared-host');

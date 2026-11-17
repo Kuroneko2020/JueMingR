@@ -72,7 +72,7 @@ namespace JueMingR.TerrariaHost.DeathHistory
             return probe.SessionIdentity;
         }
         private object DeathToken(Player player)
-        { return ReferenceEquals(player, Main.LocalPlayer) ? CurrentToken() : null; }
+        { return ReferenceEquals(player, probe.OwnerPlayer) ? CurrentToken() : null; }
         private void Pending(object token)
         {
             if (ReferenceEquals(pendingToken, token)) return;

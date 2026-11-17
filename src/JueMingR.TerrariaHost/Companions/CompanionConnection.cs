@@ -22,10 +22,12 @@ namespace JueMingR.TerrariaHost.Companions
         internal CompanionConnection(Action<byte[]> relay,Action close){this.relay=relay;closeRelay=close;}
         internal void Start(){if(relay==null)new Thread(Run){IsBackground=true,Name="JMR companion transport"}.Start();}
         internal void Send(byte[] packet)
+        { TrySend(packet); }
+        internal bool TrySend(byte[] packet)
         {
             if(packet==null || packet.Length<3 || (packet[0]|packet[1]<<8)!=packet.Length)throw new InvalidDataException("Invalid companion frame");
-            if(relay!=null){if(!stopped && !finished)relay((byte[])packet.Clone());return;}
-            lock(gate){if(stopped || finished)return;if(outgoingBytes+packet.Length>4*1024*1024)throw new IOException("队友发送队列已满。");outgoing.Enqueue((byte[])packet.Clone());outgoingBytes+=packet.Length;}
+            if(relay!=null){if(stopped || finished)return false;relay((byte[])packet.Clone());return true;}
+            lock(gate){if(stopped || finished)return false;if(outgoingBytes+packet.Length>4*1024*1024)throw new IOException("队友发送队列已满。");outgoing.Enqueue((byte[])packet.Clone());outgoingBytes+=packet.Length;return true;}
         }
         internal byte[] Receive(){lock(gate){if(incoming.Count==0)return null;var p=incoming.Dequeue();incomingBytes-=p.Length;return p;}}
         internal void ReceiveRelay(byte[] framed)

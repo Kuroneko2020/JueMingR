@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Reflection;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
@@ -16,6 +16,7 @@ namespace JueMingR.TerrariaHost.F5
         private Player source, display;
         private int appearance;
         private static readonly FieldInfo[] visualFields = Fields();
+        private readonly CompanionHeadLayout headLayout=new CompanionHeadLayout();
         private readonly UnifiedRandom random = new UnifiedRandom(7139);
         internal int Rebuilds { get; private set; }
         internal Player Display { get { return display; } }
@@ -29,7 +30,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             return result.ToArray();
         }
-        internal void Clear() { source=null; display=null; appearance=0; }
+        internal void Clear() { source=null; display=null; appearance=0;headLayout.Clear(); }
         internal void Prepare(Player player)
         {
             if(player==null) { Clear(); return; }
@@ -87,33 +88,27 @@ namespace JueMingR.TerrariaHost.F5
             }
         }
         private static int Items(int h,Item[] items) { unchecked { foreach(var i in items) { h=h*31+(i?.type??0); h=h*31+(i?.prefix??0); h=h*31+(i?.dye??0); } return h; } }
-        internal void DrawChoiceHead(LegacyPlayerRenderer renderer,int hair,F5Rect rect,Matrix transform)
+        internal void DrawHead(LegacyPlayerRenderer renderer,F5Rect rect,Matrix transform,int skin)
         {
-            if(display==null) return; int old=display.hair;
-            try { display.hair=hair; DrawHead(renderer,display,rect,transform); }
-            finally { display.hair=old; }
-        }
-        internal void DrawChoiceBody(LegacyPlayerRenderer renderer,int variant,F5Rect rect,Matrix transform)
-        {
-            if(display==null) return; int old=display.skinVariant;
-            try { display.skinVariant=variant; Draw(renderer,rect,transform); }
-            finally { display.skinVariant=old; }
-        }
-        internal static void DrawHead(LegacyPlayerRenderer renderer,Player player,F5Rect rect,Matrix transform)
-        {
+            var player=display;if(player==null)return;
             var batch=Main.spriteBatch;var device=batch.GraphicsDevice;var blend=device.BlendState;var sampler=device.SamplerStates[0];var depth=device.DepthStencilState;var rasterizer=device.RasterizerState;
+            var oldScissor=device.ScissorRectangle;
+            var previous=Main.rand;int shader=Mount.currentShader;
             batch.End(); bool began=false;
             try
             {
+                Main.rand=random;
+                headLayout.Prepare(player,Rebuilds,skin,new Vector2(rect.Width,rect.Height));
+                device.ScissorRectangle=F5ControlRenderer.ContentClip(rect,transform,oldScissor);
                 // Head layers render through SpriteBatch, unlike the full-body
                 // SpriteDrawBuffer path. Immediate mode preserves each dye pass.
                 batch.Begin(Microsoft.Xna.Framework.Graphics.SpriteSortMode.Immediate,blend,Microsoft.Xna.Framework.Graphics.SamplerState.PointClamp,depth,rasterizer,null,transform);began=true;
-                renderer.DrawPlayerHead(Main.Camera,player,new Vector2(rect.X+rect.Width/2,rect.Y+rect.Height/2),1,.8f);
+                renderer.DrawPlayerHead(Main.Camera,player,headLayout.Anchor(rect),1,headLayout.Scale);
             }
             finally
             {
                 try {if(began) batch.End();}
-                finally {batch.Begin(Microsoft.Xna.Framework.Graphics.SpriteSortMode.Deferred,blend,sampler,depth,rasterizer,null,transform);}
+                finally {Main.rand=previous;Mount.currentShader=shader;device.ScissorRectangle=oldScissor;batch.Begin(Microsoft.Xna.Framework.Graphics.SpriteSortMode.Deferred,blend,sampler,depth,rasterizer,null,transform);}
             }
         }
         internal void Draw(LegacyPlayerRenderer renderer,F5Rect rect,Matrix transform)

@@ -29,14 +29,24 @@ namespace JueMingR.TerrariaHost.Companions
             if (!body.wet) { lastAir = body.Center; hasAir = true; }
             if (needsAir && hasAir) target = lastAir;
             int direction = Math.Abs(target.X - body.Center.X) > 40 ? Math.Sign(target.X - body.Center.X) : 0;
-            bool grounded = Math.Abs(body.velocity.Y) < 0.05f && CompanionNavigation.Supported(body, body.position);
+            // A slope contact is geometric; descending native slope motion can
+            // retain Y velocity. Never retire a jump from zero velocity alone.
+            // Native stairFall outlives the down edge while passing a platform;
+            // it is not a fresh support/drop-planning opportunity next frame.
+            bool grounded = body.velocity.Y >= 0 && CompanionNavigation.Supported(body, body.position, !body.controlDown && !body.stairFall);
             bool lavaDanger = body.lavaWet && !body.lavaImmune;
             int threatEscape; bool jumpClear;
             if (++threatStamp == Int32.MaxValue) { Array.Clear(seenThreats, 0, seenThreats.Length); threatStamp = 1; }
             bool danger = CompanionThreatField.Observe(body, seenThreats, threatStamp, out threatEscape, out jumpClear) || lavaDanger;
-            bool walk = CompanionNavigation.WalkSafe(body, direction);
+            var route = navigation.PlanWalk(body, direction, allowPlanning);
+            bool walk = route == CompanionNavigation.WalkOutcome.Clear || route == CompanionNavigation.WalkOutcome.Wall;
             bool left = direction < 0 && walk, right = direction > 0 && walk;
-            if (danger || needsAir) { left = CompanionNavigation.WalkSafe(body, -1); right = CompanionNavigation.WalkSafe(body, 1); }
+            if (danger || needsAir)
+            {
+                var leftRoute = navigation.PlanWalk(body, -1, allowPlanning);var rightRoute = navigation.PlanWalk(body, 1, allowPlanning);
+                left = leftRoute == CompanionNavigation.WalkOutcome.Clear || leftRoute == CompanionNavigation.WalkOutcome.Wall;
+                right = rightRoute == CompanionNavigation.WalkOutcome.Clear || rightRoute == CompanionNavigation.WalkOutcome.Wall;
+            }
             int escape = direction;
             if (lavaDanger)
             {
@@ -60,12 +70,21 @@ namespace JueMingR.TerrariaHost.Companions
                 VelocityX = body.velocity.X, VelocityY = body.velocity.Y,
                 Grounded = grounded, Controlled = body.CCed, Dead = body.dead || !body.active,
                 WalkSafe = walk, Wall = wall,
-                JumpSafe = grounded && (lavaDanger || danger && jumpClear || planNeeded && navigation.JumpSafe(body, target, direction, allowPlanning)), DropSafe = grounded && CompanionNavigation.DropSafe(body),
+                JumpSafe = grounded && (lavaDanger || danger && jumpClear || planNeeded && navigation.JumpSafe(body, target, direction, allowPlanning)),
+                DropSafe = grounded && target.Y > body.Center.Y + 56 && navigation.PlanDrop(body, allowPlanning),
                 Danger = danger, NeedsAir = needsAir, EscapeLeft = left, EscapeRight = right, EscapeDirection = escape,
                 JumpHoldTicks = navigation.JumpHold,
                 CanHeal = !body.dead && !body.CCed && body.potionDelay <= 0 && body.statLife * 5 < body.statLifeMax2 * 3 && body.QuickHeal_GetItemToUse() != null
             };
-            return brain.Decide(observation);
+            var frame = brain.Decide(observation);
+            bool unknown = !CompanionNavigation.CurrentKnown(body) ||
+                (frame.Move == 0 || frame.Move == direction ? route == CompanionNavigation.WalkOutcome.Unknown :
+                    navigation.PlanWalk(body, frame.Move, allowPlanning) == CompanionNavigation.WalkOutcome.Unknown);
+            // Unknown ordinary geometry is not an airborne route grant. Only
+            // this movement intent waits; the body's one native update, healing
+            // and independent attack channel continue under their own gates.
+            if (unknown) { frame.Move = 0; frame.Jump = frame.Drop = false; frame.Status = "等待地形就绪"; }
+            return frame;
         }
     }
 }

@@ -12,6 +12,10 @@ namespace JueMingR.TerrariaHost.Companions
         internal int Slot;
         internal Item[] Array;
         internal Item Before, After;
+        internal Player TrashOwner;
+        internal bool OwnerTrash { get { return TrashOwner != null; } }
+        internal void Apply()
+        { if (OwnerTrash) TrashOwner.trashItem = After; else Array[Slot] = After; }
     }
 
     // This is a bounded projection, not an inventory owner. Until Cursor is Air
@@ -26,6 +30,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal Item[] Array;
             internal Item Original, Baseline, Preview;
             internal bool Written;
+            internal bool OwnerTrash;
         }
 
         internal readonly Player Owner, Companion;
@@ -39,15 +44,16 @@ namespace JueMingR.TerrariaHost.Companions
         internal int DependencyCount { get { return cells.Count; } }
         internal bool UsesCompanion { get; private set; }
         internal readonly Func<bool, CompanionInventoryArea, int, bool> Blocked;
+        private readonly Func<bool> discardBlocked;
 
         internal CompanionItemDraft(Player owner, Player companion, Guid profile, long generation, long session,
-            object world, Func<bool, CompanionInventoryArea, int, bool> blocked)
-        { Owner = owner; Companion = companion; Profile = profile; Generation = generation; Session = session; World = world; Blocked = blocked; }
+            object world, Func<bool, CompanionInventoryArea, int, bool> blocked, Func<bool> discardBlocked = null)
+        { Owner = owner; Companion = companion; Profile = profile; Generation = generation; Session = session; World = world; Blocked = blocked; this.discardBlocked = discardBlocked; }
 
         private Player Body(bool owner) { return owner ? Owner : Companion; }
         private Cell Find(bool owner, CompanionInventoryArea area, int slot)
         {
-            foreach (var cell in cells) if (cell.Owner == owner && cell.Area == area && cell.Slot == slot) return cell;
+            foreach (var cell in cells) if (!cell.OwnerTrash && cell.Owner == owner && cell.Area == area && cell.Slot == slot) return cell;
             return null;
         }
         private Cell Touch(bool owner, CompanionInventoryArea area, int slot)
@@ -85,11 +91,31 @@ namespace JueMingR.TerrariaHost.Companions
         {
             foreach (var cell in cells)
             {
+                if (cell.OwnerTrash)
+                {
+                    if (discardBlocked?.Invoke() == true || !ReferenceEquals(Owner.trashItem, cell.Original) || !Same(Owner.trashItem, cell.Baseline)) return false;
+                    continue;
+                }
                 if (!CompanionItemRules.ValidSlot(Body(cell.Owner), cell.Area, cell.Slot) ||
                     !ReferenceEquals(CompanionResources.Items(Body(cell.Owner), cell.Area), cell.Array) ||
                     !ReferenceEquals(cell.Array[cell.Slot], cell.Original) || !Same(cell.Array[cell.Slot], cell.Baseline)) return false;
                 if (cell.Written && Blocked(cell.Owner, cell.Area, cell.Slot)) return false;
             }
+            return true;
+        }
+
+        // Trash is a real scalar endpoint, never an array wrapping its old value.
+        // Both guards and both reference/value baselines survive through prepare.
+        internal bool QuickTrash(bool fromOwner, CompanionInventoryArea area, int slot)
+        {
+            if (cells.Count != 0 || !Cursor.IsAir || area != CompanionInventoryArea.Inventory ||
+                discardBlocked?.Invoke() == true || !CompanionItemRules.Available(Body(fromOwner), area, slot) || Blocked(fromOwner, area, slot)) return false;
+            var source = Touch(fromOwner, area, slot);
+            if (source.Preview.IsAir || source.Preview.favorited) return false;
+            var original = Owner.trashItem;
+            cells.Add(new Cell { Owner = true, OwnerTrash = true, Original = original,
+                Baseline = original?.Clone() ?? new Item(), Preview = source.Preview.Clone(), Written = true });
+            source.Preview = new Item(); source.Written = true;
             return true;
         }
 
@@ -203,10 +229,10 @@ namespace JueMingR.TerrariaHost.Companions
             for (int index = 0; index < cells.Count; index++)
             {
                 var cell = cells[index];
-                if (!cell.Written || Same(cell.Preview, cell.Baseline)) continue;
-                if (!Accepts(cell.Owner, cell.Area, cell.Slot, cell.Preview)) return false;
+                if (!cell.Written || !cell.OwnerTrash && Same(cell.Preview, cell.Baseline)) continue;
+                if (!cell.OwnerTrash && !Accepts(cell.Owner, cell.Area, cell.Slot, cell.Preview)) return false;
                 changes.Add(new CompanionItemChange { Owner = cell.Owner, Area = cell.Area, Slot = cell.Slot, Array = cell.Array,
-                    Before = cell.Original, After = cell.Preview.Clone() });
+                    Before = cell.Original, After = cell.Preview.Clone(), TrashOwner = cell.OwnerTrash ? Owner : null });
             }
             // Accepts can add read dependencies. Recheck those before exposing
             // any replacement; no disk/network/native callback belongs here.

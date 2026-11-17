@@ -71,6 +71,7 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Projectile),"Damage_PVE_Inner",nameof(ProjectilePredictionBefore),finalizer:nameof(PredictionFinal),transpiler:nameof(NpcStaticImmunityWrites));
             Patch(typeof(Player),"ProcessHitAgainstNPC",nameof(MeleePredictionBefore),finalizer:nameof(PredictionFinal),transpiler:nameof(PredictionTarget));
             Patch(typeof(Player),"ApplyDamageToNPC",nameof(DirectPredictionBefore),finalizer:nameof(PredictionFinal),args:new[]{typeof(NPC),typeof(int),typeof(float),typeof(int),typeof(bool),typeof(PlayerNPCHitSource)});
+            F5.CompanionCreationHooks.Install(Harmony);
             installed=true;
         }
         private static void Patch(Type t,string method,string prefix=null,string postfix=null,string finalizer=null,string transpiler=null,Type[] args=null)
@@ -91,6 +92,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal sealed class Scope : IDisposable
         {
             internal readonly HostCompanions.Actor Actor;private readonly Scope previous;
+            internal bool PacketAccepted;
             internal readonly bool TileInteractionReady;
             private readonly int oldPlayer,x,y,tileX,tileY;private readonly bool map;private readonly Item mouse;private bool ended;
             private readonly int life,mana;private readonly bool inventory;private readonly ulong resources;
@@ -272,7 +274,7 @@ namespace JueMingR.TerrariaHost.Companions
             if(Main.netMode==1 && current==null && data!=null && data.Length>=3 && data[2]==154)host?.PrimaryPingSent();
 
             if(Main.netMode!=1 || current==null || current.Actor.Connection==null)return true;
-            int length=data[0]|data[1]<<8;var copy=new byte[length];Buffer.BlockCopy(data,0,copy,0,length);current.Actor.Connection.Send(copy);return false;
+            int length=data[0]|data[1]<<8;var copy=new byte[length];Buffer.BlockCopy(data,0,copy,0,length);current.PacketAccepted=current.Actor.Connection.TrySend(copy);return false;
         }
         private static bool Packet(MessageBuffer __instance,int start,int length,ref int messageType)
         {if(Main.netMode!=1 || host==null)return true;if(host.Decoding==null && length>0){if(__instance.readBuffer[start]==3)host.HumanAccepted();if(__instance.readBuffer[start]==154 && host.PrimaryPingReceived()){messageType=154;return false;}}if(host.AcceptPrimary(__instance.readBuffer,start,length))return true;messageType=__instance.readBuffer[start];if(Netplay.Connection!=null)Netplay.Connection.TimeOutTimer=0;return false;}

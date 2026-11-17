@@ -131,7 +131,9 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(ReadingObservation || Decoding!=null || length<1)return true;int id=data[start];if(id==49)CompleteNpcSnapshot(null);
             if(length<2)return true;var a=OwnedSlot(data[start+1]);
-            if(a!=null && (id==4 || id==5 || id==12 || id==13 || id==16 || id==42 || id==50 || id==117))return false;
+            // Own team echoes arrive on the human stream, excluding the AI's
+            // sender connection. They cannot overwrite a later local team intent.
+            if(a!=null && (id==4 || id==5 || id==12 || id==13 || id==16 || id==42 || id==45 || id==157 || id==50 || id==117))return false;
             if((id==27 || id==29) && length>=5)
             {var key=(ProjectileKey)BitConverter.ToInt32(data,start+1);Projectile projectile;if(key.TryGetActive(out projectile) && ProjectileActor(projectile)!=null)return false;if(key.Spawner!=owner?.whoAmI && (HasActors || projectileSources.Count!=0))return RouteProjectile(null,data,start,length);}
             // Primary NPC 23/28/162 always retain their original native order.
@@ -142,6 +144,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var p=a.Body;p.FindSpawn();if(!Player.CheckSpawn(p.SpawnX,p.SpawnY)){p.SpawnX=p.SpawnY=-1;}
             CompanionHooks.Spawning=p;try{p.Spawn(context);}finally{CompanionHooks.Spawning=null;}
+            RestoreManualWeapon(a);
             // Native Spawn chooses the real position for joins and revivals.
             // The deserialized body's pre-spawn center is not a world cursor.
             a.Target=null;IdleAim(a);

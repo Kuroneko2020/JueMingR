@@ -11,8 +11,13 @@ namespace JueMingR.Platform.Companions
         public bool AttackEnabled { get; set; } = true;
         public bool SelfDefense { get; set; }
         public bool PreferOwner { get; set; } = true;
+        public bool AutoRespawn { get; set; } = true;
+        public int ManualWeaponSlot { get; set; } = -1;
+        public int ManualWeaponType { get; set; }
+        public int ManualWeaponPrefix { get; set; }
         public CompanionBehavior Clone()
-        { return new CompanionBehavior { Follow = Follow, AttackEnabled = AttackEnabled, SelfDefense = SelfDefense, PreferOwner = PreferOwner }; }
+        { return new CompanionBehavior { Follow = Follow, AttackEnabled = AttackEnabled, SelfDefense = SelfDefense, PreferOwner = PreferOwner,
+            AutoRespawn = AutoRespawn, ManualWeaponSlot = ManualWeaponSlot, ManualWeaponType = ManualWeaponType, ManualWeaponPrefix = ManualWeaponPrefix }; }
     }
 
     // NativeData is the complete native character stream, not a network-slot
@@ -28,6 +33,10 @@ namespace JueMingR.Platform.Companions
             if (String.IsNullOrWhiteSpace(name) || name.Length > 20) throw new ArgumentException("Invalid character name.");
             if (revision <= 0 || dataEpoch <= 0) throw new ArgumentOutOfRangeException(nameof(revision));
             if (nativeData == null || nativeData.Length == 0) throw new ArgumentException("Native character data is required.");
+            if (behavior == null) throw new ArgumentNullException(nameof(behavior));
+            if (behavior.ManualWeaponSlot < -1 || behavior.ManualWeaponSlot >= 50 || behavior.ManualWeaponPrefix < 0 || behavior.ManualWeaponPrefix > 255 ||
+                (behavior.ManualWeaponSlot < 0 ? behavior.ManualWeaponType != 0 || behavior.ManualWeaponPrefix != 0 : behavior.ManualWeaponType <= 0))
+                throw new ArgumentException("Invalid companion preferences.", nameof(behavior));
             Id = id; OwnerId = ownerId; Name = name; Revision = revision; DataEpoch = dataEpoch; PermanentlyDead = permanentlyDead;
             this.behavior = (behavior ?? throw new ArgumentNullException(nameof(behavior))).Clone();
             this.nativeData = (byte[])nativeData.Clone();
