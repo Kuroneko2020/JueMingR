@@ -1,31 +1,34 @@
 # These ordinary mixed scopes really construct ProbeGraphics. Keep resource
 # admission in this separately bound owner, not in a pure plan projection.
 function Get-WorkloadNativeContentScopes {
-    return @('CompanionVisual','BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
+    return @('CompanionShowcaseVisual','CompanionVisual','BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
 }
 function Get-WorkloadNativeContentFiles {
     param([string]$Scope)
     if($Scope -cnotin @(Get-WorkloadNativeContentScopes)){return @()}
     $files=@('Fonts/Mouse_Text.xnb','Fonts/Item_Stack.xnb','Fonts/Combat_Text.xnb','Fonts/Combat_Crit.xnb','Images/Item_8.xnb','Images/Inventory_Back.xnb','Images/MagicPixel.xnb')
-    if($Scope -ceq 'CompanionVisual'){
+    if($Scope -cin @('CompanionVisual','CompanionShowcaseVisual')){
         # Bind resources actually requested by the original player initializer,
         # six resource sets and the finite native creation/profile fixture.
         $files+=@('PixelShader.xnb','Images/Heart.xnb','Images/Heart2.xnb','Images/Mana.xnb')
         $files+=@(0,3507,3509,3506 | ForEach-Object {'Images/Item_'+$_+'.xnb'})
-        $files+=@('Images/Item_90.xnb','Images/Item_271.xnb','Images/Item_1007.xnb','Images/Armor_Head_2.xnb')
+        $files+='Images/Item_271.xnb'
+        if($Scope -ceq 'CompanionVisual'){$files+=@('Images/Item_90.xnb','Images/Item_1007.xnb','Images/Armor_Head_2.xnb')}
         $files+=@('Images/Item_603.xnb','Images/Item_2420.xnb','Images/Projectile_111.xnb','Images/Projectile_380.xnb')
         $files+=@('Images/Extra_54.xnb','Fonts/Death_Text.xnb','Images/ColorBar.xnb','Images/ColorBlip.xnb','Images/ColorSlider.xnb','Images/UI/Slider_Highlight.xnb')
-        $files+=@('Images/Armor_Head_3.xnb','Images/Armor/Armor_3.xnb','Images/Armor_Legs_3.xnb')
+        if($Scope -ceq 'CompanionVisual'){$files+=@('Images/Armor_Head_3.xnb','Images/Armor/Armor_3.xnb','Images/Armor_Legs_3.xnb')}
         $files+=@(5660,91,239,237 | ForEach-Object {'Images/Item_'+$_+'.xnb'})
         foreach($name in @('CategoryPanel','CategoryPanelHighlight','CategoryPanelBorder','SmallPanel','SmallPanelBorder','PanelGrayscale','Copy','Paste','Randomize','Voice','ColorHair','ColorEye','ColorEyeBack','ColorSkin','ColorShirt','ColorUndershirt','ColorPants','ColorShoes','ColorCharacter','HairStyle_Hair','HairStyle_Arrow','ClothStyleMale','ClothStyleFemale','CharInfo')){$files+='Images/UI/CharCreation/'+$name+'.xnb'}
         foreach($name in @('PanelBorder','PanelBackground','Scrollbar','ScrollbarInner','PlayerBackground','TexturePackButtons','TexturePackButtonsOutline','VK_Shift','VK_Backspace')){$files+='Images/UI/'+$name+'.xnb'}
         # The same isolated graphics initialization opens the real human Journey
         # menu before the public-runtime AI death scenario. No full Journey UI
         # matrix or installed-game claim is acquired by this finite consumer.
-        foreach($back in 2..25){$files+='Images/Inventory_Back'+$back+'.xnb'}
-        foreach($coin in 0..3){$files+='Images/Coin_'+$coin+'.xnb'}
-        foreach($name in @('Journey_Toggle','Journey_Toggle_MouseOver','Infinite_Powers','Infinite_Tabs_B','Infinite_Tabs_B_2','Research_Spark','Research_Slots','Research_FramedPistons','Research_GearA','Research_GearB','Research_GearC')){$files+='Images/UI/Creative/'+$name+'.xnb'}
-        foreach($name in @('Master','Expert','Normal','Creative')){$files+='Images/UI/WorldCreation/IconDifficulty'+$name+'.xnb'}
+        if($Scope -ceq 'CompanionVisual'){
+            foreach($back in 2..25){$files+='Images/Inventory_Back'+$back+'.xnb'}
+            foreach($coin in 0..3){$files+='Images/Coin_'+$coin+'.xnb'}
+            foreach($name in @('Journey_Toggle','Journey_Toggle_MouseOver','Infinite_Powers','Infinite_Tabs_B','Infinite_Tabs_B_2','Research_Spark','Research_Slots','Research_FramedPistons','Research_GearA','Research_GearB','Research_GearC')){$files+='Images/UI/Creative/'+$name+'.xnb'}
+            foreach($name in @('Master','Expert','Normal','Creative')){$files+='Images/UI/WorldCreation/IconDifficulty'+$name+'.xnb'}
+        }
         foreach($hair in 1..228){$files+=@(('Images/Player_Hair_'+$hair+'.xnb'),('Images/Player_HairAlt_'+$hair+'.xnb'))}
         $variants=@{
             0=@(0..13)+@(15);1=@(4,6,8,11,12,13);2=@(4,6,8,11,12,13);3=@(4,6,8,11,12,13,14);

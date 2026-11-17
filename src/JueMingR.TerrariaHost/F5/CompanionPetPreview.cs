@@ -49,7 +49,7 @@ namespace JueMingR.TerrariaHost.F5
                 display.position=Main.screenPosition-new Vector2(display.width/2f,display.height);
                 Matrix petMatrix=Matrix.CreateScale(scale)*Matrix.CreateTranslation(feet.X,feet.Y,0)*transform;
                 batch.Begin(Microsoft.Xna.Framework.Graphics.SpriteSortMode.Immediate,blend,Microsoft.Xna.Framework.Graphics.SamplerState.PointClamp,depth,rasterizer,null,petMatrix);began=true;
-                using(CompanionPetPreviewHooks.Enter(dummy,display))
+                using(CompanionPetPreviewHooks.Enter(dummy,display,scale))
                     Main.instance.DrawProjDirect(dummy,display);
 #if DEBUG
                 Draws++;

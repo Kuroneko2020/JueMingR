@@ -19,6 +19,13 @@ namespace JueMingR.TerrariaHost.F5
         private readonly CompanionHeadLayout headLayout=new CompanionHeadLayout();
         private readonly CompanionPetPreview petPreview=new CompanionPetPreview();
         private readonly UnifiedRandom random = new UnifiedRandom(7139);
+        private int showcaseRevision=-1,showcaseGeneration=-1;
+        private object showcaseAssets;
+        private Vector2 showcaseSize,showcaseCenter,showcaseFeet;
+        private float showcaseScale=1.625f;
+#if DEBUG
+        internal int ShowcaseMeasurements {get;private set;}
+#endif
         internal int Rebuilds { get; private set; }
         internal Player Display { get { return display; } }
         internal CompanionPetPreview Pet { get { return petPreview; } }
@@ -32,7 +39,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             return result.ToArray();
         }
-        internal void Clear() { source=null; display=null; appearance=0;headLayout.Clear();petPreview.Clear(); }
+        internal void Clear() { source=null; display=null; appearance=0;headLayout.Clear();petPreview.Clear();showcaseRevision=showcaseGeneration=-1;showcaseAssets=null; }
         internal void Prepare(Player player)
         {
             if(player==null) { Clear(); return; }
@@ -115,11 +122,41 @@ namespace JueMingR.TerrariaHost.F5
                 finally {Main.rand=previous;Mount.currentShader=shader;device.ScissorRectangle=oldScissor;batch.Begin(Microsoft.Xna.Framework.Graphics.SpriteSortMode.Deferred,blend,sampler,depth,rasterizer,null,transform);}
             }
         }
-        internal void Draw(LegacyPlayerRenderer renderer,F5Rect rect,Matrix transform)
+        internal void DrawShowcase(LegacyPlayerRenderer renderer,F5Rect frame,Matrix transform,int generation)
+        {
+            if(display==null)return;
+            var size=new Vector2(frame.Width,frame.Height);
+            if(showcaseRevision!=Rebuilds||showcaseGeneration!=generation||showcaseSize!=size||!ReferenceEquals(showcaseAssets,Main.Assets))
+            {
+                // Measure the original public renderers' actual transformed
+                // opaque layers once for this appearance/asset/frame identity.
+                // The exact private-copy scope omits GPU submission only here.
+                bool complete;
+                using(var measurement=new CompanionPetPreviewHooks.Measurement(display))
+                {
+                    DrawBodyAt(renderer,Vector2.Zero,1.625f,Matrix.Identity);
+                    petPreview.Draw(display,Vector2.Zero,1.625f,Matrix.Identity);
+                    var b=measurement.Bounds;
+                    if(b.X==Single.MaxValue)b=new Vector4(-16,-44,16,0);
+                    float fit=Math.Min(1,Math.Min(Math.Max(1,frame.Width-16)/Math.Max(1,b.Z-b.X),Math.Max(1,frame.Height-16)/Math.Max(1,b.W-b.Y)));
+                    showcaseScale=1.625f*fit;showcaseCenter=new Vector2((b.X+b.Z)/2,(b.Y+b.W)/2)*fit;
+                    complete=measurement.Complete;
+                }
+                showcaseRevision=complete?Rebuilds:-1;showcaseGeneration=generation;showcaseSize=size;showcaseAssets=Main.Assets;
+#if DEBUG
+                ShowcaseMeasurements++;
+#endif
+            }
+            // The frame is fixed by layout. Move and, only when needed, fit the
+            // whole native body/pet union inside it; never center clipped pixels.
+            showcaseFeet=new Vector2(frame.X+frame.Width/2,frame.Y+frame.Height/2)-showcaseCenter;
+            petPreview.Draw(display,showcaseFeet,showcaseScale,transform);
+            DrawBodyAt(renderer,showcaseFeet,showcaseScale,transform);
+        }
+        internal void DrawBodyAt(LegacyPlayerRenderer renderer,Vector2 feet,float scale,Matrix transform)
         {
             if(display==null) return;
-            float scale=Math.Min(2.25f,Math.Min((rect.Width-16)/32,(rect.Height-16)/56));
-            Vector2 position=new Vector2(rect.X+rect.Width/2-display.width/2f,rect.Bottom-8-display.height)+Main.screenPosition;
+            Vector2 position=feet-new Vector2(display.width/2f,display.height)+Main.screenPosition;
             // Some native glow layers sample Main.rand even without particles.
             // A private random stream keeps preview drawing out of world RNG.
             var previous=Main.rand; int priorMountShader=Mount.currentShader;
@@ -140,12 +177,6 @@ namespace JueMingR.TerrariaHost.F5
                 Main.rand=previous; Mount.currentShader=priorMountShader;
                 batch.Begin(Microsoft.Xna.Framework.Graphics.SpriteSortMode.Deferred,blend,sampler,depth,rasterizer,null,transform);
             }
-        }
-        internal void DrawPet(F5Rect rect,Matrix transform)
-        {
-            if(display==null)return;
-            float scale=Math.Min(2.25f,Math.Min((rect.Width-16)/32,(rect.Height-16)/56));
-            petPreview.Draw(display,new Vector2(rect.X+rect.Width/2,rect.Bottom-8),scale,transform);
         }
     }
 }

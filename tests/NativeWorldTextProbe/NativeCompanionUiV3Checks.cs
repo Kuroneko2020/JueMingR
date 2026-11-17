@@ -40,7 +40,7 @@ namespace NativeWorldTextProbe
         }
         private static int HeadDifference(Color[] a,Color[] b,object window)
         {
-            var hero=Get(window,"ownerPortrait");int x0=(int)(float)Get(hero,"X"),y0=(int)(float)Get(hero,"Y"),changed=0;
+            var hero=Get(window,"ownerShowcase");int x0=(int)(float)Get(hero,"X"),y0=(int)(float)Get(hero,"Y"),changed=0;
             for(int y=y0;y<y0+90;y++)for(int x=x0;x<x0+90;x++)if(a[y*1280+x]!=b[y*1280+x])changed++;
             return changed;
         }
@@ -97,7 +97,7 @@ namespace NativeWorldTextProbe
                 var pixels=graphics.Pixels(()=>Call(window,"Draw"),Main.UIScaleMatrix,width,height);
                 using(var image=new Microsoft.Xna.Framework.Graphics.Texture2D(graphics.GraphicsDevice,width,height))
                 {image.SetData(pixels);using(var file=File.Create(Path.Combine(output,"companion-body-pixels-"+heroName+".png")))image.SaveAsPng(file,width,height);}
-                var hero=Get(window,heroName=="ownerHero"?"ownerPortrait":"companionPortrait");float scale=Main.UIScaleMatrix.M11;
+                var hero=Get(window,heroName=="ownerHero"?"ownerShowcase":"companionShowcase");float scale=Main.UIScaleMatrix.M11;
                 int x0=Math.Max(0,(int)((float)Get(hero,"X")*scale)),y0=Math.Max(0,(int)((float)Get(hero,"Y")*scale));
                 int x1=Math.Min(width,(int)(((float)Get(hero,"X")+Math.Min(90,(float)Get(hero,"Width")))*scale)),y1=Math.Min(height,(int)(((float)Get(hero,"Y")+Math.Min(108,(float)Get(hero,"Height")))*scale));
                 int face=0,top=0,bottom=0,feet=0;
@@ -107,11 +107,11 @@ namespace NativeWorldTextProbe
                     if(near(c,faceMark)||near(c,shirtMark)||near(c,pantsMark)||near(c,shoeMark)||near(c,player.hairColor)){minX=Math.Min(minX,x);maxX=Math.Max(maxX,x);minY=Math.Min(minY,y);maxY=Math.Max(maxY,y);}}
                 Console.WriteLine("BODY-PIXELS "+heroName+" face="+face+" shirt="+top+" pants="+bottom+" shoes="+feet);
                 Require(face>10&&top>20&&bottom>15&&feet>4,"actual original-resource "+heroName+" contains visible face, shirt, pants and shoes, not only hair/background");
-                bool owner=heroName=="ownerHero";var view=Get(window,owner?"ownerView":"companionView");var header=((IEnumerable)Get(window,"actorHeaders")).Cast<object>().ElementAt(owner?0:1);
-                float targetX=((float)Get(view,"X")+(float)Get(view,"Width")*.82f)*scale,targetY=((float)Get(header,"Y")+(float)Get(header,"Height")/2)*scale;
+                bool owner=heroName=="ownerHero";var frame=Get(window,owner?"ownerShowcase":"companionShowcase");
+                float targetX=((float)Get(frame,"X")+(float)Get(frame,"Width")/2)*scale,targetY=((float)Get(frame,"Y")+(float)Get(frame,"Height")/2)*scale;
                 float dx=(minX+maxX)/2f-targetX,dy=(minY+maxY)/2f-targetY;
-                Console.WriteLine("BODY-CENTER "+heroName+" actual-minus-header-target="+dx+","+dy+" visible="+minX+","+minY+".."+maxX+","+maxY);
-                Require(Math.Abs(dx)<5*scale&&Math.Abs(dy)<8*scale,"actual face/hair/clothes/shoes pixel bounds place the unchanged-size body inside the upper-right header region");
+                Console.WriteLine("BODY-CENTER "+heroName+" actual-minus-frame-target="+dx+","+dy+" visible="+minX+","+minY+".."+maxX+","+maxY);
+                Require(Math.Abs(dx)<3*scale&&Math.Abs(dy)<3*scale,"actual face/hair/clothes/shoes pixel bounds place the unchanged-size body at the final fixed showcase center");
             }
             finally {player.skinColor=skin;player.shirtColor=shirt;player.underShirtColor=under;player.pantsColor=pants;player.shoeColor=shoes;}
         }

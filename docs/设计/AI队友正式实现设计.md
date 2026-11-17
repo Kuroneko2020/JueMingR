@@ -36,7 +36,7 @@ Feature 拥有档案及行为语义；Infrastructure 只在游戏安装根下的
 
 快捷丢弃按当前原版有效 Ctrl／Shift 配置，一次点击只选丢弃或 Shift 交接。OwnerTrash 是真实主人 trashItem 标量端点，与数组端点同线程准备、双端重验、短写入提交，不能用临时数组代替。主人与 AI 合法来源都只去真人垃圾桶，收藏／用物／材料及 OwnerOperations.DiscardBlocked 初受理和终提交均保护；已有持物草稿拒绝冲突。旧垃圾被本次替换是明确丢弃语义，原生研究仅提交后真人身份执行一次。主人数组通知和垃圾标量后处理分开；垃圾5走主连接，AI来源5走自身连接，保存／发送失败只补后处理，不重放扣减／旧垃圾销毁。
 
-人物深色展示区带当前装备且未隐藏的普通宠物。CompanionPreview 的独立显示 Player 与 CompanionPetPreview 私有 Projectile dummy 使用原版 CharacterPreviewAnimations 设置和公开 Main.DrawProjDirect(dummy, displayOverride)，不世界 Spawn、不执行完整 Player／Projectile.Update、不替换真实玩家或投射物数组，创建草稿仍保持空 misc。仅在该 dummy 同线程绘制栈内分流 PrepareDrawnProjectileDrawing，沿显示副本的 cPet 和 UI 矩阵；五个精确 Lighting 色彩出口只复现选人菜单的白光／原 tint 返回，不切 gameMenu 或世界光照引擎，无活跃 dummy 立即常量早退。私有 RNG、临时显示位置、CurrentDrawnEntity／shader、Mount shader 和批次状态均 finally 归还。宠物类型／可见性随外观指纹更新，稳定绘制复用 dummy，隐藏或关窗清引用；工作量计数只在 Debug，普通 Release 不含采集。
+人物深色展示区按原版选人页展示 miscEquips[0]／hideMisc[0] 的普通宠物，不扩为光宠页面。人物与宠物的实际可见 union 锚定最终展示框中心并整体 fit，不能沿用已被姓名行夹取改变的旧 header 中心；只在外观／框尺寸失效时从原生 DrawPlayer 的 DrawData 与精确 dummy EntitySpriteDraw 取得边界，复用现有弱纹理／frame alpha 缓存，稳定帧不采集或读回。CompanionPreview 的独立显示 Player 与 CompanionPetPreview 私有 Projectile dummy 使用原版 CharacterPreviewAnimations 设置和公开 Main.DrawProjDirect(dummy, displayOverride)，不世界 Spawn、不执行完整 Player／Projectile.Update、不替换真实玩家或投射物数组，创建草稿仍保持空 misc。仅在该 dummy 同线程绘制栈内分流 PrepareDrawnProjectileDrawing，沿显示副本的 cPet 和 UI 矩阵；五个精确 Lighting 色彩出口只复现选人菜单的白光／原 tint 返回，不切 gameMenu 或世界光照引擎，无活跃 dummy 立即常量早退。私有 RNG、临时显示位置、CurrentDrawnEntity／shader、Mount shader 和批次状态均 finally 归还。宠物类型／可见性随外观指纹更新，稳定绘制复用 dummy，隐藏或关窗清引用；工作量计数只在 Debug，普通 Release 不含采集。
 
 ## 原生执行与输入
 

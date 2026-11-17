@@ -1,7 +1,9 @@
 using System;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Terraria;
+using Terraria.DataStructures;
 
 namespace JueMingR.TerrariaHost.F5
 {
@@ -9,6 +11,8 @@ namespace JueMingR.TerrariaHost.F5
     {
         [ThreadStatic] private static Projectile drawing;
         [ThreadStatic] private static Player owner;
+        [ThreadStatic] private static float drawingScale;
+        [ThreadStatic] private static Measurement measuring;
         internal static void Install(Harmony harmony)
         {
             harmony.Patch(AccessTools.Method(typeof(Main),"PrepareDrawnProjectileDrawing"),prefix:new HarmonyMethod(typeof(CompanionPetPreviewHooks),nameof(Prepare)));
@@ -17,14 +21,46 @@ namespace JueMingR.TerrariaHost.F5
             harmony.Patch(AccessTools.Method(typeof(Lighting),"GetColor",new[]{typeof(int),typeof(int),typeof(Color)}),prefix:new HarmonyMethod(typeof(CompanionPetPreviewHooks),nameof(Tint)));
             harmony.Patch(AccessTools.Method(typeof(Lighting),"GetColor",new[]{typeof(Point),typeof(Color)}),prefix:new HarmonyMethod(typeof(CompanionPetPreviewHooks),nameof(PointTint)));
             harmony.Patch(AccessTools.Method(typeof(Lighting),"GetColorClamped",new[]{typeof(int),typeof(int),typeof(Color)}),prefix:new HarmonyMethod(typeof(CompanionPetPreviewHooks),nameof(Tint)));
+            harmony.Patch(AccessTools.Method(typeof(PlayerDrawLayers),"DrawPlayer_RenderAllLayers"),prefix:new HarmonyMethod(typeof(CompanionPetPreviewHooks),nameof(BodyBounds)));
+            harmony.Patch(AccessTools.Method(typeof(Main),"EntitySpriteDraw",new[]{typeof(Texture2D),typeof(Vector2),typeof(Rectangle?),typeof(Color),typeof(float),typeof(Vector2),typeof(Vector2),typeof(SpriteEffects),typeof(float)}),prefix:new HarmonyMethod(typeof(CompanionPetPreviewHooks),nameof(PetBounds)));
+            harmony.Patch(AccessTools.Method(typeof(Main),"EntitySpriteDraw",new[]{typeof(DrawData)}),prefix:new HarmonyMethod(typeof(CompanionPetPreviewHooks),nameof(PetDataBounds)));
         }
-        internal static IDisposable Enter(Projectile dummy,Player display)
-        {return new Scope(dummy,display);}
+        internal static IDisposable Enter(Projectile dummy,Player display,float scale)
+        {return new Scope(dummy,display,scale);}
         private sealed class Scope : IDisposable
         {
             private readonly Projectile previous=drawing;private readonly Player previousOwner=owner;
-            internal Scope(Projectile dummy,Player display) {drawing=dummy;owner=display;}
-            public void Dispose() {drawing=previous;owner=previousOwner;}
+            private readonly float previousScale=drawingScale;
+            internal Scope(Projectile dummy,Player display,float scale) {drawing=dummy;owner=display;drawingScale=scale;}
+            public void Dispose() {drawing=previous;owner=previousOwner;drawingScale=previousScale;}
+        }
+        internal sealed class Measurement : IDisposable
+        {
+            internal readonly Player Body;
+            private readonly Measurement previous=measuring;
+            internal Vector4 Bounds=CompanionHeadLayout.EmptyBounds;
+            internal bool Complete=true;
+            internal Measurement(Player display) {Body=display;measuring=this;}
+            public void Dispose() {measuring=previous;}
+        }
+        private static bool BodyBounds(ref PlayerDrawSet drawinfo)
+        {
+            if(measuring==null||!ReferenceEquals(measuring.Body,drawinfo.drawPlayer))return true;
+            // The public DrawPlayer has already built/transformed its original
+            // layers. Layout reads those exact private-copy layers once and
+            // skips only their final GPU submission, never any world player.
+            foreach(var layer in drawinfo.DrawDataCache){if(layer.texture==null)measuring.Complete=false;CompanionHeadLayout.AddBounds(ref measuring.Bounds,layer);}
+            return false;
+        }
+        private static bool PetBounds(Texture2D texture,Vector2 position,Rectangle? sourceRectangle,Color color,float rotation,Vector2 origin,Vector2 scale,SpriteEffects effects)
+        {if(measuring==null||drawing==null||!ReferenceEquals(measuring.Body,owner))return true;return CollectPet(new DrawData(texture,position,sourceRectangle,color,rotation,origin,scale,effects,0));}
+        private static bool PetDataBounds(DrawData data) {return CollectPet(data);}
+        private static bool CollectPet(DrawData data)
+        {
+            if(measuring==null||drawing==null||!ReferenceEquals(measuring.Body,owner))return true;
+            if(data.texture==null)measuring.Complete=false;
+            data.position*=drawingScale;data.scale*=drawingScale;
+            CompanionHeadLayout.AddBounds(ref measuring.Bounds,data);return false;
         }
         private static bool Prepare(Projectile proj)
         {

@@ -85,7 +85,7 @@ namespace JueMingR.TerrariaHost.F5
         private string resourceStyle;
         private readonly CompanionPreview ownerPreview = new CompanionPreview(), companionPreview = new CompanionPreview();
         private readonly CompanionResourceDisplay resourceDisplay = new CompanionResourceDisplay();
-        private F5Rect ownerHero, companionHero,ownerPortrait,companionPortrait,ownerShowcase,companionShowcase;
+        private F5Rect ownerHero, companionHero,ownerShowcase,companionShowcase;
         private float sharedResourcesHeight,sharedEquipmentHeight,sharedLifeHeight;
         private readonly List<F5Rect> actorHeaders=new List<F5Rect>();
         private readonly List<F5Rect> groups = new List<F5Rect>();
@@ -255,7 +255,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             panel = panel.Offset(x, y); listView = listView.Offset(x, y); bodyView = bodyView.Offset(x, y);
             titleBar = titleBar.Offset(x, y); field = field.Offset(x, y); contentY += y;
-            ownerView = ownerView.Offset(x,y); companionView = companionView.Offset(x,y); ownerHero = ownerHero.Offset(x,y); companionHero = companionHero.Offset(x,y);ownerPortrait=ownerPortrait.Offset(x,y);companionPortrait=companionPortrait.Offset(x,y);
+            ownerView = ownerView.Offset(x,y); companionView = companionView.Offset(x,y); ownerHero = ownerHero.Offset(x,y); companionHero = companionHero.Offset(x,y);
             ownerShowcase=ownerShowcase.Offset(x,y);companionShowcase=companionShowcase.Offset(x,y);
             for(int i=0;i<actorHeaders.Count;i++)actorHeaders[i]=actorHeaders[i].Offset(x,y);
             for(int i=0;i<groups.Count;i++) groups[i]=groups[i].Offset(x,y);
@@ -465,8 +465,8 @@ namespace JueMingR.TerrariaHost.F5
             });
             if (page == 0)
             {
-                DrawHero(ownerView, ownerHero,ownerPortrait,ownerShowcase, ownerPreview, Main.LocalPlayer);
-                DrawHero(companionView, companionHero,companionPortrait,companionShowcase, companionPreview, host.GetBody(selected));
+                DrawHero(ownerView, ownerHero,ownerShowcase, ownerPreview, Main.LocalPlayer);
+                DrawHero(companionView, companionHero,companionShowcase, companionPreview, host.GetBody(selected));
             }
 
             if (host.HasItemGesture && host.CursorItem != null && !host.CursorItem.IsAir)

@@ -11,6 +11,9 @@ function Assert-Content([bool]$Pass,[string]$Reason){if(!$Pass){throw ('Native C
 function Reject-Content([scriptblock]$Action,[string]$Reason){$rejected=$false;try{& $Action|Out-Null}catch{$rejected=$true};Assert-Content $rejected $Reason}
 function Put-ContentFixture([string]$Relative,[string]$Value){$p=Join-Path $fixture $Relative;[IO.Directory]::CreateDirectory((Split-Path -Parent $p))|Out-Null;[IO.File]::WriteAllText($p,$Value)}
 try{
+    $showcaseAssets=@(Get-WorkloadNativeContentFiles 'CompanionShowcaseVisual')
+    Assert-Content ($showcaseAssets -ccontains 'Images/Projectile_111.xnb' -and $showcaseAssets -ccontains 'Images/Projectile_380.xnb') 'bounded showcase binds both actual native pet textures'
+    Assert-Content ($showcaseAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb' -and $showcaseAssets -cnotcontains 'Images/Armor_Head_3.xnb') 'showcase does not acquire unrelated Journey or original armor-trial consumers'
     Put-ContentFixture 'external/TerrariaRefs/Terraria.exe' 'identity fixture only; never executed'
     Put-ContentFixture 'original/Terraria.exe' 'identity fixture only; never executed'
     $gameHash=(Get-FileHash (Join-Path $fixture 'original/Terraria.exe')).Hash

@@ -15,7 +15,7 @@ function Get-WorkloadLeafChecks {
     # This asset initializer is also called by the narrow combat fixture.
     # Preserve its worker consumers when adding the explicit combat leaf;
     # the combat scope itself must not inherit the legacy-worker group.
-    $workerAssetConsumers=@('native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCreationCpu','native-CompanionItemsCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
+    $workerAssetConsumers=@('native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCreationCpu','native-CompanionItemsCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
     foreach($scope in (Get-WorkloadNativeScopes).GetEnumerator()){
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
@@ -28,11 +28,11 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionTeamChecks.cs'=@('native-CompanionNetworkCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNavigationChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNativeCreationChecks.cs'=@('native-CompanionVisual')
-        'tests/NativeWorldTextProbe/NativeCompanionPetPreviewChecks.cs'=@('native-CompanionVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionPetPreviewChecks.cs'=@('native-CompanionVisual','native-CompanionShowcaseVisual')
         'tests/NativeWorldTextProbe/NativeCompanionSessionChecks.cs'=@('native-CompanionSessionCpu','native-CompanionVisual')
         'tests/NativeWorldTextProbe/NativeCompanionChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionTileContextChecks.cs'=@('native-CompanionCpu')
-        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
         'tests/NativeWorldTextProbe/NativeCompanionCoreNetworkChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNpcPhysicsChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNpcStateChecks.cs'=@('native-CompanionCpu')
@@ -636,6 +636,7 @@ function Get-WorkloadNativeScopes {
         'CompanionNetworkCpu'=@('companion-host','shared-host');
         'CompanionSessionCpu'=@('companion-host','shared-host','journey-host');
         'CompanionNavigationCpu'=@('companion-host','shared-host');
+        'CompanionShowcaseVisual'=@('companion-host','shared-host');
         'CompanionVisual'=@('companion-host','shared-host');
         'CompanionItemsCpu'=@('companion-host','items','shared-host');
         'CompanionCreationCpu'=@('companion-host','shared-host');

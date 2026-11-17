@@ -59,24 +59,25 @@ namespace JueMingR.TerrariaHost.F5
         }
         private Vector4 Bounds()
         {
-            float left=Single.MaxValue,top=Single.MaxValue,right=Single.MinValue,bottom=Single.MinValue;
-            foreach(var layer in data)
-            {
-                if(layer.texture==null||layer.color.A==0)continue;
-                var frame=layer.sourceRect??layer.texture.Bounds;var opaque=Opaque(layer.texture,frame);
-                if(opaque.IsEmpty)continue;
-                for(int corner=0;corner<4;corner++)
-                {
-                    var p=new Vector2(corner%2==0?opaque.Left:opaque.Right,corner<2?opaque.Top:opaque.Bottom);
-                    if((layer.effect&SpriteEffects.FlipHorizontally)!=0)p.X=frame.Width-p.X;
-                    if((layer.effect&SpriteEffects.FlipVertically)!=0)p.Y=frame.Height-p.Y;
-                    p=(p-layer.origin)*layer.scale;
-                    float cos=(float)Math.Cos(layer.rotation),sin=(float)Math.Sin(layer.rotation);
-                    p=new Vector2(p.X*cos-p.Y*sin,p.X*sin+p.Y*cos)+layer.position;
-                    left=Math.Min(left,p.X);right=Math.Max(right,p.X);top=Math.Min(top,p.Y);bottom=Math.Max(bottom,p.Y);
-                }
+            var bounds=EmptyBounds;foreach(var layer in data)AddBounds(ref bounds,layer);
+            return bounds.X==Single.MaxValue?new Vector4(-16,-16,32,32):new Vector4(bounds.X,bounds.Y,bounds.Z-bounds.X,bounds.W-bounds.Y);
+        }
+        internal static Vector4 EmptyBounds {get{return new Vector4(Single.MaxValue,Single.MaxValue,Single.MinValue,Single.MinValue);}}
+        // The showcase consumes the same native DrawData as heads. Keep one
+        // bounded weak texture/frame alpha cache, not per-frame GPU readbacks.
+        internal static void AddBounds(ref Vector4 bounds,DrawData layer)
+        {
+            if(layer.texture==null||layer.color.A==0)return;
+            var frame=layer.sourceRect??layer.texture.Bounds;var opaque=Opaque(layer.texture,frame);if(opaque.IsEmpty)return;
+            for(int corner=0;corner<4;corner++) {
+                var p=new Vector2(corner%2==0?opaque.Left:opaque.Right,corner<2?opaque.Top:opaque.Bottom);
+                if((layer.effect&SpriteEffects.FlipHorizontally)!=0)p.X=frame.Width-p.X;
+                if((layer.effect&SpriteEffects.FlipVertically)!=0)p.Y=frame.Height-p.Y;
+                p=(p-layer.origin)*layer.scale;
+                float cos=(float)Math.Cos(layer.rotation),sin=(float)Math.Sin(layer.rotation);
+                p=new Vector2(p.X*cos-p.Y*sin,p.X*sin+p.Y*cos)+layer.position;
+                bounds.X=Math.Min(bounds.X,p.X);bounds.Y=Math.Min(bounds.Y,p.Y);bounds.Z=Math.Max(bounds.Z,p.X);bounds.W=Math.Max(bounds.W,p.Y);
             }
-            return left==Single.MaxValue?new Vector4(-16,-16,32,32):new Vector4(left,top,right-left,bottom-top);
         }
     }
 }
