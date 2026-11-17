@@ -42,6 +42,12 @@ namespace NativeWorldTextProbe
             // Reuse the original Journey UI startup, not a forged Enabled flag
             // or a skipped Open callback. This entry owns real GPU resources.
             NativeJourneyUiChecks.PrepareNativeMenu(graphics);
+            // Main.Initialize loads the embedded native sacrifice TSV before
+            // research/menu activation. The graphics-only helper does not own
+            // that startup stage; reuse it without inventing research entries.
+            var catalog=Terraria.GameContent.Creative.CreativeItemSacrificesCatalog.Instance;
+            if(catalog.SacrificeCountNeededByItemId.Count==0)catalog.Initialize();
+            Require(catalog.SacrificeCountNeededByItemId.Count>0,"original embedded native research catalog is available before Journey activation");
             var access=Get(context,"hiddenAccess");
             for(int i=0;i<5 && !(bool)Get(access,"IsUnlocked");i++)Call(access,"TryCompleteTitleClick",(long)(100*i),(long)(1000+i));
             var journey=Get(context,"Journey");
