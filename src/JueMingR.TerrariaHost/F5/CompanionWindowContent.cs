@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using JueMingR.Platform.Companions;
 using JueMingR.TerrariaHost.Companions;
 using Microsoft.Xna.Framework;
@@ -48,12 +48,13 @@ namespace JueMingR.TerrariaHost.F5
         }
         private float SharedResources(float paneWidth)
         {
-            float width=Math.Max(20,paneWidth-24-76);var owner=Main.LocalPlayer;var ai=host.GetBody(selected);
+            float width=ResourceWidth(paneWidth);var owner=Main.LocalPlayer;var ai=host.GetBody(selected);
             var own=owner==null?default(CompanionResourceDisplay.Blocks):CompanionResourceDisplay.MeasureBlocks(owner,width);
             var companion=ai==null?default(CompanionResourceDisplay.Blocks):CompanionResourceDisplay.MeasureBlocks(ai,width);
             sharedLifeHeight=Math.Max(own.Life,companion.Life);
             return Math.Max(108,sharedLifeHeight+Math.Max(own.Mana,companion.Mana));
         }
+        private static float ResourceWidth(float paneWidth) {return Math.Max(20,paneWidth*.82f-62);}
         private static float GridHeight(float paneWidth,int count)
         {int columns=Math.Max(1,Math.Min(10,(int)((paneWidth-24)/40)));float cell=Math.Min(44,(paneWidth-24)/columns);return (float)Math.Ceiling((double)count/columns)*cell+4;}
         private float SharedEquipment(float paneWidth)
@@ -62,7 +63,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             float pane=(width-104)/2;
             float header=4+row+6+(pane-24<300?24:0)+SharedResources(pane)+4;
-            return row+53+header+6+(4+26+6+SharedEquipment(pane))+6+(4+GridHeight(pane,50))+6+(4+GridHeight(pane,8))+8;
+            return row+53+header+6+(8+26+6+SharedEquipment(pane))+6+(4+GridHeight(pane,50))+6+(4+GridHeight(pane,8))+8;
         }
         private void BuildActor(Player body, bool owner, F5Rect view, int offset, float row)
         {
@@ -84,18 +85,23 @@ namespace JueMingR.TerrariaHost.F5
             if(!owner) {respawnLabel=labels.Count;labels.Add(new F5Element(F5ElementKind.Text,wrapStatus?new F5Rect(x,y,width,24):new F5Rect(x+width-190,y-row,112,25),host.RespawnStatus(selected),default(F5Size),.6f,F5Command.None));}if(wrapStatus)y+=24;
             float resources=sharedResourcesHeight;
             float heroHeight=resources;
-            var hero = new F5Rect(x,y,width,heroHeight);
-            var portrait=new F5Rect(view.Right-68,y+(resources-108)/2,68,108);
+            float headerHeight=4+row+6+(wrapStatus?24:0)+heroHeight+4;
+            var hero = new F5Rect(x+8,y-4,ResourceWidth(view.Width),heroHeight);
+            // Native full-body scaling pivots at the feet, not at the
+            // rectangle center. Its ordinary 48px visible silhouette at the
+            // unchanged 1.625 scale is centered 24*scale above those feet.
+            float visibleCenterOffset=108/2f-8-24*1.625f;
+            var portrait=new F5Rect(view.X+view.Width*.82f-34,headerTop+headerHeight/2-54-visibleCenterOffset,68,108);
             if (owner) {ownerHero=hero;ownerPortrait=portrait;} else {companionHero=hero;companionPortrait=portrait;}
-            AddActorHeader(new F5Rect(view.X+4,headerTop,view.Width-8,4+row+6+(wrapStatus?24:0)+heroHeight+4),view);
+            AddActorHeader(new F5Rect(view.X+4,headerTop,view.Width-8,headerHeight),view);
             y+=heroHeight+4+6;
-            float groupTop=y;y+=4;
+            float groupTop=y;y+=8;
             // Subtabs and their native equipment/dye cells are one module.
             // This same group origin drives background, clipping and hit tests.
             var tabs = new[] { "饰品", "时装", "装备" }; int gear = owner ? ownerGearPage : companionGearPage;
             float totalTabs=8;foreach(string text in tabs)totalTabs+=Math.Max(46,measure(text,.7f).Width+18);
             int columns=Math.Max(1,Math.Min(10,(int)(width/40)));float gridWidth=columns*Math.Min(44,width/columns)-3;
-            float tabX=x+Math.Max(0,gridWidth-totalTabs);
+            float tabX=x+Math.Max(0,gridWidth-totalTabs-8);
             for (int t=0;t<3;t++)
             {
                 int target=t;float tw=Math.Max(46,measure(tabs[t],.7f).Width+18);var r=new F5Rect(tabX,y,tw,26);tabX+=tw+4;
@@ -228,7 +234,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if(hero.Bottom<=view.Y||hero.Y>=view.Bottom) return;
             renderer.Pass(matrix,view,()=> {
-                if(source!=null) resourceDisplay.Draw(renderer,source,new F5Rect(hero.X,hero.Y,Math.Max(20,hero.Width-76),hero.Height),sharedLifeHeight);
+                if(source!=null) resourceDisplay.Draw(renderer,source,hero,sharedLifeHeight);
             });
             var clip=new F5Rect(Math.Max(view.X,portrait.X),Math.Max(view.Y,portrait.Y),Math.Min(view.Right,portrait.Right)-Math.Max(view.X,portrait.X),Math.Min(view.Bottom,portrait.Bottom)-Math.Max(view.Y,portrait.Y));
             if(clip.Width>0&&clip.Height>0) renderer.Pass(matrix,clip,()=>preview.Draw(portraits,portrait,matrix));

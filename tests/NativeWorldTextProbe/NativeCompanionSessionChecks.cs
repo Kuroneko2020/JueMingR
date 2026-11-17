@@ -45,7 +45,18 @@ namespace NativeWorldTextProbe
             var access=Get(context,"hiddenAccess");
             for(int i=0;i<5 && !(bool)Get(access,"IsUnlocked");i++)Call(access,"TryCompleteTitleClick",(long)(100*i),(long)(1000+i));
             var journey=Get(context,"Journey");
-            Require((bool)Call(journey,"SetEnabled",true),"real Journey activates before AI death: "+Get(journey,"LastFailure"));
+            // The production activation deliberately reports a bounded player
+            // message after catching native errors. Observe original exceptions
+            // only during this one game-thread fixture call, without replacing
+            // its catch, admission or result; always detach the temporary sink.
+            int thread=System.Threading.Thread.CurrentThread.ManagedThreadId;
+            EventHandler<System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs> trace=(sender,args)=>
+            {if(System.Threading.Thread.CurrentThread.ManagedThreadId==thread)Console.Error.WriteLine("COMPANION-JOURNEY activation native exception: "+args.Exception);};
+            bool enabled;
+            AppDomain.CurrentDomain.FirstChanceException+=trace;
+            try {enabled=(bool)Call(journey,"SetEnabled",true);}
+            finally {AppDomain.CurrentDomain.FirstChanceException-=trace;}
+            Require(enabled,"real Journey activates before AI death: "+Get(journey,"LastFailure"));
             try {Scenario(context,journey);}finally{Call(journey,"SetEnabled",false);}
         }
         private static void Scenario(object context,object journey)

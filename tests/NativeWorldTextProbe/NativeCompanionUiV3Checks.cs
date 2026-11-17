@@ -102,9 +102,16 @@ namespace NativeWorldTextProbe
                 int x1=Math.Min(width,(int)(((float)Get(hero,"X")+Math.Min(90,(float)Get(hero,"Width")))*scale)),y1=Math.Min(height,(int)(((float)Get(hero,"Y")+Math.Min(108,(float)Get(hero,"Height")))*scale));
                 int face=0,top=0,bottom=0,feet=0;
                 Func<Color,Color,bool> near=(a,b)=>a.A>200&&Math.Abs(a.R-b.R)<65&&Math.Abs(a.G-b.G)<65&&Math.Abs(a.B-b.B)<65;
-                for(int y=y0;y<y1;y++)for(int x=x0;x<x1;x++) {Color c=pixels[y*width+x];if(y<y0+(y1-y0)*.6f&&near(c,faceMark))face++;if(near(c,shirtMark))top++;if(y>y0+(y1-y0)*.4f&&near(c,pantsMark))bottom++;if(near(c,shoeMark))feet++;}
+                int minX=x1,minY=y1,maxX=x0,maxY=y0;
+                for(int y=y0;y<y1;y++)for(int x=x0;x<x1;x++) {Color c=pixels[y*width+x];if(y<y0+(y1-y0)*.6f&&near(c,faceMark))face++;if(near(c,shirtMark))top++;if(y>y0+(y1-y0)*.4f&&near(c,pantsMark))bottom++;if(near(c,shoeMark))feet++;
+                    if(near(c,faceMark)||near(c,shirtMark)||near(c,pantsMark)||near(c,shoeMark)||near(c,player.hairColor)){minX=Math.Min(minX,x);maxX=Math.Max(maxX,x);minY=Math.Min(minY,y);maxY=Math.Max(maxY,y);}}
                 Console.WriteLine("BODY-PIXELS "+heroName+" face="+face+" shirt="+top+" pants="+bottom+" shoes="+feet);
                 Require(face>10&&top>20&&bottom>15&&feet>4,"actual original-resource "+heroName+" contains visible face, shirt, pants and shoes, not only hair/background");
+                bool owner=heroName=="ownerHero";var view=Get(window,owner?"ownerView":"companionView");var header=((IEnumerable)Get(window,"actorHeaders")).Cast<object>().ElementAt(owner?0:1);
+                float targetX=((float)Get(view,"X")+(float)Get(view,"Width")*.82f)*scale,targetY=((float)Get(header,"Y")+(float)Get(header,"Height")/2)*scale;
+                float dx=(minX+maxX)/2f-targetX,dy=(minY+maxY)/2f-targetY;
+                Console.WriteLine("BODY-CENTER "+heroName+" actual-minus-header-target="+dx+","+dy+" visible="+minX+","+minY+".."+maxX+","+maxY);
+                Require(Math.Abs(dx)<5*scale&&Math.Abs(dy)<8*scale,"actual face/hair/clothes/shoes pixel bounds place the unchanged-size body inside the upper-right header region");
             }
             finally {player.skinColor=skin;player.shirtColor=shirt;player.underShirtColor=under;player.pantsColor=pants;player.shoeColor=shoes;}
         }
@@ -166,7 +173,7 @@ namespace NativeWorldTextProbe
                 var dye=Get(Controls(window).First(c=>((string)Get(c,"Key")).StartsWith("slot:"+owner+":Dye:0/",StringComparison.Ordinal)),"Rect");
                 var rightTab=Get(tabs.Single(c=>((string)Get(c,"Key")).StartsWith("gear:"+owner+":2/",StringComparison.Ordinal)),"Rect");
                 var lastDye=Get(Controls(window).Single(c=>((string)Get(c,"Key")).StartsWith("slot:"+owner+":Dye:9/",StringComparison.Ordinal)),"Rect");
-                Require(Math.Abs((float)Get(rightTab,"Right")-(float)Get(lastDye,"Right"))<.01f,"compact tab group ends at the real slot grid right edge");
+                Require(Math.Abs((float)Get(rightTab,"Right")+8-(float)Get(lastDye,"Right"))<.01f,"compact tab group is right aligned with eight additional pixels inside the real slot edge");
                 Require(((IEnumerable)Get(window,"groups")).Cast<object>().Any(group=>(float)Get(group,"X")<=(float)Get(tab,"X")&&(float)Get(group,"Y")<=(float)Get(tab,"Y")&&(float)Get(group,"Right")>=(float)Get(dye,"Right")&&(float)Get(group,"Bottom")>=(float)Get(dye,"Bottom")),"actual compact tabs and corresponding equipment/dye rows share one module background and border");
             }
 
