@@ -54,7 +54,8 @@ namespace JueMingR.TerrariaHost.F5
             sharedLifeHeight=Math.Max(own.Life,companion.Life);
             return Math.Max(108,sharedLifeHeight+Math.Max(own.Mana,companion.Mana));
         }
-        private static float ResourceWidth(float paneWidth) {return Math.Max(20,paneWidth*.82f-62);}
+        private static float ShowcaseWidth(float paneWidth) {return Math.Min(116,Math.Max(92,paneWidth*.26f));}
+        private static float ResourceWidth(float paneWidth) {return Math.Max(20,paneWidth*.82f-ShowcaseWidth(paneWidth)/2-28);}
         private static float GridHeight(float paneWidth,int count)
         {int columns=Math.Max(1,Math.Min(10,(int)((paneWidth-24)/40)));float cell=Math.Min(44,(paneWidth-24)/columns);return (float)Math.Ceiling((double)count/columns)*cell+4;}
         private float SharedEquipment(float paneWidth)
@@ -91,7 +92,11 @@ namespace JueMingR.TerrariaHost.F5
             // rectangle center. Its ordinary 48px visible silhouette at the
             // unchanged 1.625 scale is centered 24*scale above those feet.
             float visibleCenterOffset=108/2f-8-24*1.625f;
-            var portrait=new F5Rect(view.X+view.Width*.82f-34,headerTop+headerHeight/2-54-visibleCenterOffset,68,108);
+            float centerX=view.X+view.Width*.82f,centerY=headerTop+headerHeight/2;
+            float frameTop=Math.Max(headerTop+row+8,centerY-52);
+            var showcase=new F5Rect(centerX-ShowcaseWidth(view.Width)/2,frameTop,ShowcaseWidth(view.Width),Math.Min(104,headerTop+headerHeight-8-frameTop));
+            var portrait=new F5Rect(centerX-34,centerY-54-visibleCenterOffset,68,108);
+            if(owner)ownerShowcase=showcase;else companionShowcase=showcase;
             if (owner) {ownerHero=hero;ownerPortrait=portrait;} else {companionHero=hero;companionPortrait=portrait;}
             AddActorHeader(new F5Rect(view.X+4,headerTop,view.Width-8,headerHeight),view);
             y+=heroHeight+4+6;
@@ -230,14 +235,20 @@ namespace JueMingR.TerrariaHost.F5
             else { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; }
             if(changed) {RefreshItemPresentation(resources);RefreshNotice();}
         }
-        private void DrawHero(F5Rect view,F5Rect hero,F5Rect portrait,CompanionPreview preview,Player source)
+        private void DrawHero(F5Rect view,F5Rect hero,F5Rect portrait,F5Rect showcase,CompanionPreview preview,Player source)
         {
             if(hero.Bottom<=view.Y||hero.Y>=view.Bottom) return;
             renderer.Pass(matrix,view,()=> {
                 if(source!=null) resourceDisplay.Draw(renderer,source,hero,sharedLifeHeight);
             });
-            var clip=new F5Rect(Math.Max(view.X,portrait.X),Math.Max(view.Y,portrait.Y),Math.Min(view.Right,portrait.Right)-Math.Max(view.X,portrait.X),Math.Min(view.Bottom,portrait.Bottom)-Math.Max(view.Y,portrait.Y));
-            if(clip.Width>0&&clip.Height>0) renderer.Pass(matrix,clip,()=>preview.Draw(portraits,portrait,matrix));
+            var clip=new F5Rect(Math.Max(view.X,showcase.X),Math.Max(view.Y,showcase.Y),Math.Min(view.Right,showcase.Right)-Math.Max(view.X,showcase.X),Math.Min(view.Bottom,showcase.Bottom)-Math.Max(view.Y,showcase.Y));
+            if(clip.Width>0&&clip.Height>0) renderer.Pass(matrix,clip,()=> {
+                UiSurface.Panel(Main.spriteBatch,Terraria.GameContent.TextureAssets.MagicPixel.Value,showcase,Terraria.GameContent.TextureAssets.InventoryBack.Value,new Color(95,105,155),roundedOuter:true);
+                // Equipment visibility changes the local composition only, not
+                // controls, hit geometry, scrolling or an already valid press.
+                var pose=CompanionPetPreview.Visible(source)?portrait.Offset(-14,0):portrait;
+                preview.DrawPet(pose,matrix);preview.Draw(portraits,pose,matrix);
+            });
         }
         private void BuildConfiguration(CompanionProfile profile, float row)
         {

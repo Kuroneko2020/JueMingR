@@ -72,6 +72,7 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player),"ProcessHitAgainstNPC",nameof(MeleePredictionBefore),finalizer:nameof(PredictionFinal),transpiler:nameof(PredictionTarget));
             Patch(typeof(Player),"ApplyDamageToNPC",nameof(DirectPredictionBefore),finalizer:nameof(PredictionFinal),args:new[]{typeof(NPC),typeof(int),typeof(float),typeof(int),typeof(bool),typeof(PlayerNPCHitSource)});
             F5.CompanionCreationHooks.Install(Harmony);
+            F5.CompanionPetPreviewHooks.Install(Harmony);
             installed=true;
         }
         private static void Patch(Type t,string method,string prefix=null,string postfix=null,string finalizer=null,string transpiler=null,Type[] args=null)

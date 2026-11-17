@@ -88,8 +88,11 @@ namespace NativeWorldTextProbe
                 Step(Vector2.Zero,false,graphics);Click((UIElement)Get(creator,"_charInfoCategoryButton"),graphics);
                 var expectedRng=new Terraria.Utilities.UnifiedRandom(46131);Main.rand=new Terraria.Utilities.UnifiedRandom(46131);Mount.currentShader=71;
                 int dust=Main.dust.Count(d=>d!=null&&d.active),gore=Main.gore.Count(g=>g!=null&&g.active),afk=originalPlayer.afkCounter;
+                var closedOwnerPet=Get(Get(window,"ownerPreview"),"Pet");var closedAiPet=Get(Get(window,"companionPreview"),"Pet");
+                int closedOwnerDraws=(int)Get(closedOwnerPet,"Draws"),closedAiDraws=(int)Get(closedAiPet,"Draws");
                 for(int i=0;i<8;i++) {Main.mouseLeft=false;Main.mouseX=Main.mouseY=0;Main.InGameUI.Update(new GameTime(clock,TimeSpan.FromMilliseconds(16)));graphics.Render(()=>Main.InGameUI.Draw(Main.spriteBatch,new GameTime(clock,TimeSpan.FromMilliseconds(16))),Main.UIScaleMatrix);}
                 Require(Main.rand.Next()==expectedRng.Next()&&Mount.currentShader==71&&Main.dust.Count(d=>d!=null&&d.active)==dust&&Main.gore.Count(g=>g!=null&&g.active)==gore&&originalPlayer.afkCounter==afk,"stable original preview leaves world RNG/particles/shared mount shader and owner AFK unchanged");
+                Require(GetOptional(closedOwnerPet,"Dummy")==null&&GetOptional(closedAiPet,"Dummy")==null&&(int)Get(closedOwnerPet,"Draws")==closedOwnerDraws&&(int)Get(closedAiPet,"Draws")==closedAiDraws,"closed management clears both private pet dummies and performs zero pet drawing during native creation");
                 foreach(byte difficulty in new byte[]{0,1,2,3}) {Click(Descendants(creator).OfType<UIDifficultyButton>().Single(b=>(byte)Get(b,"_difficulty")==difficulty),graphics);Require(draft.difficulty==difficulty,"native difficulty control changes detached draft "+difficulty);}
                 Click(Descendants(creator).OfType<UIDifficultyButton>().Single(b=>(byte)Get(b,"_difficulty")==desired),graphics);
                 Click((UIElement)Get(creator,"_clothingStylesCategoryButton"),graphics);

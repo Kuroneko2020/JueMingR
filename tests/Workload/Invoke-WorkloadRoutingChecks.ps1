@@ -129,6 +129,7 @@ foreach($pair in @(@('Team','Network'),@('Navigation','Navigation'),@('Session',
     Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanion'+$pair[0]+'Checks.cs')) -join '|') -ceq ($expected -join '|')) ('continuation helper has all actual consumers '+$pair[0])
 }
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionUiV3Checks.cs') -join '|') -ceq 'native-CompanionVisual') 'V3 graphics helper selects the actual Draw consumer'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionPetPreviewChecks.cs') -join '|') -ceq 'native-CompanionVisual') 'native pet dummy graphics helper selects its actual consumer'
 $supply='native-BlueprintSupplyContinuationCpu'
 Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeBlueprintConstructionDoorChecks.cs') -notcontains $supply) 'Door private body does not select SupplyRepair'
 foreach($helper in @('SupplyConversion','SupplyHandoff','SupplyReady','PostProcessingContinuity','Build','Construction','WorldMatch','ConstructionAppearance')){

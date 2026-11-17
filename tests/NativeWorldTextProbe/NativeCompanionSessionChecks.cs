@@ -67,7 +67,11 @@ namespace NativeWorldTextProbe
         }
         private static void Scenario(object context,object journey)
         {
-            NativeCombatAimChecks.Initialize();
+            // The graphical Journey caller has already completed this exact
+            // native startup before FullInput. TileObjectData is then locked;
+            // replaying its initializer is neither a world frame nor legal.
+            // The independently launched CPU leaf still owns its one startup.
+            if(journey==null)NativeCombatAimChecks.Initialize();
             new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player),"Spawn"),HarmonyPatchType.Prefix,"JueMingR.Tests.QuickItemOutlets");
             Main.spawnTileX=60;Main.spawnTileY=58;Main.leftWorld=Main.topWorld=0;Main.rightWorld=Main.maxTilesX*16;Main.bottomWorld=Main.maxTilesY*16;
             for(int x=2;x<118;x++){Main.tile[x,60].active(true);Main.tile[x,60].type=TileID.Stone;}

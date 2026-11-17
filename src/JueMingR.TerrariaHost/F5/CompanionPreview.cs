@@ -17,9 +17,11 @@ namespace JueMingR.TerrariaHost.F5
         private int appearance;
         private static readonly FieldInfo[] visualFields = Fields();
         private readonly CompanionHeadLayout headLayout=new CompanionHeadLayout();
+        private readonly CompanionPetPreview petPreview=new CompanionPetPreview();
         private readonly UnifiedRandom random = new UnifiedRandom(7139);
         internal int Rebuilds { get; private set; }
         internal Player Display { get { return display; } }
+        internal CompanionPetPreview Pet { get { return petPreview; } }
         private static FieldInfo[] Fields()
         {
             var result=new List<FieldInfo>();
@@ -30,7 +32,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             return result.ToArray();
         }
-        internal void Clear() { source=null; display=null; appearance=0;headLayout.Clear(); }
+        internal void Clear() { source=null; display=null; appearance=0;headLayout.Clear();petPreview.Clear(); }
         internal void Prepare(Player player)
         {
             if(player==null) { Clear(); return; }
@@ -136,6 +138,12 @@ namespace JueMingR.TerrariaHost.F5
                 Main.rand=previous; Mount.currentShader=priorMountShader;
                 batch.Begin(Microsoft.Xna.Framework.Graphics.SpriteSortMode.Deferred,blend,sampler,depth,rasterizer,null,transform);
             }
+        }
+        internal void DrawPet(F5Rect rect,Matrix transform)
+        {
+            if(display==null)return;
+            float scale=Math.Min(2.25f,Math.Min((rect.Width-16)/32,(rect.Height-16)/56));
+            petPreview.Draw(display,new Vector2(rect.X+rect.Width/2,rect.Bottom-8),scale,transform);
         }
     }
 }

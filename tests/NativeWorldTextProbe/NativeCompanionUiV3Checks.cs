@@ -237,6 +237,7 @@ namespace NativeWorldTextProbe
                 CheckBodyPixels(window,graphics,owner,"ownerHero",output,1280,800);
                 CheckBodyPixels(window,graphics,ai,"companionHero",output,1280,800);
                 CheckAppearanceRefresh(window,graphics,owner,output);CheckAvatarCenter(window,graphics,ai,id,output);
+                NativeCompanionPetPreviewChecks.Run(window,graphics,owner,ai,output);
                 var preview=Get(window,"ownerPreview");var display=(Player)Get(preview,"Display");
                 Require(!ReferenceEquals(display,owner)&&!display.leinforsHair&&owner.leinforsHair,"preview isolates native particle-only shampoo flag");
                 Require(!display.poisoned&&!display.honeyWet&&owner.poisoned&&owner.honeyWet&&Mount.currentShader==73&&owner.miscCounter==previousMisc&&owner.swimTime==previousSwim,"preview excludes native BoringSetup effects and restores shared mount shader without advancing owner timers");
