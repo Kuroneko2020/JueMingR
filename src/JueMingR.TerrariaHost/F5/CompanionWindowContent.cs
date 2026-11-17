@@ -54,8 +54,8 @@ namespace JueMingR.TerrariaHost.F5
         private float PreferredHeight(float width,float row)
         {
             float pane=(width-104)/2;
-            float header=4+row+6+(pane-16<300?24:0)+SharedResources(pane)+4+26+8;
-            return row+53+header+6+(4+SharedEquipment(pane))+6+(4+GridHeight(pane,50))+6+(4+GridHeight(pane,8))+8;
+            float header=4+row+6+(pane-16<300?24:0)+SharedResources(pane)+4;
+            return row+53+header+6+(4+26+6+SharedEquipment(pane))+6+(4+GridHeight(pane,50))+6+(4+GridHeight(pane,8))+8;
         }
         private void BuildActor(Player body, bool owner, F5Rect view, int offset, float row)
         {
@@ -76,30 +76,32 @@ namespace JueMingR.TerrariaHost.F5
             y += row + 6;
             if(!owner) {respawnLabel=labels.Count;labels.Add(new F5Element(F5ElementKind.Text,wrapStatus?new F5Rect(x,y,width,24):new F5Rect(x+width-190,y-row,112,25),host.RespawnStatus(selected),default(F5Size),.6f,F5Command.None));}if(wrapStatus)y+=24;
             float resources=sharedResourcesHeight;
-            float heroHeight=resources+34;
+            float heroHeight=resources;
             var hero = new F5Rect(x,y,width,heroHeight);
             var portrait=new F5Rect(x,y+(resources-108)/2,68,108);
             if (owner) {ownerHero=hero;ownerPortrait=portrait;} else {companionHero=hero;companionPortrait=portrait;}
             AddActorHeader(new F5Rect(view.X+4,headerTop,view.Width-8,4+row+6+(wrapStatus?24:0)+heroHeight+4),view);
+            y+=heroHeight+4+6;
+            float groupTop=y;y+=4;
+            // Subtabs and their native equipment/dye cells are one module.
+            // This same group origin drives background, clipping and hit tests.
             var tabs = new[] { "饰品", "时装", "装备" }; int gear = owner ? ownerGearPage : companionGearPage;
-            float totalTabs=8;foreach(string text in tabs)totalTabs+=Math.Max(46,measure(text,.7f).Width+18);
-            float tabX=x+Math.Max(0,Math.Min(76,width-totalTabs));
+            float tabX=x;
             for (int t=0;t<3;t++)
             {
-                int target=t;float tw=Math.Max(46,measure(tabs[t],.7f).Width+18);var r=new F5Rect(tabX,y+resources+4,tw,26);tabX+=tw+4;
+                int target=t;float tw=Math.Max(46,measure(tabs[t],.7f).Width+18);var r=new F5Rect(tabX,y,tw,26);tabX+=tw+4;
                 if (ActorVisible(r,view)) Button("gear:"+owner+":"+t,tabs[t],r,() => {
                     host.CancelItemGesture(); if(owner) ownerGearPage=target; else companionGearPage=target; Invalidate();
                 },true,gear==t);
             }
-            y += heroHeight+4+6;
-            float groupTop=y;y+=4;
+            y+=26+6;float equipmentTop=y;
             if (body != null)
             {
                 if (gear == 0) { ActorSlots(body,owner,CompanionInventoryArea.Armor,0,Math.Min(10,body.armor.Length),ref y,view); ActorSlots(body,owner,CompanionInventoryArea.Dye,0,body.dye.Length,ref y,view); }
                 else if (gear == 1) { ActorSlots(body,owner,CompanionInventoryArea.Armor,10,Math.Max(0,body.armor.Length-10),ref y,view); ActorSlots(body,owner,CompanionInventoryArea.Dye,0,body.dye.Length,ref y,view); }
                 else { ActorSlots(body,owner,CompanionInventoryArea.Misc,0,body.miscEquips.Length,ref y,view); ActorSlots(body,owner,CompanionInventoryArea.MiscDye,0,body.miscDyes.Length,ref y,view); }
             }
-            y=groupTop+4+sharedEquipmentHeight;
+            y=equipmentTop+sharedEquipmentHeight;
             ActorGroup(view.X+7,groupTop,view.Width-14,y-groupTop,view);groupTop=y+6;y=groupTop+4;
             if (body != null) ActorSlots(body,owner,CompanionInventoryArea.Inventory,0,50,ref y,view);
             ActorGroup(view.X+7,groupTop,view.Width-14,y-groupTop,view);groupTop=y+6;y=groupTop+4;
@@ -217,7 +219,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if(hero.Bottom<=view.Y||hero.Y>=view.Bottom) return;
             renderer.Pass(matrix,view,()=> {
-                if(source!=null) resourceDisplay.Draw(renderer,source,new F5Rect(hero.X+76,hero.Y,Math.Max(20,hero.Width-76),hero.Height-34),sharedLifeHeight);
+                if(source!=null) resourceDisplay.Draw(renderer,source,new F5Rect(hero.X+76,hero.Y,Math.Max(20,hero.Width-76),hero.Height),sharedLifeHeight);
             });
             var clip=new F5Rect(Math.Max(view.X,portrait.X),Math.Max(view.Y,portrait.Y),Math.Min(view.Right,portrait.Right)-Math.Max(view.X,portrait.X),Math.Min(view.Bottom,portrait.Bottom)-Math.Max(view.Y,portrait.Y));
             if(clip.Width>0&&clip.Height>0) renderer.Pass(matrix,clip,()=>preview.Draw(portraits,portrait,matrix));

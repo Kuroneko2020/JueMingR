@@ -27,8 +27,15 @@ namespace NativeWorldTextProbe
             int lastHeart=count(x+4*27,y+20,26,29,c=>c.R>150&&c.R>c.G*1.5f&&c.R>c.B*1.5f);
             int onlyStar=count(x,y+sharedLife+20,26,29,c=>c.B>120&&c.B>c.R*1.15f);
             var ownerHero=Get(window,"ownerHero");int ox=(int)(float)Get(ownerHero,"X")+76,oy=(int)(float)Get(ownerHero,"Y");
-            int partial=count(ox+5*27,oy+49,26,29,c=>c.R>100&&c.G>60&&c.R>c.B*1.3f);
-            Console.WriteLine("RESOURCE-PIXELS cursorScale="+Main.cursorScale+" last-initial-heart="+lastHeart+" only-initial-star="+onlyStar+" partial-life="+partial);
+            int life=Main.LocalPlayer.statLife;Color[] empty,full;
+            try {Main.LocalPlayer.statLife=450;empty=graphics.Pixels(()=>Call(window,"Draw"),Main.UIScaleMatrix,1280,800);Main.LocalPlayer.statLife=480;full=graphics.Pixels(()=>Call(window,"Draw"),Main.UIScaleMatrix,1280,800);}
+            finally {Main.LocalPlayer.statLife=life;}
+            // Native classic fill uses both brightness and alpha. Compare the
+            // same original texture over this actual panel, not a fixed gold
+            // hue threshold tied to an earlier background color.
+            int partial=0;
+            for(int yy=oy+49;yy<oy+78;yy++)for(int xx=ox+5*27;xx<ox+5*27+26;xx++) {int at=yy*1280+xx;var p=pixels[at];var e=empty[at];var f=full[at];if(p.R>e.R+10&&f.R>p.R+10&&p.G>e.G+5&&f.G>p.G+5)partial++;}
+            Console.WriteLine("RESOURCE-PIXELS cursorScale="+Main.cursorScale+" last-initial-heart="+lastHeart+" only-initial-star="+onlyStar+" partial-between-empty-and-full="+partial);
             Require(lastHeart>8&&onlyStar>8&&partial>6,"actual default resource pixels retain initial fifth heart, sole mana star and injured partial segment");
         }
         private static int HeadDifference(Color[] a,Color[] b,object window)
@@ -153,6 +160,13 @@ namespace NativeWorldTextProbe
             }
             var tabs=Controls(window).Where(c=>((string)Get(c,"Key")).StartsWith("gear:",StringComparison.Ordinal)).ToArray();
             Require(tabs.All(c=>(float)Get(Get(c,"Rect"),"Width")<90),"actual subtabs use compact text widths");
+            foreach(bool owner in new[]{true,false})
+            {
+                var tab=Get(tabs.First(c=>((string)Get(c,"Key")).StartsWith("gear:"+owner+":",StringComparison.Ordinal)),"Rect");
+                var dye=Get(Controls(window).First(c=>((string)Get(c,"Key")).StartsWith("slot:"+owner+":Dye:0/",StringComparison.Ordinal)),"Rect");
+                Require(((IEnumerable)Get(window,"groups")).Cast<object>().Any(group=>(float)Get(group,"X")<=(float)Get(tab,"X")&&(float)Get(group,"Y")<=(float)Get(tab,"Y")&&(float)Get(group,"Right")>=(float)Get(dye,"Right")&&(float)Get(group,"Bottom")>=(float)Get(dye,"Bottom")),"actual compact tabs and corresponding equipment/dye rows share one module background and border");
+            }
+
             foreach(var slot in Controls(window).Where(c=>(bool)Get(c,"IsSlot")&&Get(c,"Area").ToString()=="Dye"))Require((int)Get(slot,"EmptyIcon")==1,"actual dye placeholder uses native context12/25 frame1");
         }
         private static void CheckDynamicPress(object window,object host,Guid id)
