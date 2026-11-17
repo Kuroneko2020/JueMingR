@@ -33,7 +33,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             else {
                 renderer.Button(c.Element,false,c.Enabled,false,hover,hover&&armedKey==c.Key);
-                renderer.Text(c.Text,c.Rect,c.Enabled?Color.White:Color.Gray,.55f);
+                DrawCentered(c.Text,c.Rect,c.Enabled?Color.White:Color.Gray,.55f);
             }
         }
         private void UpdateLabel(int index,string value)

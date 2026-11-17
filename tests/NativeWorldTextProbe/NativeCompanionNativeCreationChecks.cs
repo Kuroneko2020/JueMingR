@@ -143,6 +143,7 @@ namespace NativeWorldTextProbe
                 var body=(Player)Call(host,"GetBody",id);graphics.LoadItemTextures(body.inventory.Where(v=>v!=null&&!v.IsAir).Select(v=>v.type));Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(1366,900));
                 NativeFrame(context,Vector2.Zero,false,new Microsoft.Xna.Framework.Input.Keys[0]);managerClick("actor-state");Require((bool)Call(host,"IsJoined",id)&&(string)Get(host,"Feedback")!="正在加入人物。","backpack embedded state joins and actual ready activation retires joining progress");
                 NativeCompanionFeedbackChecks.Run(host,id);managerClick("team:4");Require(((Player)Call(host,"GetBody",id)).team==4,"backpack native team glyph updates AI's real team");
+                NativeFrame(context,Vector2.Zero,false,new Microsoft.Xna.Framework.Input.Keys[0]);
                 graphics.Image(Path.Combine(output,"companion-live-management.png"),()=>Call(window,"Draw"),Main.UIScaleMatrix,1366,900);
                 Require(playerFiles==0&&ReferenceEquals(Main.PendingPlayer,pending)&&Main.player[Main.myPlayer]==human,"live native page never enters human file save/PendingPlayer ownership");
                 NativeCompanionUiChecks.StatusPressIdentity(shell,id);Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(1366,900));

@@ -120,7 +120,7 @@ foreach($scope in @('CompanionCreationInputVisual','CompanionResourceBarsVisual'
 }
 foreach($helper in @('','Behavior','Continuous','Lifecycle','Persistence','Prediction','Transport','Ui')){
     $companionLeaf='tests/NativeWorldTextProbe/NativeCompanion'+$helper+'Checks.cs'
-    $expectedCompanionLeaf=if($helper -ceq 'Ui'){'native-CompanionCpu|native-CompanionVisual'}else{'native-CompanionCpu'}
+    $expectedCompanionLeaf=if($helper -ceq 'Ui'){'native-CompanionCpu|native-CompanionVisual|native-CompanionCreationInputVisual'}else{'native-CompanionCpu'}
     Assert-Route ((@(Get-WorkloadPathChecks $companionLeaf)-join '|') -ceq $expectedCompanionLeaf) ('companion private leaf retains its real callers '+$companionLeaf)
 }
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs') -join '|') -ceq 'native-CompanionCreationInputVisual|native-CompanionShowcaseVisual|native-CompanionVisual|native-CompanionNetworkCpu|native-CompanionSessionCpu|native-CompanionNavigationCpu|native-CompanionCpu|native-CompanionCreationCpu|native-CompanionItemsCpu') 'native companion preparation retains each actual CPU caller'
@@ -134,7 +134,6 @@ Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompan
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionFancyResourceChecks.cs') -join '|') -ceq 'native-CompanionResourceBarsVisual') 'Fancy resource oracle shares only the direct resource graphical leaf'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionFeedbackChecks.cs') -join '|') -ceq 'native-CompanionCreationInputVisual') 'joining progress component check belongs to the actual joining input fixture'
 Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs') -ccontains 'native-CompanionCreationInputVisual') 'live creator binds its actual native body initialization provider'
-Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionUiChecks.cs') -join '|') -ceq 'native-CompanionCpu|native-CompanionVisual|native-CompanionCreationInputVisual') 'native membership projection helper retains all real consumers'
 $nativeUiHelper=Get-WorkloadRoute @('tests/NativeWorldTextProbe/NativeToolsUiChecks.cs')
 Assert-Route ($nativeUiHelper.groups -ccontains 'companion-host' -and $nativeUiHelper.groups -ccontains 'tools-host' -and $nativeUiHelper.groups -ccontains 'items') 'new native UI helper consumer retains the old grouped UI consumers'
 $supply='native-BlueprintSupplyContinuationCpu'
