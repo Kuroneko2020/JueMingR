@@ -378,6 +378,24 @@ namespace NativeWorldTextProbe
                 return new ReturnMessage(value, null, 0, call.LogicalCallContext, call);
             }
         }
+        internal static void Membership(object shell,Guid id,bool joined)
+        {
+            var host=Get(shell,"Companions");var window=Get(shell,"CompanionUi");var body=(Player)Call(host,"GetBody",id);bool dead=body.dead;
+            try
+            {
+                // Exercise the native CanTransfer predicate's dead-body branch
+                // without running KillMe/Update or changing this fixture's actor
+                // lifecycle. The test concerns only the existing UI projection.
+                if(joined) body.dead=true;
+                Require((bool)Call(host,"IsJoined",id)==joined&&!(bool)Call(host,"CanTransfer",id),"membership and temporary resource qualification are independent actual Host facts");
+                Call(window,"Close");NativeToolsUiChecks.Mouse(Vector2.Zero,false);Call(window,"Toggle",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));Set(window,"selected",id);Set(window,"page",0);
+                Call(window,"PrepareLayout",Matrix.Identity,new Vector2(1280,900));
+                string expected=joined?"recall/":"join/",absent=joined?"join/":"recall/";
+                Require(Controls(window).Any(c=>((string)Get(c,"Key")).StartsWith(expected,StringComparison.Ordinal))&&!Controls(window).Any(c=>((string)Get(c,"Key")).StartsWith(absent,StringComparison.Ordinal)),"actual inventory layout offers "+(joined?"recall for an ineligible joined actor":"join for an archived offline profile"));
+                Console.WriteLine("PASS companion native membership layout joined="+joined+" transfer=false action="+(joined?"recall":"join")+"; no Draw/death-lifecycle claim");
+            }
+            finally {body.dead=dead;Call(window,"Close");NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
+        }
         internal static void Equipment(object shell, Guid id)
         {
             var host = Get(shell, "Companions"); var window = Get(shell, "CompanionUi"); var layout = Get(Get(shell, "State"), "Layout");

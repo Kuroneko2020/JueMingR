@@ -78,6 +78,7 @@ namespace JueMingR.TerrariaHost.Companions
             try{p=profiles.LoadBody(profile);previews[id]=p;previewRevisions[id]=profile.Revision;return p;}catch(Exception e){Feedback=e.Message;return null;}
         }
         internal string Status(Guid id){Actor a;actors.TryGetValue(id,out a);if(profiles.SaveFailed(id))return (a?.TerminalFailure==null?"":a.TerminalFailure+"；")+"保存失败，请重试";string state;return a!=null?a.Status:states.TryGetValue(id,out state)?state:Find(id)?.PermanentlyDead==true?"已永久死亡":"已收回";}
+        internal bool IsJoined(Guid id){return actors.ContainsKey(id);}
         internal bool CanTransfer(Guid id){Actor a;return actors.TryGetValue(id,out a) && a.Ready && !a.Closing && a.Body.active && !a.Body.dead && !a.Profile.PermanentlyDead && ReferenceEquals(owner,Main.LocalPlayer) && ReferenceEquals(world,Main.ActiveWorldFileData);}
         private CompanionProfile Find(Guid id){return profiles.Find(id);}
         private bool Result(bool value,string text){Feedback=text;return value;}

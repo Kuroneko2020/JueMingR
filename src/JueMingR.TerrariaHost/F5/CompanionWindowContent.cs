@@ -42,7 +42,9 @@ namespace JueMingR.TerrariaHost.F5
             ActorText(name, new F5Rect(x,y,width - (owner ? 0 : 74),row), view);
             if (!owner && CurrentProfile() != null)
             {
-                bool joined = host.CanTransfer(selected);
+                // Membership owns recall; temporary resource ineligibility must
+                // not turn an existing actor back into a Join command.
+                bool joined = host.IsJoined(selected);
                 var r = new F5Rect(view.Right - 76,y,68,row);
                 if (ActorVisible(r,view)) Button(joined ? "recall" : "join", joined ? "收回" : "加入",r,
                     () => Command(() => joined ? host.Recall(selected) : host.Join(selected)));
