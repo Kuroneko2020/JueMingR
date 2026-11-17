@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
@@ -151,7 +151,11 @@ namespace NativeWorldTextProbe
                 Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(Main.screenWidth,Main.screenHeight));Require((Guid)Get(window,"selected")==id,"first publication keeps new profile selected");
                 var saved=(Player)Call(host,"GetBody",id);Require(saved.name==name&&saved.difficulty==desired&&saved.hair==hair&&saved.skinVariant==variant&&saved.voiceVariant==voiceVariant&&Math.Abs(saved.voicePitchOffset-pitch)<.001f&&new[]{saved.hairColor,saved.eyeColor,saved.skinColor,saved.shirtColor,saved.underShirtColor,saved.pantsColor,saved.shoeColor}.SequenceEqual(expected),"native edited appearance, seven colors, voice and difficulty are in the actual AI native archive");
                 Require(saved.armor.Take(3).All(i=>i.IsAir),"original preview armor never enters the newly initialized AI archive");
-                Require((bool)Call(host,"Join",id),"new native-created AI can join through the actual host");
+                // The outer quick-item scope intercepts only recall Spawns.
+                // This step intentionally enters the real AI Spawn, matching
+                // the established creation/session fixtures, so retire that prefix.
+                new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player),"Spawn"),HarmonyPatchType.Prefix,"JueMingR.Tests.QuickItemOutlets");
+                Require((bool)Call(host,"Join",id),"new native-created AI can join through the actual host: "+Get(host,"Feedback"));
                 Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(Main.screenWidth,Main.screenHeight));
                 graphics.Image(Path.Combine(output,"companion-native-created-joined.png"),()=>Call(window,"Draw"),Main.UIScaleMatrix,Main.screenWidth,Main.screenHeight);
                 CheckConfigurationRespawn(window,host,id,graphics,output);CheckStackPictures(window,host,id,graphics,output);Call(host,"Recall",id);
