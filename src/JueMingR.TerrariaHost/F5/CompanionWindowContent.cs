@@ -73,11 +73,6 @@ namespace JueMingR.TerrariaHost.F5
             if (body != null) ActorSlots(body,owner,CompanionInventoryArea.Inventory,0,50,ref y,view);
             ActorText("钱币 / 弹药",new F5Rect(x,y,width,26),view); y += 28;
             if (body != null) ActorSlots(body,owner,CompanionInventoryArea.Inventory,50,8,ref y,view);
-            if (!owner && body != null)
-            {
-                string weaponName = body.selectedItem >= 0 && body.selectedItem < 50 ? body.inventory[body.selectedItem]?.Name : "";
-                ActorText("武器："+weaponName,new F5Rect(x,y,width,28),view); y+=30;
-            }
             int maximum=Math.Max(0,(int)Math.Ceiling(y + offset + 8 - view.Bottom));
             if (owner) { ownerMaximum=maximum; if(ownerOffset>maximum) { ownerOffset=maximum; bodyOffsetClamped=true; Invalidate(); } }
             else { bodyMaximum=maximum; if(bodyOffset>maximum) { bodyOffset=maximum; bodyOffsetClamped=true; Invalidate(); } }
@@ -93,17 +88,49 @@ namespace JueMingR.TerrariaHost.F5
                 int slot=start+i;
                 var rect=new F5Rect(view.X+8+i%columns*cell,y+i/columns*cell,cell-3,cell-3);
                 if(!ActorVisible(rect,view)) continue;
-                Item item=host.ItemPreview(selected,owner,area,slot);
+                Item item=ReadSlotPreview(body,owner,area,slot);
                 var c=Button("slot:"+owner+":"+area+":"+slot,"",rect,null,true,
                     !owner && area==CompanionInventoryArea.Inventory && slot==body.selectedItem);
-                bool locked=(area==CompanionInventoryArea.Armor||area==CompanionInventoryArea.Dye)&&!body.IsItemSlotUnlockedAndUsable(slot);
-                c.Enabled=(owner||host.CanTransfer(selected))&&!locked;
                 c.IsSlot=true; c.Owner=owner; c.Area=area; c.Slot=slot; c.Element=null;
-                c.ItemType=item?.type??0; c.Stack=item?.stack??0;
-                c.Hint=locked?"此饰品槽尚未解锁。":!owner&&!host.CanTransfer(selected)?"未加入，只能查看。":SlotHint(area,slot,item,owner); icons.AddVisible(c.ItemType);
-                if(c.ItemType==0) c.Placeholder=area==CompanionInventoryArea.Dye||area==CompanionInventoryArea.MiscDye?"染":area==CompanionInventoryArea.Misc?new[]{"宠","光","车","坐","钩"}[slot]:area==CompanionInventoryArea.Armor?(slot%10==0?"头":slot%10==1?"衣":slot%10==2?"裤":"饰"):area==CompanionInventoryArea.Inventory&&slot>=50?(slot<54?"币":"弹"):null;
+                ApplyItemPresentation(c,body,item); icons.AddVisible(c.ItemType);
             }
             y+=(float)Math.Ceiling((double)count/columns)*cell+4;
+        }
+        private Item ReadSlotPreview(Player player,bool owner,CompanionInventoryArea area,int slot)
+        {
+            // Idle presentation reuses its already resolved character instead of
+            // finding that same profile for every cell. An active gesture reads
+            // the Host's projection; all mutations still use its atomic outlet.
+            if(host.HasItemGesture) return host.ItemPreview(selected,owner,area,slot);
+            var items=CompanionResources.Items(player,area);return slot>=0&&slot<items.Length?items[slot]:null;
+        }
+        private bool ApplyItemPresentation(Control c,Player body,Item item)
+        {
+            int type=item?.type??0,stack=item?.stack??0,prefix=item?.prefix??0;
+            bool locked=(c.Area==CompanionInventoryArea.Armor||c.Area==CompanionInventoryArea.Dye)&&!body.IsItemSlotUnlockedAndUsable(c.Slot);
+            bool enabled=(c.Owner||host.CanTransfer(selected))&&!locked;
+            bool chosen=!c.Owner&&c.Area==CompanionInventoryArea.Inventory&&c.Slot==body.selectedItem;
+            if(c.Prefix==prefix&&c.ItemType==type&&c.Stack==stack&&c.Enabled==enabled&&c.Selected==chosen) return false;
+            bool changedType=c.ItemType!=type;
+            c.ItemType=type;c.Stack=stack;c.StackText=stack.ToString();c.Prefix=prefix;c.Enabled=enabled;c.Selected=chosen;
+            c.Hint=locked?"此饰品槽尚未解锁。":!c.Owner&&!host.CanTransfer(selected)?"未加入，只能查看。":SlotHint(c.Area,c.Slot,item,c.Owner);
+            c.Placeholder=type!=0?null:c.Area==CompanionInventoryArea.Dye||c.Area==CompanionInventoryArea.MiscDye?"染":c.Area==CompanionInventoryArea.Misc?new[]{"宠","光","车","坐","钩"}[c.Slot]:c.Area==CompanionInventoryArea.Armor?(c.Slot%10==0?"头":c.Slot%10==1?"衣":c.Slot%10==2?"裤":"饰"):c.Area==CompanionInventoryArea.Inventory&&c.Slot>=50?(c.Slot<54?"币":"弹"):null;
+            ItemPresentationUpdates++;return changedType;
+        }
+        private void RefreshItemPresentation(bool resources)
+        {
+            bool types=false;
+            if(!creating&&page==0)
+            {
+                Player owner=Main.LocalPlayer,body=host.GetBody(selected);
+                foreach(var c in controls) if(c.IsSlot)
+                {
+                    Player player=c.Owner?owner:body;
+                    if(player!=null) types|=ApplyItemPresentation(c,player,ReadSlotPreview(player,c.Owner,c.Area,c.Slot));
+                }
+            }
+            if(types) {icons.BeginVisibleSet();foreach(var c in controls)icons.AddVisible(c.ItemType);icons.EndVisibleSet();}
+            if(resources) icons.Prepare();
         }
         private static string SlotHint(CompanionInventoryArea area,int slot,Item item,bool owner)
         {
@@ -113,17 +140,18 @@ namespace JueMingR.TerrariaHost.F5
         }
         private static bool ActorVisible(F5Rect rect,F5Rect view) { return rect.Y>=view.Y && rect.Bottom<=view.Bottom && rect.X>=view.X && rect.Right<=view.Right; }
         private void ActorText(string text,F5Rect rect,F5Rect view) { if(ActorVisible(rect,view)) Text(text,rect,.65f); }
-        private void ProcessItemInput(Control hit, Microsoft.Xna.Framework.Input.KeyboardState keys, bool left,bool right,bool wasDragging)
+        private void ProcessItemInput(Control hit, Microsoft.Xna.Framework.Input.KeyboardState keys, bool left,bool right,bool wasDragging,bool resources)
         {
+            bool changed=false;
             if(creating||page!=0||editor!=null||wasDragging) { host.EndItemRepeat(); rightSlot=null; return; }
             if(hit==null||!hit.IsSlot) { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; return; }
             if(left&&!previousLeft)
             {
                 armedKey=null;
                 if((keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.LeftAlt)||keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.RightAlt)) && !hit.Owner && hit.Area==CompanionInventoryArea.Inventory && hit.Slot<50 && !host.HasItemGesture)
-                    Command(()=>host.SelectWeapon(selected,hit.Slot));
+                { host.SelectWeapon(selected,hit.Slot); changed=true; }
                 else { bool shift=keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.LeftShift)||keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.RightShift);
-                    host.ItemGesture(selected,hit.Owner,hit.Area,hit.Slot,shift?CompanionItemGesture.Shift:CompanionItemGesture.Left); Invalidate(); }
+                    host.ItemGesture(selected,hit.Owner,hit.Area,hit.Slot,shift?CompanionItemGesture.Shift:CompanionItemGesture.Left); changed=true; }
             }
             if(right)
             {
@@ -131,18 +159,21 @@ namespace JueMingR.TerrariaHost.F5
                 if(fresh) { host.EndItemRepeat(); rightSlot=hit.Key; rightRepeat=0; }
                 if(rightSlot!=null&&rightSlot!=hit.Key) { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; }
                 if(rightSlot==hit.Key && (fresh||++rightRepeat>=18 && (rightRepeat-18)%6==0))
-                { host.ItemGesture(selected,hit.Owner,hit.Area,hit.Slot,CompanionItemGesture.Right); Invalidate(); }
+                { host.ItemGesture(selected,hit.Owner,hit.Area,hit.Slot,CompanionItemGesture.Right); changed=true; }
             }
             else { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; }
+            if(changed) {RefreshItemPresentation(resources);RefreshNotice();}
         }
         private void DrawHero(F5Rect view,F5Rect hero,CompanionPreview preview,Player source)
         {
             if(hero.Bottom<=view.Y||hero.Y>=view.Bottom) return;
+            var portrait=new F5Rect(hero.X,hero.Y,90,hero.Height);
             renderer.Pass(matrix,view,()=> {
-                var portrait=new F5Rect(hero.X,hero.Y,90,hero.Height);
-                renderer.Panel(portrait); preview.Draw(portraits,portrait,matrix);
+                renderer.Panel(portrait);
                 if(source!=null) resourceDisplay.Draw(renderer,source,new F5Rect(hero.X+98,hero.Y+4,Math.Max(20,hero.Width-98),hero.Height-8));
             });
+            var clip=new F5Rect(Math.Max(view.X,portrait.X),Math.Max(view.Y,portrait.Y),Math.Min(view.Right,portrait.Right)-Math.Max(view.X,portrait.X),Math.Min(view.Bottom,portrait.Bottom)-Math.Max(view.Y,portrait.Y));
+            if(clip.Width>0&&clip.Height>0) renderer.Pass(matrix,clip,()=>preview.Draw(portraits,portrait,matrix));
         }
         private void BuildConfiguration(CompanionProfile profile, float row)
         {

@@ -118,7 +118,8 @@ namespace JueMingR.TerrariaHost.F5
         private void DrawColorRamp(Control c)
         {
             Vector3 hsl=Main.rgbToHsl(CreationColor());float w=(c.Rect.Width-10)/48;
-            for(int i=0;i<48;i++) {Vector3 next=hsl;float v=i/47f;if(c.ColorRamp==0)next.X=v;else if(c.ColorRamp==1)next.Y=v;else next.Z=v;DrawSwatch(new F5Rect(c.Rect.X+5+i*w,c.Rect.Y,w+10,c.Rect.Height),Main.hslToRgb(next.X,next.Y,next.Z));}
+            var rampPixel=Terraria.GameContent.TextureAssets.MagicPixel.Value;
+            for(int i=0;i<48;i++) {Vector3 next=hsl;float v=i/47f;if(c.ColorRamp==0)next.X=v;else if(c.ColorRamp==1)next.Y=v;else next.Z=v;Main.spriteBatch.Draw(rampPixel,new Rectangle((int)(c.Rect.X+5+i*w),(int)c.Rect.Y+5,(int)Math.Ceiling(w)+1,(int)c.Rect.Height-10),new Rectangle(0,0,1,1),Main.hslToRgb(next.X,next.Y,next.Z));}
             var pixel=Terraria.GameContent.TextureAssets.MagicPixel.Value;
             Main.spriteBatch.Draw(pixel,new Rectangle((int)(c.Rect.X+5+(c.Rect.Width-10)*c.RampValue),(int)c.Rect.Y+2,2,(int)c.Rect.Height-4),new Rectangle(0,0,1,1),Color.White);
         }

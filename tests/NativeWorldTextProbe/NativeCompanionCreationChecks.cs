@@ -16,6 +16,36 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCompanionCreationChecks
     {
+        internal static void StoredMaxima(object host,string output)
+        {
+            Terraria.GameContent.Creative.CreativePowerManager.Initialize();
+            var source=new Player {name="存档基础上限",whoAmI=255,statLife=451,statLifeMax=500,statLifeMax2=600,statMana=199,statManaMax=200,statManaMax2=400};
+            source.savedPerPlayerFieldsThatArentInThePlayerClass=new Player.SavedPlayerDataWithAnnoyingRules();
+            var profiles=Get(host,"profiles");var bytes=(byte[])Call(profiles,"Capture",source);
+            string root=Path.Combine(Path.GetFullPath(output),"stored-maxima");
+            using(var archive=new JueMingR.Infrastructure.Companions.FileCompanionArchive(root))
+            {var owner=archive.LoadOwner("isolated-maxima").OwnerId;archive.Save(new CompanionProfile(Guid.NewGuid(),owner,source.name,1,1,new CompanionBehavior(),bytes));}
+            using(var archive=new JueMingR.Infrastructure.Companions.FileCompanionArchive(root))
+            {
+                var saved=archive.LoadOwner("isolated-maxima").Profiles.Single();var loaded=(Player)Call(profiles,"LoadBody",saved);
+                Require(loaded.statLife==451 && loaded.statMana==199 && loaded.statLifeMax2==500 && loaded.statManaMax2==200,"offline archive readback preserves current resources and uses saved 500/200 base limits without simulating dynamic gains");
+            }
+        }
+        private static int voiceRequests;
+        private static bool CountVoice(){voiceRequests++;return false;}
+        internal static void VoicePreview(object host)
+        {
+            var audio=new Harmony("JueMingR.Tests.CompanionVoiceRequests");
+            audio.Patch(AccessTools.Method(typeof(Player),"PlayHurtSound"),prefix:new HarmonyMethod(typeof(NativeCompanionCreationChecks),nameof(CountVoice)));
+            try
+            {
+                uint tick=Main.GameUpdateCount;var draft=(Player)Call(host,"NewCreationDraft");voiceRequests=0;
+                draft.voiceVariant=1;Call(host,"PreviewCreationVoice",draft);
+                draft.voiceVariant=2;Call(host,"PreviewCreationVoice",draft);
+                Require(voiceRequests==2 && Main.GameUpdateCount==tick,"two later explicit voice requests are accepted even while the world tick does not advance");
+            }
+            finally {audio.UnpatchAll(audio.Id);}
+        }
         private static bool failTerminalCapture;
         private static void CaptureFailure(Player __0)
         {if(failTerminalCapture && __0.difficulty==2 && __0.dead){failTerminalCapture=false;throw new IOException("isolated final native capture failure");}}
@@ -58,6 +88,7 @@ namespace NativeWorldTextProbe
                 Require(!(bool)Call(host,"CreateDraft",draft),"duplicate confirmation cannot create a second character");
                 NativeQuickItemChecks.Until(()=>{Call(host,"Update",0UL);return ((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Any(p=>p.Name==draft.name);});
                 ids[difficulty]=((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Single(p=>p.Name==draft.name).Id;Saved(host,ids[difficulty]);
+                Require((string)Get(host,"Feedback")!="正在保存新人物。","completed creation retires only its pending progress message");
                 var body=(Player)Call(profiles,"LoadBody",Profile(host,ids[difficulty]));AssertAppearance(body,draft);
                 Require(body.difficulty==difficulty && body.statLifeMax==100 && body.statManaMax==20 && body.inventory[0].type==(difficulty==3?6:3507),"native start resources and difficulty survive serialization");
                 bool joined=(bool)Call(host,"Join",ids[difficulty]);Require(joined==((difficulty==3)==oldJourney),"Journey world compatibility honors chosen difficulty");

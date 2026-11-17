@@ -58,7 +58,7 @@ namespace JueMingR.TerrariaHost.Companions
         private long aimAttempt;
         private uint aimSelectionStep=UInt32.MaxValue;
         private Actor aimSelected;
-        private string password="";private bool failed;
+        private string password="";private bool failed;private Guid savingCreation;
         private string candidatePassword,acceptedPassword;private object passwordConnection;
         internal string Feedback {get;private set;}="";
         internal IReadOnlyList<CompanionProfile> Profiles {get{return profiles.Profiles;}}
@@ -79,13 +79,15 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal string Status(Guid id){Actor a;actors.TryGetValue(id,out a);if(profiles.SaveFailed(id))return (a?.TerminalFailure==null?"":a.TerminalFailure+"；")+"保存失败，请重试";string state;return a!=null?a.Status:states.TryGetValue(id,out state)?state:Find(id)?.PermanentlyDead==true?"已永久死亡":"已收回";}
         internal bool CanTransfer(Guid id){Actor a;return actors.TryGetValue(id,out a) && a.Ready && !a.Closing && a.Body.active && !a.Body.dead && !a.Profile.PermanentlyDead && ReferenceEquals(owner,Main.LocalPlayer) && ReferenceEquals(world,Main.ActiveWorldFileData);}
-        private CompanionProfile Find(Guid id){return Profiles.FirstOrDefault(p=>p.Id==id);}
+        private CompanionProfile Find(Guid id){return profiles.Find(id);}
         private bool Result(bool value,string text){Feedback=text;return value;}
         internal bool Create(string name)
         {
             if(Main.gameMenu || owner==null)return Result(false,"请先进入世界。");
-            try{profiles.Create(name,Main.GameMode==3);return Result(true,"正在保存新人物。");}catch(Exception e){return Result(false,e.Message);}
+            try{return Created(profiles.Create(name,Main.GameMode==3));}catch(Exception e){return Result(false,e.Message);}
         }
+        private bool Created(CompanionProfile profile)
+        {savingCreation=profile.Id;return Result(true,"正在保存新人物。");}
         internal bool Join(Guid id)
         {
             if(failed || Main.gameMenu || owner==null || !ReferenceEquals(owner,Main.LocalPlayer))return Result(false,"当前不能加入队友。");
@@ -206,7 +208,9 @@ namespace JueMingR.TerrariaHost.Companions
         public void Update(ulong updateTick)
         {
             ValidateItemGesture();
-            profiles.Pump();foreach(var closing in actors.Values.Where(a=>a.Closing && a.CloseCaptured).ToArray())if(profiles.IsSaved(closing.Profile.Id))Release(closing,true);if(!String.IsNullOrEmpty(profiles.Error))Feedback=profiles.Error;if(failed)return;
+            profiles.Pump();
+            if(savingCreation!=Guid.Empty && profiles.IsSaved(savingCreation)){savingCreation=Guid.Empty;if(Feedback=="正在保存新人物。")Feedback="";}
+            foreach(var closing in actors.Values.Where(a=>a.Closing && a.CloseCaptured).ToArray())if(profiles.IsSaved(closing.Profile.Id))Release(closing,true);if(!String.IsNullOrEmpty(profiles.Error))Feedback=profiles.Error;if(failed)return;
             steam.Pump();
             if(Main.gameMenu || owner==null || !ReferenceEquals(world,Main.ActiveWorldFileData) || !ReferenceEquals(owner,Main.LocalPlayer))return;
             FlushSourceRequests();RequestSharedTerrain();

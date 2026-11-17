@@ -61,14 +61,14 @@ namespace JueMingR.TerrariaHost.Companions
     internal sealed partial class HostCompanions
     {
         private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Player, object> submittedDrafts = new System.Runtime.CompilerServices.ConditionalWeakTable<Player, object>();
-        private uint voicePreviewTick = UInt32.MaxValue;
         internal Player NewCreationDraft() { return CompanionCreation.Draft("", (byte)(Main.GameMode == 3 ? 3 : 0)); }
         internal IReadOnlyList<int> GetCreationHairstyles() { return CompanionCreation.Hairstyles; }
         internal void RandomizeCreation(Player draft) { CompanionCreation.Randomize(draft); }
         internal void PreviewCreationVoice(Player draft)
         {
-            if (draft == null || voicePreviewTick == Main.GameUpdateCount) return;
-            voicePreviewTick = Main.GameUpdateCount;
+            // Explicit UI release already owns one request. World time may be
+            // paused while the character editor remains interactive.
+            if (draft == null) return;
             Vector2 prior = draft.position;
             try { draft.position = new Vector2(-1,-1); draft.PlayHurtSound(); }
             finally { draft.position = prior; }
@@ -79,7 +79,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (draft == null) return Result(false,"请先创建人物草稿。");
             object accepted;
             if (submittedDrafts.TryGetValue(draft,out accepted)) return Result(false,"此人物已经创建。");
-            try { profiles.CreateDraft(draft); submittedDrafts.Add(draft,new object()); return Result(true,"正在保存新人物。"); }
+            try { var profile=profiles.CreateDraft(draft); submittedDrafts.Add(draft,new object()); return Created(profile); }
             catch (Exception e) { return Result(false,e.Message); }
         }
     }

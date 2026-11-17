@@ -64,17 +64,38 @@ namespace NativeWorldTextProbe
         internal void LoadCompanionAssets()
         {
             EnsureNativeAssets();
+            // Normal Main.Initialize establishes the native light engine before
+            // any Player.GetHairColor call. This isolated Draw skips that entry.
+            Terraria.Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
+            // HandleInput normally computes this pulse before HUD drawing.
+            Terraria.Main.cursorScale=1f;
             Terraria.Main.PixelShaderRef=screenEffectsRepository.Request<Effect>("PixelShader",AssetRequestMode.ImmediateLoad);
             Terraria.Main.spriteBuffer=new Terraria.DataStructures.SpriteDrawBuffer(GraphicsDevice);
             Terraria.Initializers.PlayerDataInitializer.Load();
+            var playerAssets=new HashSet<Asset<Texture2D>>();
             for(int variant=0;variant<Terraria.ID.PlayerVariantID.Count;variant++)
                 for(int piece=0;piece<Terraria.ID.PlayerTextureID.Count;piece++)
-                { var asset=Terraria.GameContent.TextureAssets.Players[variant,piece]; if(asset!=null && asset!=Asset<Texture2D>.Empty) screenEffectsRepository.Request<Texture2D>(asset.Name,AssetRequestMode.ImmediateLoad); }
+                {var asset=Terraria.GameContent.TextureAssets.Players[variant,piece];if(asset!=null&&asset!=Asset<Texture2D>.Empty)playerAssets.Add(asset);}
+            // PlayerDataInitializer requests AsyncLoad. Re-requesting an already
+            // Loading asset with ImmediateLoad does not change its mode. Normal
+            // Main.Draw pumps these original GPU transfers; the probe must do the
+            // same before claiming a body texture was available to the renderer.
+            var watch=System.Diagnostics.Stopwatch.StartNew();int pending;
+            do
+            {
+                screenEffectsRepository.TransferCompletedAssets();pending=0;
+                foreach(var asset in playerAssets)if(!asset.IsLoaded||asset.Value==null)pending++;
+                if(pending==0)break;
+                if(watch.Elapsed.TotalSeconds>10)throw new InvalidOperationException("native-player-assets-transfer-timeout pending="+pending);
+                System.Threading.Thread.Sleep(2);
+            }while(true);
+            Console.WriteLine("BODY-ASSETS native-transferred="+playerAssets.Count+" pending="+pending);
             for(int i=0;i<Terraria.GameContent.TextureAssets.PlayerHair.Length;i++)
             {
                 Terraria.GameContent.TextureAssets.PlayerHair[i]=screenEffectsRepository.Request<Texture2D>("Images/Player_Hair_"+(i+1),AssetRequestMode.ImmediateLoad);
                 Terraria.GameContent.TextureAssets.PlayerHairAlt[i]=screenEffectsRepository.Request<Texture2D>("Images/Player_HairAlt_"+(i+1),AssetRequestMode.ImmediateLoad);
             }
+            LoadItemTextures(new[]{0}); // native HeldItem layer loads even its empty item before returning
             LoadTexture("Heart","Images/Heart"); LoadTexture("Heart2","Images/Heart2"); LoadTexture("Mana","Images/Mana");
             // Native render paths use these tables even for an empty armor set.
             foreach(var pair in new[]{new[]{"ArmorHead","Armor_Head_"},new[]{"ArmorBody","Armor_Body_"},new[]{"ArmorArm","Armor_Arm_"},new[]{"ArmorLeg","Armor_Legs_"},new[]{"ArmorBodyComposite","Armor/Armor_"}})
@@ -82,6 +103,7 @@ namespace NativeWorldTextProbe
                 var field=typeof(Terraria.GameContent.TextureAssets).GetField(pair[0]); var values=(Asset<Texture2D>[])field.GetValue(null);
                 for(int i=0;i<values.Length;i++) if(File.Exists(Path.Combine(contentDirectory,"Images",pair[1]+i+".xnb"))) values[i]=screenEffectsRepository.Request<Texture2D>("Images/"+pair[1]+i,AssetRequestMode.DoNotLoad);
             }
+            if(Terraria.Main.ResourceSetsManager==null) Terraria.Main.ResourceSetsManager=new Terraria.GameContent.UI.ResourceSets.PlayerResourceSetsManager();
             Terraria.Main.ResourceSetsManager.LoadContent(AssetRequestMode.ImmediateLoad);
         }
         internal void LoadMoonDeathAssets()

@@ -211,6 +211,11 @@ namespace NativeWorldTextProbe
                     " shellReady=" + Get(state, "Ready") + " layersReady=" + Get(shell, "LayersReady") + " failed=" + Get(shell, "Failed") +
                     " panel=" + Get(panel, "X") + "," + Get(panel, "Y") + "," + Get(panel, "Width") + "," + Get(panel, "Height") +
                     " nativeMatrix=" + Main.UIScaleMatrix + " preparedMatrix=" + Get(window, "matrix") + " sample=" + sampleX + "," + sampleY);
+                // Exercise the same prepared production window directly first:
+                // Shell deliberately fails closed and discards the draw exception.
+                // This isolated call preserves its original native stack on failure.
+                graphics.Pixels(()=>Call(window,"Draw"),Matrix.Identity,960,760);
+                NativeCompanionUiV3Checks.InspectBody(window);
                 var pixels = graphics.Pixels(() => Call(shell, "DrawLayer"), Matrix.Identity, 960, 760);
                 // Save exactly this DrawLayer result before asserting. A second
                 // draw after a fail-closed transition could erase the first image.
@@ -446,8 +451,8 @@ namespace NativeWorldTextProbe
                     Console.WriteLine("COMPANION UI equipment native source=" + source.type + ":" + source.stack + " dye=" + source.dye +
                         " head/body/leg=" + source.headSlot + "/" + source.bodySlot + "/" + source.legSlot + " accessory=" + source.accessory +
                         " mount=" + source.mountType + " shoot=" + source.shoot + " canTransfer=" + Call(host, "CanTransfer", id));
-                    click("slot:True:Inventory:49/",true);
                     if(i==1) click("gear:False:2/",false);
+                    click("slot:True:Inventory:49/",true);
                     click("slot:False:"+area+":"+slot+"/",false);
                     var equipped = i == 0 ? companion.dye[slot] : companion.miscEquips[slot];
                     Console.WriteLine("COMPANION UI equipment actual owner49=" + owner.inventory[49].type + ":" + owner.inventory[49].stack +

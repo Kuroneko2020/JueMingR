@@ -24,7 +24,7 @@ function Get-WorkloadLeafChecks {
         # NativeChecks/Program/fixture inputs retain their existing propagation.
         'tests/Companions/CompanionCoreChecks.cs'=@('CompanionCoreChecks')
         'tests/NativeWorldTextProbe/NativeCompanionItemGestureChecks.cs'=@('native-CompanionItemsCpu')
-        'tests/NativeWorldTextProbe/NativeCompanionCreationChecks.cs'=@('native-CompanionCreationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCreationChecks.cs'=@('native-CompanionCreationCpu','native-CompanionVisual')
         'tests/NativeWorldTextProbe/NativeCompanionChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionTileContextChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
@@ -183,7 +183,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintReachAdmissionChecks.cs'=@('native-BlueprintNearQueueCpu')
         # This owner authenticates only actual Content consumers; CPU fixtures
         # keep their original argument and proof projection.
-        'scripts/workload/Workload.NativeContent.ps1'=@('native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','native-NpcReviewedParticle','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
+        'scripts/workload/Workload.NativeContent.ps1'=@('native-CompanionVisual','native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','native-NpcReviewedParticle','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
         'tests/Workload/Invoke-WorkloadContentChecks.ps1'=@('workload-Evidence')
         'tests/NativeWorldTextProbe/NativeMovementJumpChecks.cs'=@('native-MovementJumpCpu')
         'tests/NativeWorldTextProbe/NativeMovementJumpHandoffChecks.cs'=@('native-MovementJumpCpu')
@@ -628,6 +628,7 @@ function Get-WorkloadNativeScopes {
     # in test-world-object-text. Impact/AimUi/Visual need matching real Content
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
+        'CompanionVisual'=@('companion-host','shared-host');
         'CompanionItemsCpu'=@('companion-host','items','shared-host');
         'CompanionCreationCpu'=@('companion-host','shared-host');
         'CompanionCpu'=@('companion-host','combat-host','shared-host');

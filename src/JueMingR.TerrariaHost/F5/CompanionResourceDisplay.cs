@@ -15,6 +15,20 @@ namespace JueMingR.TerrariaHost.F5
     internal sealed class CompanionResourceDisplay
     {
         private readonly Dictionary<string, Asset<Texture2D>> assets = new Dictionary<string, Asset<Texture2D>>();
+        private sealed class Numbers
+        {
+            internal int Life=Int32.MinValue,LifeMax,Mana=Int32.MinValue,ManaMax;
+            internal string LifeText,ManaText;
+        }
+        private readonly Dictionary<Player,Numbers> numbers=new Dictionary<Player,Numbers>();
+        internal void ClearNumbers() {numbers.Clear();}
+        private Numbers TextValues(Player player,PlayerStatsSnapshot stats)
+        {
+            Numbers value;if(!numbers.TryGetValue(player,out value)) {if(numbers.Count>=2)numbers.Clear();numbers[player]=value=new Numbers();}
+            if(value.Life!=stats.Life||value.LifeMax!=stats.LifeMax) {value.Life=stats.Life;value.LifeMax=stats.LifeMax;value.LifeText="生命 "+stats.Life+" / "+stats.LifeMax;}
+            if(value.Mana!=stats.Mana||value.ManaMax!=stats.ManaMax) {value.Mana=stats.Mana;value.ManaMax=stats.ManaMax;value.ManaText="魔力 "+stats.Mana+" / "+stats.ManaMax;}
+            return value;
+        }
         private string key,preparedFolder;
         private IAssetRepository repository;
         private static readonly string[] BarTextures={"HP_Fill","HP_Fill_Honey","MP_Fill","Panel_Left","HP_Panel_Middle","HP_Panel_Right","MP_Panel_Middle","MP_Panel_Right"};
@@ -44,15 +58,15 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void Draw(ItemsRenderer renderer,Player player,F5Rect rect)
         {
-            var stats=new PlayerStatsSnapshot(player);
+            var stats=new PlayerStatsSnapshot(player); var text=TextValues(player,stats);
             bool bars=key!=null&&key.StartsWith("HorizontalBars",StringComparison.Ordinal), fancy=key=="New"||key=="NewWithText";
             bool lifeText=key=="Default"||key=="NewWithText"||key=="HorizontalBarsWithText"||key=="HorizontalBarsWithFullText";
             bool manaText=key=="Default"||key=="NewWithText"||key=="HorizontalBarsWithFullText";
             float y=rect.Y;
-            if(lifeText) { renderer.Text("生命 "+stats.Life+" / "+stats.LifeMax,new F5Rect(rect.X,y,rect.Width,24),Color.White,.6f); y+=25; }
+            if(lifeText) { renderer.Text(text.LifeText,new F5Rect(rect.X,y,rect.Width,24),Color.White,.6f); y+=25; }
             if(bars) { Bar(stats.Life,stats.LifeMax,stats.LifePerSegment,stats.LifeFruitCount,rect.X,y,rect.Width,false); y+=34; }
             else y+=Icons(stats.Life,stats.LifeMax,stats.LifePerSegment,stats.LifeFruitCount,rect.X,y,rect.Width,false,fancy)+5;
-            if(manaText) { renderer.Text("魔力 "+stats.Mana+" / "+stats.ManaMax,new F5Rect(rect.X,y,rect.Width,24),Color.White,.6f); y+=25; }
+            if(manaText) { renderer.Text(text.ManaText,new F5Rect(rect.X,y,rect.Width,24),Color.White,.6f); y+=25; }
             if(bars) Bar(stats.Mana,stats.ManaMax,stats.ManaPerSegment,0,rect.X,y,rect.Width,true);
             else Icons(stats.Mana,stats.ManaMax,stats.ManaPerSegment,0,rect.X,y,rect.Width,true,fancy);
         }

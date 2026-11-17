@@ -27,7 +27,7 @@ namespace NativeWorldTextProbe
             if(scope=="CompanionVisual")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionUiChecks.FullInput(context,graphics,output);NativeScopeDispatch.Enter("companions-ui");},processing:true,shortFeedback:true);return 0;
+                NativeQuickItemChecks.Run(context=>{NativeCompanionCreationChecks.VoicePreview(NativeInformationChecks.Get(context,"Companions"));NativeCompanionCreationChecks.StoredMaxima(NativeInformationChecks.Get(context,"Companions"),output);using(var graphics=new ProbeGraphics(content))NativeCompanionUiChecks.FullInput(context,graphics,output);NativeScopeDispatch.Enter("companions-ui");},processing:true,shortFeedback:true);return 0;
             }
             if(scope=="CompanionCpu")
             {

@@ -9,8 +9,8 @@ using Terraria.Utilities;
 namespace JueMingR.TerrariaHost.F5
 {
     // A display copy is never installed in Main.player and never Update()s.
-    // Native draw-derived scalar fields come from the already prepared source;
-    // only a bounded native appearance preparation runs on that copy.
+    // Cosmetic fields and required equipment display are prepared only on that
+    // copy, using a bounded native appearance path without world simulation.
     internal sealed class CompanionPreview
     {
         private Player source, display;
@@ -22,7 +22,7 @@ namespace JueMingR.TerrariaHost.F5
         private static FieldInfo[] Fields()
         {
             var result=new List<FieldInfo>();
-            foreach(string name in "head body legs handon handoff back front shoe waist shield neck face faceHead faceFlower faceMask balloon balloonFront beard coat wings tail backpack wearsRobe drawFloatingTube hasFloatingTube hasAngelHalo drawnWingsLogic skinDyePacked cHead cBody cLegs cHandOn cHandOff cBack cFront cShoe cWaist cShield cNeck cFace cBalloon cWings cCarpet cFloatingTube cAngelHalo cLeinShampoo cBackpack cTail cFaceHead cFaceFlower cFaceMask cBalloonFront cBeard cCoat cHair cMinion cMount cMinecart cFlameWaker cShield cUnicornHorn cMerman cWolf cFaceFlower merfolk merman wolfAcc hideMerman hideWolf yoraiz0rEye yoraiz0rDarkness".Split(' '))
+            foreach(string name in "head body legs handon handoff back front shoe waist shield neck face faceHead faceFlower faceMask balloon balloonFront beard coat wings tail backpack wearsRobe drawFloatingTube hasFloatingTube hasAngelHalo hasUnicornHorn hasRainbowCursor drawnWingsLogic skinDyePacked cHead cBody cLegs cHandOn cHandOff cBack cFront cShoe cWaist cShield cNeck cFace cBalloon cWings cCarpet cFloatingTube cAngelHalo cLeinShampoo cBackpack cTail cFaceHead cFaceFlower cFaceMask cBalloonFront cBeard cCoat cHair cMinion cMount cMinecart cFlameWaker cShield cUnicornHorn cMerman cWolf cFaceFlower merfolk merman wolfAcc hideMerman hideWolf yoraiz0rEye yoraiz0rDarkness".Split(' '))
             {
                 var f=typeof(Player).GetField(name,BindingFlags.Public|BindingFlags.Instance);
                 if(f!=null && !f.IsInitOnly && f.FieldType.IsValueType) result.Add(f);
@@ -47,6 +47,8 @@ namespace JueMingR.TerrariaHost.F5
             display.bodyRotation=display.legRotation=display.headRotation=0;
             display.bodyFrame=display.legFrame=display.headFrame=new Rectangle(0,0,40,56);
             display.bodyPosition=display.legPosition=display.headPosition=Vector2.Zero;
+            // CopyVisuals keeps SelectedItemState.player pointing at its source.
+            // Rebind it before any frame/selection consumer can reset owner AFK.
             display.selectedItemState=new Player.SelectedItemState(display); display.inventory[0]=new Item(); display.heldProj=-1;
             display.itemAnimation=display.itemTime=0; display.dead=false; display.ghost=false;
             display.lastVisualizedSelectedItem=new Item();
@@ -100,9 +102,19 @@ namespace JueMingR.TerrariaHost.F5
         internal static void DrawHead(LegacyPlayerRenderer renderer,Player player,F5Rect rect,Matrix transform)
         {
             var batch=Main.spriteBatch;var device=batch.GraphicsDevice;var blend=device.BlendState;var sampler=device.SamplerStates[0];var depth=device.DepthStencilState;var rasterizer=device.RasterizerState;
-            batch.End();
-            try { Main.spriteBuffer.ApplyDefaultSpriteEffect(rasterizer,transform); renderer.DrawPlayerHead(Main.Camera,player,new Vector2(rect.X+rect.Width/2,rect.Y+rect.Height/2),1,.8f); }
-            finally { batch.Begin(Microsoft.Xna.Framework.Graphics.SpriteSortMode.Deferred,blend,sampler,depth,rasterizer,null,transform); }
+            batch.End(); bool began=false;
+            try
+            {
+                // Head layers render through SpriteBatch, unlike the full-body
+                // SpriteDrawBuffer path. Immediate mode preserves each dye pass.
+                batch.Begin(Microsoft.Xna.Framework.Graphics.SpriteSortMode.Immediate,blend,Microsoft.Xna.Framework.Graphics.SamplerState.PointClamp,depth,rasterizer,null,transform);began=true;
+                renderer.DrawPlayerHead(Main.Camera,player,new Vector2(rect.X+rect.Width/2,rect.Y+rect.Height/2),1,.8f);
+            }
+            finally
+            {
+                try {if(began) batch.End();}
+                finally {batch.Begin(Microsoft.Xna.Framework.Graphics.SpriteSortMode.Deferred,blend,sampler,depth,rasterizer,null,transform);}
+            }
         }
         internal void Draw(LegacyPlayerRenderer renderer,F5Rect rect,Matrix transform)
         {

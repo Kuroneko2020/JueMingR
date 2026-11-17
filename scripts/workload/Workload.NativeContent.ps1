@@ -11,8 +11,9 @@ function Get-WorkloadNativeContentFiles {
         # Bind resources actually requested by the original player initializer,
         # six resource sets and the finite native creation/profile fixture.
         $files+=@('PixelShader.xnb','Images/Heart.xnb','Images/Heart2.xnb','Images/Mana.xnb')
-        $files+=@(3507,3509,3506 | ForEach-Object {'Images/Item_'+$_+'.xnb'})
-        foreach($hair in 1..228){$files+=@('Images/Player_Hair_'+$hair+'.xnb','Images/Player_HairAlt_'+$hair+'.xnb')}
+        $files+=@(0,3507,3509,3506 | ForEach-Object {'Images/Item_'+$_+'.xnb'})
+        $files+=@('Images/Item_90.xnb','Images/Item_271.xnb','Images/Item_1007.xnb','Images/Armor_Head_2.xnb')
+        foreach($hair in 1..228){$files+=@(('Images/Player_Hair_'+$hair+'.xnb'),('Images/Player_HairAlt_'+$hair+'.xnb'))}
         $variants=@{
             0=@(0..13)+@(15);1=@(4,6,8,11,12,13);2=@(4,6,8,11,12,13);3=@(4,6,8,11,12,13,14);
             4=@(3..13);5=@(4,6,8,11,12,13);6=@(4,6,8,11,12,13);7=@(4,6,8,11,12,13,14);

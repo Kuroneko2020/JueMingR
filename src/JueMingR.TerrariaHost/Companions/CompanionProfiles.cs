@@ -85,6 +85,9 @@ namespace JueMingR.TerrariaHost.Companions
             // Loading an offline archive is data restoration, not a world frame.
             // Native PlayerFrame can emit particles and advance counters; UI
             // prepares its own display copy, while Join uses the real Spawn.
+            // Offline cards know saved base limits, not unexecuted equipment/buff
+            // effects. Native Spawn/Update establishes live derived limits later.
+            body.statLifeMax2 = body.statLifeMax; body.statManaMax2 = body.statManaMax;
             files.Add(body, file); return body;
         }
         internal void BeginPlay(Player body) { File(body).StartPlayTimer(); }

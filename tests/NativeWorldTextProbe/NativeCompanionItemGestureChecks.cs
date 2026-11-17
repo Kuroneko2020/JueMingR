@@ -59,6 +59,24 @@ namespace NativeWorldTextProbe
                 AccessTools.Method(typeof(Terraria.Initializers.DyeInitializer), "LoadBasicColorDyes").Invoke(null, null);
             var nativeDye = new Item(); nativeDye.SetDefaults(ItemID.RedDye);
             Require(nativeDye.dye > 0, "native basic-color shader registration must classify a real RedDye before dye-slot tests");
+            // Main's later initialization derives projHook from each original
+            // Projectile's aiStyle. Initialize only the projectile used here.
+            // The earlier real TileAndNPCData1 call supplies pet/light tables;
+            // check the complete set of tested misc prerequisites together so
+            // a missing native category fails at setup, not after a transfer.
+            var nativeHook = new Item(); nativeHook.SetDefaults(ItemID.GrapplingHook);
+            Require(nativeHook.shoot > 0, "original grappling-hook Item names a native projectile");
+            var nativeHookProjectile = new Projectile(); nativeHookProjectile.SetDefaults(nativeHook.shoot);
+            Main.projHook[nativeHook.shoot] = nativeHookProjectile.aiStyle == 7;
+            var nativeLight = new Item(); nativeLight.SetDefaults(ItemID.MagicLantern);
+            var nativePet = new Item(); nativePet.SetDefaults(ItemID.Carrot);
+            var nativeCart = new Item(); nativeCart.SetDefaults(ItemID.Minecart);
+            var nativeMount = new Item(); nativeMount.SetDefaults(ItemID.SlimySaddle);
+            Require(Main.projHook[nativeHook.shoot] && nativeLight.buffType > 0 && Main.lightPet[nativeLight.buffType] &&
+                nativePet.buffType > 0 && Main.vanityPet[nativePet.buffType] && !Main.lightPet[nativePet.buffType] &&
+                nativeCart.mountType >= 0 && MountID.Sets.Cart[nativeCart.mountType] &&
+                nativeMount.mountType >= 0 && !MountID.Sets.Cart[nativeMount.mountType],
+                "actual native metadata must classify hook, light pet, vanity pet, minecart and mount before exact misc-slot tests");
             Main.spawnTileX=60;Main.spawnTileY=58;Main.leftWorld=Main.topWorld=0;Main.rightWorld=Main.maxTilesX*16;Main.bottomWorld=Main.maxTilesY*16;
             for(int x=2;x<118;x++){Main.tile[x,60].active(true);Main.tile[x,60].type=TileID.Stone;}
             new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player), "Spawn"), HarmonyPatchType.Prefix, "JueMingR.Tests.QuickItemOutlets");
@@ -127,6 +145,7 @@ namespace NativeWorldTextProbe
                 EquipExact(host, id, human, companion, ItemID.SlimySaddle, CompanionInventoryArea.Misc, 3);
                 EquipExact(host, id, human, companion, ItemID.GrapplingHook, CompanionInventoryArea.Misc, 4);
                 EquipExact(host, id, human, companion, ItemID.MagicLantern, CompanionInventoryArea.Misc, 1);
+                EquipExact(host, id, human, companion, ItemID.Carrot, CompanionInventoryArea.Misc, 0);
                 EquipExact(host, id, human, companion, ItemID.RedDye, CompanionInventoryArea.MiscDye, 4);
                 bool extra = human.extraAccessory; human.extraAccessory = true; companion.extraAccessory = false;
                 Put(human.inventory, 22, ItemID.Aglet); Gesture(host, id, true, CompanionInventoryArea.Inventory, 22, "Left");
