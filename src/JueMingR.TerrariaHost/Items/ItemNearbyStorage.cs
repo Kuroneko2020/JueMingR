@@ -10,7 +10,7 @@ using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Items
 {
-    internal sealed class ItemNearbyStorage
+    internal sealed partial class ItemNearbyStorage
     {
         private readonly ItemHostObservation world;
         private readonly ItemOperationOwnership ownership;
@@ -149,6 +149,7 @@ namespace JueMingR.TerrariaHost.Items
                 ItemIdentity identity = current.Request.Sources[0].Identity;
                 if (receipt.Quantity < 0 || (receipt.Type != 0 && (receipt.Type != identity.Type || receipt.Prefix != identity.Prefix))) current.Invalid = true;
                 current.Received[receipt.Index] = true; current.Remaining[receipt.Index] = receipt.Type == 0 ? 0 : receipt.Quantity;
+                current.RepliedItems[receipt.Index] = actual;
                 current.Changed = true;
             }
         }
@@ -192,7 +193,11 @@ namespace JueMingR.TerrariaHost.Items
                         // arrived. A new pickup at B must retain its own chance.
                         if (moved == 0 && current.Player.position == current.Position)
                             RememberNoCapacity(current.Request.Sources[0].Identity, current.Position);
-                        pending = null; return;
+                        // Seal the authoritative result and release Store before
+                        // optional local consolidation changes any source count.
+                        pending = null;
+                        Consolidate(current);
+                        return;
                     }
                 }
                 if (!current.Invalid && !current.TimedOut && unchecked(Tick - current.Started) >= 600)
@@ -252,10 +257,12 @@ namespace JueMingR.TerrariaHost.Items
             internal readonly Vector2 Position;
             internal readonly bool[] Received;
             internal readonly int[] Remaining;
+            internal readonly Item[] RepliedItems;
+            internal Fragment[] Fragments;
             internal bool Changed, Invalid, TimedOut;
             internal Pending(StoreItemsRequest request, Player player, int originalQuantity, ulong started)
             { Request = request; Player = player; OriginalQuantity = originalQuantity; Started = started; Position = player.position;
-                Received = new bool[request.Sources.Count]; Remaining = new int[request.Sources.Count]; }
+                Received = new bool[request.Sources.Count]; Remaining = new int[request.Sources.Count]; RepliedItems = new Item[request.Sources.Count]; }
         }
     }
 }

@@ -54,7 +54,10 @@ namespace JueMingR.TerrariaHost.CoinDeposit
                 Amount = CoinRules.Conserved(before.WalletTotal, afterWallet, before.TargetTotal, afterBank);
                 if (Amount < 0) return Unknown();
                 if (Amount > 0) return Outcome = host.HasMovableCoins(player) ? CoinOutcome.Partial : CoinOutcome.Completed;
-                if (entrance.Kind == 0 && nativeResult == 0 && before.EmptyNormalization())
+                // Admit binds the actual one of four personal accounts to a
+                // current legal entrance; the same strict zero-path proof
+                // applies to each account, never to an arbitrary world chest.
+                if (nativeResult == 0 && before.EmptyNormalization())
                 {
                     // Capture only the actual post-normalization objects. Keep
                     // this evidence across release so an intervening equivalent
@@ -82,7 +85,7 @@ namespace JueMingR.TerrariaHost.CoinDeposit
         private CoinOutcome Seed(CoinRange.Entrance entrance, long generation, CoinSnapshot fresh)
         {
             ulong sources; Player player = host.Player;
-            if (entrance.Kind != 0 || !host.Admit(entrance, generation, out sources)) return Outcome = CoinOutcome.Cancelled;
+            if (!host.Admit(entrance, generation, out sources)) return Outcome = CoinOutcome.Cancelled;
             Item empty;
             int source = -1, target = -1;
             try

@@ -4,6 +4,7 @@ using System.Reflection;
 using HarmonyLib;
 using JueMingR.Platform.Items;
 using Terraria;
+using Terraria.DataStructures;
 using Terraria.ID;
 using Terraria.UI;
 
@@ -13,6 +14,7 @@ namespace JueMingR.TerrariaHost.Items
     {
         private static HostItems host;
         private static Origin current;
+        private static ItemNearbyStorage.Reception reception;
         internal static void Install(HostItems owner, Harmony harmony)
         {
             host = owner;
@@ -20,7 +22,8 @@ namespace JueMingR.TerrariaHost.Items
             Patch(harmony, typeof(ItemSlot), "TryOpenContainer", new[] { typeof(Item[]), typeof(int), typeof(int), typeof(Player) }, nameof(OpenBefore), nameof(OriginAfter), nameof(OriginFinalizer));
             Patch(harmony, typeof(ItemSlot), "TryOpenContainer_GrantItems", new[] { typeof(Item), typeof(Player) }, null, nameof(GrantAfter));
             Patch(harmony, typeof(ItemSlot), "OverrideLeftClick", new[] { typeof(Item[]), typeof(int), typeof(int) }, nameof(CreativeBefore), nameof(CreativeAfter), nameof(OriginFinalizer));
-            Patch(harmony, typeof(Player), "GetItem", new[] { typeof(Item), typeof(GetItemSettings) }, nameof(GetBefore), nameof(GetAfter));
+            Patch(harmony, typeof(Player), "GetItem", new[] { typeof(Item), typeof(GetItemSettings) }, nameof(GetBefore), nameof(GetAfter), nameof(GetFinalizer));
+            Patch(harmony, typeof(PlayerGetItemLogger), "Add", new[] { typeof(Item[]), typeof(int), typeof(int), typeof(int) }, nameof(Received));
             Patch(harmony, typeof(MessageBuffer), "GetData", new[] { typeof(int), typeof(int), typeof(int).MakeByRefType() }, nameof(MessageBefore), nameof(MessageAfter));
             Patch(harmony, typeof(Player), "DropItems", new[] { typeof(bool) }, nameof(PlayerBoundary));
             Patch(harmony, typeof(Player), "DropCoins", Type.EmptyTypes, nameof(PlayerBoundary));
@@ -79,21 +82,26 @@ namespace JueMingR.TerrariaHost.Items
             // object on a full inventory/uniqueStack no-op. Keep its input count
             // without sampling inventory so a rejected pickup cannot wake caches.
             int incoming = ReferenceEquals(__instance, host?.World.SessionPlayer) && __0 != null && __0.type > 0 && __0.stack > 0 ? __0.stack : 0;
-            __state = new Gain(null, default(ItemIdentity), 0, incoming);
+            ItemNearbyStorage.Reception previous = reception;
+            __state = new Gain(null, default(ItemIdentity), 0, incoming, null, previous);
             try
             {
+            reception = host.Storage.BeginReception(__instance, __0, current != null && ReferenceEquals(current.Player, __instance) &&
+                !current.Cancelled && !current.CreativeDuplicate ? current : null);
+            __state = new Gain(null, default(ItemIdentity), 0, incoming, reception, previous);
             if (current == null || !ReferenceEquals(current.Player, __instance) || __0 == null || __0.type <= 0 || __0.type >= 71 && __0.type <= 74) return;
             if(current.FishingToken!=0 && (__0.type!=current.FishingType || __0.stack<=0))return;
             var identity = new ItemIdentity(__0.type, __0.prefix);
             current.Touched.Add(identity);
-            __state = new Gain(current, identity, Quantity(__instance, identity), incoming);
+            __state = new Gain(current, identity, Quantity(__instance, identity), incoming, reception, previous);
             }
-            catch { host.FailClosed(); }
+            catch { reception = null; host.FailClosed(); }
         }
         private static void GetAfter(Player __instance, Gain __state,bool __runOriginal, Item __result)
         {
             try
             {
+                host.Storage.EndReception(__state.Reception, __runOriginal);
                 // Only an actual accepted quantity advances the hint. The
                 // original returns Air on complete receipt and reduced stack on
                 // partial receipt; no-op calls preserve the original count.
@@ -106,6 +114,20 @@ namespace JueMingR.TerrariaHost.Items
             }
             catch { host.FailClosed(); }
         }
+        private static void Received(PlayerGetItemLogger __instance, Item[] __0, int __1, int __3)
+        {
+            // Observe the native branch even while its shared logger is disabled;
+            // never enable, clear or consume vanilla's animation entries.
+            if (reception == null || !ReferenceEquals(__instance, Player.GetItemLogger)) return;
+            try { host.Storage.Received(reception, __0, __1, __3); } catch { host.FailClosed(); }
+        }
+        private static Exception GetFinalizer(Exception __exception, Gain __state)
+        {
+            try { if (__exception != null) host.Storage.EndReception(__state.Reception, false); }
+            catch { host.FailClosed(); }
+            finally { reception = __state.PreviousReception; }
+            return __exception;
+        }
         private static void OriginAfter(Origin __state) { Finish(__state, true); }
         private static Exception OriginFinalizer(Exception __exception, Origin __state)
         { if (__exception != null) Finish(__state, false); return __exception; }
@@ -116,12 +138,13 @@ namespace JueMingR.TerrariaHost.Items
             // An interrupted original grant may already have produced items.
             // Preserve those items and stop automation; do not reinterpret the
             // partially completed scope as ordinary sell/trash candidates.
-            if (!returned) { HoldInterrupted(origin); return; }
-            if (origin.Cancelled) return;
+            if (!returned) { host.Storage.ConfirmReception(origin, false); HoldInterrupted(origin); return; }
+            if (origin.Cancelled) { host.Storage.ConfirmReception(origin, false); return; }
             try
             {
             if(origin.FishingToken!=0)
             {
+                host.Storage.ConfirmReception(origin, origin.Produced.Count != 0);
                 if(!host.CanCaptureFishing || origin.Produced.Count==0)return;
                 host.UpdateFishingStorage?.Invoke();ItemInventoryObservation fishInventory;
                 if(host.World.TryObserveAcquisition(out fishInventory))host.Feature.RegisterFishingAcquisitions(origin.FishingToken,origin.Produced,fishInventory,host.Tick);
@@ -129,6 +152,7 @@ namespace JueMingR.TerrariaHost.Items
             }
             bool completed = returned && (origin.CreativeDuplicate ? origin.Opened : origin.WorldItem != null ? origin.WorldItem.stack < origin.Before :
                 origin.Opened && (origin.Before==1 ? origin.Item.IsAir : origin.Item.stack == origin.Before - 1));
+            host.Storage.ConfirmReception(origin, completed);
             if (!completed || !host.CanCapture || origin.Gained.Count == 0) return;
             ItemInventoryObservation inventory;
             if (!host.World.TryObserveAcquisition(out inventory)) return;
@@ -173,7 +197,7 @@ namespace JueMingR.TerrariaHost.Items
         private static void PlayerBoundary(Player __instance)
         { if (ReferenceEquals(__instance, host.World.SessionPlayer)) host.DiscardUnsubmittedAcquisitions(); }
         private static void WorldBoundary() { host.Runtime.InvalidateSession(); }
-        internal static void EndSession() { current = null; }
+        internal static void EndSession() { current = null; reception = null; }
         // Keep the causal scope until its normal finally/postfix balances depth;
         // cancelling a source must not orphan a nested native operation.
         internal static void CancelPendingAcquisition() { if (current != null) current.Cancelled = true; }
@@ -197,7 +221,9 @@ namespace JueMingR.TerrariaHost.Items
             internal readonly ItemIdentity Identity;
             internal readonly int Before;
             internal readonly int IncomingStack;
-            internal Gain(Origin origin, ItemIdentity identity, int before, int incomingStack) { Origin = origin; Identity = identity; Before = before; IncomingStack = incomingStack; }
+            internal readonly ItemNearbyStorage.Reception Reception, PreviousReception;
+            internal Gain(Origin origin, ItemIdentity identity, int before, int incomingStack, ItemNearbyStorage.Reception reception, ItemNearbyStorage.Reception previous)
+            { Origin = origin; Identity = identity; Before = before; IncomingStack = incomingStack; Reception = reception; PreviousReception = previous; }
         }
     }
 }

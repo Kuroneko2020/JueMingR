@@ -15,9 +15,17 @@ namespace NativeWorldTextProbe
         {
             Player p = Main.LocalPlayer; NativeCoinMatrix.Reset(p, host);
             p.name = "G06 Coin Probe"; p.inventory[50] = Coin(74, 9000); p.inventory[51] = Coin(73, 99); p.inventory[51].favorited = true;
-            Main.tile[40, 40].type = 29; // Persist the true empty-piggy first-deposit path.
+            Main.tile[40, 40].type = 29;
             NativeCoinMatrix.Tick(host, 0, 150);
-            for (int b = 1; b < 4; b++) Bank(p, b).item[0] = Coin(74, b + 1);
+            // Each account's persisted coins come from its real first deposit,
+            // rather than hand-filled bank arrays standing in for that path.
+            int[] tiles={29,97,463,491};
+            for (int b = 1; b < 4; b++)
+            {
+                Main.tile[40,40].type=(ushort)tiles[b];p.inventory[50]=Coin(74,b+1);
+                NativeCoinMatrix.Tick(host,(ulong)(b*180),(ulong)((b+1)*180));
+                Require(p.inventory[50].IsAir && Total(Bank(p,b).item,40)==(b+1)*1000000L,"save fixture uses actual first deposit for bank "+b);
+            }
             p.bank4.item[0].favorited = true; p.inventory[10].SetDefaults(8); p.inventory[10].stack = 7;
             long before = Total(p.inventory, 58);
             for (int b = 0; b < 4; b++) before += Total(Bank(p, b).item, 40);

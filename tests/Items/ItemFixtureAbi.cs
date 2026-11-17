@@ -84,6 +84,7 @@ namespace Terraria
     { [MethodImpl(MethodImplOptions.NoInlining)] public static void SaveAndQuit(Action callback) { callback?.Invoke(); } }
     public sealed partial class Player : Entity
     {
+        public static DataStructures.PlayerGetItemLogger GetItemLogger = new DataStructures.PlayerGetItemLogger();
         public readonly Item[] inventory = Enumerable.Range(0, 59).Select(_ => new Item()).ToArray();
         // Native equipment ranges referenced by the shared item guard. This
         // fixture only checks guard/layout contracts; it supplies no equip physics.
@@ -322,6 +323,12 @@ namespace Terraria.IO { public sealed class WorldFileData { } }
 namespace Terraria.Net.Sockets { public interface ISocket { } public sealed class FixtureSocket : ISocket { } }
 namespace Terraria.DataStructures
 {
+    // Exact independent .8 observer ABI. The item fixture does not substitute
+    // its receipt behavior for the real GetItem/logger integration probe.
+    public class PlayerGetItemLogger
+    {
+        [MethodImpl(MethodImplOptions.NoInlining)] public void Add(Terraria.Item[] array, int slot, int itemSlotContext, int stack) { }
+    }
     public struct PlayerInteractionAnchor { public bool Busy; public bool IsInValidUseTileEntity() { return Busy; } }
     public class DrawAnimation { public virtual Rectangle GetFrame(Texture2D texture, int frameCounterOverride = -1) { return texture.Bounds; } }
 }

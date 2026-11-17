@@ -215,6 +215,26 @@ namespace JueMingR.Features.Items
                 return; // One admitted attempt per observation; no stale batch walks.
             }
         }
+        // Storage proves the exact local movement; existing opportunities alone
+        // decide whether its resulting stacks retain storage permission. No new
+        // origin, first-age, settings epoch or fishing token is manufactured.
+        public void MapConsolidatedAcquisition(long ownerSession, ItemSlotObservation beforeSource, ItemSlotObservation beforeTarget,
+            ItemSlotObservation afterSource, ItemSlotObservation afterTarget, ulong tick)
+        {
+            if (!active || HasFailed || ownerSession != session || source.SessionGeneration != session) return;
+            PruneAcquisitions(null, tick); Prune(fishingAcquisitions, null, FishingTime(tick));
+            ItemAcquisitionOpportunity opportunity;
+            bool mapped = false;
+            if (settings.StackEnabled && acquisitions.TryGetValue(beforeSource.Identity, out opportunity))
+                mapped |= opportunity.MapTransfer(beforeSource, beforeTarget, afterSource, afterTarget);
+            if (fishingMode == 1 && fishingAcquisitions.TryGetValue(beforeSource.Identity, out opportunity))
+                mapped |= opportunity.MapTransfer(beforeSource, beforeTarget, afterSource, afterTarget);
+            if (mapped)
+            {
+                attemptedRevision[beforeSource.Slot] = attemptedRevision[beforeTarget.Slot] = Int64.MinValue;
+                immediate = true;
+            }
+        }
         private void PruneAcquisitions(ItemInventoryObservation inventory, ulong tick)
         {Prune(acquisitions,inventory,tick);}
         private ulong FishingTime(ulong tick){return fishingClock?.Invoke()??tick;}

@@ -74,7 +74,7 @@ namespace JueMingR.TerrariaHost.Tools
             if(Expired){End(FishingBorrowPhase.Expired);return;}
             // The loan outlives ToolUse. Actual UI/ownership conflicts retire
             // its recast permission; focus alone is not an automatic boundary.
-            if(!host.CanRetainUse(player,false) || !IntentValid()){End(FishingBorrowPhase.Cancelled);return;}
+            if(!host.CanRetainFishingUse(player,false) || !IntentValid()){End(FishingBorrowPhase.Cancelled);return;}
         }
         private bool IntentValid()
         {

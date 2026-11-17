@@ -64,7 +64,8 @@ namespace NativeWorldTextProbe
             for(int i=0;i<Main.item.Length;i++)Main.item[i].whoAmI=i;
             PopupText.popupText=new PopupText[20];for(int i=0;i<20;i++)PopupText.popupText[i]=new PopupText();
         }
-        private static void FullLoop(object context,object host,bool nativeNet)
+        internal static void BackgroundRecovery(object context){FullLoop(context,Get(context,"Fishing"),false,true);}
+        private static void FullLoop(object context,object host,bool nativeNet,bool recoveryOnly=false)
         {
             object tools=Get(context,"Tools"),input=Get(context,"Input");
             var settings=(FishingSettings)Get(host,"Settings");
@@ -78,6 +79,7 @@ namespace NativeWorldTextProbe
             audit.Patch(Get(context,"ShortFeedback").GetType().GetMethod("Show",Flags),postfix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(Shown)));
             try
             {
+                if(recoveryOnly){Background(context,host,tools,input);RecoverySeams(context,host,tools,input);return;}
                 NativeFishingObservationChecks.Run(context);
                 foreach(bool inventory in new[]{false,true})foreach(int empty in new[]{0,1,3})
                 {
@@ -243,6 +245,47 @@ namespace NativeWorldTextProbe
             }
             finally{Set(input,"foregroundWindow",foreground);Terraria.FocusHelper.IsSelectedApplication=true;Main.ToggleGameplayUpdates(updates);Main.LocalPlayer.mouseInterface=false;Save(host,new FishingOptions());}
         }
+        private static void RecoverySeams(object context,object host,object tools,object input)
+        {
+            var foreground=Get(input,"foregroundWindow");var point=new Vector2(850,718);
+            try
+            {
+                foreach(string kind in new[]{"FishingPull","FishingCast","FishingCut"})foreach(bool locked in new[]{false,true})
+                {
+                    Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;
+                    Save(host,new FishingOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.WoodFishingPole,0,0);
+                    p.armor[3].SetDefaults(ItemID.HighTestFishingLine);p.inventory[54].SetDefaults(ItemID.Worm);p.inventory[54].stack=100;
+                    for(int x=44;x<74;x++)for(int y=42;y<61;y++){Main.tile[x,y].ClearEverything();if(y>=44 && y<60)Main.tile[x,y].liquid=255;if(y==60)NativeToolsChecks.Tile(x,y,1);}
+                    Save(host,new FishingOptions(auto:true,cut:kind=="FishingCut",filterMode:kind=="FishingCut"?1:2,crates:0,quests:0,npcs:0));
+                    var b=CastToWaiting(context,input);long session=(long)Get(Get(host,"Session"),"Token");p.AddBuff(122,4000);
+                    Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;
+                    Step(context,input,point,false,0);Step(context,input,point,false,0);
+                    b.ai[1]=-240;b.localAI[1]=ItemID.Bass;b.localAI[2]=ItemID.Worm;
+                    int oldCasts=casts,oldProducts=products;
+                    if(kind=="FishingCast")
+                    {
+                        for(int i=0;i<240 && Get(Get(host,"Session"),"Phase").ToString()!="RecastReady";i++)Step(context,input,point,false,0);
+                        Require(Get(Get(host,"Session"),"Phase").ToString()=="RecastReady","real pull retires before selecting recast seam");
+                        oldProducts=products;
+                    }
+                    NativeToolExecutionChecks.Sample(context,input,point,false);NativeQuickItemChecks.BeginWorldStep();Call(Get(host,"Observation"),"Invalidate");Call(Get(host,"Observation"),"Read",p);
+                    var pick=typeof(Player).GetMethod("PickItemSelectionOverride",Flags);object[] choice={0};
+                    Require((bool)pick.Invoke(p,choice) && Get(Get(Get(tools,"Use"),"Intent"),"Kind").ToString()==kind,"native selection accepts exact unconsumed "+kind);
+                    p.selectedItemState.Update();
+                    if(locked){p.inventory[12].SetDefaults(ItemID.DirtBlock);p.inventory[12].stack=100;p.LockNetSlot(12);Require(p.HasLockedInventory(),"real nonempty material slot establishes native inventory lock");}
+                    else{Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;NativeToolExecutionChecks.Sample(context,input,point,false);Require(!(bool)Get(input,"CanStartActions"),"return-focus sample remains quarantined");}
+                    Call(context,"UpdateRuntime");
+                    Require((bool)Get(Get(host,"Session"),"Active") && (bool)Get(Get(tools,"Use"),"Active"),"unconsumed fishing owner survives temporary seam "+kind);
+                    if(locked){for(int i=0;i<3;i++)Step(context,input,point,false,0);Require(p.HasLockedInventory() && casts==oldCasts && products==oldProducts,"network wait emits no pull/cast "+kind);p.inventoryChestStack[12]=false;}
+                    for(int i=0;i<300 && casts==oldCasts;i++)Step(context,input,point,false,0);
+                    for(int i=0;i<40;i++)Step(context,input,point,false,0);
+                    Require(casts==oldCasts+1 && products==oldProducts+(kind=="FishingPull"?1:0) && (bool)Get(Get(host,"Session"),"Active") && (long)Get(Get(host,"Session"),"Token")==session,
+                        "same fishing session consumes once, returns rod and produces exactly one new bobber after "+kind+" locked="+locked+" casts="+(casts-oldCasts)+" products="+(products-oldProducts));
+                    Console.WriteLine("PASS fishing native pending recovery kind="+kind+" transientLock="+locked);
+                }
+            }
+            finally{Main.LocalPlayer.inventoryChestStack[12]=false;Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;Save(host,new FishingOptions());}
+        }
         private static void Truffle(object context,object host,object tools,object input)
         {
             foreach(bool damage in new[]{false,true})
@@ -270,20 +313,45 @@ namespace NativeWorldTextProbe
             }
             Console.WriteLine("PASS G10 real truffle session, original Duke Fishron spawn/consumption, equipment exclusion, auto recast continuity and exact start/end feedback.");
         }
-        private static void Borrow(object context,object host,object tools,object input,Player p,Vector2 originalAim,int empty)
+        internal static void BorrowFocusRecovery(object context)
+        {
+            // Called only after a native Main has loaded real item/NPC assets.
+            Main.instance.LoadItem(ItemID.WoodFishingPole);Main.instance.LoadItem(ItemID.BugNet);Main.instance.LoadNPC(NPCID.Bunny);
+            object host=Get(context,"Fishing"),tools=Get(context,"Tools"),input=Get(context,"Input");
+            var audit=new Harmony("JueMingR.Tests.FishingBorrowFocus");
+            foreach(string name in new[]{"HandleSpecialEvent","HandleMining","HandleRunning"})audit.Patch(typeof(Terraria.GameContent.Achievements.AchievementsHelper).GetMethod(name,Flags),prefix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(SkipAchievement)));
+            audit.Patch(typeof(Player).GetMethod("ItemCheck_PullFishingBobbers",Flags),postfix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(Pulled)));
+            audit.Patch(typeof(Projectile).GetMethod("AI_061_FishingBobber_GiveItemToPlayer",Flags),postfix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(Given)));
+            audit.Patch(typeof(Player).GetMethod("TryUpdateChannel",Flags),postfix:new HarmonyMethod(typeof(NativeFishingChecks),nameof(Created)));
+            var foreground=Get(input,"foregroundWindow");
+            try
+            {
+                Save(host,new FishingOptions());var p=NativeToolExecutionChecks.Reset(context,tools,input,ItemID.WoodFishingPole,0,0);
+                p.armor[3].SetDefaults(ItemID.HighTestFishingLine);p.inventory[54].SetDefaults(ItemID.Worm);p.inventory[54].stack=100;
+                for(int x=44;x<74;x++)for(int y=42;y<61;y++){Main.tile[x,y].ClearEverything();if(y>=44 && y<60)Main.tile[x,y].liquid=255;if(y==60)NativeToolsChecks.Tile(x,y,1);}
+                Save(host,new FishingOptions(auto:true));CastToWaiting(context,input);
+                Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));FocusHelper.IsSelectedApplication=false;
+                Step(context,input,new Vector2(850,718),false,0);Step(context,input,new Vector2(850,718),false,0);
+                Borrow(context,host,tools,input,p,(Vector2)Get(Get(host,"Session"),"Target"),0,foreground);
+            }
+            finally{Main.LocalPlayer.inventoryChestStack[13]=false;Set(input,"foregroundWindow",foreground);FocusHelper.IsSelectedApplication=true;NativeToolsChecks.SetMode(tools,0,0);Save(host,new FishingOptions());audit.UnpatchAll(audit.Id);}
+        }
+        private static void Borrow(object context,object host,object tools,object input,Player p,Vector2 originalAim,int empty,object returnForeground=null)
         {
             object borrow=Get(tools,"Fishing"),session=Get(host,"Session"),use=Get(tools,"Use");long token=(long)Get(session,"Token"),beforeBorrow=(long)Get(borrow,"Token");
             int beforeCasts=casts,oldKey=(int)Main.projectile.First(x=>x.active && x.bobber && x.owner==p.whoAmI).key;
             p.inventory[12].SetDefaults(ItemID.BugNet);var npc=Main.npc[0];npc.SetDefaults(NPCID.Bunny);npc.whoAmI=0;npc.active=true;npc.position=p.position+new Vector2(37,2);npc.velocity=Vector2.Zero;
-            Call(Get(tools,"Npcs"),"BeginTick");NativeToolsChecks.SetMode(tools,0,1);bool active=false;
+            Call(Get(tools,"Npcs"),"BeginTick");NativeToolsChecks.SetMode(tools,0,1);bool active=false,regained=false;int locked=0;
             for(int i=0;i<290;i++)
             {
                 Step(context,input,new Vector2(300,640),false,empty);bool borrowed=(bool)Get(borrow,"Active");active|=borrowed;
                 if(borrowed)
                 {
+                    if(returnForeground!=null && !regained){regained=true;Set(input,"foregroundWindow",returnForeground);FocusHelper.IsSelectedApplication=true;p.inventory[13].SetDefaults(ItemID.DirtBlock);p.inventory[13].stack=100;p.LockNetSlot(13);locked=3;}
                     Require((bool)Get(session,"Active") && (long)Get(session,"Token")==token,"G10 retains its same fishing identity throughout G09's actual net loan");
                     var intent=GetOptional(use,"Intent");Require(intent==null || Get(intent,"Kind").ToString()!="FishingCast","G10 never acquires a second recast while G09 owns the loan");
                 }
+                if(locked>0 && --locked==0)p.inventoryChestStack[13]=false;
                 if(active && !(bool)Get(borrow,"Active"))break;
             }
             Require(active && !npc.active && (long)Get(borrow,"Token")==beforeBorrow+1 && Get(borrow,"Phase").ToString()=="Completed" && (bool)Get(borrow,"RecastObserved"),"real BugNet catches the original bunny and completes its single rod compensation: "+Get(borrow,"Phase"));

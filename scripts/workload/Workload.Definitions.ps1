@@ -600,14 +600,22 @@ function Get-WorkloadLeafChecks {
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintEmptyReceiptChecks.cs']=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintSettledPaintAdmissionChecks.cs']=@('native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
     $afkInputs=@('src/JueMingR.Features/AfkMode/AfkPreferences.cs','src/JueMingR.TerrariaHost/AfkMode/HostAfkMode.cs','src/JueMingR.TerrariaHost/AfkMode/HostAfkMode.Operation.cs','src/JueMingR.TerrariaHost/AfkMode/AfkNativeHooks.cs','tests/NativeWorldTextProbe/NativeAfkModeChecks.cs')
-    foreach($path in $afkInputs){$leaves[$path]=@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu','native-AfkModeVisual')}
-    $leaves['tests/NativeWorldTextProbe/NativeAfkModeChecks.cs']=@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu')
+    foreach($path in $afkInputs){$leaves[$path]=@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu','native-AfkModeBackgroundCpu','native-AfkModeVisual','native-AfkOuterBackground')}
+    $leaves['tests/NativeWorldTextProbe/NativeAfkModeChecks.cs']=@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu','native-AfkModeBackgroundCpu')
+    # Keep production providers on their existing domain propagation. These
+    # new assertion bodies alone have exclusive leaf ownership.
+    $leaves['tests/NativeWorldTextProbe/NativeInventoryStackingChecks.cs']=@('native-InventoryStackingCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeCoinContinuationChecks.cs']=@('native-CoinContinuationCpu','native-CoinDepositCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeAfkOuterBackgroundChecks.cs']=@('native-AfkOuterBackground')
     $leaves['tests/NativeWorldTextProbe/NativeAfkUiChecks.cs']=@('native-AfkModeVisual')
     # Actual shared native cadence helpers and composition remain inputs to
     # the new leaf; sibling assertion bodies do not become AFK obligations.
     foreach($path in @('tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs','tests/NativeWorldTextProbe/NativeCombatSelectionPreviewChecks.cs','tests/NativeWorldTextProbe/NativeCombatObservationChecks.cs','tests/NativeWorldTextProbe/NativeCombatBeamChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeCombatAimFixture.cs','tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){
-        $leaves[$path]=@($leaves[$path])+@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu')
+        $leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu','native-AfkModeBackgroundCpu')
     }
+    foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-FishingBackgroundRecoveryCpu','native-InventoryStackingCpu','native-AfkOuterBackground')}
+    $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CoinContinuationCpu','native-CoinConsumersCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs'])+@('native-InventoryStackingCpu')
     return $leaves
 }
 function Get-WorkloadNativeScopes {
@@ -617,6 +625,11 @@ function Get-WorkloadNativeScopes {
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
         'CompanionCpu'=@('companion-host','combat-host','shared-host');
+        'AfkModeBackgroundCpu'=@('afk-host','combat-host','tools-host','fishing-host','shared-host');
+        'InventoryStackingCpu'=@('items','tools-host','fishing-host','shared-host');
+        'CoinContinuationCpu'=@('coin-deposit-host');
+        'CoinConsumersCpu'=@('coin-deposit-host');
+        'FishingBackgroundRecoveryCpu'=@('fishing-host','tools-host','shared-host');
         'AfkModeCompletionCpu'=@('afk-host','combat-host','tools-host','quick-items-host','shared-host');
         'AfkModeBorrowCpu'=@('afk-host','combat-host','tools-host','quick-items-host','shared-host');
         'RuntimeFailureCpu'=@('shared-host','journey-host','quick-items-host');
@@ -754,6 +767,10 @@ function Get-WorkloadCheckGroups {
     param([string] $Name)
     if ($Name.StartsWith('native-')) {
         $scope=$Name.Substring(7)
+        # Explicit native Content/graphics specialist; deliberately absent
+        # from the automatic CPU catalogue above. Its reused view fixture and
+        # fishing helpers still belong to its actual evidence fingerprint.
+        if ($scope -ceq 'AfkOuterBackground') {return @('afk-host','view-host','fishing-host','shared-host')}
         if ($scope -ceq 'NpcStrategy-rollchoice') {return @('combat-host')}
         if ($scope -ceq 'NpcPrivateSafety') {return @('legacy-worker')}
         $scopes=Get-WorkloadNativeScopes

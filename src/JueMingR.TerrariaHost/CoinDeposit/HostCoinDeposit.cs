@@ -206,6 +206,7 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             Range.Step(p, voidClosed);
             if (Range.Count == 0) { Status = "未找到个人银行"; Detail = "靠近原版可用的个人银行入口后继续；普通箱子不是目的地。"; return; }
             bool attempted = false, freshOrder = false;
+            long commitGeneration = Intent.Generation;
             for (int i = 0; i < Range.Count; i++)
             {
                 var entrance = Range.Banks[i]; int kind = entrance.Kind;
@@ -214,7 +215,7 @@ namespace JueMingR.TerrariaHost.CoinDeposit
 #if DEBUG
                 CapacityReads += entrance.Bank.item?.Length ?? 0;
 #endif
-                if (!bank.Read(entrance.Bank.item)) { Status = "等待可读状态"; continue; }
+                if (!bank.Read(entrance.Bank.item)) { Status = "等待可读状态"; break; }
                 if (triedWallet[kind] == wallet.Revision && triedBank[kind] == bank.Revision &&
                     triedIntent[kind] == Intent.Generation) continue;
                 if (!freshOrder)
@@ -231,21 +232,34 @@ namespace JueMingR.TerrariaHost.CoinDeposit
                     if (!ReadWallet(p) || !Range.TryComplete(p, voidClosed, out any)) { Status = "等待可读状态"; break; }
                     freshOrder = true; i = -1; continue;
                 }
-                CoinOutcome result = Transfer.Execute(entrance, Intent.Generation);
-                ReadWallet(p); bank.Read(entrance.Bank.item);
+                // Only a positively identified target coin/Air conflict may be
+                // skipped. Source, intent and unreadable-state rejections still
+                // enter the full admission below and stop this commit round.
+                bool targetBlocked;
+                if (AdmitSources(entrance, commitGeneration, out sourceMask) &&
+                    ReadTargetConflict(entrance, out targetBlocked) && targetBlocked) continue;
+                CoinOutcome result = Transfer.Execute(entrance, commitGeneration);
+                bool observed = ReadWallet(p) && bank.Read(entrance.Bank.item);
                 // These cached facts only explain the last verified result.
                 // Hover never re-reads inventory, bank capacity or native state.
-                hintBank = result == CoinOutcome.None ? kind : -1;
+                hintBank = result == CoinOutcome.None && observed ? kind : -1;
                 hintWalletRevision = wallet.Revision; hintBankRevision = bank.Revision;
-                noProgressHint = bank.HasEmpty ? "无币账户首存仅支持存钱罐。" : "上次存入时账户没有可用空间；腾出空间后会继续。";
+                noProgressHint = "上次存入时账户没有可用空间；腾出空间后会继续。";
                 if (result == CoinOutcome.Failed) { operationError = "本次自动存钱失败，钱币未转移。"; operationFeedback = true; }
                 else if (result == CoinOutcome.Completed || result == CoinOutcome.Partial) { operationError = null; operationFeedback = false; }
-                if (result != CoinOutcome.Rejected && result != CoinOutcome.Cancelled)
+                // Partial means more work, never a stable no-progress fact.
+                // It ends this round but must revisit current objects/amounts
+                // on the next normally throttled, natively ordered round.
+                if (result == CoinOutcome.Partial) triedWallet[kind] = triedBank[kind] = triedIntent[kind] = -1;
+                else if (observed && result != CoinOutcome.Rejected && result != CoinOutcome.Cancelled)
                 { triedWallet[kind] = wallet.Revision; triedBank[kind] = bank.Revision; triedIntent[kind] = Intent.Generation; }
                 attempted = true;
                 Status = result == CoinOutcome.Completed ? "已存入" : result == CoinOutcome.Partial ? "部分已存入" : result == CoinOutcome.Unconfirmed ? "结果未确认" : result == CoinOutcome.Failed ? "本次未存入" : result == CoinOutcome.Rejected || result == CoinOutcome.Cancelled ? "等待有关操作" : "暂无可用空间";
-                Detail = result == CoinOutcome.None ? "已有钱币的银行会按原版整理；空账户首存仅限存钱罐。" : null;
-                break; // One bounded attempt. Never loop seed/MoveCoins on zero.
+                Detail = result == CoinOutcome.None ? "上次存入时账户没有可用空间；腾出空间后会继续。" : null;
+                // At most four deduplicated accounts, once each in this single
+                // fresh order query. Only proven zero transfer permits fallback;
+                // success, Partial, cancellation and unknown never replay here.
+                if (result != CoinOutcome.None || !observed) break;
             }
             if (!attempted && Status == "未找到个人银行") Status = "等待账户变化";
         }
@@ -271,13 +285,31 @@ namespace JueMingR.TerrariaHost.CoinDeposit
         }
         internal bool Admit(CoinRange.Entrance entrance, long generation, out ulong mask)
         {
+            bool blocked;
+            return AdmitSources(entrance, generation, out mask) && ReadTargetConflict(entrance, out blocked) && !blocked;
+        }
+        private bool ReadTargetConflict(CoinRange.Entrance entrance, out bool blocked)
+        {
+            blocked = false;
+            // MoveCoins may normalize or fill target coin/Air slots. G07
+            // payment and void-use uncertainty protect exactly those slots.
+            // Invalid members are not an account-local conflict or a fallback
+            // license; even a later bad slot invalidates the entire read.
+            Item[] target = entrance.Bank?.item;
+            if (target == null || target.Length != 40) return false;
+            for (int i = 0; i < 40; i++)
+            {
+                Item item = target[i];
+                if (item == null || item.stack < 0) return false;
+                if (Items.Ownership.IsProtected(entrance.Kind + 1, i) && (item.IsAir || CoinRules.IsCoin(item.type))) blocked = true;
+            }
+            return true;
+        }
+        private bool AdmitSources(CoinRange.Entrance entrance, long generation, out ulong mask)
+        {
             mask = 0; Player p = Player;
             if (p == null || !Available || !Settings.Enabled || !Intent.Allows(identity, generation) || !Input.CanRunAutomaticActions || Main.gamePaused || !CanAct(p)) return false;
             if (!TrySources(p, out mask)) return false;
-            // MoveCoins may normalize or fill target coin/Air slots. G07
-            // payment and void-use uncertainty must protect these accounts too.
-            for(int i=0;i<40;i++)if(Items.Ownership.IsProtected(entrance.Kind+1,i))
-            {Item item=entrance.Bank.item[i];if(item==null || item.IsAir || CoinRules.IsCoin(item.type))return false;}
             bool currentVoidClosed = false;
             for (int i = 0; i < 58; i++) if (p.inventory[i].type == 5325 && p.inventory[i].stack > 0) currentVoidClosed = true;
             return entrance.Valid(p, currentVoidClosed);
@@ -304,7 +336,6 @@ namespace JueMingR.TerrariaHost.CoinDeposit
             private struct Slot { internal Item Ref; internal int Type, Stack, Max; internal byte Prefix; internal bool Favorite; }
             private readonly Slot[] values; private Item[] array;
             internal long Revision { get; private set; }
-            internal bool HasEmpty { get; private set; }
             internal Facts(int count) { values = new Slot[count]; }
             internal bool Read(Item[] current)
             {
@@ -312,11 +343,10 @@ namespace JueMingR.TerrariaHost.CoinDeposit
                 // Validate the complete finite read before publishing any member.
                 // A late unreadable slot must not swallow an earlier space change.
                 for (int i = 0; i < values.Length; i++) if (current[i] == null || current[i].stack < 0) return false;
-                bool changed = !ReferenceEquals(current, array); array = current; HasEmpty = false;
+                bool changed = !ReferenceEquals(current, array); array = current;
                 for (int i = 0; i < values.Length; i++)
                 {
                     Item item = current[i]; if (item == null || item.stack < 0) return false;
-                    HasEmpty |= item.type < 1 || item.stack < 1;
                     Slot old = values[i];
                     // This is a no-progress cache, never a write permission.
                     // Native equivalent Item reconstruction cannot awaken another

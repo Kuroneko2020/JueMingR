@@ -33,6 +33,11 @@ namespace JueMingR.TerrariaHost.Fishing
         internal int Liquid {get;private set;}
         internal bool StorageSession {get{return Active && Identity() && player.statLife>=life && host.KeepsSession;}}
         internal bool NeedsObservation {get{return Active?!Tools.Fishing.Active:host.NeedsSession && PendingCastIdentity();}}
+        // FocusHelper asks before HandleInput. No world-step permission or
+        // stale gamePaused may veto the demand needed to advance that world.
+        internal bool WantsBackground {get{return host.KeepsSession && host.Settings.Value.Auto && (!host.Settings.Busy || host.Settings.Requested.Auto) &&
+            (Active?Identity() && player.statLife>=life:PendingCastIdentity()) &&
+            Tools.CanRetainFishingUse(host.Player,true) && (Tools.CanFishingInterface?.Invoke()??true);}}
         internal FishingSession(HostFishing host){this.host=host;}
         private HostTools Tools {get{return host.Tools;}}
         private bool PendingCastIdentity()

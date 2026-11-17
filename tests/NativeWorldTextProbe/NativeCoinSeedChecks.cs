@@ -30,11 +30,17 @@ namespace NativeWorldTextProbe
                 p.inventory[7].stack==3 && p.inventory[50].stack==17 && !ReferenceEquals(p.inventory[5],oldAir) &&
                 Total(p.inventory,58)+Total(p.bank.item,40)==before,"seed preserves favorites, noncoins, other stacks and both-end total without restoring old Air");
             NativeCoinMatrix.Reset(p,host);
+            int kind=1;
             foreach(ushort tile in new ushort[]{97,463,491})
             {
                 NativeCoinMatrix.Reset(p,host);Main.tile[40,40].type=tile;p.inventory[50]=Coin(73,2);
+                Item source=p.inventory[50];
+                var otherRefs=new Item[4][];for(int b=0;b<4;b++)otherRefs[b]=(Item[])Bank(p,b).item.Clone();
                 long seedCalls=(long)Get(transfer,"SeedCalls");NativeCoinMatrix.Tick(host,0,300);
-                Require((long)Get(transfer,"SeedCalls")==seedCalls && p.inventory[50].stack==2,"other three empty accounts never inherit piggy exception: "+tile);
+                Require((long)Get(transfer,"SeedCalls")==seedCalls+1 && p.inventory[50].IsAir && ReferenceEquals(Bank(p,kind).item[0],source) && Total(Bank(p,kind).item,40)==20000,
+                    "new owner-approved empty account makes one exact whole-stack first deposit: "+tile);
+                for(int b=0;b<4;b++)if(b!=kind)for(int i=0;i<40;i++)Require(ReferenceEquals(otherRefs[b][i],Bank(p,b).item[i]),"first deposit preserves each unrelated account member");
+                kind++;
             }
             NativeCoinMatrix.Reset(p,host);Main.tile[40,40].type=29;p.inventory[50]=Coin(74,7);
             for(int i=0;i<40;i++){p.bank.item[i].SetDefaults(8);p.bank.item[i].stack=1;}
@@ -45,7 +51,7 @@ namespace NativeWorldTextProbe
             p.bank.item[39]=new Item();NativeCoinMatrix.Tick(host,2000,2100);
             Require(p.inventory[50].IsAir && p.bank.item[39].type==74 && p.bank.item[39].stack==7,"real capacity change wakes full coinless piggy for one whole stack");
             NativeCoinMatrix.Reset(p,host);
-            Console.WriteLine("PASS: true native empty-bank normalization and fresh whole-stack piggy first deposit.");
+            Console.WriteLine("PASS: true native empty-bank normalization and fresh whole-stack first deposit in all four personal accounts.");
         }
         internal static string Execute(object host)
         {

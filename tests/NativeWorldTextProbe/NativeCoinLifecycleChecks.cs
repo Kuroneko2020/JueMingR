@@ -28,8 +28,9 @@ namespace NativeWorldTextProbe
                 Total(p.inventory, 58) + Total(p.bank.item, 40) == before, "same-update real withdrawal rejects previously prepared generation before native entry");
 
             var originalWorld = Main.ActiveWorldFileData;
-            Main.ActiveWorldFileData = null; Call(context, "UpdateRuntime");
-            Main.ActiveWorldFileData = originalWorld; Call(context, "UpdateRuntime");
+            try { Main.ActiveWorldFileData = null; Call(context, "UpdateRuntime"); }
+            finally { Main.ActiveWorldFileData = originalWorld; }
+            Call(context, "UpdateRuntime");
             Require(intent.Protected, "temporary world identity failure and same-object recovery preserves intent");
 
             var audit = new Harmony("JueMingR.Tests.CoinWithdrawalCompletion");

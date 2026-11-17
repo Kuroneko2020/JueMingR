@@ -405,3 +405,9 @@ leaf	AfkModeCompletionCpu	afk-completion
 leaf	AfkModeBorrowCpu	afk-borrow
 leaf	CompanionCpu	companions-cpu
 leaf	CompanionVisual	companions-ui
+leaf	AfkModeBackgroundCpu	afk-background
+leaf	CoinContinuationCpu	coin-continuation
+leaf	InventoryStackingCpu	inventory-stacking
+leaf	FishingBackgroundRecoveryCpu	fishing-background-recovery
+leaf	AfkOuterBackground	afk-outer-background
+leaf	CoinConsumersCpu	coin-consumers
