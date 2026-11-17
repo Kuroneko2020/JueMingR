@@ -15,6 +15,11 @@ try{
     Assert-Content ($showcaseAssets -ccontains 'Images/Projectile_111.xnb' -and $showcaseAssets -ccontains 'Images/Projectile_380.xnb') 'bounded showcase binds both actual native pet textures'
     Assert-Content ($showcaseAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb' -and $showcaseAssets -cnotcontains 'Images/Armor_Head_3.xnb') 'showcase does not acquire unrelated Journey or original armor-trial consumers'
     $barAssets=@(Get-WorkloadNativeContentFiles 'CompanionResourceBarsVisual')
+    $inputAssets=@(Get-WorkloadNativeContentFiles 'CompanionCreationInputVisual')
+    Assert-Content ($inputAssets -ccontains 'Images/UI/VK_Backspace.xnb' -and $inputAssets -ccontains 'Images/UI/CharCreation/Voice.xnb') 'real-order creation input consumer binds native keyboard and voice control assets'
+    Assert-Content ($inputAssets -ccontains 'Images/UI/PVP_1.xnb' -and $inputAssets -ccontains 'Images/UI/PVP_2.xnb') 'native AI team buttons bind the actual PVP sprite frames and selection border'
+    Assert-Content ($inputAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb' -and $inputAssets -cnotcontains 'Images/Armor_Head_3.xnb') 'input-only creation does not acquire Journey or silver trial assets'
+    Assert-Content ($barAssets -ccontains 'Images/UI/PlayerResourceSets/FancyClassic/Heart_Right_Fancy.xnb' -and $barAssets -ccontains 'Images/UI/PlayerResourceSets/FancyClassic/Star_C.xnb') 'Fancy native delegates bind their original heart ornament and star assets'
     Assert-Content ($barAssets -ccontains 'Images/UI/PlayerResourceSets/HorizontalBars/HP_Panel_Right.xnb' -and $barAssets -ccontains 'Images/UI/PlayerResourceSets/HorizontalBars/MP_Fill.xnb') 'bounded resource bars bind the actual original panel and fill textures'
     Assert-Content ($barAssets -cnotcontains 'Images/Projectile_111.xnb' -and $barAssets -cnotcontains 'Images/Player_Hair_1.xnb') 'resource-only oracle does not acquire character or pet graphics preparation'
     Put-ContentFixture 'external/TerrariaRefs/Terraria.exe' 'identity fixture only; never executed'

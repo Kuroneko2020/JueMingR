@@ -32,6 +32,23 @@ namespace Terraria
             Check(!input.CanRunAutomaticActions,"foreground input alone cannot start automatic work");
             Main.GameUpdateCount++;Check(input.CanRunAutomaticActions,"world entry enables automatic work");
             Main.gamePaused=true;Check(!input.CanRunAutomaticActions,"foreground pause denies automatic work");Main.gamePaused=false;
+            Frame(input, true, Keys.Z);
+            Main.GameUpdateCount++;
+            Main.inputTextEnter = true;
+            input.ConsumeNativeUiActions();
+            Check(input.CanUseInput && !input.CanStartActions && !input.CanRunAutomaticActions,
+                "native modal keeps its trusted text permission but owns gameplay admission");
+            Check(!PlayerInput.Triggers.Current.MouseLeft && !Main.mouseLeft && Main.keyState.IsKeyDown(Keys.Z) && Main.inputTextEnter,
+                "native modal consumes world input without erasing keyboard or text outputs");
+            input.RetainNativeUiTail();
+            Frame(input, true, Keys.Z);
+            Check(!Main.mouseLeft && !PlayerInput.Triggers.Current.MouseLeft && Main.keyState.IsKeyUp(Keys.Z),
+                "retired native modal keeps the held pointer and keyboard tail");
+            Frame(input, false);
+            Frame(input, true, Keys.Z);
+            Check(PlayerInput.Triggers.Current.MouseLeft && Main.keyState.IsKeyDown(Keys.Z),
+                "a fresh independent input works after the native modal tail ends");
+            Frame(input, false);
             Main.keyState = new KeyboardState(Keys.Z); foreground = false;
             input.BeginUpdate();
             Check(Main.keyState.IsKeyUp(Keys.Z) && !input.CanStartActions, "loss prevents earlier cached keyboard consumers");

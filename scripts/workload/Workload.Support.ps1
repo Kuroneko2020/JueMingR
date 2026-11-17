@@ -68,6 +68,10 @@ function Get-WorkloadRoute {
     foreach ($path in $Paths) {
         $path=$path.Replace('\','/')
         if (Test-WorkloadNonExecutableInput $path) { continue }
+        # The companion's real-order native creator also uses Mouse/Point from
+        # this grouped helper. Add that consumer without replacing its existing
+        # UI/tool routes or the conservative explicit-graphics fallback.
+        if($path -ceq 'tests/NativeWorldTextProbe/NativeToolsUiChecks.cs'){[void]$groups.Add('companion-host')}
         $leaves=@(Get-WorkloadPathChecks $path)
         if ($leaves.Count) {
             # Its explicit combat leaf must retain the existing worker plan,

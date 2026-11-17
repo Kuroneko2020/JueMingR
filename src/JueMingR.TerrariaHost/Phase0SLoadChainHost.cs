@@ -495,6 +495,7 @@ namespace JueMingR.TerrariaHost
             if (Volatile.Read(ref hookCommitted) == 1 && context != null)
             {
                 context.Input.AfterKeyboardRefresh();
+                context.ProcessNativeCompanionCreationInput();
                 // Trusted sampling and native postfix/finalizer returns survive
                 // a common failure. These callbacks are new business admission.
                 if (!context.RuntimeFailed)
@@ -1133,6 +1134,14 @@ namespace JueMingR.TerrariaHost
             {
                 try { cleanup(); }
                 catch (Exception exception) { if (RuntimeCleanupFailure == null) RuntimeCleanupFailure = exception; }
+            }
+
+            internal void ProcessNativeCompanionCreationInput()
+            {
+                // Main.UpdateUIStates precedes DoUpdate_HandleInput in .8.
+                // Only our exact native creator defers that early dispatch;
+                // flush it once after final sampling, before any world action.
+                if (!RuntimeFailed) F5.CompanionCreationSession.FlushNativeUpdate(Companions);
             }
 
             internal void UpdateShell()

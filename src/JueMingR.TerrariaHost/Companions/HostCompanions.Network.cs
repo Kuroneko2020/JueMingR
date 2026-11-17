@@ -85,7 +85,7 @@ namespace JueMingR.TerrariaHost.Companions
                         if(!a.InitialNpcComplete || !a.SpawnSent)throw new InvalidDataException("队友初始世界基线未完成。");
                         if(!a.Ready)
                         {
-                            a.Ready=true;profiles.BeginPlay(a.Body);a.Status="跟随中";
+                            a.Ready=true;profiles.BeginPlay(a.Body);a.Status="跟随中";RetireJoinFeedback(a);
                             foreach(var pair in a.InitialNpc){var state=pair.Value;if(RouteNpc(a,state,0,state.Length))DecodeNpcObservationAt(a,state,0,state.Length,a.InitialNpcTicks[pair.Key]);}
                             foreach(var buffs in a.InitialNpcBuffs.Values)
                             {WorldLease lease;int slot=BitConverter.ToInt16(buffs,1);if(npcSources.TryGetValue(slot,out lease) && lease.NpcBaseline && ReferenceEquals(lease.Source,a) && !lease.Waiting && !lease.AwaitBaseline)DecodeNpcObservation(a,buffs,0,buffs.Length);}

@@ -42,8 +42,6 @@ namespace JueMingR.TerrariaHost.F5
             contentY+=row+4;
             selectedStatusLabel=labels.Count;BodyText(host.Status(selected),row);
             if (host.SaveFailed(selected)) BodyButton("retry-save", "保存失败 · 重试保存", row, () => Command(() => host.RetrySave(selected)));
-            Pair("join", "加入当前世界", () => Command(() => host.Join(selected)), false,
-                "recall", "收回", () => Command(() => host.Recall(selected)), false, row);
             BuildConfiguration(profile, row); FinishBody();
         }
         private float SharedResources(float paneWidth)
@@ -52,11 +50,11 @@ namespace JueMingR.TerrariaHost.F5
             var own=owner==null?default(CompanionResourceDisplay.Blocks):resourceDisplay.MeasureBlocks(owner,width);
             var companion=ai==null?default(CompanionResourceDisplay.Blocks):resourceDisplay.MeasureBlocks(ai,width);
             sharedLifeHeight=Math.Max(own.Life,companion.Life);
-            return Math.Max(108,sharedLifeHeight+Math.Max(own.Mana,companion.Mana));
+            return Math.Max(132,sharedLifeHeight+Math.Max(own.Mana,companion.Mana));
         }
         private static float ShowcaseWidth(float paneWidth) {return Math.Min(116,Math.Max(92,paneWidth*.26f));}
         private static float ShowcaseCenter(float paneWidth) {return Math.Min(paneWidth*.82f,paneWidth-12-ShowcaseWidth(paneWidth)/2);}
-        private static float ResourceWidth(float paneWidth) {return Math.Max(20,ShowcaseCenter(paneWidth)-ShowcaseWidth(paneWidth)/2-28);}
+        private static float ResourceWidth(float paneWidth) {return Math.Max(20,ShowcaseCenter(paneWidth)-ShowcaseWidth(paneWidth)/2-80);}
         private static float GridHeight(float paneWidth,int count)
         {int columns=Math.Max(1,Math.Min(10,(int)((paneWidth-24)/40)));float cell=Math.Min(44,(paneWidth-24)/columns);return (float)Math.Ceiling((double)count/columns)*cell+4;}
         private float SharedEquipment(float paneWidth)
@@ -64,36 +62,36 @@ namespace JueMingR.TerrariaHost.F5
         private float PreferredHeight(float width,float row)
         {
             float pane=(width-104)/2;
-            float header=4+row+6+(pane-24<300?24:0)+SharedResources(pane)+4;
+            float header=8+row+6+(pane-24<300?24:0)+SharedResources(pane)+4;
             return row+53+header+6+(8+26+6+SharedEquipment(pane))+6+(4+GridHeight(pane,50))+6+(4+GridHeight(pane,8))+8;
         }
         private void BuildActor(Player body, bool owner, F5Rect view, int offset, float row)
         {
             // The same final rectangles determine visible cells, clipping and hit
             // targets. Scrolling projects native slot identities; it never renumbers them.
-            float headerTop=view.Y-offset,y=headerTop+4,x=view.X+12,width=view.Width-24;
+            float headerTop=view.Y-offset,y=headerTop+8,x=view.X+12,width=view.Width-24;
             string name = owner ? Main.LocalPlayer?.name ?? "我的人物" : CurrentProfile()?.Name ?? pendingCreatedName ?? "AI 队友";
             bool wrapStatus=width<300;
-            var nameRect=new F5Rect(x,y,Math.Max(40,width-(owner?0:wrapStatus?76:196)),row);
+            var nameRect=new F5Rect(x,y,Math.Max(40,width-(wrapStatus?0:124)),row);
             if(ActorVisible(nameRect,view)) Text(name,nameRect,.85f);
-            if (!owner && CurrentProfile() != null)
-            {
-                bool joined = host.IsJoined(selected);
-                var r = new F5Rect(view.Right - 80,y,68,row);
-                if (ActorVisible(r,view)) Button(joined ? "recall" : "join", joined ? "收回" : "加入",r,
-                    () => Command(() => host.IsJoined(selected) ? host.Recall(selected) : host.Join(selected)));
-            }
             y += row + 6;
-            if(!owner) {respawnLabel=labels.Count;labels.Add(new F5Element(F5ElementKind.Text,wrapStatus?new F5Rect(x,y,width,24):new F5Rect(x+width-190,y-row,112,25),host.RespawnStatus(selected),default(F5Size),.6f,F5Command.None));}if(wrapStatus)y+=24;
+            if(!owner) {respawnLabel=labels.Count;labels.Add(new F5Element(F5ElementKind.Text,wrapStatus?new F5Rect(x,y,width,24):new F5Rect(x+width-120,y-row-6,120,row),host.RespawnStatus(selected),default(F5Size),.6f,F5Command.None));}if(wrapStatus)y+=24;
             float resources=sharedResourcesHeight;
             float heroHeight=resources;
-            float headerHeight=4+row+6+(wrapStatus?24:0)+heroHeight+4;
-            var hero = new F5Rect(x+8,y-4,ResourceWidth(view.Width),heroHeight);
-            float centerX=view.X+ShowcaseCenter(view.Width),centerY=headerTop+headerHeight/2;
-            float frameTop=Math.Max(headerTop+row+8,centerY-52);
-            var showcase=new F5Rect(centerX-ShowcaseWidth(view.Width)/2,frameTop,ShowcaseWidth(view.Width),Math.Min(104,headerTop+headerHeight-8-frameTop));
+            float headerHeight=8+row+6+(wrapStatus?24:0)+heroHeight+4;
+            var hero = new F5Rect(x,y,ResourceWidth(view.Width),heroHeight);
+            float centerX=view.X+ShowcaseCenter(view.Width),frameTop=y;
+            var displayPanel=new F5Rect(centerX-ShowcaseWidth(view.Width)/2,frameTop,ShowcaseWidth(view.Width),128);
+            var showcase=new F5Rect(displayPanel.X+2,displayPanel.Y+2,displayPanel.Width-4,104);
             if(owner)ownerShowcase=showcase;else companionShowcase=showcase;
+            if(owner)ownerShowcasePanel=displayPanel;else companionShowcasePanel=displayPanel;
             if (owner)ownerHero=hero;else companionHero=hero;
+            if(!owner&&CurrentProfile()!=null) {
+                var stateRect=new F5Rect(displayPanel.X+5,displayPanel.Bottom-21,displayPanel.Width-10,18);
+                if(ActorVisible(stateRect,view)) {var c=Button("actor-state",ActorStatus(),stateRect,()=>Command(()=>host.IsJoined(selected)?host.Recall(selected):host.Join(selected)),host.IsJoined(selected)||!CurrentProfile().PermanentlyDead);c.ActorOverlay=c.ActorState=true;c.Hint=host.IsJoined(selected)?"点击收回人物":"点击加入当前世界";c.Element=new F5Element(F5ElementKind.Button,stateRect,"",default(F5Size),.55f,F5Command.None);}
+                string[] teams={"无队伍","红队","绿队","蓝队","黄队","粉队"};
+                for(int i=0;i<6;i++){int team=i;var r=new F5Rect(displayPanel.X-52+i%2*24,displayPanel.Y+22+i/2*24,20,20);if(ActorVisible(r,view)){var c=Button("team:"+i,"",r,()=>Command(()=>host.SetTeam(selected,team)),true,body!=null&&body.team==team);c.ActorOverlay=true;c.TeamIcon=i;c.Hint=teams[i];}}
+            }
             AddActorHeader(new F5Rect(view.X+4,headerTop,view.Width-8,headerHeight),view);
             y+=heroHeight+4+6;
             float groupTop=y;y+=8;
@@ -231,17 +229,18 @@ namespace JueMingR.TerrariaHost.F5
             else { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; }
             if(changed) {RefreshItemPresentation(resources);RefreshNotice();}
         }
-        private void DrawHero(F5Rect view,F5Rect hero,F5Rect showcase,CompanionPreview preview,Player source)
+        private void DrawHero(F5Rect view,F5Rect hero,F5Rect showcase,F5Rect displayPanel,CompanionPreview preview,Player source)
         {
             if(hero.Bottom<=view.Y||hero.Y>=view.Bottom) return;
             renderer.Pass(matrix,view,()=> {
                 if(source!=null) resourceDisplay.Draw(renderer,source,hero,sharedLifeHeight);
             });
+            renderer.Pass(matrix,view,()=>UiSurface.Panel(Main.spriteBatch,Terraria.GameContent.TextureAssets.MagicPixel.Value,displayPanel,Terraria.GameContent.TextureAssets.InventoryBack.Value,new Color(95,105,155),roundedOuter:true));
             var clip=new F5Rect(Math.Max(view.X,showcase.X),Math.Max(view.Y,showcase.Y),Math.Min(view.Right,showcase.Right)-Math.Max(view.X,showcase.X),Math.Min(view.Bottom,showcase.Bottom)-Math.Max(view.Y,showcase.Y));
             if(clip.Width>0&&clip.Height>0) renderer.Pass(matrix,clip,()=> {
-                UiSurface.Panel(Main.spriteBatch,Terraria.GameContent.TextureAssets.MagicPixel.Value,showcase,Terraria.GameContent.TextureAssets.InventoryBack.Value,new Color(95,105,155),roundedOuter:true);
                 preview.DrawShowcase(portraits,showcase,matrix,renderer.Generation);
             });
+            if(ReferenceEquals(source,Main.LocalPlayer))renderer.Pass(matrix,view,()=>DrawCentered(source.dead?"已死亡":"主人",new F5Rect(displayPanel.X+5,displayPanel.Bottom-21,displayPanel.Width-10,18),Color.Silver,.55f));
         }
         private void BuildConfiguration(CompanionProfile profile, float row)
         {
@@ -263,13 +262,7 @@ namespace JueMingR.TerrariaHost.F5
             ConfigurationGroup(groupTop); groupTop=contentY;
             BodyText("复活",row);
             Pair("respawn-on","自动复活",()=>SetRespawn(true),behavior.AutoRespawn,"respawn-off","关闭",()=>SetRespawn(false),!behavior.AutoRespawn,row);
-            BodyText("队伍",row);
-            var teamBody=host.GetBody(selected);
-            string[] teams={"无队伍","红队","绿队","蓝队","黄队","粉队"};
-            float teamWidth=(bodyView.Width-10)/3;
-            for(int i=0;i<6;i++){int team=i;var rect=new F5Rect(bodyView.X+i%3*(teamWidth+5),contentY+i/3*(row+6),teamWidth,row);
-                if(FullyVisible(rect)) {var c=Button("team:"+i,teams[i],rect,()=>Command(()=>host.SetTeam(selected,team)),true,teamBody!=null&&teamBody.team==team);c.TeamColor=Main.teamColor[i];c.Element=new F5Element(F5ElementKind.Button,rect,"",default(F5Size),.7f,F5Command.None);}}
-            contentY+=2*(row+6); ConfigurationGroup(groupTop); groupTop=contentY;
+            ConfigurationGroup(groupTop); groupTop=contentY;
             var body = host.GetBody(selected);
             if (body != null && body.selectedItem >= 0 && body.selectedItem < body.inventory.Length)
                 BodyText("当前武器：" + body.inventory[body.selectedItem].Name, row);

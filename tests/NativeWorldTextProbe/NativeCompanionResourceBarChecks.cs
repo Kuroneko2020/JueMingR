@@ -94,6 +94,7 @@ namespace NativeWorldTextProbe
             }
             finally {Main.ResourceSetsManager=previous;}
             Console.WriteLine("PASS original native horizontal bar panel/endcaps, filling anchor/right-preserving crop/gold last cells, full extent and float uniform scale at short/partial/fractional cases; no creation/Journey/pet rerun.");
+            NativeCompanionFancyResourceChecks.Run(context,graphics,output);
         }
     }
 }

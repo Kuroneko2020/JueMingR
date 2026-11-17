@@ -1,7 +1,7 @@
 # These ordinary mixed scopes really construct ProbeGraphics. Keep resource
 # admission in this separately bound owner, not in a pure plan projection.
 function Get-WorkloadNativeContentScopes {
-    return @('CompanionResourceBarsVisual','CompanionShowcaseVisual','CompanionVisual','BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
+    return @('CompanionResourceBarsVisual','CompanionCreationInputVisual','CompanionShowcaseVisual','CompanionVisual','BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
 }
 function Get-WorkloadNativeContentFiles {
     param([string]$Scope)
@@ -9,9 +9,10 @@ function Get-WorkloadNativeContentFiles {
     $files=@('Fonts/Mouse_Text.xnb','Fonts/Item_Stack.xnb','Fonts/Combat_Text.xnb','Fonts/Combat_Crit.xnb','Images/Item_8.xnb','Images/Inventory_Back.xnb','Images/MagicPixel.xnb')
     if($Scope -ceq 'CompanionResourceBarsVisual'){
         foreach($name in @('HP_Fill','HP_Fill_Honey','MP_Fill','Panel_Left','HP_Panel_Middle','HP_Panel_Right','MP_Panel_Middle','MP_Panel_Right')){$files+='Images/UI/PlayerResourceSets/HorizontalBars/'+$name+'.xnb'}
+        foreach($name in @('Heart_Left','Heart_Middle','Heart_Right','Heart_Right_Fancy','Heart_Fill','Heart_Fill_B','Heart_Single_Fancy','Star_A','Star_B','Star_C','Star_Single','Star_Fill')){$files+='Images/UI/PlayerResourceSets/FancyClassic/'+$name+'.xnb'}
         return $files
     }
-    if($Scope -cin @('CompanionVisual','CompanionShowcaseVisual')){
+    if($Scope -cin @('CompanionVisual','CompanionShowcaseVisual','CompanionCreationInputVisual')){
         # Bind resources actually requested by the original player initializer,
         # six resource sets and the finite native creation/profile fixture.
         $files+=@('PixelShader.xnb','Images/Heart.xnb','Images/Heart2.xnb','Images/Mana.xnb')
@@ -24,6 +25,7 @@ function Get-WorkloadNativeContentFiles {
         $files+=@(5660,91,239,237 | ForEach-Object {'Images/Item_'+$_+'.xnb'})
         foreach($name in @('CategoryPanel','CategoryPanelHighlight','CategoryPanelBorder','SmallPanel','SmallPanelBorder','PanelGrayscale','Copy','Paste','Randomize','Voice','ColorHair','ColorEye','ColorEyeBack','ColorSkin','ColorShirt','ColorUndershirt','ColorPants','ColorShoes','ColorCharacter','HairStyle_Hair','HairStyle_Arrow','ClothStyleMale','ClothStyleFemale','CharInfo')){$files+='Images/UI/CharCreation/'+$name+'.xnb'}
         foreach($name in @('PanelBorder','PanelBackground','Scrollbar','ScrollbarInner','PlayerBackground','TexturePackButtons','TexturePackButtonsOutline','VK_Shift','VK_Backspace')){$files+='Images/UI/'+$name+'.xnb'}
+        $files+=@('Images/UI/PVP_1.xnb','Images/UI/PVP_2.xnb')
         # The same isolated graphics initialization opens the real human Journey
         # menu before the public-runtime AI death scenario. No full Journey UI
         # matrix or installed-game claim is acquired by this finite consumer.

@@ -12,8 +12,29 @@ namespace JueMingR.TerrariaHost.F5
         {
             foreach(var c in controls) if(c.ProfileId!=Guid.Empty)
             { c.Joined=host.IsJoined(c.ProfileId);string state=host.Status(c.ProfileId);if(c.StateText!=state){c.StateText=state;c.Hint=c.Text+"\n"+state;} }
+            var body=host.GetBody(selected);
+            foreach(var c in controls) {
+                if(c.ActorState){string status=ActorStatus();if(c.Text!=status)c.Text=status;c.Hint=host.IsJoined(selected)?"点击收回人物":c.Enabled?"点击加入当前世界":"永久死亡人物无法加入";}
+                if(c.TeamIcon>=0)c.Selected=body!=null&&body.team==c.TeamIcon;
+            }
             UpdateLabel(selectedStatusLabel,host.Status(selected));
             UpdateLabel(respawnLabel,host.RespawnStatus(selected));
+        }
+        private string ActorStatus()
+        {return CurrentProfile()?.PermanentlyDead==true?"永久死亡":host.GetBody(selected)?.dead==true&&host.IsJoined(selected)?"已死亡":host.Status(selected);}
+        private void DrawActorControl(Control c)
+        {
+            bool hover=c.Rect.Contains(pointer.X,pointer.Y);
+            if(c.TeamIcon>=0) {
+                var texture=TextureAssets.Pvp[1]?.Value;var highlight=TextureAssets.Pvp[2]?.Value;if(texture==null)return;
+                var frame=new Rectangle(c.TeamIcon*(texture.Width/6),0,texture.Width/6-2,texture.Height);
+                if((hover||c.Selected)&&highlight!=null)Main.spriteBatch.Draw(highlight,new Vector2(c.Rect.X-2,c.Rect.Y-2),Color.White);
+                Main.spriteBatch.Draw(texture,new Vector2(c.Rect.X,c.Rect.Y),frame,Color.White,0,Vector2.Zero,1,SpriteEffects.None,0);
+            }
+            else {
+                renderer.Button(c.Element,false,c.Enabled,false,hover,hover&&armedKey==c.Key);
+                renderer.Text(c.Text,c.Rect,c.Enabled?Color.White:Color.Gray,.55f);
+            }
         }
         private void UpdateLabel(int index,string value)
         {

@@ -49,6 +49,7 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly CompanionProfiles profiles;
         private readonly CompanionSteamBridge steam=new CompanionSteamBridge();
         private readonly Dictionary<Guid,Actor> actors=new Dictionary<Guid,Actor>();
+        private Actor joiningFeedback;
         private readonly Dictionary<Player,Actor> bodies=new Dictionary<Player,Actor>();
         private readonly Dictionary<int,Actor> slots=new Dictionary<int,Actor>();
         private readonly Dictionary<Guid,Player> previews=new Dictionary<Guid,Player>();
@@ -85,7 +86,15 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool IsJoined(Guid id){return actors.ContainsKey(id);}
         internal bool CanTransfer(Guid id){Actor a;return actors.TryGetValue(id,out a) && a.Ready && !a.Closing && a.Body.active && !a.Body.dead && !a.Profile.PermanentlyDead && ReferenceEquals(owner,Main.LocalPlayer) && ReferenceEquals(world,Main.ActiveWorldFileData);}
         private CompanionProfile Find(Guid id){return profiles.Find(id);}
-        private bool Result(bool value,string text){Feedback=text;return value;}
+        private bool Result(bool value,string text){joiningFeedback=null;Feedback=text;return value;}
+        private void RetireJoinFeedback(Actor actor)
+        {
+            // A progress message belongs to the exact pending activation, not
+            // every actor or a timeout. Never erase a newer operation or error.
+            if (!ReferenceEquals(joiningFeedback,actor)) return;
+            joiningFeedback=null;
+            if (Feedback=="正在加入人物。") Feedback="";
+        }
         internal bool Create(string name)
         {
             if(Main.gameMenu || owner==null)return Result(false,"请先进入世界。");
@@ -118,7 +127,8 @@ namespace JueMingR.TerrariaHost.Companions
                     a.Connection=endpoint==null?steam.Open():new CompanionConnection(endpoint.Address.ToString(),endpoint.Port);a.Connection.Start();a.Connection.Send(CompanionConnection.Packet(1,w=>w.Write("Terraria326")));
                 }
                 else throw new InvalidOperationException("当前运行模式不支持队友。");
-                return Result(true,"正在加入人物。");
+                if(a.Ready)return Result(true,"");
+                Result(true,"正在加入人物。");joiningFeedback=a;return true;
             }
             catch(Exception e){Actor a;if(actors.TryGetValue(id,out a)){a.TerminalFailure=e.Message;Release(a,false);}else if(reservation!=0)profiles.Release(profile,reservation);return Result(false,e.Message);}
         }
@@ -162,6 +172,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void Detach(Actor a)
         {
+            RetireJoinFeedback(a);
             a.TeamPending=false;a.TeamConnection=null;
             CancelItemGestureForActor(a);
             if(ReferenceEquals(planningActor,a))planningActor=null;

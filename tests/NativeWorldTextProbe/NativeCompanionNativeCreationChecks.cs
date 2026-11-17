@@ -24,6 +24,8 @@ namespace NativeWorldTextProbe
         private static TimeSpan clock;
         private static object currentContext;
         private static int playerFiles;
+        private static bool proveWorldUse;
+        private static bool FrozenKeyboard(ref Microsoft.Xna.Framework.Input.KeyboardState __result) {__result=Main.keyState;return false;}
         private static bool RejectPlayerFile() {playerFiles++;throw new InvalidOperationException("native AI creator reached ordinary PlayerFileData.CreateAndSave");}
         private static void TraceSpawnFailure(Exception __exception,MethodBase __originalMethod)
         {if(__exception!=null)Console.Error.WriteLine("NATIVE-CREATOR actual spawn failure "+__originalMethod.DeclaringType.FullName+"."+__originalMethod.Name+": "+__exception);}
@@ -35,13 +37,33 @@ namespace NativeWorldTextProbe
         {return Descendants(state).Single(e=> {SnapPoint snap;return e.GetSnapPoint(out snap)&&snap.Name==name&&snap.Id==id;});}
         private static void Step(Vector2 logical,bool left,ProbeGraphics graphics)
         {
-            Main.mouseX=(int)logical.X;Main.mouseY=(int)logical.Y;Main.mouseLeft=left;Main.mouseRight=false;
-            PlayerInput.Triggers.Current.MouseLeft=left;
-            if(currentContext!=null) {NativeToolsUiChecks.UiFrame(currentContext,logical*Main.UIScale,left,new Microsoft.Xna.Framework.Input.Keys[0]);Main.mouseX=(int)logical.X;Main.mouseY=(int)logical.Y;}
-            clock+=TimeSpan.FromMilliseconds(250);Main.gameTimeCache=new GameTime(clock,TimeSpan.FromMilliseconds(250));
-            Main.InGameUI.Update(new GameTime(clock,TimeSpan.FromMilliseconds(250)));
+            NativeFrame(currentContext,logical*Main.UIScale,left,new Microsoft.Xna.Framework.Input.Keys[0]);
             graphics.Render(()=>Main.InGameUI.Draw(Main.spriteBatch,new GameTime(clock,TimeSpan.FromMilliseconds(250))),Main.UIScaleMatrix);
+            Require(!Main.mouseLeft&&!PlayerInput.Triggers.Current.MouseLeft,"native UI Draw does not return its held mouse sample to world actions");
+            if(proveWorldUse)WorldBlocked();
         }
+        private static void NativeFrame(object context,Vector2 physical,bool left,Microsoft.Xna.Framework.Input.Keys[] keys)
+        {
+            var input=Get(context,"Input");var shell=Get(context,"Shell");Call(input,"BeginUpdate");if(!(bool)Get(input,"IsFocused"))Call(shell,"CancelForFocusLoss");
+            clock+=TimeSpan.FromMilliseconds(250);Main.gameTimeCache=new GameTime(clock,TimeSpan.FromMilliseconds(250));
+            // Real .8 order: UI first, then native mouse/mapping/keyboard and
+            // the production InputPostfix continuation. Never inject a logical
+            // point immediately before UI.Update to bypass the world/UI zoom.
+            PlayerInput.SetZoom_UI();
+            Main.InGameUI.Update(new GameTime(clock,TimeSpan.FromMilliseconds(250)));
+            PlayerInput.SetZoom_Unscaled();Call(shell,"BeforeInput");
+            NativeToolsUiChecks.Mouse(physical,left);var mouseKeys=new List<string>();if(left)mouseKeys.Add("Mouse1");Call(input,"AfterNativeMouse",mouseKeys);
+            PlayerInput.Triggers.Reset();var configuration=PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard];foreach(var token in mouseKeys)configuration.Processkey(PlayerInput.Triggers.Current,token,InputMode.Keyboard);foreach(var key in keys)configuration.Processkey(PlayerInput.Triggers.Current,key.ToString(),InputMode.Keyboard);PlayerInput.Triggers.Update();Main.mouseLeft=left;Main.mouseRight=false;Main.mouseX=(int)physical.X;Main.mouseY=(int)physical.Y;
+            Call(input,"AfterMapping");PlayerInput.CacheMousePositionForZoom();PlayerInput.SetZoom_MouseInWorld();Main.keyState=new Microsoft.Xna.Framework.Input.KeyboardState(keys);Call(input,"AfterKeyboardRefresh");
+            int worldX=Main.mouseX,worldY=Main.mouseY,width=Main.screenWidth,height=Main.screenHeight;
+            bool modal=Session(Get(context,"Companions"))!=null;
+            Call(context,"ProcessNativeCompanionCreationInput");
+            Require(Main.mouseX==worldX&&Main.mouseY==worldY&&Main.screenWidth==width&&Main.screenHeight==height,"deferred UI dispatch restores the native world zoom coordinates and dimensions");
+            Call(shell,"ProcessInput");Call(context,"UpdateRuntime");Call(context,"UpdateShell");Require(!(bool)Get(shell,"Failed"),"live-order creator host frame remains healthy");
+            if(proveWorldUse&&(modal||Session(Get(context,"Companions"))!=null||(bool)Call(Get(shell,"CompanionUi"),"Contains",physical.X/Main.UIScale,physical.Y/Main.UIScale)))WorldBlocked();
+        }
+        private static void WorldBlocked()
+        {PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);Main.LocalPlayer.ItemCheck();Require(!Main.LocalPlayer.controlUseItem&&!Main.LocalPlayer.controlUseTile&&!Main.mouseLeft&&Main.LocalPlayer.itemAnimation==0,"real world CopyInto/ItemCheck cannot begin weapon or tile use from the owned UI sample");}
         private static void Click(UIElement element,ProbeGraphics graphics)
         {
             var point=element.GetDimensions().Center();
@@ -58,6 +80,65 @@ namespace NativeWorldTextProbe
             Capture(graphics,output,"companion-native-creation-first");
             Click(Snap(Main.InGameUI.CurrentState,"Back",0),graphics);
             Require(Session(host)==null&&!Main.inFancyUI&&(bool)Get(window,"Visible"),"actual native Back returns to the same independent manager without a draft archive");
+        }
+        internal static void LiveInput(object context,ProbeGraphics graphics,string output)
+        {
+            NativeCombatAimChecks.Initialize();Main.spawnTileX=60;Main.spawnTileY=58;Main.leftWorld=Main.topWorld=0;Main.rightWorld=Main.maxTilesX*16;Main.bottomWorld=Main.maxTilesY*16;
+            for(int x=2;x<118;x++){Main.tile[x,60].active(true);Main.tile[x,60].type=Terraria.ID.TileID.Stone;}
+            new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player),"Spawn"),HarmonyPatchType.Prefix,"JueMingR.Tests.QuickItemOutlets");
+            NativeCompanionCoreLifecycleChecks.PrepareHuman();graphics.LoadCompanionAssets();
+            var host=Get(context,"Companions");var shell=Get(context,"Shell");var window=Get(shell,"CompanionUi");var input=Get(context,"Input");var archive=Get(host,"profiles");
+            NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return (bool)Get(archive,"Ready");});
+            var human=Main.LocalPlayer;var item=human.inventory[0];int selected=human.selectedItem;var ownerArray=Main.player.ToArray();var pending=Main.PendingPlayer;
+            string ownerName=human.name;var foreground=Get(input,"foregroundWindow");var zoom=Main.GameViewMatrix.Zoom;
+            var inventoryBindings=PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus["Inventory"];var originalInventoryKeys=inventoryBindings.ToArray();
+            var guard=new Harmony("JueMingR.Tests.CompanionLiveNativeInput");playerFiles=0;
+            guard.Patch(AccessTools.Method(typeof(PlayerFileData),"CreateAndSave"),prefix:new HarmonyMethod(typeof(NativeCompanionNativeCreationChecks),nameof(RejectPlayerFile)));
+            guard.Patch(AccessTools.Method(typeof(Microsoft.Xna.Framework.Input.Keyboard),"GetState",Type.EmptyTypes),prefix:new HarmonyMethod(typeof(NativeCompanionNativeCreationChecks),nameof(FrozenKeyboard)));
+            currentContext=context;proveWorldUse=true;
+            try
+            {
+                human.name="验证主人";human.inventory[0]=new Item();human.inventory[0].SetDefaults(Terraria.ID.ItemID.CopperShortsword);human.selectedItemState.Select(0);human.itemAnimation=human.itemTime=0;graphics.LoadItemTextures(new int[]{Terraria.ID.ItemID.CopperShortsword});
+                Main.screenWidth=1366;Main.screenHeight=900;PlayerInput.CacheOriginalScreenDimensions();Main.UIScale=1.25f;Main.GameViewMatrix.Zoom=new Vector2(1.5f);
+                var renderer=Get(shell,"renderer");Call(renderer,"RefreshResources");Call(renderer,"Prepare",Get(shell,"State"),1366f,900f,Main.UIScale);
+                Call(Main.ResourceSetsManager,"SetActive","NewWithText");Call(window,"Toggle",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(1366,900));
+                Action<string> managerClick=prefix=>{var c=Controls(window).Single(v=>((string)Get(v,"Key")).StartsWith(prefix+"/",StringComparison.Ordinal));var p=NativeToolsUiChecks.Point(Get(c,"Rect"))*Main.UIScale;foreach(bool left in new[]{false,true,false})NativeFrame(context,p,left,new Microsoft.Xna.Framework.Input.Keys[0]);};
+                NativeFrame(context,Vector2.Zero,false,new Microsoft.Xna.Framework.Input.Keys[0]);NativeFrame(context,Vector2.Zero,false,new Microsoft.Xna.Framework.Input.Keys[0]);managerClick("create");
+                Require(Session(host)!=null&&!(bool)Get(input,"CanStartActions"),"actual plus admits native modal ownership in the opening Shell.ProcessInput frame");WorldBlocked();
+                var creator=(UICharacterCreation)Main.InGameUI.CurrentState;var session=Session(host);var draft=(Player)Get(session,"Draft");
+                Click((UIElement)Get(creator,"_clothingStylesCategoryButton"),graphics);Require(Convert.ToInt32(Get(creator,"_selectedPicker"))==1,"real pre-input native UI update followed by host finalized dispatch accepts actual category click");
+                Click(((UIColoredImageButton[])Get(creator,"_colorPickers"))[3],graphics);var slider=Descendants(creator).OfType<UIColoredSlider>().First();var rect=slider.GetDimensions();var color=draft.hairColor;
+                var a=new Vector2(rect.X+rect.Width-10-TextureWidth("ColorBar")+20,rect.Y+14);var b=a+new Vector2(105,0);
+                Step(a,false,graphics);Step(a,true,graphics);Step(b,true,graphics);Step(b,false,graphics);Require(draft.hairColor!=color,"native held-left color slider Draw consumes its trusted private pointer after world input was cleared");
+                Capture(graphics,output,"companion-live-creation-color");
+                Click((UIElement)Get(creator,"_charInfoCategoryButton"),graphics);Click((UIElement)Get(creator,"_charName"),graphics);
+                var keyboard=Main.InGameUI.CurrentState;Require(keyboard is UIVirtualKeyboard,"real naming click opens native keyboard");Capture(graphics,output,"companion-live-name-keyboard");
+                var cancel=(UIElement)Get(keyboard,"_cancelButton");var point=cancel.GetDimensions().Center();Step(point,false,graphics);Step(point,true,graphics);
+                Set(input,"foregroundWindow",(Func<IntPtr>)(()=>new IntPtr(2)));Step(point,false,graphics);Require(ReferenceEquals(Main.InGameUI.CurrentState,keyboard),"focus-neutral release cannot cancel/submit the native keyboard");
+                Set(input,"foregroundWindow",foreground);Step(Vector2.Zero,false,graphics);Step(Vector2.Zero,false,graphics);Click(cancel,graphics);Require(ReferenceEquals(Main.InGameUI.CurrentState,creator),"trusted native keyboard cancel returns to same creator");
+                Click((UIElement)Get(creator,"_charName"),graphics);Require(Main.InGameUI.CurrentState is UIVirtualKeyboard,"native naming can reopen before mapped inventory return");
+                inventoryBindings.Clear();inventoryBindings.Add(Microsoft.Xna.Framework.Input.Keys.Tab.ToString());
+                NativeFrame(context,Vector2.Zero,false,new[]{Microsoft.Xna.Framework.Input.Keys.Tab});Require(ReferenceEquals(Main.InGameUI.CurrentState,creator),"actual remapped Inventory reaches owner.ToggleInv/Close and returns keyboard to creator");
+                NativeFrame(context,Vector2.Zero,false,new[]{Microsoft.Xna.Framework.Input.Keys.Tab});Require(ReferenceEquals(Main.InGameUI.CurrentState,creator),"same held Inventory action is accepted only once across native page return");
+                NativeFrame(context,Vector2.Zero,false,new Microsoft.Xna.Framework.Input.Keys[0]);NativeFrame(context,Vector2.Zero,false,new[]{Microsoft.Xna.Framework.Input.Keys.Tab});Require(Session(host)==null&&(bool)Get(window,"Visible"),"fresh Inventory press exits creator to same manager");
+                NativeFrame(context,Vector2.Zero,false,new[]{Microsoft.Xna.Framework.Input.Keys.Tab});Require(!PlayerInput.Triggers.Current.Inventory&&!Main.playerInventory,"closing Inventory key tail cannot reopen human inventory");NativeFrame(context,Vector2.Zero,false,new Microsoft.Xna.Framework.Input.Keys[0]);
+                managerClick("create");creator=(UICharacterCreation)Main.InGameUI.CurrentState;
+                Click(Snap(creator,"Create",0),graphics);Require(Main.InGameUI.CurrentState is UIVirtualKeyboard,"actual empty-name Create enters native keyboard");
+                Step(Vector2.Zero,false,graphics);const string name="输入样本";Main.keyCount=name.Length;for(int i=0;i<name.Length;i++){Main.keyInt[i]=name[i];Main.keyString[i]=name[i].ToString();}
+                graphics.Render(()=>Main.InGameUI.Draw(Main.spriteBatch,new GameTime(clock,TimeSpan.FromMilliseconds(16))),Main.UIScaleMatrix);Require(((UIVirtualKeyboard)Main.InGameUI.CurrentState).Text==name,"original keyboard consumes controlled native Chinese text queue");
+                Click((UIElement)Get(Main.InGameUI.CurrentState,"_submitButton"),graphics);Require(Session(host)==null&&(bool)Get(window,"Visible"),"actual keyboard submit creates once and exits to management");
+                var id=(Guid)Get(host,"LastCreatedId");NativeQuickItemChecks.Until(()=>{Call(host,"Update",(ulong)Main.GameUpdateCount);return (bool)Call(archive,"IsSaved",id);});
+                var body=(Player)Call(host,"GetBody",id);graphics.LoadItemTextures(body.inventory.Where(v=>v!=null&&!v.IsAir).Select(v=>v.type));Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(1366,900));
+                NativeFrame(context,Vector2.Zero,false,new Microsoft.Xna.Framework.Input.Keys[0]);managerClick("actor-state");Require((bool)Call(host,"IsJoined",id)&&(string)Get(host,"Feedback")!="正在加入人物。","backpack embedded state joins and actual ready activation retires joining progress");
+                NativeCompanionFeedbackChecks.Run(host,id);managerClick("team:4");Require(((Player)Call(host,"GetBody",id)).team==4,"backpack native team glyph updates AI's real team");
+                graphics.Image(Path.Combine(output,"companion-live-management.png"),()=>Call(window,"Draw"),Main.UIScaleMatrix,1366,900);
+                Require(playerFiles==0&&ReferenceEquals(Main.PendingPlayer,pending)&&Main.player[Main.myPlayer]==human,"live native page never enters human file save/PendingPlayer ownership");
+                managerClick("actor-state");NativeQuickItemChecks.Until(()=>{Call(host,"Update",(ulong)Main.GameUpdateCount);return !(bool)Call(host,"IsJoined",id);});
+                managerClick("create");creator=(UICharacterCreation)Main.InGameUI.CurrentState;Click(Snap(creator,"Back",0),graphics);Require(Session(host)==null&&(bool)Get(window,"Visible"),"actual native Back exits without world replay");
+                Require(Main.player.SequenceEqual(ownerArray),"after actual recall, native UI keeps all human/other player array identities");
+                Console.WriteLine("PASS true native early-UI -> mapping/final sample -> production context dispatch, physical UI1.25/worldZoom1.5, real plus/category/held-slider/keyboard cancel-submit/Back, world CopyInto+ItemCheck and neutral tails, embedded state/team and feedback; no OS IME/installed-game claim.");
+            }
+            finally {proveWorldUse=false;inventoryBindings.Clear();inventoryBindings.AddRange(originalInventoryKeys);Set(input,"foregroundWindow",foreground);var s=Session(host);if(s!=null)Call(s,"Cancel");Call(window,"Close");guard.UnpatchAll(guard.Id);human.inventory[0]=item;human.selectedItemState.Select(selected);human.name=ownerName;Main.GameViewMatrix.Zoom=zoom;currentContext=null;NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
         }
         internal static void Run(object context,ProbeGraphics graphics,string output)
         {

@@ -32,12 +32,13 @@ namespace JueMingR.TerrariaHost.F5
             internal string Hint, Placeholder, StackText, Availability, StateText;
             internal bool Locked;
             internal bool IsSlot, Owner;
+            internal bool ActorOverlay,ActorState;
+            internal int TeamIcon=-1;
             internal CompanionInventoryArea Area;
             internal int Slot;
             internal int EmptyIcon=-1;
             internal Guid ProfileId;
             internal bool Joined;
-            internal Color? TeamColor;
         }
         private readonly HostCompanions host;
         private readonly HostInputState input;
@@ -85,7 +86,7 @@ namespace JueMingR.TerrariaHost.F5
         private string resourceStyle;
         private readonly CompanionPreview ownerPreview = new CompanionPreview(), companionPreview = new CompanionPreview();
         private readonly CompanionResourceDisplay resourceDisplay = new CompanionResourceDisplay();
-        private F5Rect ownerHero, companionHero,ownerShowcase,companionShowcase;
+        private F5Rect ownerHero, companionHero,ownerShowcase,companionShowcase,ownerShowcasePanel,companionShowcasePanel;
         private float sharedResourcesHeight,sharedEquipmentHeight,sharedLifeHeight;
         private readonly List<F5Rect> actorHeaders=new List<F5Rect>();
         private readonly List<F5Rect> groups = new List<F5Rect>();
@@ -257,6 +258,7 @@ namespace JueMingR.TerrariaHost.F5
             titleBar = titleBar.Offset(x, y); field = field.Offset(x, y); contentY += y;
             ownerView = ownerView.Offset(x,y); companionView = companionView.Offset(x,y); ownerHero = ownerHero.Offset(x,y); companionHero = companionHero.Offset(x,y);
             ownerShowcase=ownerShowcase.Offset(x,y);companionShowcase=companionShowcase.Offset(x,y);
+            ownerShowcasePanel=ownerShowcasePanel.Offset(x,y);companionShowcasePanel=companionShowcasePanel.Offset(x,y);
             for(int i=0;i<actorHeaders.Count;i++)actorHeaders[i]=actorHeaders[i].Offset(x,y);
             for(int i=0;i<groups.Count;i++) groups[i]=groups[i].Offset(x,y);
             foreach (var c in controls) { c.Rect = c.Rect.Offset(x, y); if (c.Element != null) c.Element = Move(c.Element, x, y); }
@@ -442,13 +444,13 @@ namespace JueMingR.TerrariaHost.F5
                 foreach(var group in groups) {Fill(group,Color.Black*.12f);DrawFrame(group,Color.White*.15f);}
                 foreach (var c in controls)
                 {
+                    if(c.ActorOverlay)continue;
                     bool hover = c.Rect.Contains(pointer.X, pointer.Y);
                     if (c.Element != null) renderer.Button(c.Element, c.Selected, c.Enabled, c.Off, hover);
                     else renderer.ItemButton(c.Rect, c.Enabled, hover);
                     if (c.Portrait != null) {CompanionPreview head;if(!railPreviews.TryGetValue(c.ProfileId,out head))railPreviews[c.ProfileId]=head=new CompanionPreview();head.Prepare(c.Portrait);head.DrawHead(portraits,c.Rect,matrix,renderer.Generation);}
                     if(c.ProfileId!=Guid.Empty) { if(c.Selected) DrawAvatarSelection(c.Rect); if(c.Joined) DrawJoinedUnderline(c.Rect); }
                     else if (c.Selected && c.Element == null) renderer.Selection(c.Rect);
-                    if(c.TeamColor.HasValue)DrawCentered(c.Text,c.Rect,c.TeamColor.Value,.7f);
                     if(c.Placeholder!=null) DrawCentered(c.Placeholder,c.Rect,new Color(160,180,210),.7f);
                 }
                 PointDraw(()=> {
@@ -465,8 +467,9 @@ namespace JueMingR.TerrariaHost.F5
             });
             if (page == 0)
             {
-                DrawHero(ownerView, ownerHero,ownerShowcase, ownerPreview, Main.LocalPlayer);
-                DrawHero(companionView, companionHero,companionShowcase, companionPreview, host.GetBody(selected));
+                DrawHero(ownerView, ownerHero,ownerShowcase,ownerShowcasePanel, ownerPreview, Main.LocalPlayer);
+                DrawHero(companionView, companionHero,companionShowcase,companionShowcasePanel, companionPreview, host.GetBody(selected));
+                renderer.Pass(matrix,bodyView,()=>{foreach(var c in controls)if(c.ActorOverlay)DrawActorControl(c);});
             }
 
             if (host.HasItemGesture && host.CursorItem != null && !host.CursorItem.IsAir)

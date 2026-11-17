@@ -50,6 +50,10 @@ namespace JueMingR.TerrariaHost.F5
         private readonly bool previousHidden;
         private readonly UIText error = new UIText("", .8f);
         private bool live = true, dirty, submitting;
+        private GameTime queuedTime;
+        private long queuedFrame=-1,flushedFrame=-1,intentFrame=-1;
+        private bool dispatching,drawLeft,drawRight,backIntent,keyboardSubmitIntent,inventoryHeld;
+        private int categoryIntent;
         private float adaptedWidth=-1, adaptedHeight=-1;
         internal int DrawDepth { get; private set; }
         private static readonly FieldInfo Dirty = AccessTools.Field(typeof(UICharacterCreation), "dirty");
@@ -73,6 +77,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             DisposeFor(host);
             var session=new CompanionCreationSession(host,input,restore); Active=session;
+            session.inventoryHeld=PlayerInput.Triggers.Current.Inventory;
             try
             {
                 byte difficulty=session.Draft.difficulty;
@@ -89,11 +94,53 @@ namespace JueMingR.TerrariaHost.F5
                     session.Creator.Children.First().Append(session.error);
                     IngameFancyUI.OpenUIState(session.Creator);
                     session.Adapt();
+                    input.ConsumeNativeUiActions();
                 }
             }
             catch { session.End(false,null); throw; }
         }
         internal bool Owns(UIState state) { return live && state!=null && (ReferenceEquals(state,Creator)||ReferenceEquals(state,Keyboard)); }
+        internal bool Dispatching {get{return dispatching;}}
+        internal void QueueNativeUpdate(GameTime time)
+        {if(flushedFrame!=input.Frame){queuedTime=time;queuedFrame=input.Frame;}}
+        internal void RequestBack()
+        {if(InputAllowed)Back();else{intentFrame=input.Frame;backIntent=true;}}
+        internal void RequestCategory(int direction)
+        {if(InputAllowed){if(ReferenceEquals(Main.InGameUI.CurrentState,Creator))Creator.TryMovingCategory(direction);}else{intentFrame=input.Frame;categoryIntent=direction;}}
+        internal void RequestKeyboardSubmit() {intentFrame=input.Frame;keyboardSubmitIntent=true;}
+        internal static void FlushNativeUpdate(HostCompanions host)
+        {
+            var s=Active;if(s==null||!ReferenceEquals(s.Host,host))return;
+            if(!s.Valid||!s.Owns(Main.InGameUI.CurrentState)){s.End(false,null);return;}
+            try
+            {
+                // Vanilla updates InGameUI before this frame's mouse/keyboard
+                // mapping. Only this exact owned page is deferred until the
+                // existing host InputPostfix has finalized its trusted sample.
+                if(s.queuedTime==null||s.queuedFrame!=s.input.Frame||s.flushedFrame==s.input.Frame)return;
+                var time=s.queuedTime;s.queuedTime=null;s.flushedFrame=s.input.Frame;
+                if(!s.InputAllowed){Main.InGameUI.ResetLasts();s.backIntent=s.keyboardSubmitIntent=false;s.categoryIntent=0;return;}
+                s.drawLeft=!s.input.HotkeyPointerOwned&&(Main.mouseLeft||s.input.RawMouseLeft);
+                s.drawRight=!s.input.HotkeyPointerOwned&&(Main.mouseRight||s.input.RawMouseRight);
+                bool inventory=PlayerInput.Triggers.Current.Inventory;
+                bool inventoryPress=inventory&&!s.inventoryHeld&&!s.input.HotkeyPointerOwned;s.inventoryHeld=inventory;
+                using(var pointer=new PointerScope(s))
+                {
+                    // The world packs are consumed below, so receive the real
+                    // mapped Inventory action here exactly once, via vanilla's
+                    // ToggleInv -> IngameFancyUI.Close path. A held press must
+                    // not return from naming and then cancel its creator too.
+                    if(inventoryPress){using(s.Enter(false))s.owner.ToggleInv();s.backIntent=s.keyboardSubmitIntent=false;s.categoryIntent=0;return;}
+                    if(s.intentFrame==s.input.Frame)using(s.Enter(false)) {
+                        if(s.backIntent&&!inventory)s.Back();else if(s.keyboardSubmitIntent&&ReferenceEquals(Main.InGameUI.CurrentState,s.Keyboard))UIVirtualKeyboard.Submit();else if(s.categoryIntent!=0&&ReferenceEquals(Main.InGameUI.CurrentState,s.Creator))s.Creator.TryMovingCategory(s.categoryIntent);
+                    }
+                    s.backIntent=s.keyboardSubmitIntent=false;s.categoryIntent=0;
+                    if(!s.live||!s.Owns(Main.InGameUI.CurrentState))return;
+                    s.dispatching=true;try{Main.InGameUI.Update(time);}finally{s.dispatching=false;}
+                }
+            }
+            finally {s.input.ConsumeNativeUiActions();}
+        }
         internal bool Valid { get { return live&&!Main.gameMenu&&ReferenceEquals(owner,Main.ActivePlayerFileData?.Player)&&ReferenceEquals(world,Main.ActiveWorldFileData)&&Host.CreationSessionToken==token; } }
         internal static void Validate(HostCompanions host)
         {
@@ -110,18 +157,32 @@ namespace JueMingR.TerrariaHost.F5
             private readonly bool dirty,draw;
             private readonly UnifiedRandom random;
             private readonly int shader;
+            private readonly PointerScope pointer;
             internal DispatchScope(CompanionCreationSession s,bool drawing)
             {
                 s.Adapt();
                 session=s;draw=drawing;hair=Main.Hairstyles;dirty=(bool)Dirty.GetValue(null);
                 Main.Hairstyles=s.Hairstyles;Dirty.SetValue(null,s.dirty);
-                if(draw){random=Main.rand;shader=Mount.currentShader;Main.rand=s.previewRandom;s.DrawDepth++;}
+                if(draw){pointer=new PointerScope(s);random=Main.rand;shader=Mount.currentShader;Main.rand=s.previewRandom;s.DrawDepth++;}
             }
             public void Dispose()
             {
                 session.dirty=(bool)Dirty.GetValue(null);Dirty.SetValue(null,dirty);Main.Hairstyles=hair;
-                if(draw){session.DrawDepth--;Main.rand=random;Mount.currentShader=shader;}
+                if(draw){session.DrawDepth--;Main.rand=random;Mount.currentShader=shader;pointer.Dispose();}
             }
+        }
+        private sealed class PointerScope : IDisposable
+        {
+            private readonly int x=Main.mouseX,y=Main.mouseY,lastX=Main.lastMouseX,lastY=Main.lastMouseY,width=Main.screenWidth,height=Main.screenHeight;
+            private readonly bool left=Main.mouseLeft,right=Main.mouseRight;
+            internal PointerScope(CompanionCreationSession s)
+            {
+                PlayerInput.SetZoom_UI();
+                bool trusted=s.InputAllowed&&s.flushedFrame==s.input.Frame;
+                Main.mouseLeft=trusted&&s.drawLeft;Main.mouseRight=trusted&&s.drawRight;
+            }
+            public void Dispose()
+            {Main.mouseX=x;Main.mouseY=y;Main.lastMouseX=lastX;Main.lastMouseY=lastY;Main.screenWidth=width;Main.screenHeight=height;Main.mouseLeft=left;Main.mouseRight=right;}
         }
         internal void Name(bool create)
         {
@@ -131,10 +192,10 @@ namespace JueMingR.TerrariaHost.F5
             var weak=new WeakReference(this);
             Keyboard=new UIVirtualKeyboard(Lang.menu[45].Value,Draft.name??"",name=> {
                 var session=weak.Target as CompanionCreationSession;
-                if(session==null||!session.Valid||!ReferenceEquals(Main.InGameUI.CurrentState,session.Keyboard))return;
+                if(session==null||!session.Valid||!session.InputAllowed||!ReferenceEquals(Main.InGameUI.CurrentState,session.Keyboard))return;
                 session.Draft.name=(name??"").Trim();session.ReturnFromName();
                 if(create)session.Submit();
-            },()=> {var session=weak.Target as CompanionCreationSession;if(session!=null&&session.Valid&&ReferenceEquals(Main.InGameUI.CurrentState,session.Keyboard))session.ReturnFromName();},0,true,UICharacterCreation.MAX_NAME_LENGTH);
+            },()=> {var session=weak.Target as CompanionCreationSession;if(session!=null&&session.Valid&&session.InputAllowed&&ReferenceEquals(Main.InGameUI.CurrentState,session.Keyboard))session.ReturnFromName();},0,true,UICharacterCreation.MAX_NAME_LENGTH);
             managedKeyboards.Add(Keyboard,managed);
             keyboardTops.Clear();foreach(var child in Keyboard.Children)keyboardTops[child]=child.Top.Pixels;
             foreach(var name in new[]{"outerLayer1","outerLayer2"}) {var child=(UIElement)AccessTools.Field(typeof(UIVirtualKeyboard),name).GetValue(Keyboard);keyboardTops[child]=child.Top.Pixels;}
@@ -174,6 +235,7 @@ namespace JueMingR.TerrariaHost.F5
         private void End(bool restore,string name)
         {
             if(!live)return;bool valid=Valid;bool owns=Owns(Main.InGameUI.CurrentState);live=false;
+            queuedTime=null;backIntent=keyboardSubmitIntent=false;categoryIntent=0;input.RetainNativeUiTail();
             // Native history can retain old states. Leave it only UI/draft
             // objects, not a delegate chain back to the retired Host/world.
             if(Creator!=null)Creator.OnScrollWheel-=ScrollOuter;

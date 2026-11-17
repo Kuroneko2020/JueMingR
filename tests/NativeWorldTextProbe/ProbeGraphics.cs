@@ -98,6 +98,7 @@ namespace NativeWorldTextProbe
             LoadItemTextures(new[]{0}); // native HeldItem layer loads even its empty item before returning
             LoadTexture("Heart","Images/Heart"); LoadTexture("Heart2","Images/Heart2"); LoadTexture("Mana","Images/Mana");
             LoadTexture("Extra","Images/Extra_54",54);
+            LoadTexture("Pvp","Images/UI/PVP_1",1);LoadTexture("Pvp","Images/UI/PVP_2",2);
             foreach(string field in new[]{"ColorBar","ColorBlip","ColorSlider"})LoadTexture(field,"Images/"+field);
             LoadTexture("ColorHighlight","Images/UI/Slider_Highlight");
             using(var stream=File.OpenRead(Path.Combine(contentDirectory,"Fonts","Death_Text.xnb")))Terraria.GameContent.FontAssets.DeathText=Loaded("Fonts/Death_Text",reader.FromStream<DynamicSpriteFont>(stream));
@@ -123,6 +124,12 @@ namespace NativeWorldTextProbe
             EnsureNativeAssets();
             foreach(string name in new[]{"HP_Fill","HP_Fill_Honey","MP_Fill","Panel_Left","HP_Panel_Middle","HP_Panel_Right","MP_Panel_Middle","MP_Panel_Right"})
                 screenEffectsRepository.Request<Texture2D>("Images/UI/PlayerResourceSets/HorizontalBars/"+name,AssetRequestMode.ImmediateLoad);
+        }
+        internal void LoadCompanionFancyAssets()
+        {
+            EnsureNativeAssets();
+            foreach(string name in new[]{"Heart_Left","Heart_Middle","Heart_Right","Heart_Right_Fancy","Heart_Single_Fancy","Heart_Fill","Heart_Fill_B","Star_A","Star_B","Star_C","Star_Single","Star_Fill"})
+                screenEffectsRepository.Request<Texture2D>("Images/UI/PlayerResourceSets/FancyClassic/"+name,AssetRequestMode.ImmediateLoad);
         }
         internal void LoadMoonDeathAssets()
         {

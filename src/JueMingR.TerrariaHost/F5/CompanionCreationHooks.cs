@@ -23,6 +23,7 @@ namespace JueMingR.TerrariaHost.F5
             Patch(harmony,typeof(UICharacterCreation),"HandleBackButtonUsage",nameof(InstanceBack));
             foreach(string callback in new[]{"OnFinishedNaming","OnFinishedNamingAndCreating","OnCanceledNaming"})Patch(harmony,typeof(UICharacterCreation),callback,nameof(MenuNameCallback));
             Patch(harmony,typeof(UIVirtualKeyboard),"InternalSubmit",nameof(KeyboardSubmit));
+            Patch(harmony,typeof(UIVirtualKeyboard),"Cancel",nameof(KeyboardCancel));
             Patch(harmony,typeof(UICharacterCreation),"GoBack",nameof(GoBack));
             Patch(harmony,typeof(IngameFancyUI),"Close",nameof(Close));
             Patch(harmony,typeof(UILinksInitializer),"FancyExit",nameof(Back));
@@ -34,7 +35,12 @@ namespace JueMingR.TerrariaHost.F5
         {h.Patch(AccessTools.Method(type,method),new HarmonyMethod(typeof(CompanionCreationHooks),prefix),finalizer:finalizer==null?null:new HarmonyMethod(typeof(CompanionCreationHooks),finalizer));}
         private static CompanionCreationSession Current {get {var s=CompanionCreationSession.Active;return s!=null&&s.Valid&&s.Owns(Main.InGameUI.CurrentState)?s:null;}}
         private static CompanionCreationSession OwnedActive {get {var s=CompanionCreationSession.Active;return s!=null&&s.Owns(Main.InGameUI.CurrentState)?s:null;}}
-        private static bool Update(UserInterface __instance,out IDisposable __state) {return Begin(__instance,false,out __state);}
+        private static bool Update(UserInterface __instance,Microsoft.Xna.Framework.GameTime __0,out IDisposable __state)
+        {
+            __state=null;var s=OwnedActive;
+            if(ReferenceEquals(__instance,Main.InGameUI)&&s!=null&&!s.Dispatching){s.QueueNativeUpdate(__0);return false;}
+            return Begin(__instance,false,out __state);
+        }
         private static bool Draw(UserInterface __instance,out IDisposable __state) {return Begin(__instance,true,out __state);}
         private static bool Begin(UserInterface ui,bool draw,out IDisposable state)
         {
@@ -61,11 +67,12 @@ namespace JueMingR.TerrariaHost.F5
         private static bool Cancel(UICharacterCreation __instance) {if(!CompanionCreationSession.WasManaged(__instance))return true;if(IsCreator(__instance))Current.Cancel();return false;}
         private static bool InstanceBack(UICharacterCreation __instance) {if(!CompanionCreationSession.WasManaged(__instance))return true;if(IsCreator(__instance))Current.Back();return false;}
         private static bool MenuNameCallback(UICharacterCreation __instance) {return !CompanionCreationSession.WasManaged(__instance);}
-        private static bool KeyboardSubmit(UIVirtualKeyboard __instance) {return !CompanionCreationSession.WasManaged(__instance)||Current?.InputAllowed==true&&ReferenceEquals(__instance,Current.Keyboard);}
-        private static bool GoBack() {var s=Current;if(s==null)return true;s.Cancel();return false;}
-        private static bool Close() {var s=OwnedActive;if(s==null)return true;if(!s.Valid||s.InputAllowed)s.Back();return false;}
-        private static bool Back() {var s=OwnedActive;if(s==null)return true;if(!s.Valid||s.InputAllowed)s.Back();return false;}
-        private static bool Category(int direction) {var s=Current;if(s==null)return true;if(s.InputAllowed&&ReferenceEquals(Main.InGameUI.CurrentState,s.Creator))s.Creator.TryMovingCategory(direction);return false;}
+        private static bool KeyboardSubmit(UIVirtualKeyboard __instance) {if(!CompanionCreationSession.WasManaged(__instance))return true;var s=Current;if(s==null||!ReferenceEquals(__instance,s.Keyboard))return false;if(s.InputAllowed)return true;s.RequestKeyboardSubmit();return false;}
+        private static bool KeyboardCancel() {var s=Current;if(s==null||!ReferenceEquals(Main.InGameUI.CurrentState,s.Keyboard)||s.InputAllowed)return true;s.RequestBack();return false;}
+        private static bool GoBack() {var s=Current;if(s==null)return true;s.RequestBack();return false;}
+        private static bool Close() {var s=OwnedActive;if(s==null)return true;if(!s.Valid)s.Back();else s.RequestBack();return false;}
+        private static bool Back() {var s=OwnedActive;if(s==null)return true;if(!s.Valid)s.Back();else s.RequestBack();return false;}
+        private static bool Category(int direction) {var s=Current;if(s==null)return true;s.RequestCategory(direction);return false;}
         private struct TipsState {internal GameTipsDisplay Display;internal int Width,Height;internal float Offset;}
         private static bool Tips(GameTipsDisplay __instance,out TipsState __state)
         {

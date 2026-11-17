@@ -399,8 +399,8 @@ namespace NativeWorldTextProbe
                 Require((bool)Call(host,"IsJoined",id)==joined&&!(bool)Call(host,"CanTransfer",id),"membership and temporary resource qualification are independent actual Host facts");
                 Call(window,"Close");NativeToolsUiChecks.Mouse(Vector2.Zero,false);Call(window,"Toggle",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));Set(window,"selected",id);Set(window,"page",0);
                 Call(window,"PrepareLayout",Matrix.Identity,new Vector2(1280,900));
-                string expected=joined?"recall/":"join/",absent=joined?"join/":"recall/";
-                Require(Controls(window).Any(c=>((string)Get(c,"Key")).StartsWith(expected,StringComparison.Ordinal))&&!Controls(window).Any(c=>((string)Get(c,"Key")).StartsWith(absent,StringComparison.Ordinal)),"actual inventory layout offers "+(joined?"recall for an ineligible joined actor":"join for an archived offline profile"));
+                var status=Controls(window).Single(c=>((string)Get(c,"Key")).StartsWith("actor-state/",StringComparison.Ordinal));
+                Require((bool)Get(status,"ActorState")&&(bool)Get(status,"Enabled")&&((string)Get(status,"Hint")).Contains(joined?"收回":"加入"),"actual inventory status control offers "+(joined?"recall for an ineligible joined actor":"join for an archived offline profile"));
                 Console.WriteLine("PASS companion native membership layout joined="+joined+" transfer=false action="+(joined?"recall":"join")+"; no Draw/death-lifecycle claim");
             }
             finally {body.dead=dead;Call(window,"Close");NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
