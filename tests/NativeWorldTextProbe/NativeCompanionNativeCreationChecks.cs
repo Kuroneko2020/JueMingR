@@ -118,7 +118,9 @@ namespace NativeWorldTextProbe
                 Click(((UIColoredImageButton[])Get(creator,"_colorPickers"))[3],graphics);var slider=Descendants(creator).OfType<UIColoredSlider>().First();var rect=slider.GetDimensions();var color=draft.hairColor;
                 observedSlider=slider;observedSession=session;sliderTraces=0;guard.Patch(AccessTools.Method(typeof(UIColoredSlider),"DrawSelf"),postfix:new HarmonyMethod(typeof(NativeCompanionNativeCreationChecks),nameof(TraceSlider)));
                 Console.WriteLine("NATIVE-SLIDER-TARGET picker="+Get(creator,"_selectedPicker")+" color="+color+" hsl="+Get(creator,"_currentColorHSL")+" rect="+rect.ToRectangle()+" barWidth="+TextureWidth("ColorBar"));
-                var a=new Vector2(rect.X+rect.Width-10-TextureWidth("ColorBar")+20,rect.Y+14);var b=a+new Vector2(105,0);
+                // Native DrawSelf puts the value bar at Y+10+8; use its
+                // interior, including physical -> fractional UI integer mapping.
+                var a=new Vector2(rect.X+rect.Width-10-TextureWidth("ColorBar")+20,rect.Y+18);var b=a+new Vector2(105,0);
                 Step(a,false,graphics);Step(a,true,graphics);Step(b,true,graphics);Step(b,false,graphics);Capture(graphics,output,"companion-live-slider-diagnostic");Require(draft.hairColor!=color,"native held-left color slider Draw consumes its trusted private pointer after world input was cleared");observedSlider=null;observedSession=null;
                 Capture(graphics,output,"companion-live-creation-color");
                 Click((UIElement)Get(creator,"_charInfoCategoryButton"),graphics);Click((UIElement)Get(creator,"_charName"),graphics);
@@ -202,13 +204,13 @@ namespace NativeWorldTextProbe
                     var slider=Descendants(creator).OfType<UIColoredSlider>().First();var rect=slider.GetDimensions();
                     // The native value bar is right-anchored 10px inside the
                     // control. Actual Draw consumes the locked slider gesture.
-                    Vector2 point=new Vector2(rect.X+rect.Width-10-TextureWidth("ColorBar")+130,rect.Y+14);
+                    Vector2 point=new Vector2(rect.X+rect.Width-10-TextureWidth("ColorBar")+130,rect.Y+18);
                     Step(point,false,graphics);Step(point,true,graphics);Step(point,false,graphics);
                 }
                 Capture(graphics,output,"companion-native-creation-color");
                 Click((UIElement)Get(creator,"_clothingStylesCategoryButton"),graphics);
                 int voice=draft.voiceVariant;Click((UIElement)Get(creator,"_voiceNext"),graphics);Require(draft.voiceVariant!=voice,"original voice control edits voice variant");
-                float oldPitch=draft.voicePitchOffset;var pitchRect=((UIElement)Get(creator,"_pitchSlider")).GetDimensions();var pitchPoint=new Vector2(pitchRect.X+pitchRect.Width-10-TextureWidth("ColorBar")+130,pitchRect.Y+14);
+                float oldPitch=draft.voicePitchOffset;var pitchRect=((UIElement)Get(creator,"_pitchSlider")).GetDimensions();var pitchPoint=new Vector2(pitchRect.X+pitchRect.Width-10-TextureWidth("ColorBar")+130,pitchRect.Y+18);
                 Step(pitchPoint,false,graphics);Step(pitchPoint,true,graphics);Step(pitchPoint,false,graphics);Require(Math.Abs(draft.voicePitchOffset-oldPitch)>.01f&&draft.voicePitchOffset>=-1&&draft.voicePitchOffset<=1,"real native pitch slider edits bounded voice pitch");
                 graphics.LoadTexture("ArmorHead","Images/Armor_Head_3",3);graphics.LoadTexture("ArmorBodyComposite","Images/Armor/Armor_3",3);graphics.LoadTexture("ArmorLeg","Images/Armor_Legs_3",3);
                 var previewButtons=(UIElement[])Get(creator,"_previewArmorButton");Click(previewButtons[2],graphics);
