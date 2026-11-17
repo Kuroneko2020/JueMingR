@@ -55,7 +55,8 @@ namespace JueMingR.TerrariaHost.F5
             return Math.Max(108,sharedLifeHeight+Math.Max(own.Mana,companion.Mana));
         }
         private static float ShowcaseWidth(float paneWidth) {return Math.Min(116,Math.Max(92,paneWidth*.26f));}
-        private static float ResourceWidth(float paneWidth) {return Math.Max(20,paneWidth*.82f-ShowcaseWidth(paneWidth)/2-28);}
+        private static float ShowcaseCenter(float paneWidth) {return Math.Min(paneWidth*.82f,paneWidth-12-ShowcaseWidth(paneWidth)/2);}
+        private static float ResourceWidth(float paneWidth) {return Math.Max(20,ShowcaseCenter(paneWidth)-ShowcaseWidth(paneWidth)/2-28);}
         private static float GridHeight(float paneWidth,int count)
         {int columns=Math.Max(1,Math.Min(10,(int)((paneWidth-24)/40)));float cell=Math.Min(44,(paneWidth-24)/columns);return (float)Math.Ceiling((double)count/columns)*cell+4;}
         private float SharedEquipment(float paneWidth)
@@ -92,7 +93,7 @@ namespace JueMingR.TerrariaHost.F5
             // rectangle center. Its ordinary 48px visible silhouette at the
             // unchanged 1.625 scale is centered 24*scale above those feet.
             float visibleCenterOffset=108/2f-8-24*1.625f;
-            float centerX=view.X+view.Width*.82f,centerY=headerTop+headerHeight/2;
+            float centerX=view.X+ShowcaseCenter(view.Width),centerY=headerTop+headerHeight/2;
             float frameTop=Math.Max(headerTop+row+8,centerY-52);
             var showcase=new F5Rect(centerX-ShowcaseWidth(view.Width)/2,frameTop,ShowcaseWidth(view.Width),Math.Min(104,headerTop+headerHeight-8-frameTop));
             var portrait=new F5Rect(centerX-34,centerY-54-visibleCenterOffset,68,108);

@@ -272,6 +272,10 @@ namespace NativeWorldTextProbe
                 var narrowProjection=Matrix.CreateScale(1.5f);
                 Call(window,"Prepare",narrowProjection,new Vector2(840,640));
                 Require(((IEnumerable)Get(window,"labels")).Cast<object>().All(label=>(float)Get(Get(label,"Rect"),"Width")>0),"controlled narrow projection never creates a nonpositive name/status label rectangle");
+                foreach(bool own in new[]{true,false}) {
+                    var frame=Get(window,own?"ownerShowcase":"companionShowcase");var view=Get(window,own?"ownerView":"companionView");var resources=Get(window,own?"ownerHero":"companionHero");
+                    Require((float)Get(frame,"X")>=(float)Get(view,"X")&&(float)Get(frame,"Right")<=(float)Get(view,"Right")-11.9f&&(float)Get(resources,"Right")+7.9f<=(float)Get(frame,"X"),"existing narrow projection retains the entire showcase, right padding and resource gap");
+                }
                 graphics.Image(Path.Combine(output,"companion-controlled-narrow-projection.png"),()=>Call(window,"Draw"),narrowProjection,840,640);
                 Click(window,"gear:False:2",new Vector2(840,640),narrowProjection);Require((int)Get(window,"companionGearPage")==2,"controlled narrow projection retains its actual subtab hit geometry");
                 Click(window,"gear:False:0",new Vector2(840,640),narrowProjection);

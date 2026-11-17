@@ -83,7 +83,9 @@ namespace JueMingR.TerrariaHost.F5
                 int h=p.hair*397+p.skinVariant;
                 h=h*31+p.hairColor.GetHashCode(); h=h*31+p.eyeColor.GetHashCode(); h=h*31+p.skinColor.GetHashCode();
                 h=h*31+p.shirtColor.GetHashCode(); h=h*31+p.underShirtColor.GetHashCode(); h=h*31+p.pantsColor.GetHashCode(); h=h*31+p.shoeColor.GetHashCode(); h=h*31+p.hairDye;
-                h=h*31+p.head; h=h*31+p.body; h=h*31+p.legs; h=h*31+p.hideMisc.GetHashCode();
+                // BitsByte's inherited ValueType hash does not reliably expose
+                // its single byte on this runtime. Visibility is an actual input.
+                h=h*31+p.head; h=h*31+p.body; h=h*31+p.legs; h=h*31+(byte)p.hideMisc;
                 h=Items(h,p.armor); h=Items(h,p.dye); h=Items(h,p.miscEquips); h=Items(h,p.miscDyes);
                 foreach(bool hidden in p.hideVisibleAccessory) h=h*31+(hidden?1:0);
                 return h;

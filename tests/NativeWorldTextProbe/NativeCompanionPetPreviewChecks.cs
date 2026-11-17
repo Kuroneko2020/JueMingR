@@ -78,9 +78,16 @@ namespace NativeWorldTextProbe
                 Require(Main.rand.Next()==expected.Next()&&Main.player.SequenceEqual(players)&&Main.projectile.SequenceEqual(projectiles)&&ReferenceEquals(Main.mouseItem,mouse),"native pet drawing preserves world RNG/player/projectile arrays and mouse item");
                 Require(owner.position==ownerPosition&&ai.position==aiPosition&&owner.afkCounter==afk&&owner.miscCounter==timer&&Main.dust.Count(d=>d!=null&&d.active)==dust&&Main.gore.Count(g=>g!=null&&g.active)==gore,"pet previews do not advance real bodies, timers or world particles");
                 Require(ReferenceEquals(Main.CurrentDrawnEntity,entity)&&Main.CurrentDrawnEntityShader==shader&&Mount.currentShader==mount,"native pet scope restores shared draw entity/shader and mount state");
-                owner.hideMisc[0]=true;Call(window,"Prepare",Main.UIScaleMatrix,screen);
+                var ownerPreview=Get(window,"ownerPreview");var aiPreview=Get(window,"companionPreview");var aiDummy=Get(Get(aiPreview,"Pet"),"Dummy");var ownerPose=Call(Get(window,"ownerPortrait"),"Offset",-14f,0f);
+                var equippedOwner=owner.miscEquips[0];owner.hideMisc[0]=true;Call(window,"Prepare",Main.UIScaleMatrix,screen);
                 graphics.Image(Path.Combine(output,"companion-native-equipped-pet-hidden.png"),()=>Call(window,"Draw"),Main.UIScaleMatrix,Main.screenWidth,Main.screenHeight);
-                Require(GetOptional(Get(Get(window,"ownerPreview"),"Pet"),"Dummy")==null&&GetOptional(Get(Get(window,"companionPreview"),"Pet"),"Dummy")!=null,"native owner hideMisc retires only that owner's pet preview");
+                var hidden=graphics.Pixels(()=>Call(ownerPreview,"DrawPet",ownerPose,Main.UIScaleMatrix),Main.UIScaleMatrix,Main.screenWidth,Main.screenHeight);
+                Require(GetOptional(Get(ownerPreview,"Pet"),"Dummy")==null&&hidden.All(c=>c.A==0)&&ReferenceEquals(Get(Get(aiPreview,"Pet"),"Dummy"),aiDummy),"native hideMisc clears this owner's dummy and actual pet pixels while the other dummy stays unchanged");
+                owner.hideMisc[0]=false;Call(window,"Prepare",Main.UIScaleMatrix,screen);
+                graphics.Image(Path.Combine(output,"companion-native-equipped-pet-restored.png"),()=>Call(window,"Draw"),Main.UIScaleMatrix,Main.screenWidth,Main.screenHeight);
+                var restored=graphics.Pixels(()=>Call(ownerPreview,"DrawPet",ownerPose,Main.UIScaleMatrix),Main.UIScaleMatrix,Main.screenWidth,Main.screenHeight);
+                Require(restored.Count(c=>c.A>20)>25&&((Projectile)Get(Get(ownerPreview,"Pet"),"Dummy")).type==111&&ReferenceEquals(owner.miscEquips[0],equippedOwner)&&ReferenceEquals(Get(Get(aiPreview,"Pet"),"Dummy"),aiDummy),"unhiding restores the same equipped pet source without replacing or rebuilding the other character's dummy");
+                Require((int)Get(window,"LayoutBuilds")==layouts,"hide/show changes only local display and preserves static controls");
             }
             finally
             {
