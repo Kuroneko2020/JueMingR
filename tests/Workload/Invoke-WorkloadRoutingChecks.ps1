@@ -398,7 +398,7 @@ try {
     }
     foreach ($name in @('PreparedItemIcons','ItemsRenderer')) {
         $path = 'src/JueMingR.TerrariaHost/Items/' + $name + '.cs'
-        $cases[$path] = 'storage-host'; $exactGroups[$path] = $exactGroups['src/JueMingR.Platform/Persistence/DocumentWorker.cs']
+        $cases[$path] = 'storage-host'; $exactGroups[$path] = @($exactGroups['src/JueMingR.Platform/Persistence/DocumentWorker.cs'] + 'companion-host')
     }
     foreach ($name in @('HostBlueprint','BlueprintHooks')) {
         $path = 'src/JueMingR.TerrariaHost/Blueprint/' + $name + '.cs'
