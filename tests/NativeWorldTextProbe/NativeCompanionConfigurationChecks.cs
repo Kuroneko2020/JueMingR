@@ -77,9 +77,12 @@ namespace NativeWorldTextProbe
             try
             {
                 imeField.SetValue(text,new PreviewIme(imeField.FieldType).GetTransparentProxy());owner.name="验证主人";
+                var otherBody=(Player)Call(host,"GetBody",other);
+                var itemTypes=owner.inventory.Concat(body.inventory).Concat(otherBody.inventory).Where(item=>item!=null&&!item.IsAir).Select(item=>item.type).Distinct().ToArray();
+                graphics.LoadItemTextures(itemTypes);Console.WriteLine("CONFIG-ASSETS actual inventory types="+String.Join(",",itemTypes));
                 Main.screenWidth=(int)screen.X;Main.screenHeight=(int)screen.Y;PlayerInput.CacheOriginalScreenDimensions();Main.UIScale=1;
                 var renderer=Get(shell,"renderer");Call(renderer,"RefreshResources");Call(renderer,"Prepare",Get(shell,"State"),screen.X,screen.Y,1f);
-                Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));Set(window,"selected",id);rest();rest();click("configuration/");
+                Set(window,"selected",id);Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));rest();rest();click("configuration/");
                 Require(Controls(window).Cast<object>().Count(c=>((string)Get(c,"Key")).StartsWith("config-tab:",StringComparison.Ordinal))==4,"actual implemented directories share one measured navigation strip");
                 Require(!Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith("actor-state/",StringComparison.Ordinal)||((string)Get(c,"Key")).StartsWith("team:",StringComparison.Ordinal)),"team and membership actions stay on the backpack page");
                 image("companion-config-combat");
