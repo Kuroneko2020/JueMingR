@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Reflection;
 using JueMingR.Features.Combat;
+using JueMingR.Platform.Companions;
 using JueMingR.TerrariaHost.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -11,6 +12,9 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal sealed partial class HostCompanions
     {
+        private static readonly Func<Player, Item, bool, bool> nativeCanUse =
+            (Func<Player, Item, bool, bool>)Delegate.CreateDelegate(typeof(Func<Player, Item, bool, bool>),
+                typeof(Player).GetMethod("ItemCheck_CanUse", BindingFlags.Instance | BindingFlags.NonPublic));
         internal IEnumerable<Actor> ActiveActors {get{return actors.Values;}}
         internal bool HasActors {get{return bodies.Count!=0;}}
         private static void IdleAim(Actor a)
@@ -24,51 +28,158 @@ namespace JueMingR.TerrariaHost.Companions
         internal void Control(Actor a)
         {
             var p=a.Body;
-            if(p.selectedItem<0 || p.selectedItem>=50)p.selectedItemState.Select(0);
+            if((p.selectedItem<0 || p.selectedItem>=CompanionBehavior.MainInventorySlots) && FreeHand(p))p.selectedItemState.Select(0);
             p.controlLeft=p.controlRight=p.controlJump=p.controlDown=p.controlUp=p.controlUseItem=p.controlUseTile=p.controlHook=p.controlThrow=false;
-            if(p.dead){a.Status="等待复活";return;}
-            var behavior=a.Profile.Behavior;
-            var frame=a.Behavior.Decide(p,owner,behavior,ReferenceEquals(a,planningActor));
+            if(p.dead || !p.active){a.Combat.ResetHand();a.Status="等待复活";return;}
+            var behavior=a.Preferences;
+            var combat=a.Combat;
+            bool planning=ReferenceEquals(a,planningActor) || planningActor==null && actors.Count<=1;
+
+            // Native recovery can coexist with movement and an active hand.
+            // Read its result before selecting the next actual item action.
+            TryCompanionLife(a);
+            if(behavior.AttackEnabled && planning && !p.noItems && !p.CCed)ChooseAttacks(a,behavior);
+            if(!behavior.AttackEnabled)combat.Reset();
+            var chosen=combat.Choice;
+            Vector2 point=Vector2.Zero;
+            int manaCost=0;
+            bool valid=behavior.AttackEnabled && CurrentAttack(a,chosen,out manaCost,out point);
+            bool clearOpening=valid, waitingForMana=false;
+            int growth=CompanionGrowthSlot(a);
+            bool buff=growth<0 && CompanionBuffPending(a);
+
+            // A pending exclusive maintenance action owns the release edge.
+            // ItemCheck and live projectiles finish their normal animation and
+            // channel; no other policy may reassert use during that interval.
+            if(growth>=0 || buff)
+            {
+                combat.ResetHand();
+                SetAttackTarget(a,null);
+                if(FreeHand(p) && p.releaseUseItem)
+                {
+                    if(growth>=0)
+                    {
+                        p.selectedItemState.Select(growth);
+                        p.controlUseItem=true;
+                        BeginCompanionGrowth(a,growth);
+                    }
+                    else TryCompanionBuff(a);
+                }
+            }
+            else if(valid)
+            {
+                if(manaCost>p.statMana)
+                {
+                    bool continued=p.channel && chosen.Slot==p.selectedItem && chosen.Weapon.channel;
+                    bool canRestore=continued || FreeHand(p) && NativeAttackAllowed(a,chosen,point,manaCost);
+                    if(canRestore)TryCompanionMana(a,chosen.Weapon);
+                    else if(FreeHand(p))combat.Reject(chosen,Main.GameUpdateCount);
+                    if(!canRestore || manaCost>p.statMana && !CanNativeMana(a))
+                    {
+                        chosen=combat.ReadyChoice;
+                        valid=CurrentAttack(a,chosen,out int fallbackFee,out point) && fallbackFee<=p.statMana;
+                        waitingForMana=canRestore && !valid;
+                    }
+                }
+                if(valid)ApplyAttack(a,chosen,point);
+                else combat.ResetHand();
+            }
+            else combat.ResetHand();
+
+            if(!behavior.AttackEnabled || !valid)
+            {
+                SetAttackTarget(a,null);
+                if(FreeHand(p))IdleAim(a);
+            }
+            var pursuit=combat.Pursuit;
+            var movementTarget=TargetCurrent(a,pursuit.Target,pursuit.TargetGeneration)?pursuit.Target:null;
+            var frame=a.Behavior.DecideMovement(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening || valid);
             p.controlLeft=frame.Move<0;p.controlRight=frame.Move>0;p.controlJump=frame.Jump;p.controlDown=frame.Drop;
-            if(frame.Heal)using(CompanionHooks.Enter(a,a.Aim))p.QuickHeal();
-            if(!behavior.AttackEnabled){a.Target=null;IdleAim(a);p.channel=false;a.Status=frame.Status;return;}
-            bool valid=a.Target!=null && ReferenceEquals(Main.npc[a.Target.whoAmI],a.Target) && a.TargetGeneration==a.Target.generation && CombatSelection.Receives(a.Target,false) && ObservedNpcCombatReady(a.Target) && !PredictionDead(a,a.Target) && Vector2.DistanceSquared(p.Center,a.Target.Center)<1600*1600;
-            if(!valid || ReferenceEquals(a,planningActor))SelectTarget(a);
-            if(a.Target!=null)
-            {
-                bool prepared=a.HasAim && a.AimRevision==NpcObservationRevision(a.Target) && ReferenceEquals(a.AimWeapon,p.HeldItem) && a.AimOrigin==HostAttackModels.LaunchOrigin(p,p.HeldItem) && a.AimTarget==a.Target.Center+a.Target.netOffset && a.AimVelocity==a.Target.velocity;
-                if(!prepared){a.HasAim=false;a.Aim=a.Target.Center+a.Target.netOffset;}
-                var item=p.HeldItem;
-                bool weapon=item!=null && !item.IsAir && item.damage>0 && item.useStyle>0 && item.pick==0 && item.axe==0 && item.hammer==0;
-                bool reachable=item!=null && item.shoot>0?Collision.CanHitLine(p.Center,1,1,a.Target.Center,1,1):Vector2.DistanceSquared(p.Center,a.Target.Center)<Math.Max(80,item?.width??0)*Math.Max(80,item?.width??0);
-                p.controlUseItem=weapon && reachable && !p.noItems && !p.CCed;
-                if(p.controlUseItem && a.WasUsing && !item.channel && !item.autoReuse && !p.autoReuseAllWeapons && p.itemAnimation==0 && p.itemTime==0)p.controlUseItem=false;
-                a.WasUsing=p.controlUseItem;
-                if(!p.controlUseItem)p.channel=false;
-                if(a.Aim.X!=p.Center.X && p.itemAnimation<=0)p.ChangeDir(a.Aim.X>p.Center.X?1:-1);
-            }
-            else {IdleAim(a);p.channel=false;}
             a.Status=frame.Status;
-        }
-        private void SelectTarget(Actor a)
-        {
-            var p=a.Body;var behavior=a.Profile.Behavior;var center=behavior.PreferOwner && owner!=null?owner.Center:p.Center;
-            NPC selected=null;float best=Single.MaxValue;
-            for(int i=0;i<Main.maxNPCs;i++)
+            if(frame.Status=="停留" && behavior.AttackEnabled && combat.NearbyCount>0)
             {
-                var n=Main.npc[i];if(!CombatSelection.Receives(n,false) || !ObservedNpcCombatReady(n) || n.townNPC || PredictionDead(a,n))continue;
-                float own=Vector2.DistanceSquared(n.Center,p.Center);if(own>1600*1600)continue;
-                if(behavior.SelfDefense && own>400*400 && (owner==null || Vector2.DistanceSquared(n.Center,owner.Center)>400*400))continue;
-                float score=Vector2.DistanceSquared(n.Center,center)+own*.1f;
-                if(ReferenceEquals(n,a.Target) && a.TargetGeneration==n.generation)score*=.85f;
-                if(score<best){best=score;selected=n;}
+                if(growth>=0 || buff)a.Status="准备使用补给";
+                else if(p.controlUseItem && combat.ActiveSlot>=0)a.Status="正在攻击";
+                else if(waitingForMana)a.Status="等待魔力恢复";
+                else if(!valid)a.Status=clearOpening?"等待武器可用":movementTarget!=null?"等待可攻击位置":"等待可用武器或弹药";
             }
-            if(!ReferenceEquals(a.Target,selected) || a.TargetGeneration!=(selected?.generation??0)){a.HasAim=false;a.AimTimeline=null;a.AimTerrain=null;}
-            a.Target=selected;a.TargetGeneration=selected?.generation??0;
+        }
+
+        private static bool FreeHand(Player p)
+        { return !p.UsingOrReusingItem && p.itemTime<=0; }
+
+        private static bool NativeAttackAllowed(Actor a,CompanionAttackChoice choice,Vector2 point,int prospectiveMana=0)
+        {
+            using(var scope=CompanionHooks.Enter(a,point))
+            {
+#if DEBUG
+                a.Combat.NativeAdmissions++;
+#endif
+                if(choice.Weapon.sentry && !scope.TileInteractionReady)return false;
+                var body=a.Body;
+                // A potion is admissible only if mana is the outstanding
+                // condition. ManaV2 already ignores the fee in its pure query.
+                // Classic mana uses the same query on a private body view.
+                if(prospectiveMana>body.statMana && !Terraria.Testing.DebugOptions.ManaV2)
+                {body=HostMeleeAttack.PlayerCopy(body);body.statMana=prospectiveMana;}
+                return nativeCanUse(body,choice.Weapon,false);
+            }
+        }
+
+        private static void SetAttackTarget(Actor a,NPC target)
+        {
+            if(!ReferenceEquals(a.Target,target) || a.TargetGeneration!=(target?.generation??0))
+            {a.HasAim=false;a.AimTimeline=null;a.AimTerrain=null;a.AimPlayer=null;}
+            a.Target=target;a.TargetGeneration=target?.generation??0;
+        }
+
+        private void ApplyAttack(Actor a,CompanionAttackChoice choice,Vector2 point)
+        {
+            var p=a.Body;var combat=a.Combat;
+            if(p.selectedItem!=choice.Slot)
+            {
+                if(!FreeHand(p) || !p.releaseUseItem){combat.ResetHand();return;}
+                p.selectedItemState.Select(choice.Slot);
+                a.HasAim=false;
+            }
+            SetAttackTarget(a,choice.Target);
+            a.Aim=point;
+            combat.ActiveSlot=choice.Slot;combat.Hand=choice;
+            if(combat.LastSlot!=choice.Slot || !ReferenceEquals(combat.LastWeapon,choice.Weapon))
+            {combat.LastSlot=choice.Slot;combat.LastWeapon=choice.Weapon;combat.SelectedTick=Main.GameUpdateCount;}
+            var item=choice.Weapon;
+            // Semi-auto, summon and sentry starts require a real previous
+            // release. Held/ticking hands keep their input until the native
+            // owner or this frame's scheduler asks for an ordinary release.
+            p.controlUseItem=p.releaseUseItem || p.channel || !DoesStaySummoned(item) &&
+                (item.autoReuse || p.autoReuseAllWeapons || !FreeHand(p));
+            // Native spinning flails only hit nearby receivers while held.
+            // Let the real release throw at an enemy outside that ellipse,
+            // then keep releasing until the original projectile returns.
+            if(HostFlailAttack.Weapon(item) && ControlledShot(a,item) is Projectile flail &&
+                (flail.ai[0]!=0 || flail.localAI[1]>=13 && DistanceToReceiveBox(p,choice.Target)>40))p.controlUseItem=false;
+            a.WasUsing=p.controlUseItem;
+            if(point.X!=p.Center.X && p.itemAnimation<=0)p.ChangeDir(point.X>p.Center.X?1:-1);
         }
         internal void PrepareUse(Actor a)
         {
-            if(a.Target==null || !NpcTilePhysicsKnown(a.Target))return;
+            var p=a.Body;
+            var hand=a.Combat.Hand;
+            if(p.controlUseItem && hand.Weapon!=null)
+            {
+                Vector2 point;
+                if(p.selectedItem!=hand.Slot || !CurrentAttack(a,hand,out int fee,out point) || fee>p.statMana && !CanNativeMana(a))
+                {p.controlUseItem=false;a.WasUsing=false;}
+                else a.Aim=point;
+            }
+            if(p.controlUseItem && hand.Weapon!=null && p.releaseUseItem && FreeHand(p))
+            {
+                // Check the actual weapon-specific gate at this final aim.
+                // Native ItemCheck still owns the start and payment.
+                if(!NativeAttackAllowed(a,hand,a.Aim))
+                {a.Combat.Reject(hand,Main.GameUpdateCount);p.controlUseItem=false;a.WasUsing=false;}
+            }
+            if(a.Target==null || !NpcTilePhysicsKnown(a.Target) || DoesStaySummoned(p.HeldItem))return;
             bool fresh=FreshNpcObservation(a.Target);
             if(fresh && aimStep!=Main.GameUpdateCount && aimSelectionStep!=Main.GameUpdateCount)
             {
@@ -78,8 +189,8 @@ namespace JueMingR.TerrariaHost.Companions
                 // monopolize another target's fresh packet phase.
                 foreach(var candidate in actors.Values)
                 {
-                    var p=candidate.Body;var n=candidate.Target;
-                    if(!candidate.Ready || candidate.Closing || candidate.Faulted || p.dead || !candidate.Profile.Behavior.AttackEnabled || p.noItems || p.CCed || n==null || candidate.TargetGeneration!=n.generation || !CombatSelection.Receives(n,false) || !ObservedNpcCombatReady(n) || n.townNPC || PredictionDead(candidate,n) || Vector2.DistanceSquared(p.Center,n.Center)>=1600*1600 || !FreshNpcObservation(n) || p.HeldItem.shoot<=0 || p.HeldItem.damage<=0)continue;
+                    var body=candidate.Body;var n=candidate.Target;
+                    if(!candidate.Ready || candidate.Closing || candidate.Faulted || body.dead || !candidate.Preferences.AttackEnabled || body.noItems || body.CCed || !TargetCurrent(candidate,n,candidate.TargetGeneration) || !FreshNpcObservation(n) || body.HeldItem.shoot<=0 || !CompanionItemRules.WeaponEligible(body.HeldItem) || DoesStaySummoned(body.HeldItem))continue;
                     if(aimSelected==null || candidate.LastAimAttempt<aimSelected.LastAimAttempt)aimSelected=candidate;
                 }
             }
@@ -103,7 +214,17 @@ namespace JueMingR.TerrariaHost.Companions
                     // model only from a fresh coherent sample. Its immutable
                     // timeline may still be consumed at its real age while
                     // identity, player premise, geometry and cells stay valid.
-                    a.Aim=HostAttackAim.ActorPoint(a.Body,a.Target,session,prediction,ref a.AimTimeline,ref a.AimTerrain,capture,NpcSampleTick(a.Target),ref a.AimPlayer,ref a.AimPlayerTick,ref a.AimPlayerAnchor);a.HasAim=true;a.AimWeapon=a.Body.HeldItem;a.AimOrigin=HostAttackModels.LaunchOrigin(a.Body,a.Body.HeldItem);a.AimTarget=a.Target.Center+a.Target.netOffset;a.AimVelocity=a.Target.velocity;
+                    var controlled=ControlledShot(a,p.HeldItem);
+                    var point=HostAttackAim.ActorPoint(a.Body,a.Target,session,prediction,ref a.AimTimeline,ref a.AimTerrain,capture,NpcSampleTick(a.Target),ref a.AimPlayer,ref a.AimPlayerTick,ref a.AimPlayerAnchor,controlled,out HostAttackSolution result);
+                    // A controller's solve uses the exact live shot phase. It
+                    // may steer this action but cannot license a future hand.
+                    if(controlled==null && hand.Weapon!=null && hand.SameWeapon(p) && ReferenceEquals(hand.Target,a.Target))
+                    {
+                        RememberAttackProof(a,hand,result,a.AimTerrain);
+                        if(result.Reachability==HostAttackReachability.Blocked){p.controlUseItem=false;a.WasUsing=false;}
+                    }
+                    if(result.Reachability==HostAttackReachability.Reachable)a.Aim=point;
+                    a.HasAim=result.Reachability==HostAttackReachability.Reachable;
                 }
                 catch(CombatPredictionBudgetExceededException){}
             }
@@ -118,7 +239,9 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(a.Profile.PermanentlyDead || a.PermanentDeathPending)return;
             a.Behavior.ObserveCapabilities(a.Body);
-            if(a.Dirty)ValidateManualWeapon(a.Profile.Id);
+            var hand=a.Combat.Hand;
+            if(hand.Weapon!=null && DoesStaySummoned(hand.Weapon) && a.Body.ItemAnimationJustStarted && Main.GameUpdateCount>=a.Combat.NextSummon)
+                a.Combat.NextSummon=Main.GameUpdateCount+90;
             if(a.Body.dead && !a.Profile.Behavior.AutoRespawn){Publish(a);return;}
             // Native skip sets the timer to one. Do not reset the zero reached
             // by the next native UpdateDead, or a legally skipped death never ends.
@@ -126,7 +249,7 @@ namespace JueMingR.TerrariaHost.Companions
             if(a.Body.dead && a.Body.respawnTimer<=0)
             {
                 Spawn(a,PlayerSpawnContext.ReviveFromDeath);
-                a.DeathObserved=false;a.Behavior=new CompanionBehaviorHost();a.HasAim=a.WasUsing=false;
+                a.DeathObserved=false;
                 if(a.Connection!=null)using(CompanionHooks.Enter(a,a.Aim))NetMessage.SendData(12,-1,-1,null,a.Body.whoAmI,(byte)PlayerSpawnContext.ReviveFromDeath);
             }
             Publish(a);
@@ -142,10 +265,9 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if(!a.Body.dead || a.DeathObserved)return;a.DeathObserved=true;
             CancelItemGestureForActor(a);
-            a.Target=null;a.Body.controlUseItem=false;a.Body.channel=false;a.Status="等待复活";
+            SetAttackTarget(a,null);a.Combat.Reset();a.Behavior=new CompanionBehaviorHost();IdleAim(a);a.Body.controlUseItem=false;a.Status="等待复活";
             RetireProjectiles(a);
-            ValidateManualWeapon(a.Profile.Id);
-            a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);a.TeamSavePending=false;
+            CaptureActorState(a);a.TeamSavePending=false;
             long previous=a.Generation;profiles.Release(a.Profile,previous);long next;if(!profiles.TryReserve(a.Profile,out next))throw new InvalidOperationException("队友复活身份不可用。");a.Generation=next;
             // A legal death renews this same body's activation. Only its own
             // latest native team intent follows that transition, never a new

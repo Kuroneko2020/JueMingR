@@ -94,6 +94,8 @@ namespace NativeWorldTextProbe
                 GroundQueryWork(host,probe);
                 for(int x=80;x<125;x++)TileAt(x,73,TileID.Stone);
                 NativeLanding(host,actor,body,human);
+                NativeWallCrossing(host,actor,body,human);
+                NativeAttackChoice(host,actor,body,human);
                 Console.WriteLine("PASS companion navigation: native slope/halfbrick/platform contact, continuous uphill, cliff/drop, scratch/tile identity, bounded dependency cache and actual update landing-direction retirement. No historical exact terrain/Steam/FPS claim.");
             }
             finally
@@ -102,6 +104,28 @@ namespace NativeWorldTextProbe
                 body.position=originalPosition;body.velocity=originalVelocity;human.position=humanPosition;
                 for(int i=0;i<scratch.Length;i++)scratch[i].SetValue(null,scratchValues[i]);Call(host,"Recall",id);
             }
+        }
+
+        private static void NativeWallCrossing(object host,object actor,Player body,Player human)
+        {
+            for(int y=71;y<73;y++)TileAt(106,y,TileID.Stone);
+            try
+            {
+                body.position=new Vector2(106*16-body.width-1,73*16-body.height);
+                body.velocity=Vector2.Zero;body.releaseJump=false;
+                human.position=body.position+new Vector2(130,-46);
+                NativeStep(host,body);
+                Require(!body.controlJump && body.releaseJump,"real obstacle demand allows the initializing jump release");
+                bool rose=false;
+                for(int tick=0;tick<120 && body.position.X<107*16;tick++)
+                {
+                    NativeStep(host,body);
+                    rose|=body.velocity.Y<0 && body.Bottom.Y<73*16-4;
+                }
+                Require(rose && body.position.X>=107*16 && !(bool)Get(actor,"Faulted"),
+                    "a legal native vertical ascent can clip the initial wall face and still physically clear its far side: "+body.position+" "+body.velocity+" "+Get(actor,"Status"));
+            }
+            finally { for(int y=71;y<73;y++)Main.tile[106,y]=new Tile(); }
         }
         private static void GroundQueryWork(object host,Player probe)
         {
@@ -171,6 +195,11 @@ namespace NativeWorldTextProbe
             for(int tick=0;tick<8;tick++)NativeStep(host,body);
             Require(!(bool)Get(actor,"Faulted") && Support(body),"real native update settles on slope platform: "+body.position+" "+body.velocity+" "+Get(actor,"Status"));
             var start=body.position;human.position=body.position-new Vector2(0,80);bool airborne=false,landed=false;
+            // Model first-activation input without the old fixture's manual
+            // releaseJump=true. The destination remains above throughout.
+            body.releaseJump=false;
+            NativeStep(host,body);
+            Require(!body.controlJump && body.releaseJump,"native JumpMovement really consumes a neutral frame at first takeoff");
             for(int tick=0;tick<150;tick++)
             {
                 NativeStep(host,body);
@@ -179,10 +208,162 @@ namespace NativeWorldTextProbe
                 if(airborne && body.velocity.Y>=0 && Support(body)){landed=true;break;}
             }
             Require(airborne && landed,"actual follow input takes off and lands on slope platform");
+            // Set only the fixture's incoming pose. A millimetre of geometric
+            // support while falling does not supply native takeoff admission.
+            body.position-=new Vector2(0,.5f);body.velocity=new Vector2(0,.5f);body.releaseJump=false;
+            start=body.position;
+            NativeStep(host,body);
+            Require(!body.controlJump && body.releaseJump,"native update consumes release from a pre-landing support pose");
+            airborne=landed=false;
+            for(int tick=0;tick<150;tick++)
+            {
+                NativeStep(host,body);
+                airborne|=body.position.Y<start.Y-2 && body.velocity.Y<0;
+                if(airborne && body.velocity.Y>=0 && Support(body)){landed=true;break;}
+            }
+            Require(airborne && landed,"continuously elevated goal permits a second real takeoff and landing after pre-landing release");
             human.position=body.position-new Vector2(100,0);
             NativeStep(host,body);
             Require(body.controlLeft && !body.controlRight && !(bool)Get(actor,"Faulted"),"after genuine slope landing old jump direction retires and new owner direction enters Player.Update");
             var at=body.position;body.Update(body.whoAmI);Require(body.position==at,"same world-step duplicate native body update remains suppressed");
+        }
+
+        private static void NativeAttackChoice(object host,object actor,Player body,Player human)
+        {
+            var id=((CompanionProfile)Get(actor,"Profile")).Id;
+            var items=(Item[])body.inventory.Clone();
+            var wallTarget=Main.npc[7];var openTarget=Main.npc[8];
+            var itemRules=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionItemRules",true);
+            Func<int,bool> eligible=type=>(bool)itemRules.GetMethod("WeaponEligible",Flags).Invoke(null,new object[]{new Item(type)});
+            Require(eligible(ItemID.CoinGun) && eligible(5519) && eligible(ItemID.BlandWhip) && !eligible(ItemID.WoodenArrow) && !eligible(ItemID.CopperPickaxe),
+                "shared native eligibility distinguishes coin-ammo weapon, projectile axe and whip from ammunition and tools");
+            try
+            {
+                for(int x=80;x<148;x++)TileAt(x,73,TileID.Stone);
+                for(int y=62;y<73;y++)TileAt(104,y,TileID.Stone);
+                body.position=new Vector2(110*16,73*16-body.height);body.velocity=Vector2.Zero;
+                human.position=body.position-new Vector2(246,0);
+                body.inventory[40]=new Item(ItemID.WoodenSword);
+                body.inventory[41]=new Item(ItemID.WoodenBow);
+                body.inventory[42]=new Item(ItemID.Shuriken){stack=30};
+                body.inventory[54]=new Item(ItemID.WoodenArrow){stack=40};
+                InitializeTarget(wallTarget,7,body.Center+new Vector2(-155,-8));
+                InitializeTarget(openTarget,8,body.Center+new Vector2(265,-8));
+                // Zero preferred weapons naturally find a funded bow and a
+                // visible farther actor-centered target. Prove a real hit.
+                var zero=new CompanionBehavior{Follow=false,HealthRecoveryEnabled=false};
+                body.inventory[42]=new Item();
+                Call(host,"SetBehavior",id,zero);
+                for(int tick=0;tick<100 && openTarget.life==openTarget.lifeMax;tick++)NativeCombatStep(host,body);
+                Require(!(bool)Get(actor,"Faulted") && openTarget.life<openTarget.lifeMax && wallTarget.life==wallTarget.lifeMax && body.inventory[54].stack<40,
+                    "wall behind closer enemy falls back to a real native bow hit on the farther reachable enemy: "+Get(actor,"Status")+" selected="+body.selectedItem+" aim="+Get(actor,"Aim"));
+                var preferred=zero.Clone();
+                preferred.MainWeapons=new[]{new CompanionWeaponPreference(ItemID.WoodenSword,0,40),new CompanionWeaponPreference(ItemID.WoodenBow,0,41)};
+                Call(host,"SetBehavior",id,preferred);
+                body.inventory[42]=new Item(ItemID.Shuriken){stack=30};
+                body.inventory[54]=new Item();
+                for(int tick=0;tick<100 && body.inventory[42].stack==30;tick++)NativeCombatStep(host,body);
+                Require(body.selectedItem==42 && body.inventory[42].stack<30,
+                    "unfunded bow and out-of-range other preference permit actual use of a third own-bag weapon");
+                Require(((CompanionProfile)Get(actor,"Profile")).Behavior.MainWeapons.Length==2,"fallback never becomes a new preference");
+                body.inventory[54]=new Item(ItemID.WoodenArrow){stack=40};
+                for(int tick=0;tick<100 && body.inventory[54].stack==40;tick++)NativeCombatStep(host,body);
+                Require(body.selectedItem==41 && body.inventory[54].stack<40,"replenished bow again starts a native attack at its preferred range");
+                var combat=Get(actor,"Combat");
+                int sweeps=(int)Get(combat,"CandidateSweeps"),probes=(int)Get(combat,"PairProbes");
+                for(int tick=0;tick<12;tick++)
+                { NativeCombatStep(host,body);Require(body.selectedItem==41,"small unchanged distance keeps the same selected weapon"); }
+                int newSweeps=(int)Get(combat,"CandidateSweeps")-sweeps,newProbes=(int)Get(combat,"PairProbes")-probes;
+                Require(newSweeps>0 && newSweeps<=12 && newProbes<=newSweeps,"native attack workload admits at most one sweep and one pair probe per world step");
+                wallTarget.active=false;
+                openTarget.Center=body.Center+new Vector2(46,-4);
+                for(int tick=0;tick<100 && (body.selectedItem!=40 || body.itemAnimation<=0);tick++)NativeCombatStep(host,body);
+                Require(body.selectedItem==40 && body.itemAnimation>0,"equally preferred sword becomes the actual native hand at close range");
+                var melee=preferred.Clone();melee.MainWeapons=new[]{new CompanionWeaponPreference(ItemID.WoodenSword,0,40)};
+                body.inventory[41]=new Item();body.inventory[42]=new Item();body.inventory[54]=new Item();
+                Call(host,"SetBehavior",id,melee);
+                foreach(var shot in Main.projectile)if(shot.active && shot.owner==body.whoAmI)shot.active=false;
+                Array.Clear(openTarget.immune,0,openTarget.immune.Length);
+                openTarget.Center=body.Center+new Vector2(155,0);
+                float initial=body.position.X;int health=openTarget.life;
+                for(int tick=0;tick<120 && openTarget.life==health;tick++)NativeCombatStep(host,body);
+                Require(body.position.X>initial+36 && openTarget.life<health,"ordinary usable melee plan closes real distance and strikes using the native body");
+                NativeManaStandstill(host,body,human,openTarget,id,zero);
+                NativeSummonHands(host,body,openTarget,id,zero);
+                Console.WriteLine("PASS companion combat selection: blocked near receiver, actual far arrow hit, own ammo/fallback/restock, preference stability and native melee approach.");
+            }
+            finally
+            {
+                wallTarget.active=openTarget.active=false;
+                Array.Copy(items,body.inventory,items.Length);
+                foreach(var shot in Main.projectile)if(shot.active && shot.owner==body.whoAmI)shot.active=false;
+            }
+        }
+
+        private static void NativeManaStandstill(object host,Player body,Player human,NPC target,Guid id,CompanionBehavior preferences)
+        {
+            var spell=new Item(ItemID.DiamondStaff);
+            Require(spell.mana>0,"the locked test spell actually has a mana cost");
+            body.inventory[40]=spell;
+            body.statMana=0;body.manaRegenDelay=300;
+            target.Center=body.Center+new Vector2(230,-8);
+            human.position=body.position;
+            var select=preferences.Clone();select.Follow=true;select.ManaRecoveryEnabled=false;
+            select.MainWeapons=new[]{new CompanionWeaponPreference(spell.type,spell.prefix,40)};
+            Call(host,"SetBehavior",id,select);
+            bool waiting=false;
+            for(int tick=0;tick<80;tick++)
+            {
+                NativeCombatStep(host,body);
+                Require(!body.controlLeft && !body.controlRight,"a visible target with no mana does not request an unnecessary combat strafe");
+                if((string)Call(host,"Status",id)=="等待魔力恢复"){waiting=true;break;}
+            }
+            Require(waiting && !body.controlUseItem && body.statMana<spell.mana,"resource-only denial reports mana and emits no native cast");
+        }
+
+        private static void NativeSummonHands(object host,Player body,NPC target,Guid id,CompanionBehavior preferences)
+        {
+            body.inventory[40]=new Item(ItemID.SlimeStaff);
+            body.inventory[41]=new Item(ItemID.QueenSpiderStaff);
+            body.statMana=body.statManaMax=body.statManaMax2=200;
+            target.Center=body.Center+new Vector2(135,-8);
+            var select=preferences.Clone();
+            select.MainWeapons=new[]{new CompanionWeaponPreference(ItemID.SlimeStaff,0,40)};
+            Call(host,"SetBehavior",id,select);
+            Func<int,int> count=type=>Main.projectile.Count(p=>p.active && p.owner==body.whoAmI && p.type==type);
+            for(int tick=0;tick<120 && count(ProjectileID.BabySlime)==0;tick++)NativeCombatStep(host,body);
+            Require(count(ProjectileID.BabySlime)==1 && body.FindBuffIndex(BuffID.BabySlime)>=0,
+                "native .8 Slime Staff fills an available slot and applies its native minion buff: count="+count(ProjectileID.BabySlime)+
+                " held="+body.HeldItem.type+" slots="+body.slotsMinions+"/"+body.maxMinions+" mana="+body.statMana+" status="+Call(host,"Status",id));
+            select.MainWeapons=new[]{new CompanionWeaponPreference(ItemID.QueenSpiderStaff,0,41)};
+            Call(host,"SetBehavior",id,select);
+            for(int tick=0;tick<180 && count(ProjectileID.SpiderHiver)==0;tick++)NativeCombatStep(host,body);
+            var sentry=Main.projectile.FirstOrDefault(p=>p.active && p.owner==body.whoAmI && p.type==ProjectileID.SpiderHiver);
+            Require(sentry!=null,"real native sentry staff places its own turret: held="+body.HeldItem.type+" slots="+body.maxTurrets+" status="+Call(host,"Status",id));
+            for(int tick=0;tick<105;tick++)NativeCombatStep(host,body);
+            Require(count(ProjectileID.BabySlime)==1 && count(ProjectileID.SpiderHiver)==1 && sentry.active,
+                "full minion and sentry slots keep existing native instances without automatic replacement");
+        }
+
+        private static void InitializeTarget(NPC target,int slot,Vector2 center)
+        {
+            target.SetDefaults(NPCID.Zombie);target.whoAmI=slot;target.active=true;target.Center=center;
+            target.velocity=Vector2.Zero;target.noGravity=target.noTileCollide=true;target.life=target.lifeMax=100000;
+            target.aiStyle=-1;target.knockBackResist=0;
+        }
+
+        private static void NativeCombatStep(object host,Player body)
+        {
+            NativeStep(host,body);
+            for(int i=7;i<=8;i++)if(Main.npc[i].active)Main.npc[i].UpdateNPC(i);
+            int previous=Main.ProjectileUpdateLoopIndex;
+            try
+            {
+                for(int i=0;i<Main.projectile.Length;i++)
+                    if(Main.projectile[i].active && Main.projectile[i].owner==body.whoAmI)
+                    { Main.ProjectileUpdateLoopIndex=i;Main.projectile[i].Update(i); }
+            }
+            finally { Main.ProjectileUpdateLoopIndex=previous; }
         }
         private static void NativeStep(object host,Player body)
         { NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",(ulong)Main.GameUpdateCount);body.Update(body.whoAmI); }

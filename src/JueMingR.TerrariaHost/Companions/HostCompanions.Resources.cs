@@ -103,7 +103,6 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool ValidateItemGesture()
         {
             if (Thread.CurrentThread.ManagedThreadId != itemThread) return false;
-            FlushItemSync();
             var draft = itemDraft;
             if (draft == null) return true;
             Actor actor;
@@ -165,6 +164,7 @@ namespace JueMingR.TerrariaHost.Companions
         private bool ItemSlotBlocked(bool isOwner, Player body, CompanionInventoryArea area, int slot)
         {
             if (body == null || CompanionItemRules.Blocked(body, area, slot, isOwner ? OwnerOperations : null)) return true;
+            if (SupplySlotBlocked(body, CompanionResources.Items(body, area), slot)) return true;
             if (!isOwner && area == CompanionInventoryArea.Inventory && CompanionProjectileMaterial(body, body.inventory[slot])) return true;
             return isOwner && OwnerItems != null && OwnerItems.CompanionSlotProtected(body, CompanionResources.Items(body, area), slot);
         }
@@ -207,7 +207,7 @@ namespace JueMingR.TerrariaHost.Companions
                 // captures/sends; it never executes the accepted transfer twice.
                 actor.Dirty = true;
                 pendingItemCaptures.Add(actor.Profile.Id);
-                try { ValidateManualWeapon(actor.Profile.Id); actor.Profile = profiles.CaptureAndSave(actor.Profile.Id, actor.Body, actor.Generation); pendingItemCaptures.Remove(actor.Profile.Id); }
+                try { CaptureActorState(actor); pendingItemCaptures.Remove(actor.Profile.Id); }
                 catch (Exception) { failure = "物品已移动，人物保存失败，请重试保存。"; }
             }
             FlushItemSync(true);
@@ -222,7 +222,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             Actor actor;
             if (!pendingItemCaptures.Contains(id) || !actors.TryGetValue(id, out actor) || !profiles.OwnsActivation(id, actor.Generation)) return false;
-            try { ValidateManualWeapon(id); actor.Profile = profiles.CaptureAndSave(id, actor.Body, actor.Generation); pendingItemCaptures.Remove(id); return Result(true, "正在重试保存。"); }
+            try { CaptureActorState(actor); pendingItemCaptures.Remove(id); return Result(true, "正在重试保存。"); }
             catch (Exception) { return Result(false, "人物保存失败，请重试保存。"); }
         }
 
@@ -266,12 +266,12 @@ namespace JueMingR.TerrariaHost.Companions
         // Preserve existing internal command consumers; the actual window now
         // owns only the gesture chain. Legacy calls also notify/publish changes.
         internal bool Transfer(Guid id, bool fromOwner, CompanionInventoryArea area, int slot, bool wholeStack)
-        { return Resource(id, a => CompanionResources.Transfer(owner, a.Body, fromOwner, area, slot, wholeStack, OwnerOperations)); }
+        { return Resource(id, a => CompanionResources.Transfer(owner, a.Body, fromOwner, area, slot, wholeStack, OwnerOperations, SupplySlotBlocked)); }
         internal bool Equip(Guid id, bool fromOwner, int inventorySlot)
-        { return Resource(id, a => CompanionResources.Equip(owner, a.Body, fromOwner, inventorySlot, OwnerOperations)); }
+        { return Resource(id, a => CompanionResources.Equip(owner, a.Body, fromOwner, inventorySlot, OwnerOperations, SupplySlotBlocked)); }
         internal bool Unequip(Guid id, int armorSlot) { return Unequip(id, CompanionInventoryArea.Armor, armorSlot); }
         internal bool Unequip(Guid id, CompanionInventoryArea area, int slot)
-        { return Resource(id, a => CompanionResources.Unequip(owner, a.Body, area, slot, OwnerOperations)); }
+        { return Resource(id, a => CompanionResources.Unequip(owner, a.Body, area, slot, OwnerOperations, SupplySlotBlocked)); }
         private bool Resource(Guid id, Func<Actor, CompanionResourceResult> command)
         {
             Actor actor;

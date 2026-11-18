@@ -13,6 +13,18 @@ namespace JueMingR.TerrariaHost.Companions
     // convenient movement entry points use LocalPlayer and mouseItem internally.
     internal static class CompanionItemRules
     {
+        // Configuration and runtime both use this stable item classification.
+        // Resource checks and native start admission belong to the actual hand.
+        internal static bool WeaponEligible(Item item)
+        {
+            if (item == null || item.IsAir || item.useStyle <= 0 || item.useTime <= 0 ||
+                item.ammo != 0 || item.fishingPole != 0 || item.pick != 0 || item.hammer != 0 ||
+                item.createTile >= 0 || item.createWall >= 0) return false;
+            return (item.damage > 0 || item.type == ItemID.CoinGun) &&
+                (item.axe == 0 || item.type == 5519 && item.shoot == 1052) &&
+                (!item.noMelee || item.shoot > 0);
+        }
+
         internal static bool ValidSlot(Player body, CompanionInventoryArea area, int slot)
         {
             if (body == null || slot < 0) return false;

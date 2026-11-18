@@ -418,6 +418,9 @@ leaf	CompanionItemsCpu	companions-items
 leaf	CompanionNavigationCpu	companions-navigation
 leaf	CompanionSessionCpu	companions-session
 leaf	CompanionNetworkCpu	companions-network
+leaf	CompanionPasswordCpu	companions-password
+leaf	CompanionSuppliesCpu	companions-supplies
+leaf	CompanionObservationCombatCpu	companions-observation-combat
 leaf	CompanionShowcaseVisual	companions-showcase
 leaf	CompanionResourceBarsVisual	companions-resource-bars
 leaf	CompanionCreationInputVisual	companions-creation-input

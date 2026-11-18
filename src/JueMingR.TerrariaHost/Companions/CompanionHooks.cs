@@ -18,6 +18,8 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool installed;
         [ThreadStatic] internal static Player Spawning;
         [ThreadStatic] private static Scope current;
+        internal static HostCompanions.Actor CurrentActor => current?.Actor;
+        internal static HostCompanions.Actor SupplyActor(Player player) => host?.Owned(player);
         private static readonly MethodInfo enemyDamage=AccessTools.Method(typeof(Projectile),"Damage_EVP");
         private static readonly MethodInfo canDamage=AccessTools.Method(typeof(Projectile),"Damage_CanDealDamage");
         private static readonly MethodInfo hurtTile=AccessTools.Method(typeof(Player),"GetHurtTile"),touchDamage=AccessTools.Method(typeof(Player),"ApplyTouchDamage"),shimmer=AccessTools.Method(typeof(Player),"TryToShimmerUnstuck");
@@ -73,6 +75,7 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player),"ApplyDamageToNPC",nameof(DirectPredictionBefore),finalizer:nameof(PredictionFinal),args:new[]{typeof(NPC),typeof(int),typeof(float),typeof(int),typeof(bool),typeof(PlayerNPCHitSource)});
             F5.CompanionCreationHooks.Install(Harmony);
             F5.CompanionPetPreviewHooks.Install(Harmony);
+            CompanionSupplyHooks.Install(value);
             installed=true;
         }
         private static void Patch(Type t,string method,string prefix=null,string postfix=null,string finalizer=null,string transpiler=null,Type[] args=null)
@@ -81,7 +84,7 @@ namespace JueMingR.TerrariaHost.Companions
             Harmony.Patch(m,Hook(prefix),Hook(postfix),Hook(transpiler),Hook(finalizer));
         }
         private static HarmonyMethod Hook(string name){return name==null?null:new HarmonyMethod(typeof(CompanionHooks),name);}
-        internal static void Uninstall(){Harmony.UnpatchAll(Harmony.Id);installed=false;host=null;}
+        internal static void Uninstall(){CompanionSupplyHooks.Uninstall();Harmony.UnpatchAll(Harmony.Id);installed=false;host=null;}
         internal static void ProjectileBorn(Player player,Projectile projectile){host?.ProjectileBorn(player,projectile);}
         internal static Scope Enter(HostCompanions.Actor actor,Vector2 point,bool inventory=false){return new Scope(actor,point,inventory,false);}
         // NewNPCInstanceInSlot must still allocate the decoded instance and
@@ -277,10 +280,27 @@ namespace JueMingR.TerrariaHost.Companions
             if(Main.netMode!=1 || current==null || current.Actor.Connection==null)return true;
             int length=data[0]|data[1]<<8;var copy=new byte[length];Buffer.BlockCopy(data,0,copy,0,length);current.PacketAccepted=current.Actor.Connection.TrySend(copy);return false;
         }
-        private static bool Packet(MessageBuffer __instance,int start,int length,ref int messageType)
-        {if(Main.netMode!=1 || host==null)return true;if(host.Decoding==null && length>0){if(__instance.readBuffer[start]==3)host.HumanAccepted();if(__instance.readBuffer[start]==154 && host.PrimaryPingReceived()){messageType=154;return false;}}if(host.AcceptPrimary(__instance.readBuffer,start,length))return true;messageType=__instance.readBuffer[start];if(Netplay.Connection!=null)Netplay.Connection.TimeOutTimer=0;return false;}
-        private static void PacketAfter(MessageBuffer __instance,int start,int length,int messageType,bool __runOriginal)
-        {if(__runOriginal && Main.netMode==1 && host!=null && !host.ReadingObservation && host.Decoding==null && (messageType==23 || messageType==28 || messageType==54))host.PrimaryNpcApplied(__instance.readBuffer,start,length);}
+        private static bool Packet(MessageBuffer __instance,int start,int length,ref int messageType,out bool __state)
+        {
+            __state = false;
+            if (Main.netMode != 1 || host == null) return true;
+            if (host.Decoding == null && length > 0)
+            {
+                byte kind = __instance.readBuffer[start];
+                __state = kind == 3 && __instance.whoAmI == 256 && Netplay.Connection?.State == 1;
+                if (kind == 154 && host.PrimaryPingReceived()) { messageType = 154; return false; }
+            }
+            if (host.AcceptPrimary(__instance.readBuffer,start,length)) return true;
+            messageType = __instance.readBuffer[start];
+            if (Netplay.Connection != null) Netplay.Connection.TimeOutTimer = 0;
+            return false;
+        }
+        private static void PacketAfter(MessageBuffer __instance,int start,int length,int messageType,bool __runOriginal,bool __state)
+        {
+            if (!__runOriginal || Main.netMode != 1 || host == null || host.ReadingObservation || host.Decoding != null) return;
+            if (messageType == 3 && __state) host.HumanAccepted();
+            if (messageType == 23 || messageType == 28 || messageType == 54) host.PrimaryNpcApplied(__instance.readBuffer,start,length);
+        }
         private static bool ObservationPending(ref int damage,ref bool phaseChange)
         {if(host==null || !host.ReadingObservation)return true;damage=0;phaseChange=false;return false;}
         private static bool ObservationVisual(){return host==null || !host.ReadingObservation;}

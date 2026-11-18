@@ -34,7 +34,8 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
         internal static CompanionResourceResult Transfer(Player owner, Player companion, bool fromOwner,
-            CompanionInventoryArea area, int slot, bool wholeStack, ItemOperationOwnership ownerOperations)
+            CompanionInventoryArea area, int slot, bool wholeStack, ItemOperationOwnership ownerOperations,
+            Func<Player, Item[], int, bool> supplyBlocked = null)
         {
             if (!Usable(owner, companion)) return Failed("队友当前不能交接物品。");
             Player source = fromOwner ? owner : companion, destination = fromOwner ? companion : owner;
@@ -43,24 +44,24 @@ namespace JueMingR.TerrariaHost.Companions
             if (!ValidSlot(area, inventory, slot)) return Failed("物品槽位已失效。");
             Item item = inventory[slot];
             if (item == null || item.IsAir || item.stack <= 0) return Failed("该槽位没有物品。");
-            if (Blocked(source, area, slot, fromOwner ? ownerOperations : null)) return Failed("该物品正在使用，请先结束相关操作。");
+            if (Blocked(source, area, slot, fromOwner ? ownerOperations : null, supplyBlocked)) return Failed("该物品正在使用，请先结束相关操作。");
             int requested = wholeStack ? item.stack : 1;
-            int moved = MoveToInventory(item, destination, requested, fromOwner ? null : ownerOperations);
+            int moved = MoveToInventory(item, destination, requested, fromOwner ? null : ownerOperations, supplyBlocked);
             if (moved == 0) return Failed("接收方背包没有可用空间，物品未移动。");
             return new CompanionResourceResult(moved, moved == requested ? "已转移 " + moved + " 个。" : "背包空间有限，已转移 " + moved + " 个。");
         }
         internal static CompanionResourceResult Equip(Player owner, Player companion, bool fromOwner,
-            int inventorySlot, ItemOperationOwnership ownerOperations)
+            int inventorySlot, ItemOperationOwnership ownerOperations, Func<Player, Item[], int, bool> supplyBlocked = null)
         {
             if (!Usable(owner, companion)) return Failed("队友当前不能调整装备。");
             Player source = fromOwner ? owner : companion;
             if (inventorySlot < 0 || inventorySlot >= 50) return Failed("请选择背包中的装备。");
             var item = source.inventory[inventorySlot];
             if (item == null || item.IsAir) return Failed("该槽位没有物品。");
-            if (Blocked(source, CompanionInventoryArea.Inventory, inventorySlot, fromOwner ? ownerOperations : null)) return Failed("该物品正在使用，请先结束相关操作。");
+            if (Blocked(source, CompanionInventoryArea.Inventory, inventorySlot, fromOwner ? ownerOperations : null, supplyBlocked)) return Failed("该物品正在使用，请先结束相关操作。");
             CompanionInventoryArea area; int target = EquipmentSlot(companion, item, out area);
             if (target < 0) return Failed("此物品当前没有可用装备槽位。");
-            if (Blocked(companion, area, target, null)) return Failed("当前装备参与正在进行的用物，请稍后再试。");
+            if (Blocked(companion, area, target, null, supplyBlocked)) return Failed("当前装备参与正在进行的用物，请稍后再试。");
             var equipment = Items(companion, area);
             Item previous = equipment[target];
             if (!previous.IsAir && item.stack > 1) return Failed("请先卸下该槽位的装备，再放入这一组物品。");
@@ -76,7 +77,7 @@ namespace JueMingR.TerrariaHost.Companions
             ItemOperationOwnership ownerOperations)
         { return Unequip(owner, companion, CompanionInventoryArea.Armor, armorSlot, ownerOperations); }
         internal static CompanionResourceResult Unequip(Player owner, Player companion, CompanionInventoryArea area, int slot,
-            ItemOperationOwnership ownerOperations)
+            ItemOperationOwnership ownerOperations, Func<Player, Item[], int, bool> supplyBlocked = null)
         {
             if (!Usable(owner, companion) || (area != CompanionInventoryArea.Armor && area != CompanionInventoryArea.Dye &&
                 area != CompanionInventoryArea.Misc && area != CompanionInventoryArea.MiscDye)) return Failed("装备槽位不可用。");
@@ -87,21 +88,23 @@ namespace JueMingR.TerrariaHost.Companions
             if (!ValidSlot(area, equipment, slot)) return Failed("装备槽位不可用。");
             var item = equipment[slot];
             if (item == null || item.IsAir) return Failed("该槽位没有装备。");
-            if (Blocked(companion, area, slot, null)) return Failed("当前装备参与正在进行的用物，请稍后再试。");
-            int moved = MoveToInventory(item, companion, item.stack, null);
+            if (Blocked(companion, area, slot, null, supplyBlocked)) return Failed("当前装备参与正在进行的用物，请稍后再试。");
+            int moved = MoveToInventory(item, companion, item.stack, null, supplyBlocked);
             return moved == 0 ? Failed("队友背包没有可用空间，装备未卸下。") : new CompanionResourceResult(moved, "已卸下到队友背包。");
         }
         private static bool Usable(Player owner, Player companion)
         { return owner != null && companion != null && !ReferenceEquals(owner, companion) && owner.active && companion.active && !owner.dead && !companion.dead; }
         private static bool ValidSlot(CompanionInventoryArea area, Item[] inventory, int slot)
         { return slot >= 0 && slot < inventory.Length && (area != CompanionInventoryArea.Inventory || slot < 58); }
-        private static bool Blocked(Player body, CompanionInventoryArea area, int slot, ItemOperationOwnership operations)
+        private static bool Blocked(Player body, CompanionInventoryArea area, int slot, ItemOperationOwnership operations,
+            Func<Player, Item[], int, bool> supplyBlocked)
         {
-            return CompanionItemRules.Blocked(body, area, slot, operations);
+            return CompanionItemRules.Blocked(body, area, slot, operations) || supplyBlocked?.Invoke(body, Items(body, area), slot) == true;
         }
         private sealed class Placement
         { internal int Slot; internal Item NewItem; }
-        private static int MoveToInventory(Item source, Player destination, int requested, ItemOperationOwnership operations)
+        private static int MoveToInventory(Item source, Player destination, int requested, ItemOperationOwnership operations,
+            Func<Player, Item[], int, bool> supplyBlocked)
         {
             int remaining = Math.Min(source.stack, requested);
             var placements = new List<Placement>();
@@ -111,7 +114,7 @@ namespace JueMingR.TerrariaHost.Companions
                 for (int slot = 0; slot < 58 && remaining > 0; slot++)
                 {
                     Item target = destination.inventory[slot];
-                    if (ReferenceEquals(source, target) || Blocked(destination, CompanionInventoryArea.Inventory, slot, operations)) continue;
+                    if (ReferenceEquals(source, target) || Blocked(destination, CompanionInventoryArea.Inventory, slot, operations, supplyBlocked)) continue;
                     if (slot >= 50 && slot < 54 && !source.IsACoin || slot >= 54 && !source.FitsAmmoSlot()) continue;
                     if (pass == 0 && (target.IsAir || !Item.CanStack(source, target))) continue;
                     if (pass == 1 && !target.IsAir) continue;

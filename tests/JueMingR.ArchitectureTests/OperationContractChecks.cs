@@ -125,6 +125,8 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Companions.CompanionInventoryArea",
                 "JueMingR.Platform.Companions.CompanionBehavior",
                 "JueMingR.Platform.Companions.CompanionProfile",
+                "JueMingR.Platform.Companions.CompanionWeaponPreference",
+                "JueMingR.Platform.Companions.CompanionHealthRecoveryMode",
                 "JueMingR.Platform.Companions.CompanionOwnerArchive",
                 "JueMingR.Platform.Companions.ICompanionArchive",
                 "JueMingR.Platform.Companions.CompanionMovementObservation",

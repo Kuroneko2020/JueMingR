@@ -9,7 +9,6 @@ using JueMingR.TerrariaHost.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
-using Terraria.Net;
 
 namespace JueMingR.TerrariaHost.Companions
 {
@@ -18,7 +17,23 @@ namespace JueMingR.TerrariaHost.Companions
         internal sealed class Actor
         {
             internal CompanionProfile Profile;internal Player Body,Previous;
+            private CompanionProfile preferencesSource;
+            private CompanionBehavior preferences;
+            // The mutable edit copy belongs to CompanionProfile.Behavior. This
+            // game-thread snapshot is only for readers and lasts one revision.
+            internal CompanionBehavior Preferences
+            {
+                get
+                {
+                    if (!ReferenceEquals(preferencesSource, Profile))
+                    { preferences = Profile.Behavior; preferencesSource = Profile; }
+                    return preferences;
+                }
+            }
+            internal readonly CompanionCombatState Combat = new CompanionCombatState();
+            internal readonly CompanionSupplyState Supplies = new CompanionSupplyState();
             internal CompanionConnection Connection;internal long Generation;
+            internal PasswordAttempt PasswordAttempt;
             internal bool Ready,SpawnSent,Closing,CloseCaptured;internal string Status="加入中",TerminalFailure;
             internal uint LastUpdate=UInt32.MaxValue,NextSave;internal Vector2 Aim;
             internal NPC Target;internal int TargetGeneration;
@@ -26,7 +41,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal JueMingR.Platform.Combat.PredictionPlayerMotion? AimPlayer;internal uint AimPlayerTick,AimPlayerAnchor;
             internal long LastAimAttempt;
             internal CompanionBehaviorHost Behavior=new CompanionBehaviorHost();
-            internal bool WaitingPassword,HasAim;internal Item AimWeapon;internal Vector2 AimOrigin,AimTarget,AimVelocity;
+            internal bool HasAim;
             internal bool Dirty,Faulted,WasUsing;
             internal bool DeathObserved,PermanentDeathPending;
             internal bool TeamPending,TeamSavePending;
@@ -63,11 +78,9 @@ namespace JueMingR.TerrariaHost.Companions
         private long aimAttempt;
         private uint aimSelectionStep=UInt32.MaxValue;
         private Actor aimSelected;
-        private string password="";private bool failed;private Guid savingCreation;
-        private string candidatePassword,acceptedPassword;private object passwordConnection;
+        private bool failed;private Guid savingCreation;
         internal string Feedback {get;private set;}="";
         internal IReadOnlyList<CompanionProfile> Profiles {get{return profiles.Profiles;}}
-        internal string ConnectionPassword {get{return password;}set{password=value??"";foreach(var a in actors.Values)if(a.WaitingPassword && a.Connection!=null && password.Length!=0){a.Connection.Send(CompanionConnection.Packet(38,w=>w.Write(password)));a.WaitingPassword=false;a.Status="正在验证密码";}}}
         public bool Enabled {get{return !failed;}}
         internal HostCompanions(string gameDirectory)
         {
@@ -124,8 +137,7 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 else if(Main.netMode==1)
                 {
-                    var endpoint=Netplay.Connection?.Socket?.GetRemoteAddress() as TcpAddress;
-                    a.Connection=endpoint==null?steam.Open():new CompanionConnection(endpoint.Address.ToString(),endpoint.Port);a.Connection.Start();a.Connection.Send(CompanionConnection.Packet(1,w=>w.Write("Terraria326")));
+                    StartConnectionAttempt(a, null);
                 }
                 else throw new InvalidOperationException("当前运行模式不支持队友。");
                 if(a.Ready)return Result(true,"");
@@ -154,7 +166,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 if(a.PermanentDeathPending){a.Profile=profiles.MarkPermanentDeath(a.Profile.Id,a.Generation);a.PermanentDeathPending=false;}
                 RetireProjectiles(a);profiles.EndPlay(a.Body);
-                a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);a.TeamSavePending=false;ItemCaptureSucceeded(a.Profile.Id);a.CloseCaptured=true;
+                CaptureActorState(a);a.TeamSavePending=false;ItemCaptureSucceeded(a.Profile.Id);a.CloseCaptured=true;
                 a.Status=a.TerminalFailure??"正在保存并收回";
                 // Success here means the latest snapshot was accepted for
                 // closing/retry, not that the original connection succeeded.
@@ -181,7 +193,7 @@ namespace JueMingR.TerrariaHost.Companions
             a.Minions.Clear();
             a.PersonalItems.Clear();
             a.InitialNpc.Clear();a.InitialNpcBuffs.Clear();a.InitialNpcTicks.Clear();
-            a.Connection?.Dispose();a.Connection=null;a.Ready=false;var p=a.Body;
+            a.Connection?.Dispose();a.Connection=null;a.PasswordAttempt=null;a.Ready=false;var p=a.Body;
             if(p.whoAmI>=0 && p.whoAmI<Main.maxPlayers && ReferenceEquals(Main.player[p.whoAmI],p))
             {p.active=false;if(a.Previous!=null){a.Previous.active=false;Main.player[p.whoAmI]=a.Previous;}}
             bodies.Remove(p);Actor current;if(slots.TryGetValue(p.whoAmI,out current) && ReferenceEquals(current,a))slots.Remove(p.whoAmI);
@@ -204,28 +216,23 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool RetrySave(Guid id){try{Actor a;if(actors.TryGetValue(id,out a) && a.Closing && !a.CloseCaptured)return CloseActor(a,a.TerminalFailure);if(HasPendingItemCapture(id))return RetryItemCapture(id);if(a!=null && a.TeamSavePending)return SaveTeam(a);profiles.RetrySave(id);return Result(true,"正在重试保存。");}catch(Exception e){return Result(false,e.Message);}}
         internal bool SetBehavior(Guid id,CompanionBehavior behavior)
         {
-            var p=Find(id);if(p==null)return false;try{var revised=profiles.SetBehavior(id,behavior);Actor a;if(actors.TryGetValue(id,out a))a.Profile=revised;return Result(true,"行为设置已更新。");}catch(Exception e){return Result(false,e.Message);}
+            if (System.Threading.Thread.CurrentThread.ManagedThreadId != itemThread || Find(id) == null) return false;
+            try
+            {
+                if (actors.TryGetValue(id, out var a) && !a.Closing)
+                    CaptureActorState(a, behavior);
+                else if (a != null) return Result(false, "等待队友收回后再修改设置。");
+                else profiles.SetBehavior(id, behavior);
+                return Result(true, "行为设置已更新。");
+            }
+            catch (Exception e) { return Result(false, e.Message); }
         }
-        internal bool SelectWeapon(Guid id,int slot)
-        {
-            var p=GetBody(id);if(!CanTransfer(id) || slot<0 || slot>=50)return Result(false,"当前不能选择武器。");
-            if(p.itemAnimation>0 || p.channel){p.controlUseItem=false;p.channel=false;return Result(false,"请等待本次用物结束。");}
-            var a=actors[id];var behavior=a.Profile.Behavior;var item=p.inventory[slot];
-            behavior.ManualWeaponSlot=item.IsAir?-1:slot;behavior.ManualWeaponType=item.IsAir?0:item.type;behavior.ManualWeaponPrefix=item.IsAir?0:item.prefix;
-            try {a.Profile=profiles.CapturePreferencesAndSave(id,p,a.Generation,behavior);p.selectedItemState.Select(slot);return Result(true,"已选择使用槽位。");}
-            catch(Exception e){return Result(false,e.Message);}
-        }
-        public void OnSessionStarted(){world=Main.ActiveWorldFileData;owner=Main.ActivePlayerFileData?.Player;session++;password=ReferenceEquals(passwordConnection,Netplay.Connection)?acceptedPassword??"":"";}
-        internal void HumanPassword(byte[] frame)
-        {
-            using(var s=new System.IO.MemoryStream(frame,3,frame.Length-3,false))using(var r=new System.IO.BinaryReader(s)){candidatePassword=r.ReadString();passwordConnection=Netplay.Connection;acceptedPassword=null;}
-        }
-        internal void HumanAccepted(){if(ReferenceEquals(passwordConnection,Netplay.Connection)){acceptedPassword=candidatePassword;candidatePassword=null;}}
+        public void OnSessionStarted(){world=Main.ActiveWorldFileData;owner=Main.ActivePlayerFileData?.Player;session++;BeginPasswordSession();}
         public void OnSessionEnded()
         {
             F5.CompanionCreationSession.DisposeFor(this);
             CancelItemGesture();
-            foreach(var id in actors.Keys.ToArray())if(!actors[id].Closing)Recall(id);owner=null;world=null;password="";prediction.EndWorld();CompanionThreatField.Reset();steam.Dispose();ClearWorldSources();
+            foreach(var id in actors.Keys.ToArray())if(!actors[id].Closing)Recall(id);owner=null;world=null;EndPasswordSession();prediction.EndWorld();CompanionThreatField.Reset();steam.Dispose();ClearWorldSources();
         }
         public void Update(ulong updateTick)
         {
@@ -236,6 +243,7 @@ namespace JueMingR.TerrariaHost.Companions
             foreach(var closing in actors.Values.Where(a=>a.Closing && a.CloseCaptured).ToArray())if(profiles.IsSaved(closing.Profile.Id))Release(closing,true);if(!String.IsNullOrEmpty(profiles.Error))Feedback=profiles.Error;if(failed)return;
             steam.Pump();
             if(Main.gameMenu || owner==null || !ReferenceEquals(world,Main.ActiveWorldFileData) || !ReferenceEquals(owner,Main.LocalPlayer))return;
+            FlushItemSync();
             FlushSourceRequests();RequestSharedTerrain();
             bool cloud;var path=Onboarding.CharacterIdentity.Path(out cloud);if(path!=null)profiles.SetOwner(Onboarding.CharacterIdentity.Key(path,cloud));
             if(actors.Count==0)return;
@@ -254,10 +262,11 @@ namespace JueMingR.TerrariaHost.Companions
                 try
                 {
                     if(a.Closing)continue;
-                    if(a.Connection!=null){PumpConnection(a);if(a.Connection.Finished){CloseActor(a,a.Connection.Error??"连接已结束");continue;}}
+                    if(a.Connection!=null){PumpConnection(a);if(a.Connection?.Finished==true){CloseActor(a,a.Connection.Error??"连接已结束");continue;}}
+                    UpdatePasswordAttempt(a);
                     PublishTeam(a);
                     if(a.TeamSavePending && Main.GameUpdateCount>=a.NextSave)SaveTeam(a);
-                    if(a.Ready && a.Dirty && !a.TeamSavePending && !profiles.SaveFailed(a.Profile.Id) && Main.GameUpdateCount>=a.NextSave){ValidateManualWeapon(a.Profile.Id);a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);ItemCaptureSucceeded(a.Profile.Id);a.Dirty=false;a.NextSave=Main.GameUpdateCount+300;}
+                    if(a.Ready && a.Dirty && !a.TeamSavePending && !profiles.SaveFailed(a.Profile.Id) && Main.GameUpdateCount>=a.NextSave){CaptureActorState(a);ItemCaptureSucceeded(a.Profile.Id);a.Dirty=false;a.NextSave=Main.GameUpdateCount+300;}
                 }
                 catch(Exception e){CloseActor(a,e.Message);}
             }

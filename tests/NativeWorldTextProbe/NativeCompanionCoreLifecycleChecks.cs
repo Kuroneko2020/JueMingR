@@ -116,7 +116,7 @@ namespace NativeWorldTextProbe
                     Require(first.HeldItem.autoReuse,"ordinary automatic fixture weapon supplies held native fire without random ammo conservation");
                     Set(a,"Behavior",Activator.CreateInstance(brainA.GetType(),true));Set(b,"Behavior",Activator.CreateInstance(brainB.GetType(),true));
                     Set(host,"planningTurn",0);Set(host,"planningStep",UInt32.MaxValue);
-                    Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=true,AttackEnabled=firing,PreferOwner=false});
+                    Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=true,AttackEnabled=firing});
                     Call(host,"SetBehavior",((CompanionProfile)Get(b,"Profile")).Id,new CompanionBehavior{Follow=true,AttackEnabled=false});
                     // This native armor survives the automatic weapon's first
                     // real hit. A dead ordinary zombie correctly stops fire.

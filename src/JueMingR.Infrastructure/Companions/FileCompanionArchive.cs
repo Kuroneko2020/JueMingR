@@ -104,11 +104,21 @@ namespace JueMingR.Infrastructure.Companions
                 if (previous.Revision == profile.Revision)
                 {
                     byte[] candidate = Encode(profile);
-                    if (Convert.ToBase64String(candidate) == Convert.ToBase64String(document.Contents)) return;
+                    // Old encodings of the same revision remain idempotent.
+                    // A migration is written only with a new resource revision.
+                    if (EqualBytes(candidate, Encode(previous))) return;
                     throw new InvalidDataException("同一队友修订包含不同资源。");
                 }
             }
             Write(document, Encode(profile));
+        }
+
+        private static bool EqualBytes(byte[] first, byte[] second)
+        {
+            if (first.Length != second.Length) return false;
+            for (int i = 0; i < first.Length; i++)
+                if (first[i] != second[i]) return false;
+            return true;
         }
 
         private Document Open(string path)
@@ -138,13 +148,22 @@ namespace JueMingR.Infrastructure.Companions
             using (var stream = new MemoryStream())
             using (var writer = new BinaryWriter(stream, new UTF8Encoding(false, true)))
             {
-                writer.Write("JueMingR.Companion"); writer.Write(3);
+                writer.Write("JueMingR.Companion"); writer.Write(4);
                 writer.Write(profile.Id.ToByteArray()); writer.Write(profile.OwnerId.ToByteArray());
                 writer.Write(profile.Name); writer.Write(profile.Revision); writer.Write(profile.DataEpoch);
                 var behavior = profile.Behavior;
-                writer.Write(behavior.Follow); writer.Write(behavior.AttackEnabled); writer.Write(behavior.SelfDefense); writer.Write(behavior.PreferOwner);
-                writer.Write(profile.PermanentlyDead);
-                writer.Write(behavior.AutoRespawn); writer.Write(behavior.ManualWeaponSlot); writer.Write(behavior.ManualWeaponType); writer.Write((byte)behavior.ManualWeaponPrefix);
+                writer.Write(behavior.Follow); writer.Write(behavior.AttackEnabled); writer.Write(behavior.AutoRespawn); writer.Write(profile.PermanentlyDead);
+                writer.Write((byte)behavior.MainWeapons.Length);
+                foreach (var weapon in behavior.MainWeapons)
+                {
+                    writer.Write(weapon.Type); writer.Write((byte)weapon.Prefix); writer.Write((byte)weapon.SlotHint);
+                }
+                writer.Write(behavior.HealthRecoveryEnabled); writer.Write((byte)behavior.HealthRecoveryMode);
+                writer.Write(behavior.ManaRecoveryEnabled); writer.Write(behavior.AllowNurse); writer.Write(behavior.ConsumablesEnabled);
+                WriteTypes(writer, behavior.ExcludedHealingTypes);
+                WriteTypes(writer, behavior.ExcludedManaTypes);
+                WriteTypes(writer, behavior.AllowedGrowthTypes);
+                WriteTypes(writer, behavior.AllowedBuffTypes);
                 byte[] data = profile.NativeData; writer.Write(data.Length); writer.Write(data); writer.Flush();
                 using (var sha = SHA256.Create()) writer.Write(sha.ComputeHash(stream.ToArray()));
                 writer.Flush();
@@ -166,22 +185,73 @@ namespace JueMingR.Infrastructure.Companions
             {
                 if (reader.ReadString() != "JueMingR.Companion") throw new InvalidDataException("不支持的队友档案格式。");
                 int version = reader.ReadInt32();
-                if (version != 1 && version != 2 && version != 3) throw new InvalidDataException("不支持的队友档案格式。");
+                if (version < 1 || version > 4) throw new InvalidDataException("不支持的队友档案格式。");
                 Guid id = new Guid(reader.ReadBytes(16)), owner = new Guid(reader.ReadBytes(16));
                 string name = reader.ReadString(); long revision = reader.ReadInt64(), epoch = reader.ReadInt64();
-                var behavior = new CompanionBehavior { Follow = ReadBoolean(reader), AttackEnabled = ReadBoolean(reader), SelfDefense = ReadBoolean(reader), PreferOwner = ReadBoolean(reader) };
-                // v1 had no terminal lifecycle marker. Its existing characters remain
-                // live; v2 keeps native bytes and terminal identity in one commit.
-                bool permanentlyDead = version >= 2 && ReadBoolean(reader);
-                // v1/v2 keep native bytes/ownership and default to automatic
-                // respawn with no manual weapon. One v3 revision stores both
-                // preferences atomically with the native character and terminal flag.
-                if (version >= 3) { behavior.AutoRespawn = ReadBoolean(reader); behavior.ManualWeaponSlot = reader.ReadInt32(); behavior.ManualWeaponType = reader.ReadInt32(); behavior.ManualWeaponPrefix = reader.ReadByte(); }
+                var behavior = new CompanionBehavior { Follow = ReadBoolean(reader), AttackEnabled = ReadBoolean(reader) };
+                bool permanentlyDead = version == 4 ? ReadCurrent(reader, behavior) : ReadLegacy(reader, version, behavior);
                 int length = reader.ReadInt32();
                 if (length <= 0 || length > MaximumBytes || length != stream.Length - stream.Position)
                     throw new InvalidDataException("队友人物数据长度不符。");
                 return new CompanionProfile(id, owner, name, revision, epoch, behavior, reader.ReadBytes(length), permanentlyDead);
             }
+        }
+
+        private static bool ReadLegacy(BinaryReader reader, int version, CompanionBehavior behavior)
+        {
+            // Consume retired fields in their original positions. The default
+            // constructor supplies all settings absent from older versions.
+            ReadBoolean(reader); // SelfDefense
+            ReadBoolean(reader); // PreferOwner
+            bool permanentlyDead = version >= 2 && ReadBoolean(reader);
+            if (version < 3) return permanentlyDead;
+            behavior.AutoRespawn = ReadBoolean(reader);
+            int slot = reader.ReadInt32(), type = reader.ReadInt32(), prefix = reader.ReadByte();
+            if (slot == -1 && (type != 0 || prefix != 0))
+                throw new InvalidDataException("无效的旧队友武器设置。");
+            if (slot != -1) behavior.MainWeapons = new[] { new CompanionWeaponPreference(type, prefix, slot) };
+            return permanentlyDead;
+        }
+
+        private static bool ReadCurrent(BinaryReader reader, CompanionBehavior behavior)
+        {
+            behavior.AutoRespawn = ReadBoolean(reader);
+            bool permanentlyDead = ReadBoolean(reader);
+            int count = reader.ReadByte();
+            if (count > CompanionBehavior.MaxMainWeapons) throw new InvalidDataException("无效的队友主要武器数量。");
+            if (count != 0)
+            {
+                var weapons = new CompanionWeaponPreference[count];
+                for (int i = 0; i < weapons.Length; i++)
+                    weapons[i] = new CompanionWeaponPreference(reader.ReadInt32(), reader.ReadByte(), reader.ReadByte());
+                behavior.MainWeapons = weapons;
+            }
+            behavior.HealthRecoveryEnabled = ReadBoolean(reader);
+            behavior.HealthRecoveryMode = (CompanionHealthRecoveryMode)reader.ReadByte();
+            behavior.ManaRecoveryEnabled = ReadBoolean(reader);
+            behavior.AllowNurse = ReadBoolean(reader);
+            behavior.ConsumablesEnabled = ReadBoolean(reader);
+            behavior.ExcludedHealingTypes = ReadTypes(reader);
+            behavior.ExcludedManaTypes = ReadTypes(reader);
+            behavior.AllowedGrowthTypes = ReadTypes(reader);
+            behavior.AllowedBuffTypes = ReadTypes(reader);
+            return permanentlyDead;
+        }
+
+        private static int[] ReadTypes(BinaryReader reader)
+        {
+            int count = reader.ReadUInt16();
+            if (count > CompanionBehavior.MaxSupplyTypes) throw new InvalidDataException("无效的队友补给列表。");
+            if (count == 0) return Array.Empty<int>();
+            var types = new int[count];
+            for (int i = 0; i < types.Length; i++) types[i] = reader.ReadInt32();
+            return types;
+        }
+
+        private static void WriteTypes(BinaryWriter writer, int[] types)
+        {
+            writer.Write((ushort)types.Length);
+            foreach (int type in types) writer.Write(type);
         }
         private static bool ReadBoolean(BinaryReader reader)
         { byte value = reader.ReadByte(); if (value > 1) throw new InvalidDataException("无效的队友设置。"); return value == 1; }

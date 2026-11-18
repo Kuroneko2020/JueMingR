@@ -18,6 +18,7 @@ namespace JueMingR.Features.Companions
             internal string SaveError;
         }
         private readonly ICompanionArchive archive;
+        private readonly Func<CompanionProfile, CompanionProfile> validateLoaded;
         private readonly Dictionary<Guid, Entry> entries = new Dictionary<Guid, Entry>();
         private readonly Dictionary<string, Guid> owners = new Dictionary<string, Guid>(StringComparer.Ordinal);
         private readonly Dictionary<Guid, string> ownerErrors = new Dictionary<Guid, string>();
@@ -30,8 +31,11 @@ namespace JueMingR.Features.Companions
         private string ownerKey;
         private long nextActivation;
         private IReadOnlyList<CompanionProfile> profiles = new CompanionProfile[0];
-        public CompanionProfileManager(ICompanionArchive archive)
-        { this.archive = archive ?? throw new ArgumentNullException(nameof(archive)); }
+        public CompanionProfileManager(ICompanionArchive archive, Func<CompanionProfile, CompanionProfile> validateLoaded = null)
+        {
+            this.archive = archive ?? throw new ArgumentNullException(nameof(archive));
+            this.validateLoaded = validateLoaded;
+        }
         public Guid OwnerId { get; private set; }
         public bool Ready { get { return OwnerId != Guid.Empty; } }
         public string Error { get; private set; }
@@ -92,7 +96,8 @@ namespace JueMingR.Features.Companions
             foreach (var profile in loaded.Profiles)
                 // The game-thread owner may already contain a later unsaved
                 // resource revision. Loading an alias must never replace it.
-                if (!entries.ContainsKey(profile.Id)) entries.Add(profile.Id, new Entry { Profile = profile, Published = true, SavedRevision = profile.Revision });
+                if (!entries.ContainsKey(profile.Id))
+                    entries.Add(profile.Id, new Entry { Profile = validateLoaded?.Invoke(profile) ?? profile, Published = true, SavedRevision = profile.Revision });
         }
         private void RefreshError()
         {

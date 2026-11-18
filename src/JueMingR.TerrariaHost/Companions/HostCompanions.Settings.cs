@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using JueMingR.Platform.Companions;
 using Terraria;
 
@@ -11,10 +12,14 @@ namespace JueMingR.TerrariaHost.Companions
         internal string RespawnStatus(Guid id)
         {
             Actor a;
-            if(!actors.TryGetValue(id,out a) || !a.Ready || a.Closing || a.Profile.PermanentlyDead || a.PermanentDeathPending || !a.Body.dead)return "";
-            if(!a.Profile.Behavior.AutoRespawn)return "自动复活已关闭";
+            if (Find(id)?.PermanentlyDead == true || actors.TryGetValue(id, out a) && a.PermanentDeathPending)
+                return "已永久死亡";
+            if (!actors.TryGetValue(id, out a) || !a.Ready || a.Closing || !a.Body.dead) return "";
             int seconds=(Math.Max(0,a.Body.respawnTimer)+59)/60;
-            return seconds==0?"等待复活":"复活："+seconds+"秒";
+            bool automatic = a.Preferences.AutoRespawn;
+            if (seconds == 0) return automatic ? "等待复活" : "自动复活已关闭，等待手动开启";
+            string remaining = "复活倒计时 " + seconds + " 秒";
+            return automatic ? remaining : remaining + " · 自动复活已关闭";
         }
         internal bool SetTeam(Guid id,int team)
         {
@@ -38,7 +43,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             try
             {
-                a.Profile=profiles.CaptureAndSave(a.Profile.Id,a.Body,a.Generation);
+                CaptureActorState(a);
                 a.TeamSavePending=false;a.Dirty=false;ItemCaptureSucceeded(a.Profile.Id);return true;
             }
             catch(Exception e)
@@ -64,27 +69,90 @@ namespace JueMingR.TerrariaHost.Companions
             }
             catch(Exception e){Feedback="队伍已更改，等待同步："+e.Message;}
         }
-        private static bool ManualWeaponValid(Player body,CompanionBehavior behavior)
+        internal int ActiveWeaponSlot(Guid id)
         {
-            int slot=behavior.ManualWeaponSlot;
-            if(slot<0 || slot>=50 || slot>=body.inventory.Length)return false;
-            var item=body.inventory[slot];return item!=null && !item.IsAir && item.type==behavior.ManualWeaponType && item.prefix==behavior.ManualWeaponPrefix;
+            return actors.TryGetValue(id, out var a) && a.Ready && !a.Closing && !a.Body.dead ? a.Combat.ActiveSlot : -1;
         }
-        internal void ValidateManualWeapon(Guid id)
+
+        internal bool WeaponSelectionCurrent(Guid id, long worldSession, long generation, long epoch, Player body)
         {
-            Actor a;if(!actors.TryGetValue(id,out a) || a.Closing)return;
-            var behavior=a.Profile.Behavior;if(behavior.ManualWeaponSlot<0 || ManualWeaponValid(a.Body,behavior))return;
-            behavior.ManualWeaponSlot=-1;behavior.ManualWeaponType=behavior.ManualWeaponPrefix=0;
-            a.Profile=profiles.SetBehavior(id,behavior);a.Dirty=true;
+            return worldSession == session && actors.TryGetValue(id, out var actor) && ItemActorCurrent(id, actor) &&
+                generation == actor.Generation && epoch == actor.Profile.DataEpoch && ReferenceEquals(body, actor.Body);
         }
-        private void RestoreManualWeapon(Actor a)
+
+        internal bool TrySetMainWeapons(Guid id, long worldSession, long generation, long epoch,
+            Player body, CompanionWeaponPreference[] chosen)
         {
-            var behavior=a.Profile.Behavior;
-            if(behavior.ManualWeaponSlot<0)return;
-            if(ManualWeaponValid(a.Body,behavior))a.Body.selectedItemState.Select(behavior.ManualWeaponSlot);
-            else ValidateManualWeapon(a.Profile.Id);
-            // Selection is applied only after native join/revival or an explicit
-            // user choice. No per-frame Select disturbs use/channel animations.
+            if (!ItemOwnerCurrent() || Main.mouseItem?.IsAir == false || itemDraft != null ||
+                !WeaponSelectionCurrent(id, worldSession, generation, epoch, body))
+                return Result(false, "队友已变化，请重新选择主要武器。");
+            if (chosen == null || chosen.Length > CompanionBehavior.MaxMainWeapons ||
+                chosen.Length == 2 && chosen[0].SlotHint == chosen[1].SlotHint)
+                return Result(false, "最多选择两把主要武器。");
+            foreach (var weapon in chosen)
+                if (!WeaponMatches(body, weapon, weapon.SlotHint))
+                    return Result(false, "所选物品已变化，请重新选择。");
+            var actor = actors[id];
+            var preferences = actor.Profile.Behavior;
+            preferences.MainWeapons = chosen;
+            try
+            {
+                // Saving preference has no input effect. Only combat can pick
+                // an actual slot when the native hand is free.
+                CaptureActorState(actor, preferences);
+                return Result(true, chosen.Length == 0 ? "未指定主要武器，自动选择背包武器。" : "主要武器已更新。");
+            }
+            catch (Exception exception) { return Result(false, exception.Message); }
+        }
+
+        private static bool WeaponMatches(Player body, CompanionWeaponPreference weapon, int slot)
+        {
+            if (body == null || slot < 0 || slot >= CompanionBehavior.MainInventorySlots || slot >= body.inventory.Length) return false;
+            var item = body.inventory[slot];
+            return item != null && item.type == weapon.Type && item.prefix == weapon.Prefix && CompanionItemRules.WeaponEligible(item);
+        }
+
+        internal static void MapWeaponSlots(Player body, CompanionWeaponPreference[] weapons, int[] slots)
+        {
+            slots[0] = slots[1] = -1;
+            for (int i = 0; i < weapons.Length; i++)
+                if (WeaponMatches(body, weapons[i], weapons[i].SlotHint)) slots[i] = weapons[i].SlotHint;
+            // Preserve exact hints first, then deterministically match moved
+            // copies without claiming a slot already owned by another preference.
+            for (int i = 0; i < weapons.Length; i++)
+            {
+                if (slots[i] >= 0) continue;
+                for (int slot = 0; slot < CompanionBehavior.MainInventorySlots; slot++)
+                {
+                    if (slot == slots[1 - i] || !WeaponMatches(body, weapons[i], slot)) continue;
+                    slots[i] = slot;
+                    break;
+                }
+            }
+        }
+
+        private readonly int[] captureWeaponSlots = new int[CompanionBehavior.MaxMainWeapons];
+        private void CaptureActorState(Actor actor, CompanionBehavior preferences = null)
+        {
+            var weapons = actor.Preferences.MainWeapons;
+            if (preferences == null && weapons.Length != 0)
+            {
+                MapWeaponSlots(actor.Body, weapons, captureWeaponSlots);
+                bool moved = false;
+                for (int i = 0; i < weapons.Length; i++) moved |= weapons[i].SlotHint != captureWeaponSlots[i];
+                if (moved)
+                {
+                    var current = new List<CompanionWeaponPreference>(weapons.Length);
+                    for (int i = 0; i < weapons.Length; i++)
+                        if (captureWeaponSlots[i] >= 0)
+                            current.Add(new CompanionWeaponPreference(weapons[i].Type, weapons[i].Prefix, captureWeaponSlots[i]));
+                    preferences = actor.Profile.Behavior;
+                    preferences.MainWeapons = current.ToArray();
+                }
+            }
+            // Native inventory and moves/removals of weapon hints are captured
+            // in one revision. A failed write retries that same latest body.
+            actor.Profile = profiles.CapturePreferencesAndSave(actor.Profile.Id, actor.Body, actor.Generation, preferences);
         }
     }
 }

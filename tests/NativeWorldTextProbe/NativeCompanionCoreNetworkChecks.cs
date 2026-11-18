@@ -25,6 +25,12 @@ namespace NativeWorldTextProbe
         private const BindingFlags Flags=BindingFlags.Instance|BindingFlags.Static|BindingFlags.Public|BindingFlags.NonPublic;
         private static List<byte[]> primary;
         private static string specialistLeaf;
+        internal static void RunObservationCombat(object host, Player first, Guid other)
+        {
+            specialistLeaf = "npc observation combat consumers";
+            try { Run(host, first, other); }
+            finally { specialistLeaf = null; }
+        }
         internal static void RunSpecialist(object host,Player first,Guid other,string leaf)
         {
             if(leaf!="movement planning independent of attack" && leaf!="held player continuation without another NPC23" && leaf!="primary one-shot projectile update" && leaf!="npc observation physical properties" && leaf!="npc observation shared state" && leaf!="npc observation slot isolation" && leaf!="npc observation interest reentry" && leaf!="npc observation source ambiguity" && leaf!="npc observation publication ambiguity" && leaf!="npc observation current geometry" && leaf!="npc observation club contact" && leaf!="npc observation linked health" && leaf!="npc observation battle state" && leaf!="npc observation shape phases" && leaf!="npc observation support flags" && leaf!="npc observation zero root" && leaf!="npc observation wall root" && leaf!="npc observation mimic local phase" && leaf!="npc observation battle publication" && leaf!="npc observation armed history" && leaf!="npc observation armed fresh contact" && leaf!="npc observation conditional phase" && leaf!="npc observation explosion window" && leaf!="npc observation hit generation" && leaf!="npc observation first interest" && leaf!="npc observation statue client" && leaf!="npc observation snail client")throw new ArgumentException("Unknown companion specialist leaf");
@@ -89,6 +95,7 @@ namespace NativeWorldTextProbe
             {
                 NativeCompanionCoreLifecycleChecks.PrepareHuman();
                 Main.netMode=1;NetMessage.buffer[256]=new MessageBuffer{whoAmI=256};
+                Call(host,"BeginPasswordSession");
                 Main.sectionManager=new WorldSections((Main.maxTilesX+199)/200,(Main.maxTilesY+149)/150);Main.sectionManager.SetSectionLoaded(0,0);
                 foreach(var n in Main.npc)n.active=false;
                 leaf("native buff luck successor stream",()=>
@@ -103,6 +110,11 @@ namespace NativeWorldTextProbe
                 });
                 leaf("initial baseline and terminal failures",()=>BaselineAndFailures(host,listener));
                 leaf("npc observation physical properties",()=>{NativeCompanionNpcPhysicsChecks.Run(host,first,second,a,b,slot=>Apply(Native(23,slot)));HeldContinuation(host,first,second,a,b,true);});
+                if (specialistLeaf == "npc observation combat consumers") leaf(specialistLeaf, () =>
+                {
+                    NativeCompanionNpcPhysicsChecks.Run(host, first, second, a, b, slot => Apply(Native(23, slot)));
+                    NativeCompanionNpcStateChecks.Geometry(host, first, second, a, b, slot => Apply(Native(23, slot)));
+                });
                 leaf("npc observation shared state",()=>NativeCompanionNpcStateChecks.Run(host,first,second,a,b,slot=>Apply(Native(23,slot)),slot=>{Queue(ca,Native(23,slot));Call(host,"PumpConnection",a);}));
                 leaf("npc observation slot isolation",()=>NativeCompanionNpcStateChecks.Run(host,first,second,a,b,slot=>Apply(Native(23,slot)),slot=>{Queue(ca,Native(23,slot));Call(host,"PumpConnection",a);},true));
                 leaf("npc observation interest reentry",()=>InterestReentry(host,listener,first,second));
@@ -172,7 +184,7 @@ namespace NativeWorldTextProbe
                 var actor=Call(host,"OwnedSlot",3);var role=(Player)Get(actor,"Body");var flow=Get(actor,"Connection");
                 Require(observed[17].generation==humanNpc.generation && (bool)Get(pendingLease,"NpcBaseline") && ReferenceEquals(Get(pendingLease,"Source"),actor) && Call(host,"Observer",observed[17].Center)==null,"first successful buffered baseline is usable even when human stays closer than the hysteresis margin");
                 Require(observed[16].generation==nextGeneration.generation && observed[16].FindBuffIndex(BuffID.Poisoned)<0,"same-stream old23/old54/new23 cannot attach the old generation's buffs to the new native identity");
-                Call(host,"SetBehavior",profile.Id,new CompanionBehavior{Follow=false,AttackEnabled=true,PreferOwner=false});NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",0UL);role.Update(role.whoAmI);
+                Call(host,"SetBehavior",profile.Id,new CompanionBehavior{Follow=false,AttackEnabled=true});NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",0UL);role.Update(role.whoAmI);
                 Require(ReferenceEquals(GetOptional(actor,"Target"),observed[17]) && ReferenceEquals(Main.npc[17],humanNpc),"initial interleaved NPC and buff baseline participates in actual Player.Update target selection without replacing human table");
                 var originalDrop=Main.item[398];Main.item[398]=new WorldItem(new Item(ItemID.Wood)){whoAmI=398,stack=17,position=role.position,playerIndexTheItemIsReservedFor=role.whoAmI};
                 try{Call(role,"GrabItems",role.whoAmI);Require(Wood(role)==17,"live joined actor obtains latest resource via native pickup before terminal failure");}
@@ -199,9 +211,9 @@ namespace NativeWorldTextProbe
                 Require((bool)Call(host,"Join",profile.Id),"failed role can begin a fresh activation");NativeQuickItemChecks.Until(()=>listener.Pending());using(var remote=listener.AcceptTcpClient())
                 {
                     var stream=remote.GetStream();Write(stream,Frame(3,w=>w.Write((byte)3)));PumpUntil(host,()=>Call(host,"OwnedSlot",3)!=null);
-                    if(wrongWorld)Write(stream,World(Guid.NewGuid()));else Write(stream,Frame(2,w=>NetworkText.FromLiteral("fixture password rejected").Serialize(w)));
+                    if(wrongWorld)Write(stream,World(Guid.NewGuid()));else Write(stream,Frame(2,w=>NetworkText.FromLiteral("fixture unrelated refusal").Serialize(w)));
                     PumpUntil(host,()=>!((IDictionary)Get(host,"actors")).Contains(profile.Id));string status=(string)Call(host,"Status",profile.Id);
-                    Require(status.Contains(wrongWorld?"世界与当前世界不一致":"fixture password rejected") && Call(host,"OwnedSlot",3)==null,"failure reason persists after socket/save/slot/activation release: "+status);
+                    Require(status.Contains(wrongWorld?"世界与当前世界不一致":"fixture unrelated refusal") && Call(host,"OwnedSlot",3)==null,"failure reason persists after socket/save/slot/activation release: "+status);
                     Require(remote.Client.Poll(100000,SelectMode.SelectRead),"terminal flow closes instead of infinite reconnect");
                 }
             }
@@ -244,7 +256,7 @@ namespace NativeWorldTextProbe
         {
             first.position=new Vector2(800,900);second.position=new Vector2(1200,900);Main.LocalPlayer.position=new Vector2(1000,900);
             foreach(var p in new[]{first,second}){p.inventory[0].SetDefaults(ItemID.FlintlockPistol);p.inventory[54].SetDefaults(ItemID.MusketBall);p.inventory[54].stack=100;p.selectedItemState.Select(0);p.itemAnimation=p.itemTime=0;Require(!p.HeldItem.channel && !p.HeldItem.autoReuse,"native fixed firearm supplies real semi-auto release edges");}
-            foreach(var actor in new[]{a,b})Call(host,"SetBehavior",((CompanionProfile)Get(actor,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=true,PreferOwner=false});
+            foreach(var actor in new[]{a,b})Call(host,"SetBehavior",((CompanionProfile)Get(actor,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=true});
             var n=Main.npc[18];n.SetDefaults(NPCID.DemonEye);n.active=true;n.position=first.position+new Vector2(120,-40);n.velocity=new Vector2(3,0);n.target=Main.myPlayer;n.noGravity=n.noTileCollide=true;n.life=n.lifeMax=10000;
             var m=Main.npc[19];m.SetDefaults(NPCID.DemonEye);m.active=true;m.position=second.position+new Vector2(120,-40);m.velocity=new Vector2(3,0);m.target=Main.myPlayer;m.noGravity=m.noTileCollide=true;m.life=m.lifeMax=10000;
             var existing=Main.projectile.Where(p=>p.active).Select(p=>(int)p.key).ToArray();
@@ -337,7 +349,7 @@ namespace NativeWorldTextProbe
                     foreach(var p in bodies)p.velocity=Vector2.Zero;
                     first.inventory[0]=new Item(ItemID.VenusMagnum);first.inventory[54]=new Item(ItemID.MusketBall){stack=100};first.selectedItemState.Select(0);first.itemAnimation=first.itemTime=first.reuseDelay=0;first.releaseUseItem=true;
                     Set(a,"Behavior",Activator.CreateInstance(brainA.GetType(),true));Set(b,"Behavior",Activator.CreateInstance(brainB.GetType(),true));
-                    Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=true,PreferOwner=false});
+                    Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=true});
                     Call(host,"SetBehavior",((CompanionProfile)Get(b,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=false});
                     NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",0UL);foreach(var p in bodies)p.Update(p.whoAmI);
                     var controlled=laterSlot?second:human;Console.WriteLine("HELD PREMISE slot="+controlled.whoAmI+" pos="+controlled.position+" velocity="+controlled.velocity+" solid="+Collision.SolidCollision(controlled.position,controlled.width,controlled.height)+" bounds="+Main.leftWorld+","+Main.rightWorld);Require(!Collision.SolidCollision(controlled.position,controlled.width,controlled.height),"ordinary held player has an actual clear body after native world-border clamp");var npc=(NPC)AccessTools.Method(typeof(NPC),"NewNPCInstanceInSlot").Invoke(null,new object[]{21,(byte)(laterSlot?11:10)});npc.SetDefaults(floating?NPCID.DemonEye:NPCID.Zombie);npc.active=true;npc.position=new Vector2(1110,floating?878:960-npc.height);npc.velocity=floating?new Vector2(4*(2-npc.scale),1.5f*(2-npc.scale)):new Vector2(2-npc.scale,0);if(floating){npc.UpdateNPC(21);Require(npc.noGravity,"real original AI_002 prepares the flying source before23");}else npc.TargetClosest();Require(npc.target==controlled.whoAmI,"native TargetClosest actually chooses the intended earlier/later player before its real23 baseline");

@@ -12,6 +12,7 @@ using JueMingR.TerrariaHost.Onboarding;
 using Terraria;
 using Terraria.GameContent;
 using Terraria.GameContent.Creative;
+using Terraria.ID;
 using Terraria.IO;
 
 namespace JueMingR.TerrariaHost.Companions
@@ -33,7 +34,23 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly CompanionProfileManager manager;
 
         internal CompanionProfiles(ICompanionArchive archive)
-        { manager = new CompanionProfileManager(archive); migrationTarget = this; }
+        { manager = new CompanionProfileManager(archive, NormalizeLoadedPreferences); migrationTarget = this; }
+
+        private static CompanionProfile NormalizeLoadedPreferences(CompanionProfile profile)
+        {
+            var preferences = profile.Behavior;
+            if (preferences.MainWeapons.Length == 0) return profile;
+            var eligible = new List<CompanionWeaponPreference>(preferences.MainWeapons.Length);
+            foreach (var saved in preferences.MainWeapons)
+                if (saved.Type < ItemID.Count && CompanionItemRules.WeaponEligible(new Item(saved.Type))) eligible.Add(saved);
+            if (eligible.Count == preferences.MainWeapons.Length) return profile;
+            // Classify v3's former unrestricted selection using native item
+            // definitions on the game thread. Keep the original character bytes
+            // and revision, and write v4 only at its next accepted save.
+            preferences.MainWeapons = eligible.ToArray();
+            return new CompanionProfile(profile.Id, profile.OwnerId, profile.Name, profile.Revision,
+                profile.DataEpoch, preferences, profile.NativeData, profile.PermanentlyDead);
+        }
         internal IReadOnlyList<CompanionProfile> Profiles { get { return manager.Profiles; } }
         internal Guid OwnerId { get { return manager.OwnerId; } }
         internal bool Ready { get { return manager.Ready && installed; } }

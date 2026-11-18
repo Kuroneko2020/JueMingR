@@ -18,7 +18,7 @@ function Get-WorkloadNativeContentFiles {
         $files+=@('PixelShader.xnb','Images/Heart.xnb','Images/Heart2.xnb','Images/Mana.xnb')
         $files+=@(0,3507,3509,3506 | ForEach-Object {'Images/Item_'+$_+'.xnb'})
         $files+='Images/Item_271.xnb'
-        if($Scope -ceq 'CompanionConfigVisual'){$files+='Images/Item_1553.xnb'}
+        if($Scope -ceq 'CompanionConfigVisual'){$files+=@(2,39,1553,3508 | ForEach-Object {'Images/Item_'+$_+'.xnb'})}
         if($Scope -ceq 'CompanionVisual'){$files+=@('Images/Item_90.xnb','Images/Item_1007.xnb','Images/Armor_Head_2.xnb')}
         $files+=@('Images/Item_603.xnb','Images/Item_2420.xnb','Images/Projectile_111.xnb','Images/Projectile_380.xnb')
         $files+=@('Images/Extra_54.xnb','Fonts/Death_Text.xnb','Images/ColorBar.xnb','Images/ColorBlip.xnb','Images/ColorSlider.xnb','Images/UI/Slider_Highlight.xnb')

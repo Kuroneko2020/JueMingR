@@ -251,7 +251,11 @@ namespace JueMingR.TerrariaHost.Companions
                     if(holding && tick<jumpHold)velocity.Y=-jumpSpeed;else velocity.Y=Math.Min(body.maxFallSpeed,velocity.Y+Math.Max(.05f,body.gravity));
                     bool falling=velocity.Y>0;Step step;
                     if(!Move(body,position,velocity,!body.controlDown && !body.stairFall,true,out step,jumpReads))return false; // unknown is never a stable negative cache
-                    if(step.Wall){cached=true;cachedResult=false;return false;}
+                    // Native horizontal clipping against the face of a step
+                    // can coexist with upward motion along it. Continue that
+                    // ascent from the clipped pose; descending into a wall
+                    // still cannot prove a usable landing on the far side.
+                    if(step.Wall && !(velocity.Y<0 && step.Velocity.Y<0)){cached=true;cachedResult=false;return false;}
                     if(velocity.Y<0 && step.Velocity.Y>=0)holding=false; // native head contact retires the remaining hold
                     position=step.Position;velocity=step.Velocity;
                     if(falling && step.Ground)

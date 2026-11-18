@@ -49,15 +49,17 @@ namespace NativeWorldTextProbe
             Require((bool)Call(host,"Create","另一位队友"),"object switching has a second actual owned identity");var other=(Guid)Get(host,"LastCreatedId");
             NativeQuickItemChecks.Until(()=>{Call(host,"Update",(ulong)Main.GameUpdateCount);return (bool)Call(archive,"IsSaved",other);});
             Require((bool)Call(host,"Join",id),"configuration status sample joins through actual Host: "+Get(host,"Feedback"));
-            var body=(Player)Call(host,"GetBody",id);body.inventory[0].SetDefaults(ItemID.SDMG);body.selectedItemState.Select(0);
+            var body=(Player)Call(host,"GetBody",id);
+            body.inventory[10].SetDefaults(ItemID.SDMG);body.inventory[29].SetDefaults(ItemID.WoodenBow);
+            body.inventory[48].SetDefaults(ItemID.CopperBroadsword);body.inventory[49].SetDefaults(ItemID.DirtBlock);
             foreach(var npc in Main.npc)npc.active=false;
             var text=Get(window,"textInput");var imeField=text.GetType().GetField("ime",BindingFlags.Instance|BindingFlags.NonPublic);var originalIme=imeField.GetValue(text);
-            var originalPassword=(string)Get(host,"ConnectionPassword");var owner=Main.LocalPlayer;string ownerName=owner.name;
+            var owner=Main.LocalPlayer;string ownerName=owner.name;
             var matrix=Matrix.Identity;var screen=new Vector2(1280,800);var neutral=new Keys[0];bool projected=false;
             Action prepare=()=>Call(window,"Prepare",matrix,screen);
             Action<Vector2,bool,Keys[],int> frame=(point,left,keys,wheel)=>{
                 if(!projected)NativeToolsUiChecks.UiFrame(context,point*matrix.M11,left,keys,wheel);
-                else {NativeToolsUiChecks.Mouse(point,left);Call(window,"Process",true,new KeyboardState(keys),point,matrix,screen,true,wheel);}
+                else {NativeToolsUiChecks.Mouse(point,left);Call(window,"BeforeInput",true);Call(window,"Process",true,new KeyboardState(keys),point,matrix,screen,true,wheel);}
             };
             Action rest=()=>frame(Vector2.Zero,false,neutral,0);
             Action<string> click=prefix=>{
@@ -74,6 +76,14 @@ namespace NativeWorldTextProbe
                     frame(NativeToolsUiChecks.Point(Get(window,"configurationViewport")),false,neutral,-120);
                 }
             };
+            Action<string> scrollInventoryTo=prefix=>{
+                int budget=30;
+                while(!Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith(prefix,StringComparison.Ordinal)))
+                {
+                    Require(budget-->0&&(int)Get(window,"bodyOffset")<(int)Get(window,"bodyMaximum"),"requested item slot is scroll reachable: "+prefix);
+                    frame(NativeToolsUiChecks.Point(Get(window,"companionView")),false,neutral,-120);
+                }
+            };
             try
             {
                 imeField.SetValue(text,new PreviewIme(imeField.FieldType).GetTransparentProxy());owner.name="验证主人";
@@ -83,29 +93,71 @@ namespace NativeWorldTextProbe
                 Main.screenWidth=(int)screen.X;Main.screenHeight=(int)screen.Y;PlayerInput.CacheOriginalScreenDimensions();Main.UIScale=1;
                 var renderer=Get(shell,"renderer");Call(renderer,"RefreshResources");Call(renderer,"Prepare",Get(shell,"State"),screen.X,screen.Y,1f);
                 Set(window,"selected",id);Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));rest();rest();click("configuration/");
-                Require(Controls(window).Cast<object>().Count(c=>((string)Get(c,"Key")).StartsWith("config-tab:",StringComparison.Ordinal))==4,"actual implemented directories share one measured navigation strip");
+                Require(Controls(window).Cast<object>().Count(c=>((string)Get(c,"Key")).StartsWith("config-tab:",StringComparison.Ordinal))==5,"five actual categories share one measured navigation strip");
                 Require(!Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith("actor-state/",StringComparison.Ordinal)||((string)Get(c,"Key")).StartsWith("team:",StringComparison.Ordinal)),"team and membership actions stay on the backpack page");
-                image("companion-config-combat");
+                Require(!Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith("config-tab:Connection",StringComparison.Ordinal)),"configuration has no always-present password outlet");
+                image("companion-config-behavior");
                 int builds=(int)Get(window,"LayoutBuilds");for(int i=0;i<100;i++)prepare();Require((int)Get(window,"LayoutBuilds")==builds,"stable configuration prepares rebuild no controls");
                 click("config-toggle:attack:");Require(!Profile(host,id).Behavior.AttackEnabled&&Profile(host,id).Behavior.Follow,"one toggle edits its real field and preserves neighboring preferences");
-                float before=(float)Get(Get(Control(window,"config-choice:target/"),"Rect"),"Y");click("config-choice:mode/");
-                Require((float)Get(Get(Control(window,"config-choice:target/"),"Rect"),"Y")>before,"inline options advance following controls rather than overlaying them");image("companion-config-expanded");click("defensive/");
-                click("config-choice:target/");click("prefer-self/");Require(Profile(host,id).Behavior.SelfDefense&&!Profile(host,id).Behavior.PreferOwner&&!Profile(host,id).Behavior.AttackEnabled,"actual mode/target edits retain the existing attack preference");
-                directory("Behavior");click("config-choice:movement/");click("stay/");Require(!Profile(host,id).Behavior.Follow,"real movement option selects stationary behavior");
-                directory("Character");click("config-toggle:respawn:");Require(!Profile(host,id).Behavior.AutoRespawn,"real auto-respawn setting uses the existing behavior owner");
+                click("config-choice:movement/");click("stay/");Require(!Profile(host,id).Behavior.Follow,"real movement option preserves stationary behavior");
+                click("config-toggle:respawn:");Require(!Profile(host,id).Behavior.AutoRespawn,"real auto-respawn setting uses the existing behavior owner");
+                directory("Healing");
+                float before=(float)Get(Get(Control(window,"config-toggle:nurse:"),"Rect"),"Y");
+                click("config-choice:heal-mode/");
+                Require((float)Get(Get(Control(window,"config-toggle:nurse:"),"Rect"),"Y")>before,"mode choices advance following controls in the measured layout");
+                image("companion-config-heal-modes");click("heal-fast/");
+                click("config-toggle:nurse:");
+                Require(Profile(host,id).Behavior.HealthRecoveryMode==CompanionHealthRecoveryMode.Fast&&!Profile(host,id).Behavior.AllowNurse,
+                    "recovery mode and nurse are independent persisted settings");
+                click("supply-list:Life/");scrollTo("supply:Life:"+ItemID.HealingPotion+":");
+                click("supply:Life:"+ItemID.HealingPotion+":");
+                Require(Profile(host,id).Behavior.ExcludedHealingTypes.Contains(ItemID.HealingPotion),"unchecking a defined life potion saves its explicit override even while absent");
+                directory("Mana");click("config-toggle:mana:");Require(!Profile(host,id).Behavior.ManaRecoveryEnabled,"mana has its own switch");
+                Require(!Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith("config-choice:",StringComparison.Ordinal)),"mana introduces no mode");
+                directory("Consumables");click("supply-list:Growth/");scrollTo("supply:Growth:"+ItemID.LifeCrystal+":");
+                click("supply:Growth:"+ItemID.LifeCrystal+":");
+                Require(Profile(host,id).Behavior.AllowedGrowthTypes.SequenceEqual(new[]{(int)ItemID.LifeCrystal}) &&
+                    ((IEnumerable)Get(window,"labels")).Cast<object>().Any(label=>(string)Get(label,"Text")=="缺货"),"growth can be permitted without possessing the material");
+                body.statLifeMax=400;Call(host,"CaptureActorState",Call(host,"Owned",body),null);prepare();
+                var loanRows=((IEnumerable)Get(window,"labels")).Cast<object>().Select(label=>(string)Get(label,"Text")).ToArray();
+                Require(loanRows.Contains("已完成"),"the complete status is independent of the lasting check mark");body.statLifeMax=100;
+                image("companion-config-growth");
+                directory("Character");
                 long beforeConfirmation=Profile(host,id).DataEpoch;click("request-reset/");
                 var resetText=((IEnumerable)Get(window,"labels")).Cast<object>().Select(label=>(string)Get(label,"Text")).ToArray();
                 Require(resetText.Contains("将清空物品、装备、成长和 AI 设置。")&&resetText.Contains("保留名字、外观、难度和归属。"),"reset preserves both original explanations before confirmation");
                 click("cancel-reset/");Require(Profile(host,id).DataEpoch==beforeConfirmation,"wide confirmation cancellation performs no archive reset");
-                directory("Connection");click("password/");rest();Require(GetOptional(window,"editor")!=null&&(bool)Get(window,"OwnsTextToken"),"password takes its actual existing text lease after the field is admitted");
-                Queue("draft-only");rest();Require((string)Get(Get(window,"editor"),"Text")=="draft-only","native committed character queue edits the actual password draft");click("cancel-password/");Require((string)Get(host,"ConnectionPassword")==originalPassword&&!(bool)Get(window,"OwnsTextToken"),"cancel releases the lease and leaves the Host password unchanged");
-                click("password/");rest();Queue("retained-local");rest();click("save-password/");Require((string)Get(host,"ConnectionPassword")=="retained-local","apply commits through the original password outlet");
-                click("password/");rest();Require((string)Get(Get(window,"editor"),"Text")=="retained-local","reopening uses the accepted password, not a second configuration copy");Queue("uncommitted");rest();directory("Combat");Require(GetOptional(window,"editor")==null&&(string)Get(host,"ConnectionPassword")=="retained-local","directory switch cancels only the uncommitted editor and returns the text lease");
-                long epoch=Profile(host,id).DataEpoch;click("restore-behavior/");var restored=Profile(host,id).Behavior;Require(restored.Follow&&restored.AttackEnabled&&!restored.SelfDefense&&restored.PreferOwner&&restored.AutoRespawn&&Profile(host,id).DataEpoch==epoch&&(string)Get(host,"ConnectionPassword")=="retained-local","global restore resets behavior only, preserving accepted password and character archive identity");
-                directory("Connection");click("password/");rest();Queue("another draft");rest();click("profile:"+other+"/");Require(GetOptional(window,"editor")==null&&(Guid)Get(window,"selected")==other&&(string)Get(host,"ConnectionPassword")=="retained-local","object switch retires the previous field without changing the shared connection password");click("profile:"+id+"/");
-                click("password/");rest();Queue("closing draft");rest();click("restore-behavior/");Require((string)Get(Get(window,"editor"),"Text")=="closing draft"&&(string)Get(host,"ConnectionPassword")=="retained-local","behavior restore preserves both accepted password and the unrelated uncommitted password edit");
-                click("close/");Require(!(bool)Get(window,"Visible")&&GetOptional(window,"editor")==null&&!(bool)Get(window,"OwnsTextToken"),"actual close retires the old field and native text lease");
-                Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));rest();directory("Combat");
+                long epoch=Profile(host,id).DataEpoch;
+                click("inventory/");click("weapon-select/");
+                var labelText=new Func<string>(()=>(string)Get(((IEnumerable)Get(window,"labels")).Cast<object>().ElementAt((int)Get(window,"weaponCountLabel")),"Text"));
+                Require(labelText()=="已选 0/2","zero-weapon draft shows automatic selection");image("companion-weapon-zero");
+                string firstSlot="slot:False:Inventory:10/",secondSlot="slot:False:Inventory:29/",thirdSlot="slot:False:Inventory:48/",materialSlot="slot:False:Inventory:49/";
+                scrollInventoryTo(firstSlot);
+                int held=body.selectedItem;var gun=body.inventory[10];var bow=body.inventory[29];
+                var slotPoint=NativeToolsUiChecks.Point(Get(Control(window,firstSlot),"Rect"));
+                frame(slotPoint,false,neutral,0);frame(slotPoint,true,new[]{Keys.LeftShift,Keys.LeftControl},0);frame(slotPoint,false,neutral,0);
+                Require(labelText()=="已选 1/2"&&ReferenceEquals(gun,body.inventory[10])&&!(bool)Get(host,"HasItemGesture"),
+                    "selection owns modified clicks without transfer, trash or a cursor item");
+                scrollInventoryTo(secondSlot);click(secondSlot);Require(labelText()=="已选 2/2","two independent real weapons remain admissible without ammo");image("companion-weapon-two");
+                scrollInventoryTo(thirdSlot);click(thirdSlot);Require(labelText()=="已选 2/2"&&((string)Get(window,"notice")).Contains("两把"),"a third choice leaves the first two in place");
+                Require(!(bool)Get(Control(window,materialSlot),"Enabled"),"a material is never selectable");
+                var done=NativeToolsUiChecks.Point(Get(Control(window,"weapon-done/"),"Rect"));
+                frame(done,false,neutral,0);frame(done,true,neutral,0);long beforeSave=Profile(host,id).Revision;
+                Call(host,"CaptureActorState",Call(host,"Owned",body),null);
+                Require(Profile(host,id).Revision>beforeSave&&GetOptional(window,"weaponDraft")!=null,"ordinary background revision leaves the active draft intact");
+                frame(done,false,neutral,0);
+                Require(Profile(host,id).Behavior.MainWeapons.Select(w=>w.SlotHint).SequenceEqual(new[]{10,29}) &&
+                    ReferenceEquals(gun,body.inventory[10])&&ReferenceEquals(bow,body.inventory[29])&&body.selectedItem==held&&GetOptional(window,"weaponDraft")==null,
+                    "release after a background save commits precisely the two source items and leaves the active hand alone");
+                click("weapon-select/");click(secondSlot);click("weapon-cancel/");
+                Require(Profile(host,id).Behavior.MainWeapons.Length==2&&GetOptional(window,"weaponDraft")==null,"cancel keeps the previously saved pair");
+                click("weapon-select/");click("profile:"+other+"/");
+                Require(GetOptional(window,"weaponDraft")==null&&(Guid)Get(window,"selected")==other,"changing the selected character retires the whole draft");click("profile:"+id+"/");
+                click("configuration/");click("restore-behavior/");var restored=Profile(host,id).Behavior;
+                Require(restored.Follow&&restored.AttackEnabled&&restored.AutoRespawn&&restored.MainWeapons.Length==0&&restored.AllowedGrowthTypes.Length==0&&
+                    restored.HealthRecoveryMode==CompanionHealthRecoveryMode.Smart&&restored.ManaRecoveryEnabled&&restored.AllowNurse&&Profile(host,id).DataEpoch==epoch,
+                    "restore resets the full configuration while preserving character archive identity");
+                directory("Behavior");
                 CheckPressIdentity(window,host,id,body,matrix,screen);
                 // Vanilla clamps its real UI scale. Independently exercise this
                 // window's explicit narrow-matrix contract with direct window
@@ -115,17 +167,35 @@ namespace NativeWorldTextProbe
                 Require(Terraria.GameContent.FontAssets.MouseText.Value.MeasureString(profileName).X*.85f>(float)Get(nameRect,"Width"),"the existing measured text renderer must ellipsize this actual twenty-character narrow name");
                 frame(NativeToolsUiChecks.Point(nameRect),false,neutral,0);var nameHint=Get(window,"hint");Require((bool)Get(nameHint,"Visible")&&String.Concat(((IEnumerable)Get(nameHint,"Lines")).Cast<object>().Select(line=>(string)Get(line,"Text")))==profileName,"narrow name keeps its complete original through the existing hint path");
                 graphics.Image(Path.Combine(output,"companion-config-narrow-name.png"),()=>Call(window,"Draw"),matrix,(int)screen.X,(int)screen.Y);
-                var header=Get(window,"configurationIdentity");var nav=Get(Control(window,"config-tab:Character/"),"Rect");scrollTo("request-reset/");click("request-reset/");scrollTo("cancel-reset/");
-                while((int)Get(window,"bodyOffset")<(int)Get(window,"bodyMaximum"))frame(NativeToolsUiChecks.Point(Get(window,"configurationViewport")),false,neutral,-120);
-                Require((int)Get(window,"bodyOffset")>0&&Get(window,"configurationIdentity").Equals(header)&&Get(Control(window,"config-tab:Character/"),"Rect").Equals(nav),"narrow scrolling leaves the identity and directory baselines fixed");
-                image("companion-config-narrow-reset");int expanded=(int)Get(window,"bodyOffset");click("cancel-reset/");Require(Profile(host,id).DataEpoch==epoch&&!(bool)Get(window,"confirmingReset")&&(int)Get(window,"bodyOffset")<expanded,"cancelling confirmation clamps the smaller measured content without resetting the profile");
+                directory("Consumables");scrollTo("supply-list:Buff/");click("supply-list:Buff/");prepare();
+                var header=Get(window,"configurationIdentity");var nav=Get(Control(window,"config-tab:Consumables/"),"Rect");
+                int scrollBudget=150;
+                while((int)Get(window,"bodyOffset")<(int)Get(window,"bodyMaximum")&&--scrollBudget>0)frame(NativeToolsUiChecks.Point(Get(window,"configurationViewport")),false,neutral,-120);
+                Require((int)Get(window,"bodyOffset")>0&&Get(window,"configurationIdentity").Equals(header)&&Get(Control(window,"config-tab:Consumables/"),"Rect").Equals(nav),"narrow scrolling leaves the identity and directory baselines fixed");
+                image("companion-config-narrow-buffs");
+                directory("Character");scrollTo("request-reset/");click("request-reset/");scrollTo("cancel-reset/");
+                image("companion-config-narrow-reset");float expanded=(float)Get(Get(window,"panel"),"Height");click("cancel-reset/");Require(Profile(host,id).DataEpoch==epoch&&!(bool)Get(window,"confirmingReset")&&
+                    (float)Get(Get(window,"panel"),"Height")<expanded&&(int)Get(window,"bodyOffset")<=(int)Get(window,"bodyMaximum"),"cancelling confirmation shrinks measured content without resetting the profile");
                 // Confirm through the actual button on the same real identity.
                 scrollTo("request-reset/");click("request-reset/");scrollTo("confirm-reset/");click("confirm-reset/");
                 NativeQuickItemChecks.Until(()=>{Call(host,"Update",(ulong)Main.GameUpdateCount);return !(bool)Call(host,"IsJoined",id)&&Profile(host,id).DataEpoch==epoch+1&&(bool)Call(archive,"IsSaved",id);});
-                Require(Profile(host,id).Id==id&&Profile(host,id).Name==profileName&&(string)Get(host,"ConnectionPassword")=="retained-local","confirmed reset uses the existing archive owner once and leaves the global connection password alone");
-                Console.WriteLine("PASS native configuration: one skin and content flow, measured navigation/inline options, actual field-preserving behavior edits, password queue/lease/cancel/apply/directory-object retirement, restore, reset confirmation and narrow scrolling; no OS IME/FPS or unrelated gameplay claim.");
+                Require(Profile(host,id).Id==id&&Profile(host,id).Name==profileName,"confirmed reset uses the existing archive owner once");
+                NativeCompanionPasswordChecks.WithChallenge(context,_=>{
+                    Call(window,"BeforeInput",true);rest();
+                    Require((bool)Get(window,"PasswordPromptVisible")&&(bool)Get(window,"OwnsTextToken"),"a real native challenge opens the shared dialog and takes the existing text lease");
+                    Queue("draft-only");rest();prepare();
+                    Require((string)Get(Get(window,"editor"),"Text")=="draft-only"&&((string)Get(Get(window,"editElement"),"Text")).All(c=>c=='•'),
+                        "native committed input reaches the actual buffer while presentation contains masks only");
+                    image("companion-config-password");
+                    Call(window,"CancelForFocusLoss");
+                    Require(GetOptional(window,"editor")==null&&!(bool)Get(window,"OwnsTextToken"),"focus loss retires provisional text and releases its token");
+                    Call(window,"BeforeInput",true);rest();
+                    Require((string)Get(Get(window,"editor"),"Text")==""&&(bool)Get(window,"PasswordPromptVisible"),"the open request can resume with an empty draft");
+                    click("password-cancel:");Require(!(bool)Get(window,"PasswordPromptVisible")&&!(bool)Get(window,"OwnsTextToken"),"cancel clears the current challenge and its physical/text ownership");
+                });
+                Console.WriteLine("PASS native configuration and password presentation: actual measured controls, independent preferences, 0/1/2 weapon draft, live revision, cancellation, restoration, narrow reset, native challenge and masked input/focus.");
             }
-            finally {Call(window,"Close");imeField.SetValue(text,originalIme);Set(host,"ConnectionPassword",originalPassword);owner.name=ownerName;NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
+            finally {Call(window,"Close");imeField.SetValue(text,originalIme);owner.name=ownerName;NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
         }
         private static void CheckPressIdentity(object window,object host,Guid id,Player body,Matrix matrix,Vector2 screen)
         {
@@ -135,9 +205,7 @@ namespace NativeWorldTextProbe
             try {
                 body.dead=true;body.respawnTimer=122;prepare();var button=Control(window,"config-toggle:attack:");var point=NativeToolsUiChecks.Point(Get(button,"Rect"));sample(point,false);sample(point,true);var armed=Get(window,"armedKey");
                 body.respawnTimer=61;prepare();Require(Equals(armed,Get(window,"armedKey")),"ordinary countdown refresh retains the same valid toggle operation");
-                int builds=(int)Get(window,"LayoutBuilds");string oldName=body.inventory[selected].Name;body.selectedItemState.Select(selected==0?1:0);prepare();string newName=body.inventory[body.selectedItem].Name;
-                var weaponLabel=((IEnumerable)Get(window,"labels")).Cast<object>().ElementAt((int)Get(window,"configurationWeaponLabel"));
-                Require(oldName!=newName&&(string)Get(weaponLabel,"Text")==newName&&Equals(armed,Get(window,"armedKey"))&&(int)Get(window,"LayoutBuilds")==builds,"actual automatic weapon-slot change refreshes readonly text without rebuilding configuration or retiring its valid press");
+                Require((string)Call(host,"RespawnStatus",id)=="复活倒计时 2 秒","native timer refresh retains the same status outlet");
                 var changed=original.Clone();changed.AttackEnabled=!changed.AttackEnabled;Require((bool)Call(host,"SetBehavior",id,changed),"actual preference owner accepts an intervening change");prepare();Require(GetOptional(window,"armedKey")==null,"changed toggle target retires the old armed operation");sample(point,false);Require(Profile(host,id).Behavior.AttackEnabled==changed.AttackEnabled,"retired release does not reverse a newer accepted toggle value");
             }
             finally {body.dead=dead;body.respawnTimer=timer;body.selectedItemState.Select(selected);Call(host,"SetBehavior",id,original);prepare();NativeToolsUiChecks.Mouse(Vector2.Zero,false);}

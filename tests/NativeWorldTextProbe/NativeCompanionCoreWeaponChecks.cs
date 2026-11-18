@@ -39,7 +39,7 @@ namespace NativeWorldTextProbe
                 var target=Main.npc[18];target.SetDefaults(NPCID.Zombie);target.active=true;target.position=first.position+new Vector2(180,-20);target.velocity=Vector2.Zero;target.noGravity=target.noTileCollide=true;target.life=target.lifeMax=1000000;Main.npc[19].active=false;publish();
                 var observed=(NPC[])Get(host,"observedNpcs");observed[19].active=false;
                 first.inventory[0].SetDefaults(ItemID.LastPrism);first.selectedItemState.Select(0);first.itemAnimation=first.itemTime=0;first.releaseUseItem=true;first.statMana=first.statManaMax=first.statManaMax2=200;
-                Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=true,PreferOwner=false});
+                Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=false,MainWeapons=new[]{new CompanionWeaponPreference(ItemID.LastPrism,0,0)}});
                 for(int i=0;i<24;i++)Step(host,first);
                 var prism=Main.projectile.FirstOrDefault(p=>p.active && p.owner==first.whoAmI && p.type==633);
                 Require(prism!=null && first.channel && first.statMana<200 && Main.projectile.Count(p=>p.active && p.owner==first.whoAmI && p.type==632)==6,"real MP ItemCheck prism birth/mana/six children unchanged");
@@ -57,12 +57,14 @@ namespace NativeWorldTextProbe
                 Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=false});for(int i=0;i<10;i++)Step(host,first);
                 Require(!prism.active && !Main.projectile.Any(p=>p.active && p.owner==first.whoAmI && p.type==632),"native MP prism stop retires parent/children");
                 first.inventory[0].SetDefaults(ItemID.BallOHurt);first.itemAnimation=first.itemTime=0;first.releaseUseItem=true;
-                Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=true,PreferOwner=false});
+                Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=false,MainWeapons=new[]{new CompanionWeaponPreference(ItemID.BallOHurt,0,0)}});
                 Main.mapFullscreen=true;for(int i=0;i<8;i++)Step(host,first);
                 var flail=Main.projectile.FirstOrDefault(p=>p.active && p.owner==first.whoAmI && p.aiStyle==15);
                 Require(flail!=null && first.channel && Main.mapFullscreen,"human fullscreen map cannot terminate real AI flail or get closed");
                 Main.mapFullscreen=false;for(int i=0;i<3;i++)Step(host,first);Main.mapFullscreen=true;for(int i=0;i<3;i++)Step(host,first);
                 Require(flail.active && Main.mapFullscreen,"AI continuous flail survives human map toggles without manual lifetime renewal");
+                for(int i=0;i<24 && flail.ai[0]==0;i++)Step(host,first);
+                Require(flail.active && flail.ai[0]!=0,"a receiver beyond the spin ellipse causes a real native flail release and throw");
                 HumanFlail(host,first);
                 Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=false});for(int i=0;i<80 && flail.active;i++)Step(host,first);
                 Require(!flail.active,"actual AI stop releases and natively retires flail despite human map");
@@ -76,12 +78,11 @@ namespace NativeWorldTextProbe
                 bowTarget=Main.npc[20];bowTarget.SetDefaults(NPCID.Zombie);bowTarget.active=true;bowTarget.position=first.position+new Vector2(180,-20);bowTarget.velocity=Vector2.Zero;
                 NetMessage.SendData(23,-1,-1,null,20);Apply(primary.Last(p=>p[2]==23));
                 Require(observed[20].active && !(bool)Call(host,"PredictionDead",a,observed[20]) && Collision.CanHitLine(first.Center,1,1,observed[20].Center,1,1),"single native23 establishes a currently live and visible bow target after prior combat");
-                Require((bool)Call(host,"SelectWeapon",((CompanionProfile)Get(a,"Profile")).Id,1),"native completed channel permits real buffered bow selection");
-                Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=false,AttackEnabled=true,PreferOwner=false});
+                Require((bool)Call(host,"SetBehavior",((CompanionProfile)Get(a,"Profile")).Id,new CompanionBehavior{Follow=false,MainWeapons=new[]{new CompanionWeaponPreference(ItemID.WoodenBow,0,1)}}),"bow preference can commit without taking the hand");
                 Projectile arrow=null;
                 // Wait for the original use/reuse scheduling; a weapon switch
                 // does not promise a shot within four arbitrary world steps.
-                for(int i=0;i<first.HeldItem.useAnimation+first.reuseDelay+8 && arrow==null;i++)
+                for(int i=0;i<first.inventory[1].useAnimation+first.reuseDelay+45 && arrow==null;i++)
                 {Step(host,first);arrow=Main.projectile.FirstOrDefault(p=>p.active && p.owner==first.whoAmI && p.type==ProjectileID.WoodenArrowFriendly);}
                 Console.WriteLine("BOW SWITCH selected="+first.selectedItem+" item="+first.HeldItem.type+" anim="+first.itemAnimation+" time="+first.itemTime+" reuse="+first.reuseDelay+" use="+first.controlUseItem+" ammo="+first.inventory[54].stack+" target="+GetOptional(a,"Target"));
                 Require(arrow!=null && first.inventory[54].stack<20,"actual MP switch preserves native bow ammo payment");

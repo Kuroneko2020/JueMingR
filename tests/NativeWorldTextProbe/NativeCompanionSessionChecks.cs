@@ -99,9 +99,12 @@ namespace NativeWorldTextProbe
                 Require(a.team==2 && human.team==humanTeam,"saved native team survives offline edit and join without changing human");
                 foreach(Guid id in new[]{first,second}){var behavior=Profile(host,id).Behavior;behavior.Follow=false;behavior.AttackEnabled=false;Call(host,"SetBehavior",id,behavior);}
                 a.inventory[12].SetDefaults(ItemID.WoodenBow);a.inventory[12].Prefix(PrefixID.Demonic);
-                Require((bool)Call(host,"SelectWeapon",first,12),"explicit manual native weapon selection accepted");Saved(host,first);
-                var preference=Profile(host,first).Behavior;preference.SelfDefense=true;Call(host,"SetBehavior",first,preference);
-                Require(Profile(host,first).Behavior.ManualWeaponSlot==12 && Profile(host,first).Behavior.AutoRespawn,"cloned ordinary preference edit preserves manual weapon and respawn default");
+                int held=a.selectedItem;
+                Require((bool)Call(host,"TrySetMainWeapons",first,(long)Get(host,"CreationSessionToken"),(long)Call(host,"ActivationGeneration",first),
+                    Profile(host,first).DataEpoch,a,new[]{new CompanionWeaponPreference(a.inventory[12].type,a.inventory[12].prefix,12)}) && a.selectedItem==held,
+                    "commit saves one real item preference without changing the held native item");Saved(host,first);
+                var preference=Profile(host,first).Behavior;preference.AllowNurse=false;Call(host,"SetBehavior",first,preference);
+                Require(Profile(host,first).Behavior.MainWeapons.Single().SlotHint==12 && Profile(host,first).Behavior.AutoRespawn,"cloned setting edit preserves major weapon and respawn default");
                 borrowedProbe=Get(Get(context,"DeathRecords"),"probe");var token=Get(borrowedProbe,"SessionIdentity");
                 var runtime=Get(Get(context,"runtime"),"SharedRuntime");var generation=Get(runtime,"Generation");
                 dying=a;reads=0;borrowedToken=null;insideBorrow=false;
@@ -112,19 +115,30 @@ namespace NativeWorldTextProbe
                 Require(ReferenceEquals(token,Get(borrowedProbe,"SessionIdentity")) && Equals(generation,Get(runtime,"Generation")) && Call(host,"Owned",b)!=null && ReferenceEquals(Main.ActivePlayerFileData.Player,human),"public runtime after AI death preserves human generation and other actor");
                 if(journey!=null)Require((bool)Get(journey,"IsActive"),"AI death/public update does not stop the already active real Journey session");
                 int frames=0;for(;frames<2400 && a.dead;frames++)Step(context,a,b);
-                Require(!a.dead && a.selectedItem==12 && a.inventory[12].type==ItemID.WoodenBow,"original dead timer and automatic spawn restore valid manual choice without new items");
-                Recall(host,first);Require((bool)Call(host,"Join",first),"manual choice saved and body rejoined");a=(Player)Call(host,"GetBody",first);
-                Require(a.selectedItem==12 && Profile(host,first).Behavior.ManualWeaponType==ItemID.WoodenBow && a.team==2,"new native body restores manual preference and saved native team");
+                Require(!a.dead && a.inventory[12].type==ItemID.WoodenBow && Profile(host,first).Behavior.MainWeapons.Single().SlotHint==12,
+                    "original death and automatic spawn retain an existing preferred weapon without replacing items");
+                Recall(host,first);Require((bool)Call(host,"Join",first),"saved preference survives body rejoin");a=(Player)Call(host,"GetBody",first);
+                Require(Profile(host,first).Behavior.MainWeapons.Single().Type==ItemID.WoodenBow && a.inventory[12].type==ItemID.WoodenBow && a.team==2,
+                    "new native body restores preference and saved native team");
                 var off=Profile(host,first).Behavior;off.AutoRespawn=false;Call(host,"SetBehavior",first,off);
                 dying=a;a.immune=false;a.immuneTime=0;Array.Clear(a.hurtCooldowns,0,a.hurtCooldowns.Length);a.Hurt(PlayerDeathReason.ByCustomReason("isolated disabled auto respawn"),99999,0);
-                int timer=a.respawnTimer;for(int i=0;i<timer+2;i++)Step(context,a,b);
-                Require(a.dead && a.respawnTimer==0 && (string)Call(host,"RespawnStatus",first)=="自动复活已关闭","disabled auto respawn advances native dead state to zero without artificial spawn");
+                int timer=a.respawnTimer;
+                string remaining=(string)Call(host,"RespawnStatus",first);
+                Require(timer>60 && remaining.Contains(((timer+59)/60).ToString()) && remaining.Contains("自动复活已关闭"),"disabled auto respawn projects its actual nonzero timer plus disabled state");
+                for(int i=0;i<60;i++)Step(context,a,b);
+                Require(a.dead && a.respawnTimer<timer && (string)Call(host,"RespawnStatus",first)!=remaining,"real death timer decrements and refreshes while auto-respawn is disabled");
+                for(int i=0;i<timer+2;i++)Step(context,a,b);
+                Require(a.dead && a.respawnTimer==0 && (string)Call(host,"RespawnStatus",first)=="自动复活已关闭，等待手动开启","disabled auto respawn advances native dead state to zero without artificial spawn");
                 Saved(host,first);Recall(host,first);Require((bool)Call(host,"Join",first),"dead auto-off body can rejoin its actual archive");a=(Player)Call(host,"GetBody",first);
                 Require(a.dead && !Profile(host,first).Behavior.AutoRespawn && a.inventory[12].type==ItemID.WoodenBow,"recall/rejoin preserves real death, preference and resource ownership");
                 var on=Profile(host,first).Behavior;on.AutoRespawn=true;Call(host,"SetBehavior",first,on);Step(context,a,b);
-                Require(!a.dead && a.selectedItem==12,"re-enabling continues the existing zero timer and valid manual selection");
-                a.inventory[12].SetDefaults(ItemID.DirtBlock);Call(host,"ValidateManualWeapon",first);
-                Require(Profile(host,first).Behavior.ManualWeaponSlot==-1,"same-slot different item retires manual preference rather than impersonating selected weapon");
+                Require(!a.dead && Profile(host,first).Behavior.MainWeapons.Single().SlotHint==12,"re-enabling continues the existing zero timer and retains a valid preference");
+                a.inventory[49]=a.inventory[12];a.inventory[12]=new Item();
+                var live=Call(host,"Owned",a);
+                Call(host,"CaptureActorState",live,null);
+                Require(Profile(host,first).Behavior.MainWeapons.Single().SlotHint==49,"same item moved within the real bag maps to its new slot");
+                a.inventory[49].SetDefaults(ItemID.DirtBlock);Call(host,"CaptureActorState",live,null);
+                Require(Profile(host,first).Behavior.MainWeapons.Length==0,"a material replacing the only copy retires the removed preference");
                 var beforeHuman=Get(borrowedProbe,"SessionIdentity");human.immune=false;human.immuneTime=0;Array.Clear(human.hurtCooldowns,0,human.hurtCooldowns.Length);
                 human.Hurt(PlayerDeathReason.ByCustomReason("isolated actual human death"),99999,0);Call(context,"UpdateRuntime");
                 Require(human.dead && ReferenceEquals(beforeHuman,Get(borrowedProbe,"SessionIdentity")) && Equals(generation,Get(runtime,"Generation")),"actual classic human death alone is not a new character session");
@@ -132,7 +146,7 @@ namespace NativeWorldTextProbe
                 Call(context,"UpdateRuntime");
                 Require(!ReferenceEquals(beforeHuman,Get(borrowedProbe,"SessionIdentity")) && !Equals(generation,Get(runtime,"Generation")) && Call(host,"Owned",b)==null,"actual world identity edge still ends old actors and creates a new generation");
                 if(journey!=null)Require(!(bool)Get(journey,"IsActive"),"true world change still ends old Journey ownership");
-                Console.WriteLine("PASS native Hurt/KillMe -> public UpdateRuntime -> respawn, human identity/world counterexamples, auto-off/re-enable and saved manual/native team; JourneyActive="+(journey!=null)+" nativeFrames="+frames+"; human disk writer intentionally excluded, no installed-game/Steam/FPS claim.");
+                Console.WriteLine("PASS native Hurt/KillMe -> public UpdateRuntime -> respawn, human identity/world counterexamples, auto-off/countdown/re-enable and saved weapon preference/native team; JourneyActive="+(journey!=null)+" nativeFrames="+frames+"; human disk writer intentionally excluded, no installed-game/Steam/FPS claim.");
             }
             finally
             {

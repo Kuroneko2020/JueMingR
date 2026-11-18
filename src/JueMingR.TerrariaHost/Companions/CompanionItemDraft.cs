@@ -42,6 +42,12 @@ namespace JueMingR.TerrariaHost.Companions
         internal void EndRepeat() { rightSource = null; }
         internal Item Cursor { get; private set; } = new Item();
         internal int DependencyCount { get { return cells.Count; } }
+        internal bool DependsOn(Item[] array, int slot)
+        {
+            foreach (var cell in cells)
+                if (ReferenceEquals(cell.Array, array) && cell.Slot == slot) return true;
+            return false;
+        }
         internal bool UsesCompanion { get; private set; }
         internal readonly Func<bool, CompanionInventoryArea, int, bool> Blocked;
         private readonly Func<bool> discardBlocked;

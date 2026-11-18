@@ -96,7 +96,8 @@ namespace NativeWorldTextProbe
                         string tag=factor.ToString("0.00",System.Globalization.CultureInfo.InvariantCulture)+"-"+(ReferenceEquals(parent,SamplerState.PointClamp)?"parent-point":"parent-linear");
                         Save(graphics,Path.Combine(output,"font-window-"+tag+".png"),pixels,1280,800);
                         var normal=stamps.Where(s=>ReferenceEquals(s.Font,FontAssets.MouseText.Value)).ToArray();
-                        foreach(string required in new[]{"配置","恢复行为设置","攻击","攻击模式","字体检查人物"})
+                        foreach(string required in filterOnly ? new[]{"配置","恢复行为设置","攻击","攻击模式","字体检查人物"} :
+                            new[]{"配置","恢复行为设置","允许攻击","主要武器","字体检查人物"})
                             Require(normal.Any(s=>s.Text==required),"font trace actually reaches the expected window outlet: "+required);
                         foreach(var stamp in normal)
                         {
@@ -125,7 +126,7 @@ namespace NativeWorldTextProbe
                         Console.WriteLine("FONT-ORACLE "+tag+" same native font/origin/matrix different="+different);
                     }
                 }
-                CheckEditor(window,renderer,assembly,graphics,output);
+                NativeCompanionPasswordChecks.WithChallenge(context,_=>CheckEditor(window,graphics,output));
                 CheckImagesAndFailure(window,renderer,assembly,graphics);
                 Console.WriteLine("FONT-SUMMARY queuedLinear="+allLinear+" existingBlueprintPixels="+allOracle);
                 Require(allLinear,"all normal companion text remains in its explicit LinearClamp pass after nested native portraits and image passes");
@@ -133,15 +134,12 @@ namespace NativeWorldTextProbe
             }
             finally {recording=false;harmony.UnpatchAll(harmony.Id);Call(window,"Close");((IDisposable)oracle).Dispose();NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
         }
-        private static void CheckEditor(object window,object renderer,Assembly assembly,ProbeGraphics graphics,string output)
+        private static void CheckEditor(object window,ProbeGraphics graphics,string output)
         {
-            var category=window.GetType().GetNestedType("ConfigurationCategory",BindingFlags.NonPublic);
-            Call(window,"SelectConfiguration",Enum.Parse(category,"Connection"));
-            Matrix matrix=Matrix.CreateScale(1.2f);Call(window,"Prepare",matrix,new Vector2(1280,800));
-            // The actual password presentation and its measured caret are used.
-            // Font evidence does not substitute for the earlier queue/lease/IME
-            // interaction scope, and this sample never applies a password.
-            Call(window,"BeginEdit","password","font-check-114514");Call(window,"Prepare",matrix,new Vector2(1280,800));
+            Matrix matrix=Matrix.CreateScale(1.2f);
+            Call(window,"SyncPasswordPrompt");
+            Call(Get(window,"editor"),"Insert","font-check-114514");
+            Call(window,"Prepare",matrix,new Vector2(1280,800));
             var element=Get(window,"editElement");var text=(string)Get(element,"Text");var view=Get(window,"editView");
             var measured=Call(window,"MeasureCached",text,.7f);
             Require((float)Get(Get(element,"TextSize"),"Width")== (float)Get(measured,"Width")&&
@@ -151,7 +149,7 @@ namespace NativeWorldTextProbe
             var input=stamps.Single(s=>s.Text==text);
             Require(text.All(c=>c=='•')&&Linear(input.Sampler),"actual masked password outlet draws in the explicit linear text pass");
             Save(graphics,Path.Combine(output,"font-password-1.20.png"),pixels,1280,800);
-            Call(window,"CancelEdit");
+            Call(window,"CancelPasswordPrompt");
             Console.WriteLine("FONT-EDITOR masked native glyphs / shared measured caret / LinearClamp PASS");
         }
         private static void CheckImagesAndFailure(object window,object renderer,Assembly assembly,ProbeGraphics graphics)

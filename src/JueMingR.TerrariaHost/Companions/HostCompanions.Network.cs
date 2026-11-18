@@ -50,15 +50,21 @@ namespace JueMingR.TerrariaHost.Companions
                     if(id==154){ActorPingReceived(a);continue;}
                     if(id==162){StrikeAcknowledged(a);continue;}
                     if(id==49 && a.Ready){CompleteNpcSnapshot(a);continue;}
-                    if(id==2)throw new IOException(NetworkText.Deserialize(r).ToString());
+                    if(id==2)
+                    {
+                        if (RejectPassword(a, r)) return;
+                        throw new IOException(NetworkText.Deserialize(r).ToString());
+                    }
                     if(id==37)
                     {
-                        if(String.IsNullOrEmpty(password)){a.WaitingPassword=true;a.Status="需要当前服务器密码";continue;}
-                        a.Connection.Send(CompanionConnection.Packet(38,w=>w.Write(password)));continue;
+                        AskPassword(a);
+                        continue;
                     }
                     if(id==3)
                     {
+                        ValidatePasswordAcceptance(a);
                         Attach(a,r.ReadByte());
+                        AcceptPassword(a);
                         using(CompanionHooks.Enter(a,a.Body.Center))
                         {
                             NetMessage.SendData(4,-1,-1,null,a.Body.whoAmI);NetMessage.SendData(16,-1,-1,null,a.Body.whoAmI);NetMessage.SendData(42,-1,-1,null,a.Body.whoAmI);
@@ -144,10 +150,9 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var p=a.Body;p.FindSpawn();if(!Player.CheckSpawn(p.SpawnX,p.SpawnY)){p.SpawnX=p.SpawnY=-1;}
             CompanionHooks.Spawning=p;try{p.Spawn(context);}finally{CompanionHooks.Spawning=null;}
-            RestoreManualWeapon(a);
             // Native Spawn chooses the real position for joins and revivals.
             // The deserialized body's pre-spawn center is not a world cursor.
-            a.Target=null;IdleAim(a);
+            a.Behavior=new CompanionBehaviorHost();a.Combat.Reset();SetAttackTarget(a,null);IdleAim(a);
             // Only the native restoration consumer borrows this body's owner
             // context. Spawn's human UI/refund/HostPlay branches stay closed.
             using(CompanionHooks.Enter(a,a.Aim))a.Minions.RestoreMinionsFor(p);

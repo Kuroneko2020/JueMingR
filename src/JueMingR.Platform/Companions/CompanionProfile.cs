@@ -4,20 +4,70 @@ using System.Collections.Generic;
 namespace JueMingR.Platform.Companions
 {
     public enum CompanionInventoryArea { Inventory, Armor, Dye, Misc, MiscDye }
+    public enum CompanionHealthRecoveryMode { Fast = 1, Smart = 2 }
+
+    public readonly struct CompanionWeaponPreference
+    {
+        public CompanionWeaponPreference(int type, int prefix, int slotHint)
+        { Type = type; Prefix = prefix; SlotHint = slotHint; }
+        public int Type { get; }
+        public int Prefix { get; }
+        public int SlotHint { get; }
+    }
 
     public sealed class CompanionBehavior
     {
+        public const int MaxMainWeapons = 2;
+        public const int MainInventorySlots = 50;
+        public const int MaxSupplyTypes = 4096;
+
         public bool Follow { get; set; } = true;
         public bool AttackEnabled { get; set; } = true;
-        public bool SelfDefense { get; set; }
-        public bool PreferOwner { get; set; } = true;
         public bool AutoRespawn { get; set; } = true;
-        public int ManualWeaponSlot { get; set; } = -1;
-        public int ManualWeaponType { get; set; }
-        public int ManualWeaponPrefix { get; set; }
+        public CompanionWeaponPreference[] MainWeapons { get; set; } = Array.Empty<CompanionWeaponPreference>();
+        public bool HealthRecoveryEnabled { get; set; } = true;
+        public CompanionHealthRecoveryMode HealthRecoveryMode { get; set; } = CompanionHealthRecoveryMode.Smart;
+        public bool ManaRecoveryEnabled { get; set; } = true;
+        public bool AllowNurse { get; set; } = true;
+        public bool ConsumablesEnabled { get; set; } = true;
+        // Empty override sets preserve potion defaults. Empty permission sets grant nothing.
+        public int[] ExcludedHealingTypes { get; set; } = Array.Empty<int>();
+        public int[] ExcludedManaTypes { get; set; } = Array.Empty<int>();
+        public int[] AllowedGrowthTypes { get; set; } = Array.Empty<int>();
+        public int[] AllowedBuffTypes { get; set; } = Array.Empty<int>();
+
         public CompanionBehavior Clone()
-        { return new CompanionBehavior { Follow = Follow, AttackEnabled = AttackEnabled, SelfDefense = SelfDefense, PreferOwner = PreferOwner,
-            AutoRespawn = AutoRespawn, ManualWeaponSlot = ManualWeaponSlot, ManualWeaponType = ManualWeaponType, ManualWeaponPrefix = ManualWeaponPrefix }; }
+        {
+            var copy = (CompanionBehavior)MemberwiseClone();
+            if (MainWeapons.Length != 0) copy.MainWeapons = (CompanionWeaponPreference[])MainWeapons.Clone();
+            if (ExcludedHealingTypes.Length != 0) copy.ExcludedHealingTypes = (int[])ExcludedHealingTypes.Clone();
+            if (ExcludedManaTypes.Length != 0) copy.ExcludedManaTypes = (int[])ExcludedManaTypes.Clone();
+            if (AllowedGrowthTypes.Length != 0) copy.AllowedGrowthTypes = (int[])AllowedGrowthTypes.Clone();
+            if (AllowedBuffTypes.Length != 0) copy.AllowedBuffTypes = (int[])AllowedBuffTypes.Clone();
+            return copy;
+        }
+
+        internal bool Valid()
+        {
+            if (MainWeapons == null || MainWeapons.Length > MaxMainWeapons ||
+                (HealthRecoveryMode != CompanionHealthRecoveryMode.Fast && HealthRecoveryMode != CompanionHealthRecoveryMode.Smart))
+                return false;
+            foreach (var weapon in MainWeapons)
+                if (weapon.SlotHint < 0 || weapon.SlotHint >= MainInventorySlots || weapon.Type <= 0 || weapon.Prefix < 0 || weapon.Prefix > Byte.MaxValue)
+                    return false;
+            if (MainWeapons.Length == 2 && MainWeapons[0].SlotHint == MainWeapons[1].SlotHint) return false;
+            return ValidTypes(ExcludedHealingTypes) && ValidTypes(ExcludedManaTypes) && ValidTypes(AllowedGrowthTypes) && ValidTypes(AllowedBuffTypes);
+        }
+
+        private static bool ValidTypes(int[] types)
+        {
+            if (types == null || types.Length > MaxSupplyTypes) return false;
+            if (types.Length == 0) return true;
+            var seen = new HashSet<int>();
+            foreach (int type in types)
+                if (type <= 0 || !seen.Add(type)) return false;
+            return true;
+        }
     }
 
     // NativeData is the complete native character stream, not a network-slot
@@ -34,11 +84,10 @@ namespace JueMingR.Platform.Companions
             if (revision <= 0 || dataEpoch <= 0) throw new ArgumentOutOfRangeException(nameof(revision));
             if (nativeData == null || nativeData.Length == 0) throw new ArgumentException("Native character data is required.");
             if (behavior == null) throw new ArgumentNullException(nameof(behavior));
-            if (behavior.ManualWeaponSlot < -1 || behavior.ManualWeaponSlot >= 50 || behavior.ManualWeaponPrefix < 0 || behavior.ManualWeaponPrefix > 255 ||
-                (behavior.ManualWeaponSlot < 0 ? behavior.ManualWeaponType != 0 || behavior.ManualWeaponPrefix != 0 : behavior.ManualWeaponType <= 0))
+            if (!behavior.Valid())
                 throw new ArgumentException("Invalid companion preferences.", nameof(behavior));
             Id = id; OwnerId = ownerId; Name = name; Revision = revision; DataEpoch = dataEpoch; PermanentlyDead = permanentlyDead;
-            this.behavior = (behavior ?? throw new ArgumentNullException(nameof(behavior))).Clone();
+            this.behavior = behavior.Clone();
             this.nativeData = (byte[])nativeData.Clone();
         }
         public Guid Id { get; }

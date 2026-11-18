@@ -56,7 +56,7 @@ namespace JueMingR.ArchitectureTests
         }
         private static void LegacyArchive(string root)
         {
-            foreach(int version in new[]{1,2})
+            foreach(int version in new[]{1,2,3})
             {
             string game=Path.Combine(root,"v"+version);Guid owner,id=Guid.NewGuid();
             using(var archive=new FileCompanionArchive(game)){owner=archive.LoadOwner("legacy").OwnerId;}
@@ -67,32 +67,64 @@ namespace JueMingR.ArchitectureTests
                 // Independently encode the historical formats rather than use
                 // the current encoder to pretend it emitted a legacy file.
                 writer.Write("JueMingR.Companion");writer.Write(version);writer.Write(id.ToByteArray());writer.Write(owner.ToByteArray());
-                writer.Write("旧人物");writer.Write(1L);writer.Write(1L);writer.Write(true);writer.Write(true);writer.Write(false);writer.Write(true);
-                if(version==2)writer.Write(true);
+                writer.Write("旧人物");writer.Write(7L);writer.Write(3L);writer.Write(false);writer.Write(true);writer.Write(true);writer.Write(false);
+                if(version>=2)writer.Write(version==2);
+                if(version==3){writer.Write(false);writer.Write(48);writer.Write(39);writer.Write((byte)60);}
                 writer.Write(2);writer.Write(new byte[]{44,55});writer.Flush();
                 using(var sha=System.Security.Cryptography.SHA256.Create())writer.Write(sha.ComputeHash(stream.ToArray()));writer.Flush();File.WriteAllBytes(path,stream.ToArray());
             }
             using(var archive=new FileCompanionArchive(game))
             {
-                var old=archive.LoadOwner("legacy").Profiles.Single();Require(old.PermanentlyDead==(version==2) && old.NativeData.SequenceEqual(new byte[]{44,55}) && old.Behavior.AutoRespawn && old.Behavior.ManualWeaponSlot==-1,"legacy archive preserves native bytes/terminal identity and defaults respawn on with no manual selection");
+                byte[] original = File.ReadAllBytes(path);
+                var old=archive.LoadOwner("legacy").Profiles.Single();
+                var behavior = old.Behavior;
+                Require(old.Id==id && old.OwnerId==owner && old.Revision==7 && old.DataEpoch==3 && old.PermanentlyDead==(version==2) &&
+                    old.NativeData.SequenceEqual(new byte[]{44,55}) && !behavior.Follow && behavior.AttackEnabled && behavior.AutoRespawn==(version<3),
+                    "legacy archive preserves native bytes, ownership, terminal identity, and retained behavior fields");
+                Require(behavior.HealthRecoveryEnabled && behavior.HealthRecoveryMode==CompanionHealthRecoveryMode.Smart && behavior.ManaRecoveryEnabled &&
+                    behavior.AllowNurse && behavior.ConsumablesEnabled && behavior.ExcludedHealingTypes.Length==0 && behavior.ExcludedManaTypes.Length==0 &&
+                    behavior.AllowedGrowthTypes.Length==0 && behavior.AllowedBuffTypes.Length==0, "each legacy version receives the intended supply defaults");
+                Require(behavior.MainWeapons.Length==(version==3?1:0),"only v3 contains a legacy manual selection");
+                if(version==3) Require(behavior.MainWeapons[0].SlotHint==48&&behavior.MainWeapons[0].Type==39&&behavior.MainWeapons[0].Prefix==60,
+                    "v3 manual selection migrates to one actual-slot preference");
+                archive.Save(old);
+                Require(original.SequenceEqual(File.ReadAllBytes(path)),"loading and reaccepting an identical old revision leaves the original format untouched");
                 archive.Save(old.Revise(old.NativeData));
             }
+            using(var stream=File.OpenRead(path))using(var reader=new BinaryReader(stream))
+            { Require(reader.ReadString()=="JueMingR.Companion"&&reader.ReadInt32()==4,"the next complete revision writes one v4 record"); }
             using(var archive=new FileCompanionArchive(game))Require(archive.LoadOwner("legacy").Profiles.Single().PermanentlyDead==(version==2),"normal next revision upgrades legacy without rewriting terminal semantics");
             }
         }
         private static void PreferenceRoundTrip(string root)
         {
             string game=Path.Combine(root,"preferences");Guid owner,id=Guid.NewGuid();
-            var behavior=new CompanionBehavior{AutoRespawn=false,ManualWeaponSlot=12,ManualWeaponType=39,ManualWeaponPrefix=60};
+            var behavior=new CompanionBehavior
+            {
+                AutoRespawn=false,HealthRecoveryEnabled=false,HealthRecoveryMode=CompanionHealthRecoveryMode.Fast,
+                ManaRecoveryEnabled=false,AllowNurse=false,ConsumablesEnabled=false,
+                MainWeapons=new[]{new CompanionWeaponPreference(39,60,12),new CompanionWeaponPreference(3507,0,49)},
+                ExcludedHealingTypes=new[]{28},ExcludedManaTypes=new[]{110},AllowedGrowthTypes=new[]{29,109},AllowedBuffTypes=new[]{292}
+            };
             var clone=behavior.Clone();clone.Follow=false;
-            Require(!clone.AutoRespawn && clone.ManualWeaponSlot==12 && clone.ManualWeaponType==39 && clone.ManualWeaponPrefix==60,"editing one cloned preference preserves new settings");
+            behavior.MainWeapons[0]=default(CompanionWeaponPreference);behavior.ExcludedHealingTypes[0]=1;behavior.ExcludedManaTypes[0]=2;
+            behavior.AllowedGrowthTypes[0]=3;behavior.AllowedBuffTypes[0]=4;
+            Require(clone.MainWeapons[0].Type==39 && clone.ExcludedHealingTypes[0]==28 && clone.ExcludedManaTypes[0]==110 &&
+                clone.AllowedGrowthTypes[0]==29 && clone.AllowedBuffTypes[0]==292,"each cloned preference array is independent");
             using(var archive=new FileCompanionArchive(game))
             {owner=archive.LoadOwner("creator").OwnerId;archive.Save(new CompanionProfile(id,owner,"偏好保存",1,1,clone,new byte[]{7,9},true));}
             using(var archive=new FileCompanionArchive(game))
             {
                 var profile=archive.LoadOwner("creator").Profiles.Single();var saved=profile.Behavior;
-                Require(profile.OwnerId==owner && profile.Id==id && profile.PermanentlyDead && profile.NativeData.SequenceEqual(new byte[]{7,9}) && !saved.Follow && !saved.AutoRespawn && saved.ManualWeaponSlot==12 && saved.ManualWeaponType==39 && saved.ManualWeaponPrefix==60,"one v3 record reopens settings with native/owner/terminal data intact");
-                saved.AutoRespawn=true;Require(!profile.Behavior.AutoRespawn,"caller's preference edits cannot mutate the stored profile");
+                Require(profile.OwnerId==owner && profile.Id==id && profile.PermanentlyDead && profile.NativeData.SequenceEqual(new byte[]{7,9}) &&
+                    !saved.Follow && !saved.AutoRespawn && saved.MainWeapons.Length==2 && saved.MainWeapons[0].Prefix==60 && saved.MainWeapons[1].SlotHint==49 &&
+                    !saved.HealthRecoveryEnabled && saved.HealthRecoveryMode==CompanionHealthRecoveryMode.Fast && !saved.ManaRecoveryEnabled &&
+                    !saved.AllowNurse && !saved.ConsumablesEnabled && saved.ExcludedHealingTypes.SequenceEqual(new[]{28}) && saved.ExcludedManaTypes.SequenceEqual(new[]{110}) &&
+                    saved.AllowedGrowthTypes.SequenceEqual(new[]{29,109}) && saved.AllowedBuffTypes.SequenceEqual(new[]{292}),
+                    "one v4 record reopens the full settings with native, owner and terminal data intact");
+                saved.AutoRespawn=true;saved.MainWeapons[0]=default(CompanionWeaponPreference);saved.ExcludedHealingTypes[0]=1;
+                Require(!profile.Behavior.AutoRespawn&&profile.Behavior.MainWeapons[0].Type==39&&profile.Behavior.ExcludedHealingTypes[0]==28,
+                    "caller's edits cannot mutate the stored profile or its arrays");
             }
         }
         private static void TerminalArchive(string root)
@@ -182,17 +214,15 @@ namespace JueMingR.ArchitectureTests
         private static void ContinuousJump()
         {
             var brain = new CompanionBehaviorBrain();
-            var observation = new CompanionMovementObservation { X = 0, Y = 0, TargetX = 200, TargetY = 0, Grounded = true, WalkSafe = false, Wall = true, JumpSafe = true, JumpHoldTicks = 15 };
+            var observation = new CompanionMovementObservation { X = 0, Y = 0, TargetX = 200, TargetY = 0, Grounded = true, CanTakeOff = true, WalkSafe = false, Wall = true, JumpSafe = true, JumpHoldTicks = 15 };
             var start = brain.Decide(observation); Require(start.Jump && start.Move == 1, "reachable obstacle starts a jump");
-            observation.Grounded = false; observation.VelocityY = -4; observation.JumpSafe = false; observation.TargetX = -200;
+            observation.Grounded = false; observation.Y = -4; observation.VelocityY = -4; observation.JumpSafe = false; observation.TargetX = -200;
             var movingOwner = brain.Decide(observation);
             Require(movingOwner.Jump && movingOwner.Move == 1, "owner turn and deferred planning preserve the launched jump prefix");
-            observation.CanHeal = true;
-            Require(brain.Decide(observation).Heal, "native healing request can coexist with movement");
             for (int n = 0; n < 20; n++)
             {
                 var airborne = brain.Decide(observation);
-                Require(airborne.Move == 1 && airborne.Heal, "exhausted jump hold does not retire an actually airborne movement prefix or healing");
+                Require(airborne.Move == 1, "exhausted jump hold does not retire an actually airborne movement prefix");
             }
             observation.Grounded = true; observation.VelocityY = 0; observation.Wall = false; observation.WalkSafe = true;
             Require(brain.Decide(observation).Move == -1, "actual landing retires the old jump and accepts the new target");
@@ -202,18 +232,14 @@ namespace JueMingR.ArchitectureTests
         {
             var observation = new CompanionMovementObservation { X = 0, Y = 0, TargetX = 200, Grounded = true, WalkSafe = false, Wall = true, JumpSafe = true, JumpHoldTicks = 3 };
             var brain = new CompanionBehaviorBrain();
+            Require(!brain.Decide(observation).Jump, "route feasibility does not supply native takeoff admission");
+            observation.CanTakeOff = true;
             Require(brain.Decide(observation).Jump, "native takeoff request is issued");
-            observation.JumpSafe = false; observation.Wall = false; observation.WalkSafe = true; observation.TargetX = -200;
-            for (int n = 1; n < observation.JumpHoldTicks; n++)
-                Require(brain.Decide(observation).Jump, "unstarted request consumes its existing finite hold");
+            Require(!brain.Decide(observation).Jump, "unchanged demand after rejected takeoff gets a real release frame");
+            Require(brain.Decide(observation).Jump, "persistent obstacle retries after release and a legal observation");
+            observation.Danger = true; observation.EscapeDirection = -1;
             var recovered = brain.Decide(observation);
-            Require(!recovered.Jump && recovered.Move == -1, "continuous grounded state cannot retain an exhausted jump direction forever");
-            observation.TargetX = 200; observation.Wall = true; observation.WalkSafe = false; observation.JumpSafe = true;
-            brain = new CompanionBehaviorBrain(); brain.Decide(observation);
-            for (int n = 1; n < observation.JumpHoldTicks; n++) brain.Decide(observation);
-            observation.JumpSafe = false; observation.Danger = true; observation.EscapeDirection = -1; observation.CanHeal = true;
-            recovered = brain.Decide(observation);
-            Require(recovered.Move == -1 && recovered.Heal && recovered.Status == "避险中", "rejected takeoff returns to current danger and healing decisions after its own hold");
+            Require(!recovered.Jump && recovered.Move == -1 && recovered.Status == "避险中", "release frame still permits current danger movement");
         }
         private static void MenuMigration(string root)
         {

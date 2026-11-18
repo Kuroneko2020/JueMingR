@@ -14,6 +14,40 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCompanionChecks
     {
+        internal static void RunObservationCombat(object context)
+        {
+            NativeCombatAimChecks.Initialize();
+            Main.spawnTileX = 60; Main.spawnTileY = 58;
+            Main.leftWorld = Main.topWorld = 0; Main.rightWorld = Main.maxTilesX * 16; Main.bottomWorld = Main.maxTilesY * 16;
+            for (int x = 2; x < 118; x++) { Main.tile[x, 60].active(true); Main.tile[x, 60].type = TileID.Stone; }
+            new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player), "Spawn"), HarmonyPatchType.Prefix, "JueMingR.Tests.QuickItemOutlets");
+            var host = Get(context, "Companions");
+            var profiles = Get(host, "profiles");
+            NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); Call(host, "Update", 0UL); return (bool)Get(profiles, "Ready"); });
+            Require((bool)Call(host, "Create", "战斗观察甲"), "create first native observation consumer: " + Get(host, "Feedback"));
+            Require((bool)Call(host, "Create", "战斗观察乙"), "create second native observation consumer: " + Get(host, "Feedback"));
+            NativeQuickItemChecks.Until(() =>
+            {
+                Call(host, "Update", 0UL);
+                var known = ((IEnumerable)Get(host, "Profiles")).Cast<CompanionProfile>().ToArray();
+                return known.Length == 2 && known.All(p => (bool)Call(profiles, "IsSaved", p.Id));
+            });
+            var list = ((IEnumerable)Get(host, "Profiles")).Cast<CompanionProfile>().ToArray();
+            Require((bool)Call(host, "Join", list[0].Id), "join first native observation consumer");
+            var isolation = new Harmony("JueMingR.Tests.CompanionObservationCombatOutlets");
+            // These are the established headless NativeBody cosmetic
+            // outlets. The real human and both AI Player.Update loops run.
+            foreach (string name in new[] { "HandleSpecialEvent", "HandleMining", "HandleRunning" })
+                isolation.Patch(AccessTools.Method(typeof(Terraria.GameContent.Achievements.AchievementsHelper), name),
+                    prefix: new HarmonyMethod(typeof(NativeCompanionChecks), nameof(SkipCosmetic)));
+            try { NativeCompanionCoreNetworkChecks.RunObservationCombat(host, (Player)Call(host, "GetBody", list[0].Id), list[1].Id); }
+            finally
+            {
+                isolation.UnpatchAll(isolation.Id);
+                Call(host, "OnSessionEnded");
+            }
+        }
+
         internal static void Run(object context)
         {
             // Normal native world entry registers the creative power IDs.

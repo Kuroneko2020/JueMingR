@@ -20,7 +20,11 @@ namespace NativeWorldTextProbe
         private static bool rayTable,contactTable;private static Vector2 rayPoint;private static Rectangle contactRect;
         private static void ControlBefore(object a){if(ReferenceEquals(Get(a,"Body"),body))controlDepth++;}
         private static Exception ControlFinal(object a,Exception __exception){if(ReferenceEquals(Get(a,"Body"),body))controlDepth--;return __exception;}
-        private static void Ray(Vector2 __3,bool __result){if(controlDepth>0){rays++;rayPoint=__3;rayTable=__result && ReferenceEquals(Main.npc[Slot],expected);}}
+        private static void Ray(Vector2 __2,bool __result)
+        {
+            if(controlDepth<=0 || expected==null || __2!=expected.Center+expected.netOffset)return;
+            rays++;rayPoint=__2;rayTable=__result && ReferenceEquals(Main.npc[Slot],expected);
+        }
         private static void Contact(Player __instance){if(ReferenceEquals(__instance,body)){contacts++;contactTable=ReferenceEquals(Main.npc[Slot],expected);contactRect=__instance.Hitbox;}}
         private static void Prepared(NPC npc){if(npc.whoAmI==Slot)prepares++;}
         private static void Ai(){if(ReferenceEquals(Main.npc,table))sharedAi++;}
@@ -37,10 +41,12 @@ namespace NativeWorldTextProbe
             var human=Main.LocalPlayer;var bodies=new[]{human,first,second};var positions=bodies.Select(p=>p.position).ToArray();var velocities=bodies.Select(p=>p.velocity).ToArray();
             var pa=(CompanionProfile)Get(a,"Profile");var pb=(CompanionProfile)Get(b,"Profile");var ba=pa.Behavior;var bb=pb.Behavior;var brainA=Get(a,"Behavior");var brainB=Get(b,"Behavior");
             var items=new[]{first.inventory[0],first.inventory[54]};int selected=first.selectedItem,life=first.statLife,immuneTime=first.immuneTime;bool immune=first.immune;var cooldowns=(int[])first.hurtCooldowns.Clone();
+            var shots=Main.projectile.Select(p=>p.active?(int)p.key:0).ToArray();
             var old=Main.npc[Slot];double surface=Main.worldSurface;var tiles=new List<Tuple<int,int,Tile>>();
             var patch=new Harmony("JueMingR.Tests.CompanionNpcPhysics");body=first;controlDepth=rays=contacts=prepares=sharedAi=0;
             patch.Patch(AccessTools.Method(host.GetType(),"Control"),prefix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(ControlBefore)),finalizer:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(ControlFinal)));
-            patch.Patch(AccessTools.Method(typeof(Collision),"CanHitLine",new[]{typeof(Vector2),typeof(int),typeof(int),typeof(Vector2),typeof(int),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(Ray)));
+            var aim=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackAim",true);
+            patch.Patch(AccessTools.Method(aim,"ActorDirectLine"),postfix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(Ray)));
             patch.Patch(AccessTools.Method(typeof(Player),"Update_NPCCollision"),prefix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(Contact)));
             patch.Patch(AccessTools.Method(host.GetType(),"PrepareNpcObservationPhysics"),postfix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(Prepared)));
             patch.Patch(AccessTools.Method(typeof(NPC),"AI"),prefix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(Ai)));
@@ -49,19 +55,25 @@ namespace NativeWorldTextProbe
                 Main.worldSurface=40;Call(host,"ClearWorldSources");
                 human.position=new Vector2(1200,918);first.position=new Vector2(1000,918);second.position=new Vector2(1240,918);foreach(var p in bodies)p.velocity=Vector2.Zero;
                 foreach(var actor in new[]{a,b}){Set(actor,"Target",null);Set(actor,"AimTimeline",null);Set(actor,"AimTerrain",null);Set(actor,"HasAim",false);Set(actor,"Behavior",Activator.CreateInstance(brainA.GetType(),true));}
-                Call(host,"SetBehavior",pa.Id,new CompanionBehavior{Follow=false,AttackEnabled=true,PreferOwner=false});Call(host,"SetBehavior",pb.Id,new CompanionBehavior{Follow=false,AttackEnabled=false});
-                // Real no-ammo input leaves basic aiming/ray qualification
-                // active while native ItemCheck cannot shoot this receiver.
-                first.inventory[0]=new Item(ItemID.FlintlockPistol);first.inventory[54]=new Item();first.selectedItemState.Select(0);
-                NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",0UL);foreach(var p in bodies)p.Update(p.whoAmI);
+                Call(host,"SetBehavior",pa.Id,new CompanionBehavior{Follow=false,AttackEnabled=true});Call(host,"SetBehavior",pb.Id,new CompanionBehavior{Follow=false,AttackEnabled=false});
+                // The shared physical receiver must reach the actual consumer
+                // with the firearm's own legal ammunition present.
+                first.inventory[0]=new Item(ItemID.FlintlockPistol);first.inventory[54]=new Item(ItemID.MusketBall){stack=20};first.selectedItemState.Select(0);
+                NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",0UL);
+                UpdateReceiver(human,"human");UpdateReceiver(first,"first companion");UpdateReceiver(second,"second companion");
                 var source=Spawn(NPCID.DemonEye,30);source.position=new Vector2(1100,878);source.velocity=new Vector2(4*(2-source.scale),1.5f*(2-source.scale));
                 source.UpdateNPC(Slot);Require(source.noGravity,"original AI_002 actually establishes source noGravity before serialization");expected=Publish(host,source,publish);
                 var falling=new NPC();falling.SetDefaults(NPCID.DemonEye);falling.position=source.position;falling.velocity=source.velocity;Require(!falling.noGravity,"legacy counterfactual starts with the real SetDefaults physical flags");
                 var gravity=AccessTools.Field(typeof(NPC),"gravity");var updateGravity=AccessTools.Method(typeof(NPC),"UpdateNPC_UpdateGravity");long stamp=(long)Call(host,"NpcSampleTick",expected),revision=(long)Call(host,"NpcObservationRevision",expected);
+                int attackFrames=0;
                 for(int step=1;step<=6;step++)
                 {
                     int rayCount=rays,contactCount=contacts;NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",0UL);human.Update(human.whoAmI);first.Update(first.whoAmI);second.Update(second.whoAmI);
-                    Require(ReferenceEquals(Get(a,"Target"),expected) && (Vector2)Get(a,"Aim")==expected.Center+expected.netOffset && rays>rayCount && rayTable && rayPoint==expected.Center,"actual basic aim and native reachability ray consume this shared flying geometry");
+                    if(ReferenceEquals(GetOptional(a,"Target"),expected))
+                    {
+                        attackFrames++;
+                        Require(rays>rayCount && rayTable && rayPoint==expected.Center+expected.netOffset,"actual shared aim reachability consumes this flying receiver's current geometry");
+                    }
                     Require(contacts==contactCount+1 && contactTable && ReferenceEquals(Main.npc[Slot],source),"actual Player.Update contact stage borrows the same table then returns the human table");
                     source.UpdateNPC(Slot);int calls=prepares;Call(host,"AdvanceNpcObservation");var point=expected.position;Call(host,"AdvanceNpcObservation");
                     Require(prepares==calls+1 && expected.position==point && expected.position==source.position && expected.velocity==source.velocity,"six no23 flying steps follow actual native geometry, once per world step for two actors");
@@ -69,6 +81,7 @@ namespace NativeWorldTextProbe
                     float previous=(float)gravity.GetValue(null);try{object[] args={0f};updateGravity.Invoke(falling,args);falling.velocity.Y=Math.Min((float)args[0],falling.velocity.Y+(float)gravity.GetValue(null));falling.position+=falling.velocity;}finally{gravity.SetValue(null,previous);}
                     Console.WriteLine("NPC PHYSICS no23 age="+step+" native="+source.position+" observed="+point+" legacyGravity="+falling.position);
                 }
+                Require(attackFrames>=4,"both planning turns allow sustained qualification of the real supported flying target");
                 Require(falling.position.Y-expected.position.Y>1,"finite clear flight distinguishes the old false-gravity path by more than a pixel");
                 first.position=new Vector2(expected.position.X,(float)Math.Floor(expected.position.Y)+1-first.height);first.velocity=Vector2.Zero;first.immune=false;first.immuneTime=0;Array.Clear(first.hurtCooldowns,0,first.hurtCooldowns.Length);
                 int before=first.statLife,humanLife=human.statLife,contactBefore=contacts;Require(!first.creativeGodMode && !first.npcTypeNoAggro[expected.type],"contact witness is a real vulnerable fixture player");
@@ -100,8 +113,20 @@ namespace NativeWorldTextProbe
             finally
             {
                 body=null;expected=null;table=null;controlDepth=0;patch.UnpatchAll(patch.Id);Main.worldSurface=surface;foreach(var t in tiles)Main.tile[t.Item1,t.Item2]=t.Item3;Main.npc[Slot]=old;Call(host,"ClearWorldSources");
+                for(int i=0;i<shots.Length;i++)if(Main.projectile[i].active && Main.projectile[i].owner==first.whoAmI && (int)Main.projectile[i].key!=shots[i])Main.projectile[i].active=false;
                 for(int i=0;i<bodies.Length;i++){bodies[i].position=positions[i];bodies[i].velocity=velocities[i];}first.inventory[0]=items[0];first.inventory[54]=items[1];first.selectedItemState.Select(selected);first.statLife=life;first.immune=immune;first.immuneTime=immuneTime;Array.Copy(cooldowns,first.hurtCooldowns,cooldowns.Length);
-                Call(host,"SetBehavior",pa.Id,ba);Call(host,"SetBehavior",pb.Id,bb);Set(a,"Behavior",brainA);Set(b,"Behavior",brainB);foreach(var actor in new[]{a,b}){Set(actor,"Target",null);Set(actor,"AimTimeline",null);Set(actor,"AimTerrain",null);Set(actor,"HasAim",false);}
+                Call(host,"SetBehavior",pa.Id,ba);Call(host,"SetBehavior",pb.Id,bb);Set(a,"Behavior",brainA);Set(b,"Behavior",brainB);foreach(var actor in new[]{a,b}){Call(Get(actor,"Combat"),"Reset");Set(actor,"Target",null);Set(actor,"AimTimeline",null);Set(actor,"AimTerrain",null);Set(actor,"HasAim",false);}
+            }
+        }
+
+        private static void UpdateReceiver(Player player,string role)
+        {
+            try { player.Update(player.whoAmI); }
+            catch(Exception failure)
+            {
+                var frame=new System.Diagnostics.StackTrace(failure).GetFrame(0);
+                throw new InvalidOperationException("Native observation warm-up failed for "+role+" slot="+player.whoAmI+
+                    " local="+Main.myPlayer+" position="+player.position+" native frame IL="+(frame?.GetILOffset()??-1),failure);
             }
         }
     }

@@ -45,6 +45,8 @@ namespace JueMingR.TerrariaHost.Combat
             if(ammo!=null)for(int i=0;i<player.inventory.Length;i++)if(ReferenceEquals(player.inventory[i],ammo)){ammoSlot=i;break;}}
         internal static AttackAmmoSnapshot Capture(Player player,Item weapon)
         {return CaptureCore(player,weapon,weapon.shootSpeed,weapon.shoot);}
+        internal static Item Source(Player player,Item weapon)
+        {return weapon.useAmmo>0?select(player,weapon):null;}
         private static int SelectedAmmoDamage(Player player,Item weapon,Item ammo)
         {
             int value=player.GetWeaponDamage(weapon);
@@ -92,7 +94,7 @@ namespace JueMingR.TerrariaHost.Combat
                 if(weapon.type==4381)projectile=819;
                 if(weapon.type==4058 && projectile==474)projectile=117;
                 if(projectile==42){if(ammo.type==370)projectile=65;else if(ammo.type==408)projectile=68;else if(ammo.type==1246)projectile=354;}
-                if(player.inventory[player.selectedItem].type==2888 && projectile==1)projectile=469;
+                if(weapon.type==2888 && projectile==1)projectile=469;
                 if(player.hasMoltenQuiver && projectile==1)projectile=2;
                 speed+=ammo.shootSpeed;
                 if(player.magicQuiver && (weapon.useAmmo==AmmoID.Arrow || weapon.useAmmo==AmmoID.Stake))speed*=1.1f;

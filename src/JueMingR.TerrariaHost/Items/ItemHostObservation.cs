@@ -58,6 +58,14 @@ namespace JueMingR.TerrariaHost.Items
                     current.active && ReferenceEquals(current, sessionPlayer) && current.inventory != null && current.inventory.Length >= 58 ? current : null;
             }
         }
+        // A companion's native consumer temporarily owns Main.myPlayer.
+        // A split payment still names the registered human session body.
+        internal bool OwnsSessionPlayer(Player player)
+        {
+            return player != null && ReferenceEquals(player, sessionPlayer) &&
+                ReferenceEquals(player, Main.ActivePlayerFileData?.Player) && player.active && !Main.gameMenu &&
+                !Main.dedServ && (Main.netMode == 0 || Main.netMode == 1);
+        }
         internal void BeginSession()
         { sessionPlayer = Main.LocalPlayer; previous = null; cached = null; previousShop = null; previousNpc = null; ClearManual(); Array.Clear(references, 0, references.Length); }
         internal void EndSession() { sessionPlayer = null; cached = null; previous = null; ClearManual(); CausalDepth = 0; }

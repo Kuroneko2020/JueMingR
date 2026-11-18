@@ -18,18 +18,21 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void BuildSelected(float row)
         {
-            manualWeaponSlot=CurrentProfile()?.Behavior.ManualWeaponSlot??-1;RefreshAvailability(host.GetBody(selected));
+            var body = host.GetBody(selected);
+            RefreshAvailability(body);
             field = default(F5Rect); contentY = bodyView.Y - bodyOffset;
             var profile = CurrentProfile();
             if (page == 0)
             {
+                RefreshWeaponSlots(body);
+                WeaponToolbar(row);
                 // Shared structural measurements align both columns. Current
                 // values/status never change these baselines; only native maxima,
                 // style, chosen subpage or viewport geometry can do so.
                 sharedResourcesHeight=SharedResources(bodyView.Width/2-6);
                 sharedEquipmentHeight=SharedEquipment(bodyView.Width/2-6);
                 BuildActor(Main.LocalPlayer, true, ownerView, ownerOffset, row);
-                BuildActor(profile == null ? null : host.GetBody(selected), false, companionView, bodyOffset, row);
+                BuildActor(profile == null ? null : body, false, companionView, bodyOffset, row);
                 return;
             }
             if (profile == null) { BodyText(pendingCreatedName??"点击左下角＋创建队友", row); FinishBody(); return; }
@@ -52,21 +55,24 @@ namespace JueMingR.TerrariaHost.F5
         {return 2*Math.Max(GridHeight(paneWidth,ownerGearPage==2?5:10),GridHeight(paneWidth,companionGearPage==2?5:10));}
         private float PreferredHeight(float width,float row)
         {
+            if (page == 1) return PreferredConfigurationHeight(width, row);
             float pane=(width-104)/2;
-            float header=8+row+6+(pane-24<300?24:0)+SharedResources(pane)+4;
-            return row+53+header+6+(8+26+6+SharedEquipment(pane))+6+(4+GridHeight(pane,50))+6+(4+GridHeight(pane,8))+8;
+            float header=8+row+6+(pane-24<RespawnTextWidth()+100?24:0)+SharedResources(pane)+4;
+            return row+53+header+6+(8+26+6+SharedEquipment(pane))+6+(4+GridHeight(pane,50))+6+(4+GridHeight(pane,8))+8+row+6;
         }
+        private float RespawnTextWidth() => Math.Max(120, measure("复活倒计时 99 秒 · 自动复活已关闭", .65f).Width + 8);
         private void BuildActor(Player body, bool owner, F5Rect view, int offset, float row)
         {
             // The same final rectangles determine visible cells, clipping and hit
             // targets. Scrolling projects native slot identities; it never renumbers them.
             float headerTop=view.Y-offset,y=headerTop+8,x=view.X+12,width=view.Width-24;
             string name = owner ? Main.LocalPlayer?.name ?? "我的人物" : CurrentProfile()?.Name ?? pendingCreatedName ?? "AI 队友";
-            bool wrapStatus=width<300;
-            var nameRect=new F5Rect(x,y,Math.Max(40,width-(wrapStatus?0:124)),row);
+            float statusWidth=RespawnTextWidth();
+            bool wrapStatus=width<statusWidth+100;
+            var nameRect=new F5Rect(x,y,Math.Max(40,width-(wrapStatus?0:statusWidth+4)),row);
             if(ActorVisible(nameRect,view)) Text(name,nameRect,.85f);
             y += row + 6;
-            if(!owner) {respawnLabel=labels.Count;labels.Add(new F5Element(F5ElementKind.Text,wrapStatus?new F5Rect(x,y,width,24):new F5Rect(x+width-120,y-row-6,120,row),host.RespawnStatus(selected),default(F5Size),.6f,F5Command.None));}if(wrapStatus)y+=24;
+            if(!owner) {respawnLabel=labels.Count;labels.Add(new F5Element(F5ElementKind.Text,wrapStatus?new F5Rect(x,y,width,24):new F5Rect(x+width-statusWidth,y-row-6,statusWidth,row),host.RespawnStatus(selected),default(F5Size),.6f,F5Command.None));}if(wrapStatus)y+=24;
             float resources=sharedResourcesHeight;
             float heroHeight=resources;
             float headerHeight=8+row+6+(wrapStatus?24:0)+heroHeight+4;
@@ -134,8 +140,7 @@ namespace JueMingR.TerrariaHost.F5
                 var rect=new F5Rect(view.X+12+inset+i%columns*cell,y+i/columns*cell,cell-3,cell-3);
                 if(!ActorVisible(rect,view)) continue;
                 Item item=ReadSlotPreview(body,owner,area,slot);
-                var c=Button("slot:"+owner+":"+area+":"+slot,"",rect,null,true,
-                    !owner && area==CompanionInventoryArea.Inventory && slot==manualWeaponSlot);
+                var c=Button("slot:"+owner+":"+area+":"+slot,"",rect,null);
                 c.IsSlot=true; c.Owner=owner; c.Area=area; c.Slot=slot; c.Element=null;
                 ApplyItemPresentation(c,body,item); icons.AddVisible(c.ItemType);
             }
@@ -153,13 +158,20 @@ namespace JueMingR.TerrariaHost.F5
         {
             int type=item?.type??0,stack=item?.stack??0,prefix=item?.prefix??0;
             bool locked=(c.Area==CompanionInventoryArea.Armor||c.Area==CompanionInventoryArea.Dye)&&!body.IsItemSlotUnlockedAndUsable(c.Slot);
-            bool enabled=(c.Owner||selectedTransfer)&&!locked;
-            bool chosen=!c.Owner&&c.Area==CompanionInventoryArea.Inventory&&c.Slot==manualWeaponSlot;
+            bool aiWeaponSlot = !c.Owner && c.Area == CompanionInventoryArea.Inventory && c.Slot < CompanionBehavior.MainInventorySlots;
+            bool candidate = aiWeaponSlot && weaponDraft != null && CompanionItemRules.WeaponEligible(item);
+            bool active = aiWeaponSlot && c.Slot == activeWeaponSlot && body.selectedItem == c.Slot && CompanionItemRules.WeaponEligible(item);
+            bool enabled = weaponDraft == null ? (c.Owner || selectedTransfer) && !locked : candidate;
+            bool chosen = aiWeaponSlot && (c.Slot == displayedWeaponSlots[0] || c.Slot == displayedWeaponSlots[1]);
             string unavailable=c.Owner?null:selectedUnavailable;
-            if(c.Prefix==prefix&&c.ItemType==type&&c.Stack==stack&&c.Enabled==enabled&&c.Selected==chosen&&c.Availability==unavailable&&c.Locked==locked) return false;
+            if(c.Prefix==prefix&&c.ItemType==type&&c.Stack==stack&&c.Enabled==enabled&&c.Selected==chosen&&c.Availability==unavailable&&c.Locked==locked&&c.WeaponCandidate==candidate&&c.ActiveWeapon==active) return false;
             bool changedType=c.ItemType!=type;
             if(c.Stack!=stack||c.StackText==null)c.StackText=stack.ToString();c.ItemType=type;c.Stack=stack;c.Prefix=prefix;c.Enabled=enabled;c.Selected=chosen;
-            c.Availability=unavailable;c.Locked=locked;c.Hint=unavailable??(locked?"此饰品槽尚未解锁。":SlotHint(c.Area,c.Slot,item,c.Owner));c.EmptyIcon=-1;c.Placeholder=null;
+            c.Availability=unavailable;c.Locked=locked;c.WeaponCandidate=candidate;c.ActiveWeapon=active;
+            c.Hint=unavailable??(locked?"此饰品槽尚未解锁。":SlotHint(c.Area,item));
+            if (chosen) c.Hint += "\n主要武器";
+            if (active) c.Hint += "\n当前使用的武器";
+            c.EmptyIcon=-1;c.Placeholder=null;
             if(type==0)
             {
                 if(c.Area==CompanionInventoryArea.Dye||c.Area==CompanionInventoryArea.MiscDye)c.EmptyIcon=1;
@@ -179,7 +191,11 @@ namespace JueMingR.TerrariaHost.F5
             bool types=false;
             if(page==0)
             {
-                Player owner=Main.LocalPlayer,body=host.GetBody(selected);manualWeaponSlot=CurrentProfile()?.Behavior.ManualWeaponSlot??-1;RefreshAvailability(body);
+                Player owner=Main.LocalPlayer,body=host.GetBody(selected);
+                RefreshAvailability(body);
+                RefreshWeaponSlots(body);
+                RefreshWeaponToolbar(body);
+                if (weaponDraft != null) UpdateLabel(weaponCountLabel, WeaponCount());
                 foreach(var c in controls) if(c.IsSlot)
                 {
                     Player player=c.Owner?owner:body;
@@ -189,10 +205,9 @@ namespace JueMingR.TerrariaHost.F5
             if(types) {icons.BeginVisibleSet();foreach(var c in controls)icons.AddVisible(c.ItemType);icons.EndVisibleSet();}
             if(resources) icons.Prepare();
         }
-        private static string SlotHint(CompanionInventoryArea area,int slot,Item item,bool owner)
+        private static string SlotHint(CompanionInventoryArea area,Item item)
         {
             string text=item==null||item.IsAir ? area==CompanionInventoryArea.Dye||area==CompanionInventoryArea.MiscDye ? "染料" : "空格" : item.Name+" ×"+item.stack;
-            if (!owner && area==CompanionInventoryArea.Inventory && slot<50 && item!=null && !item.IsAir) text+="\nAlt＋左键设为武器";
             return text;
         }
         private static bool ActorVisible(F5Rect rect,F5Rect view) { return rect.Y>=view.Y && rect.Bottom<=view.Bottom && rect.X>=view.X && rect.Right<=view.Right; }
@@ -201,6 +216,17 @@ namespace JueMingR.TerrariaHost.F5
         {
             bool changed=false;
             if(page!=0||editor!=null||wasDragging) { host.EndItemRepeat(); rightSlot=null; return; }
+            if (weaponDraft != null)
+            {
+                if (left && !previousLeft && hit?.IsSlot == true)
+                {
+                    armedKey = null;
+                    ToggleWeapon(hit);
+                    RefreshItemPresentation(resources);
+                    RefreshNotice();
+                }
+                return;
+            }
             if(hit==null||!hit.IsSlot) { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; return; }
             if(left&&!previousLeft)
             {
@@ -209,8 +235,6 @@ namespace JueMingR.TerrariaHost.F5
                 bool shift=keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.LeftShift)||keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.RightShift);
                 if(hit.Area==CompanionInventoryArea.Inventory&&HostCompanions.QuickTrashRequested(control,shift))
                 {host.QuickTrashGesture(selected,hit.Owner,hit.Area,hit.Slot);changed=true;}
-                else if((keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.LeftAlt)||keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.RightAlt)) && !hit.Owner && hit.Area==CompanionInventoryArea.Inventory && hit.Slot<50 && !host.HasItemGesture)
-                { host.SelectWeapon(selected,hit.Slot); changed=true; }
                 else {
                     host.ItemGesture(selected,hit.Owner,hit.Area,hit.Slot,shift?CompanionItemGesture.Shift:CompanionItemGesture.Left); changed=true; }
             }
@@ -238,17 +262,15 @@ namespace JueMingR.TerrariaHost.F5
             });
             if(ReferenceEquals(source,Main.LocalPlayer))renderer.Pass(matrix,view,()=>DrawCentered(source.dead?"已死亡":"主人",new F5Rect(displayPanel.X+5,displayPanel.Bottom-21,displayPanel.Width-10,18),Color.Silver,.55f));
         }
-        private void Behavior(bool? follow, bool? attack, bool? defense, bool? prefer)
+        private void EditBehavior(Action<CompanionBehavior> edit)
         {
             var profile = CurrentProfile(); if (profile == null) return;
             var b = profile.Behavior;
-            b.Follow=follow??b.Follow;b.AttackEnabled=attack??b.AttackEnabled;
-            b.SelfDefense=defense??b.SelfDefense;b.PreferOwner=prefer??b.PreferOwner;
+            edit(b);
             Command(()=>host.SetBehavior(selected,b));
         }
         private void Command(Func<bool> command)
         { command(); notice = null; contentInvalidated=true; }
-        private void SetRespawn(bool value) {var profile=CurrentProfile();if(profile==null)return;var b=profile.Behavior;b.AutoRespawn=value;Command(()=>host.SetBehavior(selected,b));}
         private void AddActorHeader(F5Rect rect,F5Rect view)
         {float top=Math.Max(rect.Y,view.Y),bottom=Math.Min(rect.Bottom,view.Bottom);if(bottom>top)actorHeaders.Add(new F5Rect(rect.X,top,rect.Width,bottom-top));}
         private void ActorGroup(float x,float y,float width,float height,F5Rect view)

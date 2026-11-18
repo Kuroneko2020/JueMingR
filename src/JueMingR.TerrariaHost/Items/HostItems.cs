@@ -110,6 +110,17 @@ namespace JueMingR.TerrariaHost.Items
         {
             if (!ReferenceEquals(player, World.SessionPlayer) || slot < 0 || slot >= array.Length) return false;
             if (!ReferenceEquals(array, player.inventory)) return false;
+            return CompanionMainSlotProtected(player, array, slot);
+        }
+
+        internal bool CompanionPaymentSlotProtected(Player player, Item[] array, int slot)
+        {
+            return !World.OwnsSessionPlayer(player) || ReferenceEquals(array, player.inventory) &&
+                (slot == World.ManualSlot || CompanionMainSlotProtected(player, array, slot));
+        }
+
+        private bool CompanionMainSlotProtected(Player player, Item[] array, int slot)
+        {
             var item = array[slot];
             // Manual organization does not inherit automation's favorite or
             // idle-selected-slot exclusions. Real pending/material owners do.

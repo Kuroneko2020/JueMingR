@@ -21,14 +21,13 @@ namespace NativeWorldTextProbe
             cosmetic.Patch(typeof(Projectile).GetMethod("AI"),transpiler:new HarmonyMethod(typeof(NativeCombatBeamChecks).GetMethod("RippleOutlet",BindingFlags.NonPublic|BindingFlags.Static)));
             try
             {
-                Require((bool)Call(host,"SetBehavior",id,new CompanionBehavior{Follow=false,AttackEnabled=true}),"continuous weapon starts through real actor configuration");
+                Require((bool)Call(host,"SetBehavior",id,new CompanionBehavior{Follow=false,MainWeapons=new[]{new CompanionWeaponPreference(3541,0,0)}}),"continuous weapon starts through real actor configuration");
                 for(int i=0;i<24;i++)Step(host,body);
                 Require(body.channel && Main.projectile.Any(p=>p.active && p.owner==body.whoAmI && p.type==633) && Main.projectile.Count(p=>p.active && p.owner==body.whoAmI && p.type==632)==6 && body.statMana<200,"real actor ItemCheck holds prism, consumes own mana and creates six native child beams");
                 Require((bool)Call(host,"SetBehavior",id,new CompanionBehavior{Follow=false,AttackEnabled=false}),"real stop-fire command releases only this role");
                 for(int i=0;i<10;i++)Step(host,body);
                 Require(!body.channel && !Main.projectile.Any(p=>p.active && p.owner==body.whoAmI && (p.type==633 || p.type==632)),"native prism parent and children retire after actual role release");
-                Require((bool)Call(host,"SelectWeapon",id,1),"released role accepts real buffered weapon selection");
-                Call(host,"SetBehavior",id,new CompanionBehavior{Follow=false,AttackEnabled=true});int ammo=body.inventory[54].stack;
+                Require((bool)Call(host,"SetBehavior",id,new CompanionBehavior{Follow=false,MainWeapons=new[]{new CompanionWeaponPreference(39,0,1)}}),"bow preference commits without forcing a native slot change");int ammo=body.inventory[54].stack;
                 for(int i=0;i<35;i++)Step(host,body);
                 Require(body.HeldItem.type==39 && body.inventory[54].stack<ammo && !Main.projectile.Any(p=>p.active && p.owner==body.whoAmI && p.type==633),"switch after release uses new native weapon/ammo without resurrecting old channel");
                 Console.WriteLine("PASS companion actual ItemCheck prism hold/mana/six children -> stop-fire/native release -> buffered bow switch/ammo; no real-game/FPS claim.");

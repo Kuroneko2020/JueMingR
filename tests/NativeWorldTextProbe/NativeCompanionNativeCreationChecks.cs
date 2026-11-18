@@ -293,16 +293,16 @@ namespace NativeWorldTextProbe
                 // This bounded projection check changes only the already-tested
                 // actor's real scalar predicates. It runs no KillMe/Player.Update
                 // and makes no new death-lifecycle or revival claim.
-                body.dead=true;body.respawnTimer=122;Call(window,"SelectPage",1);Call(window,"SelectConfiguration",Enum.Parse(Get(window,"configurationCategory").GetType(),"Combat"));Call(window,"Prepare",Main.UIScaleMatrix,screen);
-                Require(RespawnLabel(window)=="复活：3秒","configuration has an independent name-side live native respawn countdown");
-                var choice=Controls(window).Single(c=>((string)Get(c,"Key")).StartsWith("config-choice:mode/",StringComparison.Ordinal));var point=NativeToolsUiChecks.Point(Get(choice,"Rect"));
+                body.dead=true;body.respawnTimer=122;Call(window,"SelectPage",1);Call(window,"SelectConfiguration",Enum.Parse(Get(window,"configurationCategory").GetType(),"Behavior"));Call(window,"Prepare",Main.UIScaleMatrix,screen);
+                Require(RespawnLabel(window)=="复活倒计时 3 秒","configuration has an independent name-side live native respawn countdown");
+                var choice=Controls(window).Single(c=>((string)Get(c,"Key")).StartsWith("config-choice:movement/",StringComparison.Ordinal));var point=NativeToolsUiChecks.Point(Get(choice,"Rect"));
                 foreach(bool left in new[]{false,true}) {NativeToolsUiChecks.Mouse(point,left);Call(window,"Process",true,new Microsoft.Xna.Framework.Input.KeyboardState(),point,Main.UIScaleMatrix,screen,true,0);}
-                body.respawnTimer=61;Call(window,"Prepare",Main.UIScaleMatrix,screen);Require(RespawnLabel(window)=="复活：2秒"&&GetOptional(window,"armedKey")!=null,"real timer text refresh leaves the valid configuration press armed");
+                body.respawnTimer=61;Call(window,"Prepare",Main.UIScaleMatrix,screen);Require(RespawnLabel(window)=="复活倒计时 2 秒"&&GetOptional(window,"armedKey")!=null,"real timer text refresh leaves the valid configuration press armed");
                 NativeToolsUiChecks.Mouse(point,false);Call(window,"Process",true,new Microsoft.Xna.Framework.Input.KeyboardState(),point,Main.UIScaleMatrix,screen,true,0);
                 var disabled=original.Clone();disabled.AutoRespawn=false;Require((bool)Call(host,"SetBehavior",id,disabled),"existing behavior owner accepts auto-respawn preference");Call(window,"Prepare",Main.UIScaleMatrix,screen);
-                Require(RespawnLabel(window)=="自动复活已关闭","configuration reflects real disabled preference");
+                Require(RespawnLabel(window)=="复活倒计时 2 秒 · 自动复活已关闭","configuration combines countdown with the actual disabled preference");
                 graphics.Image(Path.Combine(output,"companion-config-respawn-off.png"),()=>Call(window,"Draw"),Main.UIScaleMatrix,Main.screenWidth,Main.screenHeight);
-                Set(actor,"PermanentDeathPending",true);Call(window,"Prepare",Main.UIScaleMatrix,screen);Require(RespawnLabel(window)=="","terminal actor predicate suppresses false configuration countdown");
+                Set(actor,"PermanentDeathPending",true);Call(window,"Prepare",Main.UIScaleMatrix,screen);Require(RespawnLabel(window)=="已永久死亡","terminal actor predicate suppresses false configuration countdown");
                 Console.WriteLine("PASS configuration live countdown/off/terminal binding and timer refresh preserves pressed control; UI projection only, no death matrix rerun.");
             }
             finally {Set(actor,"PermanentDeathPending",pending);body.dead=dead;body.respawnTimer=timer;Call(host,"SetBehavior",id,original);Set(window,"page",0);Set(window,"bodyOffset",0);Call(window,"Invalidate");Call(window,"Prepare",Main.UIScaleMatrix,screen);NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
