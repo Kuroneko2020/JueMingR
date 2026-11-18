@@ -113,6 +113,10 @@ foreach($privateHelper in @('tests/NativeWorldTextProbe/NativeBlueprintSettledPa
     foreach($consumer in $expectedPrivate){Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore $consumer) -cne (Get-WorkloadCheckFingerprint $privateAfter $consumer)) ('private admission bytes invalidate actual consumer '+$consumer)}
     Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore 'native-BlueprintSupplyContinuationCpu') -ceq (Get-WorkloadCheckFingerprint $privateAfter 'native-BlueprintSupplyContinuationCpu')) ('private admission helper preserves unrelated SupplyRepair '+$privateHelper)
 }
+foreach($name in @('JUEMINGR_FONT_BASELINE_HOST','JUEMINGR_FONT_BASELINE_FILTER_ONLY')){
+    $dispatch=Read-WorkloadNativeDispatch
+    Assert-Route ($dispatch.selectors.Contains($name) -and $dispatch.overrides.Contains($name)) ('explicit historical font axis is registered and cleared by formal native admission '+$name)
+}
 foreach($scope in @('CompanionFontVisual','CompanionConfigVisual','CompanionCreationInputVisual','CompanionResourceBarsVisual','CompanionShowcaseVisual','CompanionNetworkCpu','CompanionSessionCpu','CompanionNavigationCpu','CompanionCreationCpu','CompanionItemsCpu','CompanionCpu','AfkModeCompletionCpu','AfkModeBorrowCpu','BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
     $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-'+$scope))
     Assert-Route ($plan.Count -eq 1 -and $plan[0].name -ceq ('native-'+$scope) -and $plan[0].arguments[-1] -ceq $scope) ('exact new native scope '+$scope)
