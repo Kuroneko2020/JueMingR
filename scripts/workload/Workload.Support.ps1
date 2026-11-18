@@ -97,7 +97,7 @@ function Get-WorkloadRoute {
             # Material identity shares the one browser catalog. Icon values
             # are now consumed by the browser and both blueprint view modes.
             '^src/JueMingR.TerrariaHost/ItemBrowser/(NativeItemCatalog|NativeMaterialPlacement|NativePlacementNames|HostItemKnowledge)\.cs$' { [void]$groups.Add('browser-host'); [void]$groups.Add('blueprint-host'); continue }
-            '^src/JueMingR.TerrariaHost/Items/(PreparedItemIcons|ItemsRenderer)\.cs$' { [void]$groups.Add('storage-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('blueprint-host'); continue }
+            '^src/JueMingR.TerrariaHost/Items/(PreparedItemIcons|ItemsRenderer)\.cs$' { [void]$groups.Add('storage-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('blueprint-host'); [void]$groups.Add('companion-host'); continue }
             '^tests/Workload/BusinessAssertionProtocol\.cs$' { [void]$groups.Add('shared-host'); continue }
             # Shared graphics/asset fixture is consumed by the native host
             # scopes; its changes do not confer graphical execution evidence.

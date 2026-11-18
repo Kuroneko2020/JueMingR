@@ -46,7 +46,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly Func<string, float, F5Size> measureSource;
         private readonly Dictionary<string, F5Size> sizes70 = new Dictionary<string, F5Size>();
         private readonly Dictionary<string, F5Size> sizes65 = new Dictionary<string, F5Size>();
-        private readonly ItemsRenderer renderer = new ItemsRenderer();
+        private readonly ItemsRenderer renderer = new ItemsRenderer { ScaledTextOutline = true };
         private readonly PreparedItemIcons icons = new PreparedItemIcons();
         private readonly Terraria.Graphics.Renderers.LegacyPlayerRenderer portraits = new Terraria.Graphics.Renderers.LegacyPlayerRenderer();
         private readonly List<Control> controls = new List<Control>();
@@ -276,11 +276,20 @@ namespace JueMingR.TerrariaHost.F5
             element.Command, element.HotkeyTarget, element.Description, element.HintRect.Offset(x, y)); }
         private F5Size MeasureCached(string text, float scale)
         {
-            if (scale != .7f && scale != .65f) return measureSource(text, scale);
+            if (scale != .7f && scale != .65f) return MeasureOutlined(text, scale);
             var cache = scale == .7f ? sizes70 : sizes65; F5Size size;
             if (!cache.TryGetValue(text, out size))
-            { if (cache.Count >= 256) cache.Clear(); cache[text] = size = measureSource(text, scale); }
+            { if (cache.Count >= 256) cache.Clear(); cache[text] = size = MeasureOutlined(text, scale); }
             return size;
+        }
+        private F5Size MeasureOutlined(string text, float scale)
+        {
+            // The shell measure includes the old fixed two-logical-pixel border.
+            // Keep the same glyph bounds, replacing only that local expansion;
+            // buttons, password caret/selection and hints then agree with Draw.
+            var size = measureSource(text, scale);
+            return new F5Size(size.Width - 4 + 2 * scale, size.Height - 4 + 2 * scale,
+                size.OffsetX + 2 - scale, size.OffsetY + 2 - scale);
         }
         // Structural facts alone invalidate geometry. Slot values and current
         // resource values have independent presentation updates; neither an

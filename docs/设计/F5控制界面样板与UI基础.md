@@ -184,7 +184,7 @@ mouseInterface/mouseText lease 保存进入时值，在有限消费区间后恢�
 
 字体使用 `FontAssets.MouseText.Value`；窗口、内容和按钮使用当前 `InventoryBack` 的自带颜色及 alpha，辅以中性明暗区分层次，普通与未接入控件文字均保持可读。`MagicPixel` 用于少量几何。原版将 `InventoryBack` 用于物品格；在固定九宫格中复用为 F5 大表面是本任务的受控重用，不声称原版菜单本来如此。原版 `SettingsPanel` 是左右 2 像素的横向条，`InventoryBack13` 是需要原版蓝 tint 的底板，均不再以白 tint 错用为大面板。不固定暗色主题、不按材质包名分支、不复制游戏资源或以纹理尺寸改变几何。资源不可用时局部降级为有限中性色块；游戏资产不由 F5 Dispose。
 
-皮肤身份与字体度量分别失效。字体变化时，用公开 `DynamicSpriteFont.DrawCustomFast` 零绘制回调收集与 DrawString 同源的字形矩形，包含 fallback、kerning、字间距和 cropping 偏移。缓存保留宽高与 Left/Top；相同宽高但偏移变化也刷新定位，相同度量保持 layout generation。测量不以 LineSpacing 代替字形高度，不做 GPU readback。当前四方向描边的 ±2 logical 与字体 scale 无关，因此布局另留四个 logical 单位，绘制按相同偏移回到字形原点。
+皮肤身份与字体度量分别失效。字体变化时，用公开 `DynamicSpriteFont.DrawCustomFast` 零绘制回调收集与 DrawString 同源的字形矩形，包含 fallback、kerning、字间距和 cropping 偏移。缓存保留宽高与 Left/Top；相同宽高但偏移变化也刷新定位，相同度量保持 layout generation。测量不以 LineSpacing 代替字形高度，不做 GPU readback。默认四方向描边的 ±2 logical 与字体 scale 无关，因此默认布局另留四个 logical 单位，绘制按相同偏移回到字形原点。Companion 管理窗局部选择与现蓝图库一致的按 scale 小字描边，并用同一外扩修正该窗口的度量；共用控件的默认文字策略保留，不把局部修订推广到所有页面。复用皮肤／控件不等于文字细节已经相同，具体消费者边界见[AI正式设计](AI队友正式实现设计.md#配置页的局部组织)。
 
 原版 `Mouse_Text` 的受支持空格（U+0020）具有位于 Y=40 的透明 1×1 占位矩形。共用度量保留其水平边界与原生推进，但不把它计入可见垂直边界，防止“提示 开/关”被算成多一行。回调按原 API 跳过 CR/LF，保留真实换行；不泛化忽略 1×1、tab、NBSP 或不受支持空格的 fallback。全空格/空文本使用有限的 `LineSpacing` 回退，测量结束清除暂存原文，不新增逐帧度量或资源扫描。
 
@@ -196,6 +196,8 @@ mouseInterface/mouseText lease 保存进入时值，在有限消费区间后恢�
 
 绘制在自身批次中使用冻结 matrix，内容裁切只施加于 viewport。finally 恢复实际 ScissorRectangle、RasterizerState、BlendState、DepthStencilState、SamplerState 及原版 layer 的 SpriteBatch Begin 契约。F5 局部异常关闭窗口、收回自身状态，在后续更新给出一次普通文字提示，不卸载整个 Harmony owner，不拆核心 handoff 或群系功能。
 
+
+嵌套头像、人物／宠物及像素图 pass 返回文字时，由建立该文字批次的 owner 恢复其明确状态。Deferred Begin 未 flush 前的设备 sampler 不能当作逻辑父批次；仅看到外层声明 LinearClamp 也不足以证明后续正文仍使用它。原版像素图可保局部 Point 采样，字体不据此切整窗策略；字形、实际批次和分数矩阵须在具体入口验证。相关已知局部方案与判别方法见[绘制经验](../AI经验笔记/绘制分层与图形资源.md#r复用控件仍须核小字描边与实际批次)。
 
 新增 UI 从首次接入就复用既有样式与控件，不能默认把临时绘制作为最终候选，等待用户再次发现。#42/#43 的 Notes 修订将表面九宫格/降级和字形度量窄提取到 `UiSurface`/`UiTextMetrics`，F5 与 Notes 共用；业务、排版、输入状态与提交仍归各自功能。检查新增 UI 的实际入口、状态、字形几何及资源变化，沿用现有验证方式，不要求每页单建主题系统或逐控件视觉审批。这项长期维护补充已由所有者在 #42 本次收口中明确接受，随 PR #43 合并生效。检查新页面不能用旧壳层预览替代；Notes 未执行图形自动检查与所有者实际使用接受的区分，以及仅限固定候选的本次合并延期决定，见[测试分层](../规范/测试与审计规则.md#显示环境受限时的验证分层)。
 

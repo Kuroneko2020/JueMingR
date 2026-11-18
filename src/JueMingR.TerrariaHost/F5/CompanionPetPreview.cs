@@ -27,8 +27,13 @@ namespace JueMingR.TerrariaHost.F5
             var previousRandom=Main.rand;var previousEntity=Main.CurrentDrawnEntity;int previousShader=Main.CurrentDrawnEntityShader,previousMountShader=Mount.currentShader;
             Vector2 previousPosition=display.position;
             var batch=Main.spriteBatch;var device=batch.GraphicsDevice;
-            var blend=device.BlendState;var sampler=device.SamplerStates[0];var depth=device.DepthStencilState;var rasterizer=device.RasterizerState;
             bool began=false;batch.End();
+            // The private native image borrows this UI pass, whose continuation
+            // is text. Never infer its sampler from an unflushed deferred batch.
+            var blend=Microsoft.Xna.Framework.Graphics.BlendState.AlphaBlend;
+            var sampler=Microsoft.Xna.Framework.Graphics.SamplerState.LinearClamp;
+            var depth=Microsoft.Xna.Framework.Graphics.DepthStencilState.None;
+            var rasterizer=device.RasterizerState;
             try
             {
                 Main.rand=random;

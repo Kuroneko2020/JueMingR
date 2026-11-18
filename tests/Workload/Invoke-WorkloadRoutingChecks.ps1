@@ -136,6 +136,10 @@ Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompan
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionConfigurationChecks.cs') -join '|') -ceq 'native-CompanionConfigVisual') 'configuration fixture owns its exact natural graphics leaf'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionFontChecks.cs') -join '|') -ceq 'native-CompanionFontVisual') 'font fixture owns its actual narrow graphics leaf'
 Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeQuickItemChecks.cs') -ccontains 'native-CompanionFontVisual') 'font fixture binds its actual shared startup/wait helper'
+foreach($provider in @('ItemsRenderer','PreparedItemIcons')){
+    $route=Get-WorkloadRoute @('src/JueMingR.TerrariaHost/Items/'+$provider+'.cs')
+    Assert-Route ($route.groups -ccontains 'companion-host' -and $route.groups -ccontains 'storage-host' -and $route.groups -ccontains 'browser-host' -and $route.groups -ccontains 'blueprint-host') ('shared companion image/text provider retains all actual consumers '+$provider)
+}
 Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeQuickItemChecks.cs') -ccontains 'native-CompanionConfigVisual') 'configuration binds its actual shared startup and asynchronous archive wait helper'
 Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs') -ccontains 'native-CompanionCreationInputVisual') 'live creator binds its actual native body initialization provider'
 $nativeUiHelper=Get-WorkloadRoute @('tests/NativeWorldTextProbe/NativeToolsUiChecks.cs')

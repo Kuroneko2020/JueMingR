@@ -66,7 +66,7 @@ namespace JueMingR.TerrariaHost.F5
         private void DrawCentered(string text,F5Rect rect,Color color,float scale)
         {
             var font=FontAssets.MouseText.Value;var size=measure(text,scale);
-            Utils.DrawBorderStringFourWay(Main.spriteBatch,font,text,rect.X+(rect.Width-size.Width)/2-size.OffsetX,rect.Y+(rect.Height-size.Height)/2-size.OffsetY,color,Color.Black,Vector2.Zero,scale);
+            F5ControlRenderer.DrawScaledOutline(Main.spriteBatch,font,text,new Vector2(rect.X+(rect.Width-size.Width)/2-size.OffsetX,rect.Y+(rect.Height-size.Height)/2-size.OffsetY),color,scale);
         }
         private static void DrawEmptyIcon(int icon,F5Rect rect)
         {
@@ -82,16 +82,14 @@ namespace JueMingR.TerrariaHost.F5
             Vector2 position=Vector2.Transform(new Vector2(rect.X+2,rect.Bottom-3-font.LineSpacing*scale),matrix);
             position=new Vector2((float)Math.Round(position.X),(float)Math.Round(position.Y));
             position=Vector2.Transform(position,Matrix.Invert(matrix));
-            // ItemStack has its own readable glyphs and native shadow. Never use
-            // the general label helper: it can ellipsize a valid stack count.
-            Utils.DrawBorderStringFourWay(Main.spriteBatch,font,text,position.X,position.Y,Color.White,Color.Black,Vector2.Zero,scale);
+            // Keep native ItemStack glyphs, point sampling and this window's
+            // scale-sized outline. The general label helper may ellipsize a
+            // valid count and must not be used for inventory quantities.
+            F5ControlRenderer.DrawScaledOutline(Main.spriteBatch,font,text,position,Color.White,scale);
         }
         private void PointDraw(Action draw)
         {
-            var batch=Main.spriteBatch;var d=batch.GraphicsDevice;var blend=d.BlendState;var sampler=d.SamplerStates[0];var depth=d.DepthStencilState;var raster=d.RasterizerState;
-            batch.End();
-            try {batch.Begin(SpriteSortMode.Deferred,blend,SamplerState.PointClamp,depth,raster,null,matrix);draw();}
-            finally {batch.End();batch.Begin(SpriteSortMode.Deferred,blend,sampler,depth,raster,null,matrix);}
+            renderer.PointImages(draw);
         }
     }
 }

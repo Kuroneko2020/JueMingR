@@ -102,10 +102,17 @@ namespace JueMingR.TerrariaHost.F5
         internal void DrawHead(LegacyPlayerRenderer renderer,F5Rect rect,Matrix transform,int skin)
         {
             var player=display;if(player==null)return;
-            var batch=Main.spriteBatch;var device=batch.GraphicsDevice;var blend=device.BlendState;var sampler=device.SamplerStates[0];var depth=device.DepthStencilState;var rasterizer=device.RasterizerState;
+            var batch=Main.spriteBatch;var device=batch.GraphicsDevice;
             var oldScissor=device.ScissorRectangle;
             var previous=Main.rand;int shader=Mount.currentShader;
             batch.End(); bool began=false;
+            // These private images interrupt the Companion LinearClamp text
+            // pass. Deferred device state before End may belong to an older
+            // point pass; restore the declared text state, not that stale value.
+            var blend=Microsoft.Xna.Framework.Graphics.BlendState.AlphaBlend;
+            var sampler=Microsoft.Xna.Framework.Graphics.SamplerState.LinearClamp;
+            var depth=Microsoft.Xna.Framework.Graphics.DepthStencilState.None;
+            var rasterizer=device.RasterizerState;
             try
             {
                 Main.rand=random;
@@ -161,8 +168,11 @@ namespace JueMingR.TerrariaHost.F5
             // A private random stream keeps preview drawing out of world RNG.
             var previous=Main.rand; int priorMountShader=Mount.currentShader;
             var batch=Main.spriteBatch; var device=batch.GraphicsDevice;
-            var blend=device.BlendState; var sampler=device.SamplerStates[0]; var depth=device.DepthStencilState; var rasterizer=device.RasterizerState;
             batch.End();
+            var blend=Microsoft.Xna.Framework.Graphics.BlendState.AlphaBlend;
+            var sampler=Microsoft.Xna.Framework.Graphics.SamplerState.LinearClamp;
+            var depth=Microsoft.Xna.Framework.Graphics.DepthStencilState.None;
+            var rasterizer=device.RasterizerState;
             try
             {
                 Main.rand=random;

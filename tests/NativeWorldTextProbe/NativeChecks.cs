@@ -17,7 +17,7 @@ namespace NativeWorldTextProbe
             if(scope=="CompanionFontVisual")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionFontChecks.Run(context,graphics,output);NativeScopeDispatch.Enter("companions-font");},processing:true,shortFeedback:true);return 0;
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionFontChecks.Run(context,graphics,output);NativeScopeDispatch.Enter("companions-font");},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_FONT_BASELINE_HOST"));return 0;
             }
             if(scope=="CompanionConfigVisual")
             {
