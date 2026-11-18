@@ -16,6 +16,9 @@ try{
     Assert-Content ($showcaseAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb' -and $showcaseAssets -cnotcontains 'Images/Armor_Head_3.xnb') 'showcase does not acquire unrelated Journey or original armor-trial consumers'
     $barAssets=@(Get-WorkloadNativeContentFiles 'CompanionResourceBarsVisual')
     $inputAssets=@(Get-WorkloadNativeContentFiles 'CompanionCreationInputVisual')
+    $fontAssets=@(Get-WorkloadNativeContentFiles 'CompanionFontVisual')
+    Assert-Content ($fontAssets -ccontains 'Fonts/Mouse_Text.xnb' -and $fontAssets -ccontains 'Images/Inventory_Back.xnb') 'font native window consumer binds original font and skin'
+    Assert-Content ($fontAssets -cnotcontains 'Images/Item_1553.xnb' -and $fontAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb') 'font fixture needs neither SDMG nor unrelated Journey assets'
     $configAssets=@(Get-WorkloadNativeContentFiles 'CompanionConfigVisual')
     Assert-Content ($configAssets -ccontains 'Images/Inventory_Back.xnb' -and $configAssets -ccontains 'Fonts/Mouse_Text.xnb') 'native companion configuration binds its actual common skin/font initialization'
     Assert-Content ($configAssets -ccontains 'Images/Item_1553.xnb') 'configuration fixture actual backpack entrance binds the SDMG sample icon'

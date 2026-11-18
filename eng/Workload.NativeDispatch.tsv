@@ -420,3 +420,4 @@ leaf	CompanionShowcaseVisual	companions-showcase
 leaf	CompanionResourceBarsVisual	companions-resource-bars
 leaf	CompanionCreationInputVisual	companions-creation-input
 leaf	CompanionConfigVisual	companions-config
+leaf	CompanionFontVisual	companions-font
