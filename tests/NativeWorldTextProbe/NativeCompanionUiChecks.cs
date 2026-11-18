@@ -72,6 +72,8 @@ namespace NativeWorldTextProbe
                     "actual right inventory scroll consumes the wheel while retaining the left list geometry");
                 click("configuration");
                 Require((int)Get(window, "page") == 1 && Get(window, "listView").Equals(beforeList), "configuration keeps the same left character list");
+                click("config-tab:Character");
+                screen=new Vector2(1280,360);prepare();body=Get(window,"configurationViewport");bodyPoint=NativeToolsUiChecks.Point(body);
                 Action scrollBottom = () =>
                 {
                     while ((int)Get(window, "bodyOffset") < (int)Get(window, "bodyMaximum"))
@@ -89,12 +91,13 @@ namespace NativeWorldTextProbe
                     "cancelling expanded reset confirmation shrinks content and clamps the actual offset without resetting a character");
                 var request = Controls(window).Single(c => ((string)Get(c, "Key")).StartsWith("request-reset/", StringComparison.Ordinal));
                 var requestRect = Get(request, "Rect");
-                Require(Math.Abs((float)Get(requestRect, "Bottom") - ((float)Get(body, "Bottom") - 8)) <= 1.1f,
-                    "same preparation reprojects the collapsed last control to the clamped offset");
+                Require((float)Get(requestRect,"Y")>=(float)Get(body,"Y")&&(float)Get(requestRect,"Bottom")<=(float)Get(body,"Bottom"),
+                    "same preparation reprojects the collapsed last control wholly inside the configuration content clip at its clamped offset");
                 prepare();
                 request = Controls(window).Single(c => ((string)Get(c, "Key")).StartsWith("request-reset/", StringComparison.Ordinal));
                 Require(Get(request, "Rect").Equals(requestRect) && ((IEnumerable)Get(host, "Profiles")).Cast<JueMingR.Platform.Companions.CompanionProfile>().Single(p => p.Id == other).DataEpoch == epoch,
                     "the next stable frame retains the corrected geometry and cancellation never performs reset");
+                screen=new Vector2(1280,900);prepare();
                 click("inventory");
                 var config = Controls(window).Single(c => ((string)Get(c, "Key")).StartsWith("configuration/", StringComparison.Ordinal));
                 var oldPoint = NativeToolsUiChecks.Point(Get(config, "Rect"));

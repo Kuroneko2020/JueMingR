@@ -33,16 +33,7 @@ namespace JueMingR.TerrariaHost.F5
                 return;
             }
             if (profile == null) { BodyText(pendingCreatedName??"点击左下角＋创建队友", row); FinishBody(); return; }
-            var nameRect=new F5Rect(bodyView.X+12,contentY,bodyView.Width-24,row);
-            float nameWidth=Math.Min(nameRect.Width*.6f,Math.Max(80,measure(profile.Name,.85f).Width+14));
-            if(FullyVisible(nameRect)) {
-                Text(profile.Name,new F5Rect(nameRect.X,nameRect.Y,nameWidth,row),.85f);
-                respawnLabel=labels.Count;labels.Add(new F5Element(F5ElementKind.Text,new F5Rect(nameRect.X+nameWidth+12,nameRect.Y,nameRect.Width-nameWidth-12,row),host.RespawnStatus(selected),default(F5Size),.65f,F5Command.None));
-            }
-            contentY+=row+4;
-            selectedStatusLabel=labels.Count;BodyText(host.Status(selected),row);
-            if (host.SaveFailed(selected)) BodyButton("retry-save", "保存失败 · 重试保存", row, () => Command(() => host.RetrySave(selected)));
-            BuildConfiguration(profile, row); FinishBody();
+            BuildConfiguration(profile,row);
         }
         private float SharedResources(float paneWidth)
         {
@@ -247,48 +238,6 @@ namespace JueMingR.TerrariaHost.F5
             });
             if(ReferenceEquals(source,Main.LocalPlayer))renderer.Pass(matrix,view,()=>DrawCentered(source.dead?"已死亡":"主人",new F5Rect(displayPanel.X+5,displayPanel.Bottom-21,displayPanel.Width-10,18),Color.Silver,.55f));
         }
-        private void BuildConfiguration(CompanionProfile profile, float row)
-        {
-            var behavior = profile.Behavior;
-            float groupTop=contentY;
-            BodyText("移动", row);
-            Pair("follow", "跟随主人", () => Behavior(true, null, null, null), behavior.Follow,
-                "stay", "原地停留", () => Behavior(false, null, null, null), !behavior.Follow, row);
-            ConfigurationGroup(groupTop); groupTop=contentY;
-            BodyText("攻击", row);
-            Pair("attack-on", "开启", () => Behavior(null, true, null, null), behavior.AttackEnabled,
-                "attack-off", "关闭", () => Behavior(null, false, null, null), !behavior.AttackEnabled, row, true, true);
-            BodyText("攻击模式", row);
-            Pair("proactive", "主动攻击", () => Behavior(null, null, false, null), !behavior.SelfDefense,
-                "defensive", "仅自卫", () => Behavior(null, null, true, null), behavior.SelfDefense, row);
-            BodyText("目标优先", row);
-            Pair("prefer-owner", "主人附近优先", () => Behavior(null, null, null, true), behavior.PreferOwner,
-                "prefer-self", "自身附近优先", () => Behavior(null, null, null, false), !behavior.PreferOwner, row);
-            ConfigurationGroup(groupTop); groupTop=contentY;
-            BodyText("复活",row);
-            Pair("respawn-on","自动复活",()=>SetRespawn(true),behavior.AutoRespawn,"respawn-off","关闭",()=>SetRespawn(false),!behavior.AutoRespawn,row);
-            ConfigurationGroup(groupTop); groupTop=contentY;
-            var body = host.GetBody(selected);
-            if (body != null && body.selectedItem >= 0 && body.selectedItem < body.inventory.Length)
-                BodyText("当前武器：" + body.inventory[body.selectedItem].Name, row);
-            BodyButton("password", editor != null && editKind == "password" ? "" : "连接密码：点击输入", row,
-                () => BeginEdit("password", host.ConnectionPassword ?? ""));
-            if (editKind == "password")
-            {
-                field = new F5Rect(bodyView.X + 5, contentY - row - 8, bodyView.Width - 10, row);
-                BodyButton("save-password", "应用密码", row, () => RequestFinish());
-            }
-            ConfigurationGroup(groupTop);groupTop=contentY;
-            BodyButton("restore-behavior", "恢复行为设置", row, () => Command(() => host.RestoreBehavior(selected)));
-            if (!confirmingReset) BodyButton("request-reset", "重置人物档案", row, () => { confirmingReset = true; Invalidate(); });
-            else
-            {
-                BodyText("将清空物品、装备、成长和 AI 设置。", row);
-                BodyText("保留名字、外观、难度和归属。", row);
-                Pair("confirm-reset", "确认重置", () => { if (host.Reset(selected)) confirmingReset = false; notice = null; Invalidate(); }, false,
-                    "cancel-reset", "取消", () => { confirmingReset = false; Invalidate(); }, false, row);
-            }
-        }
         private void Behavior(bool? follow, bool? attack, bool? defense, bool? prefer)
         {
             var profile = CurrentProfile(); if (profile == null) return;
@@ -304,25 +253,10 @@ namespace JueMingR.TerrariaHost.F5
         {float top=Math.Max(rect.Y,view.Y),bottom=Math.Min(rect.Bottom,view.Bottom);if(bottom>top)actorHeaders.Add(new F5Rect(rect.X,top,rect.Width,bottom-top));}
         private void ActorGroup(float x,float y,float width,float height,F5Rect view)
         {float top=Math.Max(y,view.Y),bottom=Math.Min(y+height,view.Bottom);if(bottom>top)groups.Add(new F5Rect(x-3,top,width+6,bottom-top));}
-        private void ConfigurationGroup(float top) {ActorGroup(bodyView.X+3,top,bodyView.Width-6,contentY-top-3,bodyView);contentY+=7;}
         private F5Rect BodyRect(float row) { return new F5Rect(bodyView.X, contentY, bodyView.Width, row); }
         private bool FullyVisible(F5Rect rect) { return rect.Y >= bodyView.Y && rect.Bottom <= bodyView.Bottom; }
         private void BodyText(string text, float row)
         { var rect = BodyRect(row); if (FullyVisible(rect)) Text(text, rect); contentY += row + 4; }
-        private void BodyButton(string key, string text, float row, Action action, bool enabled = true)
-        { var rect = BodyRect(row); if (FullyVisible(rect)) Button(key, text, rect, action, enabled); contentY += row + 8; }
-        private void Pair(string key1, string text1, Action action1, bool selected1, string key2, string text2, Action action2, bool selected2,
-            float row, bool enabled = true, bool offSecond = false)
-        {
-            float width = (bodyView.Width - 6) / 2;
-            // The shared button renderer converts its underline to exactly two
-            // device pixels using this pass's actual UI matrix.
-            var first = new F5Rect(bodyView.X, contentY, width, row);
-            var second = new F5Rect(bodyView.X + width + 6, contentY, width, row);
-            if (FullyVisible(first)) Button(key1, text1, first, action1, enabled, selected1);
-            if (FullyVisible(second)) Button(key2, text2, second, action2, enabled, selected2, offSecond);
-            contentY += row + 8;
-        }
         private void FinishBody()
         {
             int maximum = Math.Max(0, (int)Math.Ceiling(contentY + bodyOffset - bodyView.Bottom));

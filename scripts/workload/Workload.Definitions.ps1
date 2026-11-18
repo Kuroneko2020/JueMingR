@@ -15,7 +15,7 @@ function Get-WorkloadLeafChecks {
     # This asset initializer is also called by the narrow combat fixture.
     # Preserve its worker consumers when adding the explicit combat leaf;
     # the combat scope itself must not inherit the legacy-worker group.
-    $workerAssetConsumers=@('native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCreationCpu','native-CompanionItemsCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
+    $workerAssetConsumers=@('native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCreationCpu','native-CompanionItemsCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
     foreach($scope in (Get-WorkloadNativeScopes).GetEnumerator()){
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
@@ -29,13 +29,14 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionNavigationChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNativeCreationChecks.cs'=@('native-CompanionVisual','native-CompanionCreationInputVisual')
         'tests/NativeWorldTextProbe/NativeCompanionFeedbackChecks.cs'=@('native-CompanionCreationInputVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionConfigurationChecks.cs'=@('native-CompanionConfigVisual')
         'tests/NativeWorldTextProbe/NativeCompanionResourceBarChecks.cs'=@('native-CompanionResourceBarsVisual')
         'tests/NativeWorldTextProbe/NativeCompanionFancyResourceChecks.cs'=@('native-CompanionResourceBarsVisual')
         'tests/NativeWorldTextProbe/NativeCompanionPetPreviewChecks.cs'=@('native-CompanionVisual','native-CompanionShowcaseVisual')
         'tests/NativeWorldTextProbe/NativeCompanionSessionChecks.cs'=@('native-CompanionSessionCpu','native-CompanionVisual')
         'tests/NativeWorldTextProbe/NativeCompanionChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionTileContextChecks.cs'=@('native-CompanionCpu')
-        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
         'tests/NativeWorldTextProbe/NativeCompanionCoreNetworkChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNpcPhysicsChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNpcStateChecks.cs'=@('native-CompanionCpu')
@@ -191,7 +192,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintReachAdmissionChecks.cs'=@('native-BlueprintNearQueueCpu')
         # This owner authenticates only actual Content consumers; CPU fixtures
         # keep their original argument and proof projection.
-        'scripts/workload/Workload.NativeContent.ps1'=@('native-CompanionCreationInputVisual','native-CompanionResourceBarsVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','native-NpcReviewedParticle','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
+        'scripts/workload/Workload.NativeContent.ps1'=@('native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionResourceBarsVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','native-NpcReviewedParticle','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
         'tests/Workload/Invoke-WorkloadContentChecks.ps1'=@('workload-Evidence')
         'tests/NativeWorldTextProbe/NativeMovementJumpChecks.cs'=@('native-MovementJumpCpu')
         'tests/NativeWorldTextProbe/NativeMovementJumpHandoffChecks.cs'=@('native-MovementJumpCpu')
@@ -625,9 +626,9 @@ function Get-WorkloadLeafChecks {
         $leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu','native-AfkModeBackgroundCpu')
     }
     foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-FishingBackgroundRecoveryCpu','native-InventoryStackingCpu','native-AfkOuterBackground')}
-    $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CoinContinuationCpu','native-CoinConsumersCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CompanionConfigVisual','native-CoinContinuationCpu','native-CoinConsumersCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
     $leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs'])+@('native-InventoryStackingCpu')
-    foreach($path in @("tests/NativeWorldTextProbe/NativeCombatAimFixture.cs")){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')}
+    foreach($path in @("tests/NativeWorldTextProbe/NativeCombatAimFixture.cs")){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')}
     return $leaves
 }
 function Get-WorkloadNativeScopes {
@@ -641,6 +642,7 @@ function Get-WorkloadNativeScopes {
         'CompanionNavigationCpu'=@('companion-host','shared-host');
         'CompanionResourceBarsVisual'=@('companion-host','shared-host');
         'CompanionCreationInputVisual'=@('companion-host','shared-host');
+        'CompanionConfigVisual'=@('companion-host','shared-host');
         'CompanionShowcaseVisual'=@('companion-host','shared-host');
         'CompanionVisual'=@('companion-host','shared-host');
         'CompanionItemsCpu'=@('companion-host','items','shared-host');

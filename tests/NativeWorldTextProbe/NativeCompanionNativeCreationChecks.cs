@@ -293,9 +293,9 @@ namespace NativeWorldTextProbe
                 // This bounded projection check changes only the already-tested
                 // actor's real scalar predicates. It runs no KillMe/Player.Update
                 // and makes no new death-lifecycle or revival claim.
-                body.dead=true;body.respawnTimer=122;Set(window,"page",1);Set(window,"bodyOffset",0);Call(window,"Invalidate");Call(window,"Prepare",Main.UIScaleMatrix,screen);
+                body.dead=true;body.respawnTimer=122;Call(window,"SelectPage",1);Call(window,"SelectConfiguration",Enum.Parse(Get(window,"configurationCategory").GetType(),"Combat"));Call(window,"Prepare",Main.UIScaleMatrix,screen);
                 Require(RespawnLabel(window)=="复活：3秒","configuration has an independent name-side live native respawn countdown");
-                var follow=Controls(window).Single(c=>((string)Get(c,"Key")).StartsWith("follow/",StringComparison.Ordinal));var point=NativeToolsUiChecks.Point(Get(follow,"Rect"));
+                var choice=Controls(window).Single(c=>((string)Get(c,"Key")).StartsWith("config-choice:mode/",StringComparison.Ordinal));var point=NativeToolsUiChecks.Point(Get(choice,"Rect"));
                 foreach(bool left in new[]{false,true}) {NativeToolsUiChecks.Mouse(point,left);Call(window,"Process",true,new Microsoft.Xna.Framework.Input.KeyboardState(),point,Main.UIScaleMatrix,screen,true,0);}
                 body.respawnTimer=61;Call(window,"Prepare",Main.UIScaleMatrix,screen);Require(RespawnLabel(window)=="复活：2秒"&&GetOptional(window,"armedKey")!=null,"real timer text refresh leaves the valid configuration press armed");
                 NativeToolsUiChecks.Mouse(point,false);Call(window,"Process",true,new Microsoft.Xna.Framework.Input.KeyboardState(),point,Main.UIScaleMatrix,screen,true,0);

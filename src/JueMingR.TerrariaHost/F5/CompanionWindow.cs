@@ -32,7 +32,7 @@ namespace JueMingR.TerrariaHost.F5
             internal string Hint, Placeholder, StackText, Availability, StateText;
             internal bool Locked;
             internal bool IsSlot, Owner;
-            internal bool ActorOverlay,ActorState;
+            internal bool ActorOverlay,ActorState,Configuration;
             internal int TeamIcon=-1;
             internal CompanionInventoryArea Area;
             internal int Slot;
@@ -58,7 +58,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly List<Guid> visibleIds = new List<Guid>();
         private readonly List<string> visibleNames = new List<string>();
         private readonly List<Player> visibleBodies = new List<Player>();
-        private int preparedGeneration = -1, previousProfileCount = -1, maximumLife, maximumMana, weapon;
+        private int preparedGeneration = -1, previousProfileCount = -1, maximumLife, maximumMana;
         private long profileRevision;
         private bool editing,memberJoined,selectedTransfer,saveFailed;
         private long memberActivation;
@@ -151,7 +151,7 @@ namespace JueMingR.TerrariaHost.F5
         internal void Close()
         {
             if (!Visible && !ready && editor == null) return;
-            Visible = false; ready = false; armedKey = null; confirmingReset = dragging = false;
+            Visible = false; ready = false; armedKey = null; confirmingReset = dragging = false;expandedConfiguration=null;
             host.CancelItemGesture(); host.EndItemRepeat(); rightSlot=null; rightRepeat=0; ownerPreview.Clear(); companionPreview.Clear(); railPreviews.Clear(); resourceDisplay.ClearNumbers(); CancelEdit(); icons.Clear(); renderer.Dispose(); controls.Clear(); labels.Clear(); generation++;
             // Keep already owned physical tails until the shared trusted sample
             // observes release, including close, lost focus and world departure.
@@ -161,6 +161,7 @@ namespace JueMingR.TerrariaHost.F5
         private void PrepareCore(Matrix transform, Vector2 physical, bool resources)
         {
             if (!Visible) return;
+            if(page==1&&ready&&(CurrentProfile()==null||(CurrentProfile()?.DataEpoch??0)!=viewDataEpoch))RetireConfigurationInput();
             if (resources && !renderer.Refresh() || transform.M11 <= 0 || transform.M22 <= 0) { Close(); return; }
             Vector2 logical = physical / transform.M11;
             if (skin != renderer.Generation) { sizes70.Clear(); sizes65.Clear(); hint.Clear(); editRevision = -1; }
@@ -198,7 +199,7 @@ namespace JueMingR.TerrariaHost.F5
             // Only a structural projection/identity change retires an armed button.
             // Visible item values refresh in place on the fast path above.
             var pressed=armedKey==null?null:controls.Find(c=>c.Key==armedKey);
-            controls.Clear(); labels.Clear(); groups.Clear(); actorHeaders.Clear(); selectedStatusLabel=respawnLabel=-1; icons.BeginVisibleSet();
+            controls.Clear(); labels.Clear(); groups.Clear(); actorHeaders.Clear();configurationDividers.Clear();configurationSurface=configurationNameRect=default(F5Rect);configurationViewport=bodyView;configurationWeaponLabel=-1; selectedStatusLabel=respawnLabel=-1; icons.BeginVisibleSet();
             Text("AI 队友", new F5Rect(panel.X + 12, panel.Y + 4, width - 64, row));
             Button("close", "×", new F5Rect(panel.Right - 40, panel.Y + 4, 30, row), Close);
             BuildList(row);
@@ -217,7 +218,7 @@ namespace JueMingR.TerrariaHost.F5
                 // replace those cells now, before hit testing or caching its epoch.
                 controls.RemoveRange(bodyControlStart, controls.Count - bodyControlStart);
                 labels.RemoveRange(bodyLabelStart, labels.Count - bodyLabelStart);
-                icons.BeginVisibleSet(); groups.Clear(); actorHeaders.Clear(); selectedStatusLabel=respawnLabel=-1; bodyOffsetClamped = false;
+                icons.BeginVisibleSet(); groups.Clear(); actorHeaders.Clear();configurationDividers.Clear();configurationWeaponLabel=-1; selectedStatusLabel=respawnLabel=-1; bodyOffsetClamped = false;
                 BuildSelected(row);
             }
             displayedNotice=NoticeText(); noticeLabel=labels.Count;
@@ -236,7 +237,7 @@ namespace JueMingR.TerrariaHost.F5
             listMaximum = Math.Max(0, profiles.Count - visible); listOffset = Math.Max(0, Math.Min(listOffset, listMaximum));
             if (profiles.Count == 0) return;
             bool found = false; for (int i = 0; i < profiles.Count; i++) if (profiles[i].Id == selected) found = true;
-            if (!found && pendingCreatedId==Guid.Empty) { selected = profiles[0].Id; confirmingReset = false; }
+            if (!found && pendingCreatedId==Guid.Empty) { RetireConfigurationInput();selected = profiles[0].Id; }
             for (int i = listOffset; i < Math.Min(profiles.Count, listOffset + visible); i++)
             {
                 var profile = profiles[i]; Guid id = profile.Id;
@@ -249,9 +250,9 @@ namespace JueMingR.TerrariaHost.F5
             }
         }
         private void SelectProfile(Guid id)
-        { host.CancelItemGesture(); CancelEdit(); pendingCreatedId=Guid.Empty;pendingCreatedName=null; selected = id; confirmingReset = false; bodyOffset = 0; notice = null; Invalidate(); }
+        { host.CancelItemGesture(); RetireConfigurationInput(); pendingCreatedId=Guid.Empty;pendingCreatedName=null; selected = id; bodyOffset = 0; notice = null; Invalidate(); }
         private void SelectPage(int value)
-        { host.CancelItemGesture(); CancelEdit(); confirmingReset = false; page = value; bodyOffset = 0; Invalidate(); }
+        { host.CancelItemGesture(); RetireConfigurationInput(); page = value; bodyOffset = 0; Invalidate(); }
         private void Invalidate() { armedKey = null; generation++; }
         private void Translate(float x, float y)
         {
@@ -260,6 +261,9 @@ namespace JueMingR.TerrariaHost.F5
             ownerView = ownerView.Offset(x,y); companionView = companionView.Offset(x,y); ownerHero = ownerHero.Offset(x,y); companionHero = companionHero.Offset(x,y);
             ownerShowcase=ownerShowcase.Offset(x,y);companionShowcase=companionShowcase.Offset(x,y);
             ownerShowcasePanel=ownerShowcasePanel.Offset(x,y);companionShowcasePanel=companionShowcasePanel.Offset(x,y);
+            configurationIdentity=configurationIdentity.Offset(x,y);configurationSurface=configurationSurface.Offset(x,y);configurationViewport=configurationViewport.Offset(x,y);
+            configurationNameRect=configurationNameRect.Offset(x,y);
+            for(int i=0;i<configurationDividers.Count;i++)configurationDividers[i]=configurationDividers[i].Offset(x,y);
             for(int i=0;i<actorHeaders.Count;i++)actorHeaders[i]=actorHeaders[i].Offset(x,y);
             for(int i=0;i<groups.Count;i++) groups[i]=groups[i].Offset(x,y);
             foreach (var c in controls) { c.Rect = c.Rect.Offset(x, y); if (c.Element != null) c.Element = Move(c.Element, x, y); }
@@ -294,7 +298,8 @@ namespace JueMingR.TerrariaHost.F5
             }
             var profile = CurrentProfile(); var body = host.GetBody(selected);
             if ((profile?.DataEpoch??0)!=viewDataEpoch || page!=0 && ((profile?.Revision ?? 0) != profileRevision || host.SaveFailed(selected)!=saveFailed) || !ReferenceEquals(body, selectedBody) || host.IsJoined(selected)!=memberJoined || host.ActivationGeneration(selected)!=memberActivation) return true;
-            if (resourceStyle != (Main.ResourceSetsManager?.ActiveSetKeyName??"Default") || ownerLifeMax != (Main.LocalPlayer?.statLifeMax2??0) || ownerManaMax != (Main.LocalPlayer?.statManaMax2??0) || body != null && (page!=0 && weapon != body.selectedItem || maximumLife != body.statLifeMax2 || maximumMana != body.statManaMax2)) return true;
+            if(page==1&&configurationCategory==ConfigurationCategory.Combat&&configurationHasWeapon!=ConfigurationWeaponAvailable(body))return true;
+            if (resourceStyle != (Main.ResourceSetsManager?.ActiveSetKeyName??"Default") || ownerLifeMax != (Main.LocalPlayer?.statLifeMax2??0) || ownerManaMax != (Main.LocalPlayer?.statManaMax2??0) || body != null && (maximumLife != body.statLifeMax2 || maximumMana != body.statManaMax2)) return true;
             return false;
         }
         private string NoticeText()
@@ -314,7 +319,8 @@ namespace JueMingR.TerrariaHost.F5
             for (int i = listOffset; i < Math.Min(profiles.Count, listOffset + count); i++)
             { var p = profiles[i]; visibleIds.Add(p.Id); visibleNames.Add(p.Name); visibleStatuses.Add(host.Status(p.Id)); visibleBodies.Add(host.GetBody(p.Id)); }
             profileRevision = CurrentProfile()?.Revision ?? 0; selectedBody = host.GetBody(selected); memberJoined=host.IsJoined(selected);memberActivation=host.ActivationGeneration(selected);saveFailed=host.SaveFailed(selected);
-            if (selectedBody != null) { maximumLife = selectedBody.statLifeMax2; maximumMana = selectedBody.statManaMax2; weapon = selectedBody.selectedItem; }
+            configurationHasWeapon=ConfigurationWeaponAvailable(selectedBody);
+            if (selectedBody != null) { maximumLife = selectedBody.statLifeMax2; maximumMana = selectedBody.statManaMax2; }
         }
         private Control Button(string key, string text, F5Rect rect, Action action, bool enabled = true, bool selectedValue = false, bool off = false)
         {
@@ -361,7 +367,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 if (!dragging && listView.Contains(point.X, point.Y)) listOffset = Math.Max(0, Math.Min(listMaximum, listOffset - Math.Sign(wheel)));
                 else if (!dragging && page == 0 && ownerView.Contains(point.X, point.Y)) ownerOffset = Math.Max(0, Math.Min(ownerMaximum, ownerOffset - Math.Sign(wheel) * 48));
-                else if (!dragging && bodyView.Contains(point.X, point.Y)) bodyOffset = Math.Max(0, Math.Min(bodyMaximum, bodyOffset - Math.Sign(wheel) * 48));
+                else if (!dragging && (page==0?bodyView:ConfigurationScrollView).Contains(point.X, point.Y)) bodyOffset = Math.Max(0, Math.Min(bodyMaximum, bodyOffset - Math.Sign(wheel) * 48));
                 ConsumeWheel = true; Invalidate(); PrepareCore(transform, physical, resources);
             }
             Control hit = null;
@@ -427,6 +433,7 @@ namespace JueMingR.TerrariaHost.F5
         private void PrepareHint()
         {
             string hintText = null; F5Rect target = default(F5Rect);
+            if(Visible&&ready&&page==1&&editor==null&&!Captured&&configurationNameRect.Contains(pointer.X,pointer.Y)) {hintText=configurationName;target=configurationNameRect;}
             if (Visible && ready && editor == null && !Captured) foreach (var c in controls)
                 if (c.Hint != null && c.Rect.Contains(pointer.X, pointer.Y)) { hintText = c.Hint; target = c.Rect; break; }
             hint.Prepare(hintText, target, new F5Rect(8, 8, screen.X / matrix.M11 - 16, screen.Y / matrix.M11 - 16), renderer, measure);
@@ -447,7 +454,7 @@ namespace JueMingR.TerrariaHost.F5
                 {
                     if(c.ActorOverlay)continue;
                     bool hover = c.Rect.Contains(pointer.X, pointer.Y);
-                    if (c.Element != null) renderer.Button(c.Element, c.Selected, c.Enabled, c.Off, hover);
+                    if (c.Element != null) renderer.Button(c.Element, c.Selected, c.Enabled, c.Off, hover,c.Configuration&&hover&&armedKey==c.Key);
                     else renderer.ItemButton(c.Rect, c.Enabled, hover);
                     if (c.Portrait != null) {CompanionPreview head;if(!railPreviews.TryGetValue(c.ProfileId,out head))railPreviews[c.ProfileId]=head=new CompanionPreview();head.Prepare(c.Portrait);head.DrawHead(portraits,c.Rect,matrix,renderer.Generation);}
                     if(c.ProfileId!=Guid.Empty) { if(c.Selected) DrawAvatarSelection(c.Rect); if(c.Joined) DrawJoinedUnderline(c.Rect); }
@@ -461,10 +468,11 @@ namespace JueMingR.TerrariaHost.F5
                     }
                 });
                 foreach (var e in labels) renderer.Text(e.Text, e.Rect, Color.White, e.TextScale);
+                if(page==1)foreach(var divider in configurationDividers)renderer.Divider(divider);
                 if (editor != null && field.Width > 0) DrawEditor();
                 ScrollIndicator(listView, listOffset, listMaximum);
                 if (page == 0) { ScrollIndicator(ownerView, ownerOffset, ownerMaximum); ScrollIndicator(companionView, bodyOffset, bodyMaximum); }
-                else ScrollIndicator(bodyView, bodyOffset, bodyMaximum);
+                else ScrollIndicator(ConfigurationScrollView, bodyOffset, bodyMaximum);
             });
             if (page == 0)
             {

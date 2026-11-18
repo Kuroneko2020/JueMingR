@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             UpdateLabel(selectedStatusLabel,host.Status(selected));
             UpdateLabel(respawnLabel,host.RespawnStatus(selected));
+            RefreshConfigurationPresentation(body);
         }
         private string ActorStatus()
         {return CurrentProfile()?.PermanentlyDead==true?"永久死亡":host.GetBody(selected)?.dead==true&&host.IsJoined(selected)?"已死亡":host.Status(selected);}

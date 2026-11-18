@@ -16,6 +16,9 @@ try{
     Assert-Content ($showcaseAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb' -and $showcaseAssets -cnotcontains 'Images/Armor_Head_3.xnb') 'showcase does not acquire unrelated Journey or original armor-trial consumers'
     $barAssets=@(Get-WorkloadNativeContentFiles 'CompanionResourceBarsVisual')
     $inputAssets=@(Get-WorkloadNativeContentFiles 'CompanionCreationInputVisual')
+    $configAssets=@(Get-WorkloadNativeContentFiles 'CompanionConfigVisual')
+    Assert-Content ($configAssets -ccontains 'Images/Inventory_Back.xnb' -and $configAssets -ccontains 'Fonts/Mouse_Text.xnb') 'native companion configuration binds its actual common skin/font initialization'
+    Assert-Content ($configAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb' -and $configAssets -cnotcontains 'Images/Armor_Head_3.xnb') 'configuration consumer does not acquire Journey or silver trial assets'
     Assert-Content ($inputAssets -ccontains 'Images/UI/VK_Backspace.xnb' -and $inputAssets -ccontains 'Images/UI/CharCreation/Voice.xnb') 'real-order creation input consumer binds native keyboard and voice control assets'
     Assert-Content ($inputAssets -ccontains 'Images/UI/PVP_1.xnb' -and $inputAssets -ccontains 'Images/UI/PVP_2.xnb') 'native AI team buttons bind the actual PVP sprite frames and selection border'
     Assert-Content ($inputAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb' -and $inputAssets -cnotcontains 'Images/Armor_Head_3.xnb') 'input-only creation does not acquire Journey or silver trial assets'
