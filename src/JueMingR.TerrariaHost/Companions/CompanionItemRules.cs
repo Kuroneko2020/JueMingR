@@ -44,8 +44,9 @@ namespace JueMingR.TerrariaHost.Companions
         internal static bool Accepts(Player body, CompanionInventoryArea area, int slot, Item item,
             Func<CompanionInventoryArea, int, Item> read)
         {
-            if (!Available(body, area, slot)) return false;
+            if (!ValidSlot(body, area, slot)) return false;
             if (item == null || item.IsAir) return true;
+            if (!Available(body, area, slot)) return false;
             if (item.stack <= 0 || item.stack > Capacity(area, item)) return false;
             switch (area)
             {
@@ -95,7 +96,7 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal static bool Blocked(Player body, CompanionInventoryArea area, int slot, ItemOperationOwnership operations)
         {
-            if (!Available(body, area, slot)) return true;
+            if (!ValidSlot(body, area, slot)) return true;
             // HasLockedInventory is not a pure per-body predicate: it scans
             // and clears native Air locks, then reads LocalPlayer's pending
             // crafting cursor. Only this exact native slot is our dependency.
@@ -115,6 +116,29 @@ namespace JueMingR.TerrariaHost.Companions
                 (held.useAmmo > 0 && candidate.ammo == held.useAmmo || held.tileWand > 0 && candidate.type == held.tileWand ||
                 body.autoPaint && candidate.PaintOrCoating || body.autoActuator && candidate.type == ItemID.Actuator ||
                 WireTool(held) && (candidate.type == ItemID.Wire || candidate.type == ItemID.Actuator) || FlexibleMaterial(body, held, candidate));
+        }
+
+        internal static int EquipmentContext(CompanionInventoryArea area, int slot)
+        {
+            // Same contexts used by Terraria's armor, dye and miscellaneous
+            // equipment slots. HandleOnEquip expects these, not network IDs.
+            switch (area)
+            {
+                case CompanionInventoryArea.Armor: return (slot % 10 < 3 ? 8 : 10) + (slot >= 10 ? 1 : 0);
+                case CompanionInventoryArea.Dye: return 12;
+                case CompanionInventoryArea.MiscDye: return 33;
+                case CompanionInventoryArea.Misc:
+                    switch (slot)
+                    {
+                        case 0: return 19;
+                        case 1: return 20;
+                        case 2: return 18;
+                        case 3: return 17;
+                        case 4: return 16;
+                    }
+                    break;
+            }
+            return -1;
         }
 
         private static bool WireTool(Item item)

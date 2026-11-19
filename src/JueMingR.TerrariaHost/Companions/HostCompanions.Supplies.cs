@@ -24,6 +24,10 @@ namespace JueMingR.TerrariaHost.Companions
         internal int NurseSlot = -1;
         internal byte NurseGeneration;
         internal Microsoft.Xna.Framework.Rectangle NurseRegion;
+        internal Microsoft.Xna.Framework.Point NurseBiomeCenter;
+        internal long NurseBiomeGeneration = -1;
+        internal uint NextNurseBiomeScan;
+        internal HostCompanions.NurseBiome NurseBiomes;
         internal readonly SupplyFailure[] Refusals = new SupplyFailure[4];
 #if DEBUG
         internal long SourceReads, GrowthReads, NurseReads, WalletPlans;

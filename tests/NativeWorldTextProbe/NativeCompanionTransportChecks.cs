@@ -28,7 +28,48 @@ namespace NativeWorldTextProbe
                 Call(transport,"Send",packet);Require(server.Wait(5000) && System.Linq.Enumerable.SequenceEqual(server.Result,packet),"real independent TCP exact send");
             }
             finally{((IDisposable)transport).Dispose();listener.Stop();}
+            DeathFence(type);
             SteamFlowFaults(assembly);
+        }
+        private static void DeathFence(Type type)
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            object connection = Activator.CreateInstance(type, BindingFlags.Instance | BindingFlags.NonPublic, null,
+                new object[] { "127.0.0.1", ((IPEndPoint)listener.LocalEndpoint).Port }, null);
+            try
+            {
+                Call(connection, "Start");
+                NativeQuickItemChecks.Until(listener.Pending);
+                using (var peer = listener.AcceptTcpClient())
+                using (var stream = peer.GetStream())
+                using (var reader = new BinaryReader(stream))
+                {
+                    stream.ReadTimeout = 5000;
+                    var ping = new byte[] { 3, 0, 154 };
+                    Call(connection, "Send", ping);
+                    Call(connection, "Send", new byte[] { 4, 0, 5, 72 });
+                    Call(connection, "Send", new byte[] { 4, 0, 118, 72 });
+                    Require((bool)Call(connection, "CloseAfterDeath", 1), "detached TCP death fence is queued after accepted property/death frames");
+                    var wire = new List<byte>();
+                    for (int i = 0; i < 4; i++)
+                    {
+                        ushort length = reader.ReadUInt16();
+                        wire.Add(reader.ReadBytes(length - 2)[0]);
+                    }
+                    Require(wire.SequenceEqual(new byte[] { 154, 5, 118, 154 }), "real TCP sends all predeath frames and then the native death fence in order");
+                    stream.Write(ping, 0, ping.Length);
+                    NativeQuickItemChecks.Until(() => (int)Get(connection, "deathReplies") == 1);
+                    Require(!(bool)Get(connection, "DeathConfirmed") && !(bool)Get(connection, "Finished"),
+                        "an older same-stream ping does not acknowledge the death or close the socket");
+                    stream.Write(ping, 0, ping.Length);
+                    NativeQuickItemChecks.Until(() => (bool)Get(connection, "Finished"));
+                    Require((bool)Get(connection, "DeathConfirmed") && stream.ReadByte() == -1,
+                        "only the fresh native fence reply closes the retired TCP flow, without a host update");
+                }
+            }
+            finally { ((IDisposable)connection).Dispose(); listener.Stop(); }
+            Console.WriteLine("PASS real companion TCP ordered retirement with an older outstanding ping; pinned server death consumer tested separately.");
         }
         private static void SteamFlowFaults(Assembly assembly)
         {

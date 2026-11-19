@@ -9,6 +9,7 @@ namespace JueMingR.TerrariaHost.F5
     {
         private void StartCreation()
         {
+            if (!host.CanCreate) return;
             host.CancelItemGesture(); CancelEdit();
             // Close only this surface; the independent native session retains
             // the manager's selection, position and both scroll offsets.

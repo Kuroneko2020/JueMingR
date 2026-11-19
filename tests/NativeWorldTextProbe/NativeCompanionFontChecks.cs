@@ -150,6 +150,8 @@ namespace NativeWorldTextProbe
             Require(text.All(c=>c=='•')&&Linear(input.Sampler),"actual masked password outlet draws in the explicit linear text pass");
             Save(graphics,Path.Combine(output,"font-password-1.20.png"),pixels,1280,800);
             Call(window,"CancelPasswordPrompt");
+            Require(GetOptional(Get(window,"textInput"),"prepared")==null&&GetOptional(window,"editor")==null,
+                "cancel drops a prepared masked draft even when it never obtained an IME lease");
             Console.WriteLine("FONT-EDITOR masked native glyphs / shared measured caret / LinearClamp PASS");
         }
         private static void CheckImagesAndFailure(object window,object renderer,Assembly assembly,ProbeGraphics graphics)

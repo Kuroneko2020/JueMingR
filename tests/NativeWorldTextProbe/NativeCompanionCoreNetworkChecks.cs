@@ -81,9 +81,9 @@ namespace NativeWorldTextProbe
             var type=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionConnection");
             Func<List<byte[]>,object> connection=frames=>Activator.CreateInstance(type,Flags,null,new object[]{new Action<byte[]>(p=>frames.Add(p)),new Action(()=>{})},null);
             var ca=connection(fa);var cb=connection(fb);Set(a,"Connection",ca);Set(b,"Connection",cb);
-            int mode=Main.netMode;var socket=Netplay.Connection.Socket;var buffer=NetMessage.buffer[256];var sections=Main.sectionManager;
+            int mode=Main.netMode,primaryState=Netplay.Connection.State;var socket=Netplay.Connection.Socket;var buffer=NetMessage.buffer[256];var sections=Main.sectionManager;
             var listener=new TcpListener(IPAddress.Loopback,0);listener.Start();var client=new TcpClient();client.Connect(IPAddress.Loopback,((IPEndPoint)listener.LocalEndpoint).Port);var peer=listener.AcceptTcpClient();Netplay.Connection.Socket=new TcpSocket(client);
-            var patch=new Harmony("JueMingR.Tests.CompanionCoreNetwork");patch.Patch(AccessTools.Method(typeof(NetMessage),"SendPacketToServer"),prefix:new HarmonyMethod(typeof(NativeCompanionCoreNetworkChecks),nameof(Capture)));
+            var patch=new Harmony("JueMingR.Tests.CompanionCoreNetwork");patch.Patch(AccessTools.Method(typeof(NetMessage),"SendPacketToServer"),prefix:new HarmonyMethod(typeof(NativeCompanionCoreNetworkChecks),nameof(Capture)){after=new[]{"JueMingR.Companions"}});
             patch.Patch(AccessTools.Method(host.GetType(),"PrepareUse"),prefix:new HarmonyMethod(typeof(NativeCompanionCoreNetworkChecks),nameof(SelectionStart)),finalizer:new HarmonyMethod(typeof(NativeCompanionCoreNetworkChecks),nameof(SelectionEnd)));
             patch.Patch(AccessTools.Method(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackAim"),"ActorPoint"),prefix:new HarmonyMethod(typeof(NativeCompanionCoreNetworkChecks),nameof(SolverStart)),finalizer:new HarmonyMethod(typeof(NativeCompanionCoreNetworkChecks),nameof(SolverEnd)));
             patch.Patch(AccessTools.Method(typeof(Collision),"CanHitLine",new[]{typeof(Vector2),typeof(int),typeof(int),typeof(Vector2),typeof(int),typeof(int)}),prefix:new HarmonyMethod(typeof(NativeCompanionCoreNetworkChecks),nameof(SelectionRay)));
@@ -94,7 +94,7 @@ namespace NativeWorldTextProbe
             try
             {
                 NativeCompanionCoreLifecycleChecks.PrepareHuman();
-                Main.netMode=1;NetMessage.buffer[256]=new MessageBuffer{whoAmI=256};
+                Main.netMode=1;NetMessage.buffer[256]=new MessageBuffer{whoAmI=256};Netplay.Connection.State=10;
                 Call(host,"BeginPasswordSession");
                 Main.sectionManager=new WorldSections((Main.maxTilesX+199)/200,(Main.maxTilesY+149)/150);Main.sectionManager.SetSectionLoaded(0,0);
                 foreach(var n in Main.npc)n.active=false;
@@ -150,13 +150,25 @@ namespace NativeWorldTextProbe
             }
             finally
             {
-                Main.netMode=mode;Main.sectionManager=sections;NetMessage.buffer[256]=buffer;Netplay.Connection.Socket=socket;
+                Main.netMode=mode;Main.sectionManager=sections;NetMessage.buffer[256]=buffer;Netplay.Connection.Socket=socket;Netplay.Connection.State=primaryState;
                 patch.UnpatchAll(patch.Id);try{Call(host,"Recall",other);}finally{client.Close();peer.Close();listener.Stop();restoreNpcSlots();}
             }
             if(failures.Count!=0)throw failures[0];
         }
         private static void PumpUntil(object host,Func<bool> complete)
         {NativeQuickItemChecks.Until(()=>{Call(host,"Update",0UL);return complete();});}
+        private static object ReservedSlot(object host, int slot) => ((IDictionary)Get(host,"joiningSlots"))[slot];
+        private static void FinishReservedSpawn(object host, NetworkStream stream, int slot)
+        {
+            PumpUntil(host,()=>ReservedSlot(host,slot) is object actor && (bool)Get(actor,"InitialNpcComplete"));
+            var joining=ReservedSlot(host,slot);
+            byte[] ping=primary.Last(p=>p[2]==154);
+            for(int n=0;n<32 && !(bool)Get(joining,"PrimarySlotConfirmed");n++)Apply(ping);
+            Require((bool)Get(joining,"PrimarySlotConfirmed"),"the captured primary native ping opens this reserved slot's spawn submission");
+            PumpUntil(host,()=>(bool)Get(joining,"BirthSubmitted"));
+            ReadUntil(stream,12);
+            Write(stream,Frame(129));
+        }
         private static byte[] World(Guid world)
         {return Frame(7,w=>{w.Write(0);w.Write((byte)0);w.Write((byte)0);for(int i=0;i<6;i++)w.Write((short)0);w.Write(0);w.Write("isolated native fixture");w.Write((byte)Main.GameMode);w.Write(world.ToByteArray());});}
         private static void BaselineAndFailures(object host,TcpListener listener)
@@ -173,12 +185,12 @@ namespace NativeWorldTextProbe
             try{
             Require((bool)Call(host,"Join",profile.Id),"real MP connection starts native handshake");NativeQuickItemChecks.Until(()=>listener.Pending());using(var remote=listener.AcceptTcpClient())
             {
-                var stream=remote.GetStream();Write(stream,Frame(3,w=>w.Write((byte)3)));PumpUntil(host,()=>Call(host,"OwnedSlot",3)!=null);
+                var stream=remote.GetStream();Write(stream,Frame(3,w=>w.Write((byte)3)));PumpUntil(host,()=>ReservedSlot(host,3)!=null);
                 Apply(state);var pendingLease=((IDictionary)Get(host,"npcSources"))[17];
-                Require(!(bool)Get(pendingLease,"NpcBaseline") && !((NPC[])Get(host,"observedNpcs"))[17].active && ReferenceEquals(Main.npc[17],humanNpc),"attached but not ready primary23 records a source without inventing an AI consumed baseline");
+                Require(!(bool)Get(pendingLease,"NpcBaseline") && !((NPC[])Get(host,"observedNpcs"))[17].active && ReferenceEquals(Main.npc[17],humanNpc),"reserved but not ready primary23 records a source without inventing an AI consumed baseline");
                 Write(stream,World(Main.ActiveWorldFileData.UniqueId));
                 // Each original state appears exactly once, before 49/129.
-                Write(stream,state);Write(stream,buffs);Write(stream,oldState);Write(stream,oldBuff);Write(stream,nextState);Write(stream,Frame(49));Write(stream,Frame(129));
+                Write(stream,state);Write(stream,buffs);Write(stream,oldState);Write(stream,oldBuff);Write(stream,nextState);Write(stream,Frame(49));FinishReservedSpawn(host,stream,3);
                 PumpUntil(host,()=>{var readyRole=Call(host,"OwnedSlot",3);return readyRole!=null && (bool)Get(readyRole,"Ready");});
                 var observed=(NPC[])Get(host,"observedNpcs");Require(observed[17].active && observed[17].FindBuffIndex(BuffID.Poisoned)>=0 && ReferenceEquals(Main.npc[17],humanNpc) && humanNpc.life==originalLife,"initial 23/54 survives real 3/7/23/54/49/129 order without replacement human table");
                 var actor=Call(host,"OwnedSlot",3);var role=(Player)Get(actor,"Body");var flow=Get(actor,"Connection");
@@ -210,7 +222,7 @@ namespace NativeWorldTextProbe
             {
                 Require((bool)Call(host,"Join",profile.Id),"failed role can begin a fresh activation");NativeQuickItemChecks.Until(()=>listener.Pending());using(var remote=listener.AcceptTcpClient())
                 {
-                    var stream=remote.GetStream();Write(stream,Frame(3,w=>w.Write((byte)3)));PumpUntil(host,()=>Call(host,"OwnedSlot",3)!=null);
+                    var stream=remote.GetStream();Write(stream,Frame(3,w=>w.Write((byte)3)));PumpUntil(host,()=>ReservedSlot(host,3)!=null);
                     if(wrongWorld)Write(stream,World(Guid.NewGuid()));else Write(stream,Frame(2,w=>NetworkText.FromLiteral("fixture unrelated refusal").Serialize(w)));
                     PumpUntil(host,()=>!((IDictionary)Get(host,"actors")).Contains(profile.Id));string status=(string)Call(host,"Status",profile.Id);
                     Require(status.Contains(wrongWorld?"世界与当前世界不一致":"fixture unrelated refusal") && Call(host,"OwnedSlot",3)==null,"failure reason persists after socket/save/slot/activation release: "+status);
@@ -224,8 +236,8 @@ namespace NativeWorldTextProbe
             Require((bool)Call(host,"Join",id),"native saved profile joins again for capture producer failure");NativeQuickItemChecks.Until(()=>listener.Pending());
             using(var remote=listener.AcceptTcpClient())
             {
-                var stream=remote.GetStream();Write(stream,Frame(3,w=>w.Write((byte)3)));PumpUntil(host,()=>Call(host,"OwnedSlot",3)!=null);
-                Write(stream,World(Main.ActiveWorldFileData.UniqueId));Write(stream,Native(23,17));Write(stream,Native(54,17));Write(stream,Frame(49));Write(stream,Frame(129));
+                var stream=remote.GetStream();Write(stream,Frame(3,w=>w.Write((byte)3)));PumpUntil(host,()=>ReservedSlot(host,3)!=null);
+                Write(stream,World(Main.ActiveWorldFileData.UniqueId));Write(stream,Native(23,17));Write(stream,Native(54,17));Write(stream,Frame(49));FinishReservedSpawn(host,stream,3);
                 PumpUntil(host,()=>{var ready=Call(host,"OwnedSlot",3);return ready!=null && (bool)Get(ready,"Ready");});
                 var actor=Call(host,"OwnedSlot",3);var body=(Player)Get(actor,"Body");var profiles=Get(host,"profiles");
                 var currentNpc=((NPC[])Get(host,"observedNpcs"))[17];Require(currentNpc.active && currentNpc.generation==Main.npc[17].generation && currentNpc.FindBuffIndex(BuffID.Poisoned)>=0 && ReferenceEquals(Get(((IDictionary)Get(host,"npcSources"))[17],"Source"),actor),"fresh real Ready baseline and matching54 recover after explicit interest retirement without another coincidental state packet");

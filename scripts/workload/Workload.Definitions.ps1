@@ -64,7 +64,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionLifecycleChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionPersistenceChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionPredictionChecks.cs'=@('native-CompanionCpu')
-        'tests/NativeWorldTextProbe/NativeCompanionTransportChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionTransportChecks.cs'=@('native-CompanionCpu','native-CompanionNetworkCpu')
         'tests/NativeWorldTextProbe/NativeCompanionUiChecks.cs'=@('native-CompanionCpu','native-CompanionVisual','native-CompanionCreationInputVisual')
         'tests/NativeWorldTextProbe/NativeCompanionUiV3Checks.cs'=@('native-CompanionVisual')
         'tests/JueMingR.ArchitectureTests/BlueprintHoikSceneChecks.cs'=@('BlueprintHoikSceneChecks')

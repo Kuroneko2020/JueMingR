@@ -187,11 +187,30 @@ namespace NativeWorldTextProbe
                     Require((string)Get(Get(window,"editor"),"Text")=="draft-only"&&((string)Get(Get(window,"editElement"),"Text")).All(c=>c=='•'),
                         "native committed input reaches the actual buffer while presentation contains masks only");
                     image("companion-config-password");
+                    long pendingToken=(long)Get(window,"passwordToken");
+                    bool ssc=Main.ServerSideCharacter;
+                    try
+                    {
+                        Main.ServerSideCharacter=true;
+                        Require(!(bool)Call(host,"SubmitPassword",pendingToken,"old-owner-credential"),
+                            "SSC identity rejects old authentication even before the host update");
+                        Call(window,"BeforeInput",true);
+                        Require(!(bool)Get(window,"PasswordPromptVisible") && GetOptional(window,"editor")==null &&
+                            GetOptional(text,"prepared")==null && !(bool)Get(window,"OwnsTextToken"),
+                            "SSC identity drops the old masked prompt and its lease before sampling");
+                    }
+                    finally { Main.ServerSideCharacter=ssc; }
+                    Call(window,"BeforeInput",true);rest();
+                    Require((string)Get(Get(window,"editor"),"Text")=="" && (bool)Get(window,"OwnsTextToken"),
+                        "the original current identity resumes only with a fresh masked buffer");
+                    Queue("focus-draft");rest();
                     Call(window,"CancelForFocusLoss");
-                    Require(GetOptional(window,"editor")==null&&!(bool)Get(window,"OwnsTextToken"),"focus loss retires provisional text and releases its token");
+                    Require(GetOptional(window,"editor")==null&&GetOptional(text,"prepared")==null&&GetOptional(text,"bound")==null&&
+                        !(bool)Get(window,"OwnsTextToken"),"focus loss retires the masked draft from both the dialog and the shared IME input");
                     Call(window,"BeforeInput",true);rest();
                     Require((string)Get(Get(window,"editor"),"Text")==""&&(bool)Get(window,"PasswordPromptVisible"),"the open request can resume with an empty draft");
-                    click("password-cancel:");Require(!(bool)Get(window,"PasswordPromptVisible")&&!(bool)Get(window,"OwnsTextToken"),"cancel clears the current challenge and its physical/text ownership");
+                    click("password-cancel:");Require(!(bool)Get(window,"PasswordPromptVisible")&&!(bool)Get(window,"OwnsTextToken")&&
+                        GetOptional(text,"prepared")==null&&GetOptional(text,"bound")==null,"cancel clears the challenge and drops its masked draft");
                 });
                 Console.WriteLine("PASS native configuration and password presentation: actual measured controls, independent preferences, 0/1/2 weapon draft, live revision, cancellation, restoration, narrow reset, native challenge and masked input/focus.");
             }

@@ -51,9 +51,20 @@ namespace JueMingR.Features.Companions
                 direction = observation.EscapeDirection;
                 if (direction == 0) direction = observation.EscapeLeft ? -1 : observation.EscapeRight ? 1 : 0;
                 result.Move = direction;
-                result.Jump = !releaseFrame && (observation.NeedsAir && !observation.Grounded || observation.CanTakeOff && observation.JumpSafe);
                 result.Status = observation.NeedsAir ? "寻找可呼吸位置" : "避险中";
-                if (result.Jump && observation.Grounded) StartJump(direction, observation.Y, observation.JumpHoldTicks);
+                // Only a confirmed ascent gets a held input. Descent without
+                // a native swim capability leaves releaseJump ready at landing.
+                if (airborne && observation.VelocityY < 0 && jumpRemaining > 0)
+                {
+                    result.Jump = true;
+                    jumpRemaining--;
+                }
+                else if (!releaseFrame && (observation.NeedsAir && observation.CanSwimUp ||
+                    observation.CanTakeOff && observation.JumpSafe))
+                {
+                    StartJump(direction, observation.Y, observation.JumpHoldTicks);
+                    result.Jump = true;
+                }
                 return result;
             }
             if (Math.Abs(observation.X - progressX) + Math.Abs(observation.Y - progressY) >= 4)

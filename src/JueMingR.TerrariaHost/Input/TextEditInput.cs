@@ -17,7 +17,7 @@ namespace JueMingR.TerrariaHost.Input
         private readonly ITextEditSession workspace;
         private readonly INotesClipboard clipboard;
         private readonly INotesIme ime;
-        private readonly StringBuilder committed = new StringBuilder(100);
+        private StringBuilder committed = new StringBuilder(100);
         private KeyboardState previous, sample;
         private TextEditBuffer bound;
         private TextEditBuffer prepared;
@@ -74,6 +74,15 @@ namespace JueMingR.TerrariaHost.Input
             // Discard pre-activation text at the click/completion boundary, not in
             // the next prefix where a newly typed first character may already wait.
             if (prepared != null && !OtherTextOwner) Main.clrInput();
+        }
+        internal void ForgetRetiredDraft()
+        {
+            if (leased || workspace.Editor != null || prepared == null) return;
+            // Masked fields explicitly drop both the old buffer and its
+            // committed-text scratch space after returning the IME lease.
+            prepared = null;
+            committed = new StringBuilder(100);
+            Error = null;
         }
         internal void AfterSample(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused)
         {

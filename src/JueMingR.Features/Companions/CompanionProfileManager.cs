@@ -29,6 +29,7 @@ namespace JueMingR.Features.Companions
         private Task worker;
         private bool running, disposed;
         private string ownerKey;
+        private long ownerRequest;
         private long nextActivation;
         private IReadOnlyList<CompanionProfile> profiles = new CompanionProfile[0];
         public CompanionProfileManager(ICompanionArchive archive, Func<CompanionProfile, CompanionProfile> validateLoaded = null)
@@ -39,18 +40,30 @@ namespace JueMingR.Features.Companions
         public Guid OwnerId { get; private set; }
         public bool Ready { get { return OwnerId != Guid.Empty; } }
         public string Error { get; private set; }
+        public string LoadError { get; private set; }
+        public bool Loading { get; private set; }
         public IReadOnlyList<CompanionProfile> Profiles { get { return profiles; } }
         public void RetryLoad()
-        { string retry = ownerKey; ownerKey = null; SetOwner(retry); }
+        {
+            if (!disposed && ownerKey != null && LoadError != null && !Loading) LoadOwner();
+        }
 
         public void SetOwner(string characterKey)
         {
             if (disposed || String.Equals(ownerKey, characterKey, StringComparison.Ordinal)) return;
-            ownerKey = characterKey; OwnerId = Guid.Empty; profiles = new CompanionProfile[0]; Error = null;
+            ownerKey = characterKey; ownerRequest++; OwnerId = Guid.Empty; profiles = new CompanionProfile[0];
+            Error = LoadError = null; Loading = false;
             if (String.IsNullOrWhiteSpace(characterKey)) return;
             Guid known;
             if (owners.TryGetValue(characterKey, out known)) { OwnerId = known; RefreshError(); Refresh(); return; }
-            string requested = characterKey;
+            LoadOwner();
+        }
+
+        private void LoadOwner()
+        {
+            Loading = true;
+            string requested = ownerKey;
+            long request = ++ownerRequest;
             Enqueue(() =>
             {
                 try
@@ -59,10 +72,21 @@ namespace JueMingR.Features.Companions
                     Complete(() =>
                     {
                         MergeLoaded(requested, loaded);
-                        if (ownerKey == requested) { OwnerId = loaded.OwnerId; RefreshError(); Refresh(); }
+                        if (ownerRequest == request)
+                        { Loading = false; OwnerId = loaded.OwnerId; RefreshError(); Refresh(); }
                     });
                 }
-                catch (Exception exception) { Complete(() => { if (ownerKey == requested) Error = exception.Message; }); }
+                catch (Exception exception)
+                {
+                    Complete(() =>
+                    {
+                        if (ownerRequest != request) return;
+                        Loading = false;
+                        LoadError = exception.Message;
+                        if (Ready) ownerErrors[OwnerId] = LoadError;
+                        RefreshError();
+                    });
+                }
             });
         }
 
@@ -86,7 +110,8 @@ namespace JueMingR.Features.Companions
                         if (OwnerId == source.OwnerId) { RefreshError(); Refresh(); }
                     });
                 }
-                catch (Exception exception) { Complete(() => Error = exception.Message); }
+                catch (Exception exception)
+                { Complete(() => { if (ownerKey == oldKey || ownerKey == newKey) Error = exception.Message; }); }
             });
         }
 
@@ -101,9 +126,9 @@ namespace JueMingR.Features.Companions
         }
         private void RefreshError()
         {
-            string loadError; ownerErrors.TryGetValue(OwnerId, out loadError);
+            if (Ready) { ownerErrors.TryGetValue(OwnerId, out var loadError); LoadError = loadError; }
             var messages = new List<string>();
-            if (loadError != null) messages.Add(loadError);
+            if (LoadError != null) messages.Add(LoadError);
             bool saveError = false;
             foreach (var entry in entries.Values)
                 if (entry.Profile.OwnerId == OwnerId && entry.SaveError != null) { messages.Add(entry.SaveError); saveError = true; }
@@ -113,6 +138,8 @@ namespace JueMingR.Features.Companions
 
         public CompanionProfile Find(Guid id)
         { Entry entry; return entries.TryGetValue(id, out entry) && entry.Profile.OwnerId == OwnerId ? entry.Profile : null; }
+        public CompanionProfile FindActivated(Guid id, long generation)
+        { return OwnsActivation(id, generation) ? entries[id].Profile : null; }
         public CompanionProfile FindName(string name)
         {
             foreach (var entry in entries.Values)
@@ -121,16 +148,21 @@ namespace JueMingR.Features.Companions
         }
         public void Add(CompanionProfile profile)
         {
-            if (!Ready || profile.OwnerId != OwnerId || entries.ContainsKey(profile.Id)) throw new InvalidOperationException("当前创建者不可创建此人物。");
+            if (!Ready || Loading || LoadError != null || profile.OwnerId != OwnerId || entries.ContainsKey(profile.Id)) throw new InvalidOperationException("当前创建者不可创建此人物。");
             if (FindName(profile.Name) != null) throw new InvalidOperationException("已有此人物。");
             entries.Add(profile.Id, new Entry { Profile = profile }); QueueSave(profile);
         }
-        public void Update(CompanionProfile profile)
+        public void Update(CompanionProfile profile, long activation = 0)
         {
             Entry entry;
             if (!entries.TryGetValue(profile.Id, out entry) || profile.OwnerId != entry.Profile.OwnerId || profile.Revision <= entry.Profile.Revision || profile.DataEpoch < entry.Profile.DataEpoch)
                 throw new InvalidOperationException("队友人物修订已失效。");
-            if (entry.Activation != 0 && profile.DataEpoch != entry.Profile.DataEpoch)
+            // Normal commands require the published owner. An accepted recall
+            // keeps only its exact activation through a character change.
+            if (activation != 0 ? entry.Activation != activation : profile.OwnerId != OwnerId)
+                throw new InvalidOperationException("队友实例已失效。");
+            if (entry.Activation != 0 && profile.DataEpoch != entry.Profile.DataEpoch &&
+                (activation == 0 || entry.SavedRevision != entry.Profile.Revision))
                 throw new InvalidOperationException("请先收回队友再清空人物存档。");
             entry.Profile = profile; Refresh(); QueueSave(profile);
         }

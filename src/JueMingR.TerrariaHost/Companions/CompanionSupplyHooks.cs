@@ -30,8 +30,6 @@ namespace JueMingR.TerrariaHost.Companions
                 Patch(typeof(Player), "ApplyLifeAndOrMana", new[] { typeof(Item) }, prefix: nameof(BeforeEffect), postfix: nameof(AfterEffect));
                 Patch(typeof(Player), "ItemCheck", Type.EmptyTypes, prefix: nameof(BeforeItemCheck), finalizer: nameof(AfterItemCheck));
                 Patch(typeof(Player), "Update", new[] { typeof(int) }, finalizer: nameof(AfterPlayerUpdate));
-                Patch(typeof(AchievementsHelper), nameof(AchievementsHelper.HandleSpecialEvent), new[] { typeof(Player), typeof(int) },
-                    prefix: nameof(GrowthAchievement));
                 Patch(typeof(Main), nameof(Main.NPCChatText_DoNurseHeal), new[] { typeof(int) }, transpiler: nameof(NursePaymentSite));
             }
             catch
@@ -185,24 +183,6 @@ namespace JueMingR.TerrariaHost.Companions
             var actor = CompanionHooks.SupplyActor(__instance);
             if (actor != null) actor.Supplies.Growth = default(RecoverySource);
             return __exception;
-        }
-
-        private static bool GrowthAchievement(Player __0, int __1)
-        {
-            var actor = ScopedActor(__0);
-            if (actor == null || !actor.Supplies.Growth.Found ||
-                !ReferenceEquals(__0.HeldItem, actor.Supplies.Growth.Item)) return true;
-            // These four ItemCheck branches address the user's process-wide
-            // achievement manager after using the scoped patient's identity.
-            // All other effects of the original growth use stay native.
-            switch (actor.Supplies.Growth.Type)
-            {
-                case ItemID.LifeCrystal: return __1 != 0;
-                case ItemID.ManaCrystal: return __1 != 1;
-                case ItemID.LifeFruit: return __1 != 2;
-                case ItemID.TorchGodsFavor: return __1 != 24;
-                default: return true;
-            }
         }
 
         internal static void RunNurse(HostCompanions.NursePaymentAttempt attempt)

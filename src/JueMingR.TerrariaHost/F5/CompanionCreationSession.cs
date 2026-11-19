@@ -141,7 +141,7 @@ namespace JueMingR.TerrariaHost.F5
             }
             finally {s.input.ConsumeNativeUiActions();}
         }
-        internal bool Valid { get { return live&&!Main.gameMenu&&ReferenceEquals(owner,Main.ActivePlayerFileData?.Player)&&ReferenceEquals(world,Main.ActiveWorldFileData)&&Host.CreationSessionToken==token; } }
+        internal bool Valid { get { return live&&Host.ArchiveIdentityCurrent()&&ReferenceEquals(owner,Main.ActivePlayerFileData?.Player)&&ReferenceEquals(world,Main.ActiveWorldFileData)&&Host.CreationSessionToken==token; } }
         internal static void Validate(HostCompanions host)
         {
             var s=Active;if(s==null||!ReferenceEquals(s.Host,host))return;

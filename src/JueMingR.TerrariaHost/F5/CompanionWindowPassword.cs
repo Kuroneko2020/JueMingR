@@ -43,7 +43,7 @@ namespace JueMingR.TerrariaHost.F5
             passwordError = null;
             ready = false;
             notice = null;
-            dragging = false;
+            CancelDrag();
             host.CancelItemGesture();
             host.EndItemRepeat();
             CancelWeaponSelection();
@@ -135,6 +135,12 @@ namespace JueMingR.TerrariaHost.F5
             CancelEdit();
             if (close) Close();
             else { ready = false; Invalidate(); }
+        }
+        private void RetireInvalidPasswordOwner()
+        {
+            // The native file identity can change before the runtime update.
+            // Neither drawing nor sampling may retain its old password draft.
+            if (PasswordPromptVisible && !host.ArchiveIdentityCurrent()) RetirePasswordPrompt();
         }
 
         private void ResetPasswordPresentation()

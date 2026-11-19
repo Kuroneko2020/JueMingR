@@ -11,8 +11,9 @@ namespace JueMingR.TerrariaHost.Companions
         internal Guid LastCreatedId { get; private set; }
         internal string RespawnStatus(Guid id)
         {
+            var profile=Find(id);if(profile==null)return "";
             Actor a;
-            if (Find(id)?.PermanentlyDead == true || actors.TryGetValue(id, out a) && a.PermanentDeathPending)
+            if (profile.PermanentlyDead || actors.TryGetValue(id, out a) && a.PermanentDeathPending)
                 return "已永久死亡";
             if (!actors.TryGetValue(id, out a) || !a.Ready || a.Closing || !a.Body.dead) return "";
             int seconds=(Math.Max(0,a.Body.respawnTimer)+59)/60;
@@ -23,7 +24,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal bool SetTeam(Guid id,int team)
         {
-            if(team<0 || team>5 || owner==null || !ReferenceEquals(owner,Main.ActivePlayerFileData?.Player) || !ReferenceEquals(world,Main.ActiveWorldFileData))return Result(false,"当前不能更改队伍。");
+            if(team<0 || team>5 || !ArchiveIdentityCurrent())return Result(false,"当前不能更改队伍。");
             var profile=Find(id);if(profile==null)return Result(false,"未找到自己的队友。");
             Actor a;
             if(!actors.TryGetValue(id,out a))
@@ -71,7 +72,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal int ActiveWeaponSlot(Guid id)
         {
-            return actors.TryGetValue(id, out var a) && a.Ready && !a.Closing && !a.Body.dead ? a.Combat.ActiveSlot : -1;
+            return Find(id)!=null && actors.TryGetValue(id, out var a) && a.Ready && !a.Closing && !a.Body.dead ? a.Combat.ActiveSlot : -1;
         }
 
         internal bool WeaponSelectionCurrent(Guid id, long worldSession, long generation, long epoch, Player body)

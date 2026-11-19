@@ -129,9 +129,9 @@ namespace JueMingR.TerrariaHost.Companions
                 float slots=ItemID.Sets.StaffMinionSlotsRequired[item.type];
                 return sample.minion && slots>0 && body.slotsMinions+slots<=body.maxMinions;
             }
-            if (body.maxTurrets <= 0 || body.ownedProjectileCounts[item.shoot] > 0) return false;
-            // Only a considered sentry has this dependency. All sentry
-            // candidates for this body share one count per actual world step.
+            if (body.maxTurrets <= 0 || !sample.sentry) return false;
+            // Native capacity is per owner, not per projectile type. Only a
+            // considered sentry reads the table, once for this body's decision.
             if(state.TurretCountTick!=Main.GameUpdateCount)
             {
                 state.TurretCountTick=Main.GameUpdateCount;state.TurretCount=0;

@@ -59,6 +59,7 @@ namespace NativeWorldTextProbe
                 var second = Join(host, "原生补给乙");
                 var human = Main.LocalPlayer;
                 CheckIdleWork(host, first, second);
+                CheckPersonalPickup((Player)Get(first, "Body"), human);
                 CheckShortcuts(host, first, second, human);
                 CheckLongTerm(host, first);
                 CheckNurse(host, first, second, human, harness);
@@ -72,6 +73,30 @@ namespace NativeWorldTextProbe
                 harness.UnpatchAll(harness.Id);
                 Call(host, "OnSessionEnded");
             }
+        }
+
+        private static void CheckPersonalPickup(Player actor, Player human)
+        {
+            int slot = Main.maxItems - 1;
+            var before = Main.item[slot];
+            var timber = ItemPickupCondition.Create(ItemID.Wood);
+            try
+            {
+                foreach (var picker in new[] { actor, human })
+                {
+                    int wood = Count(picker, ItemID.Wood);
+                    Main.item[slot] = new WorldItem(new Item(ItemID.Wood))
+                    {
+                        whoAmI = slot, position = picker.position, stack = 2,
+                        playerIndexTheItemIsReservedFor = picker.whoAmI
+                    };
+                    Call(picker, "GrabItems", picker.whoAmI);
+                    Require(Count(picker, ItemID.Wood) == wood + 2 &&
+                        timber.IsCompleted == ReferenceEquals(picker, human),
+                        "native GrabItems -> PickupItem keeps the wood on its picker and completes TIMBER only for the human");
+                }
+            }
+            finally { Main.item[slot] = before; }
         }
 
         private static object Join(object host, string name)
@@ -188,6 +213,30 @@ namespace NativeWorldTextProbe
             Require(body.bank4.item[8].stack == 2, "disabled active mana keeps its own source");
             using (ActorScope(host, first)) body.CheckMana(20);
             Require(body.bank4.item[8].stack == 1 && body.statMana > 19, "original actor mana flower remains enabled");
+            var achievements = new AchievementManager();
+            var waterAchievement = GrowthAchievement(achievements, "DRINK_BOTTLED_WATER_WHILE_DROWNING");
+            SetAchievementManager(achievements);
+            foreach (var drinker in new[] { body, human })
+            {
+                var before = drinker.inventory[15];
+                var water = new Item(ItemID.BottledWater) { stack = 2 };
+                drinker.inventory[15] = water;
+                drinker.statLife = drinker.statLifeMax2 - 30;
+                drinker.breath = drinker.potionDelay = 0;
+                if (ReferenceEquals(drinker, body))
+                {
+                    using (ActorScope(host, first)) drinker.QuickHeal();
+                    Require(!waterAchievement.IsCompleted, "actual AI bottled water does not earn the human drowning achievement");
+                }
+                else
+                {
+                    drinker.QuickHeal();
+                    Require(waterAchievement.IsCompleted, "same native bottled water action by the human still earns the achievement");
+                }
+                Require(water.stack == 1 && drinker.statLife == drinker.statLifeMax2, "the native bottled water was used and healed its own drinker");
+                drinker.inventory[15] = before;
+                drinker.breath = drinker.breathMax;
+            }
             Console.WriteLine("PASS companion native smart/fast/blacklist, own void mana and real mana flower dedup/disabled invariants.");
         }
 
@@ -282,6 +331,9 @@ namespace NativeWorldTextProbe
             nurse.whoAmI = 0;
             nurse.active = true;
             nurse.position = body.position + new Vector2(24, 0);
+            nurse.homeless = false;
+            nurse.homeTileX = 63;
+            nurse.homeTileY = 60;
             Main.npc[0] = nurse;
             int bodyLife = body.statLifeMax2;
             human.statLife = human.statLifeMax2 - 1;
@@ -389,8 +441,49 @@ namespace NativeWorldTextProbe
                 spent.Value == quote && Main.npcChatPortraitFrameCounter == 0,
                 "existing human BuyItem, treatment, portrait and achievement survive scoped nurse hooks");
             CheckNurseCaptureRetry(host, first, harness);
+            CheckNurseHallow(host, second, human, nurse);
             Console.WriteLine("PASS original nurse quote + treatment + native TryPurchasing, both wallets and change, no funds, stale range, post-payment uncertainty, capture/rejoin without debit replay and human dialogue/achievement.");
             NativeCompanionSupplyWireChecks.Run(host, second, human, nurse);
+        }
+
+        private static void CheckNurseHallow(object host, object actor, Player human, NPC nurse)
+        {
+            var patient = (Player)Get(actor, "Body");
+            var previousHumanPosition = human.position;
+            var savedTiles = new Tile[16, 10];
+            for (int x = 0; x < 16; x++)
+                for (int y = 0; y < 10; y++)
+                {
+                    savedTiles[x, y] = Main.tile[86 + x, 32 + y];
+                    var tile = new Tile { type = TileID.Pearlstone };
+                    tile.active(true);
+                    Main.tile[86 + x, 32 + y] = tile;
+                }
+            try
+            {
+                human.position = new Vector2(3 * 16, patient.position.Y);
+                patient.statLife = patient.statLifeMax2 - 90;
+                bool stale = patient.ZoneHallow;
+                patient.ZoneHallow = true;
+                int expected = Quote(host, actor, nurse);
+                patient.ZoneHallow = false;
+                int staleQuote = Quote(host, actor, nurse);
+                long total = NativeRecoveryServiceChecks.Total(human) + NativeRecoveryServiceChecks.Total(patient);
+                var mainScene = Main.PlayerSceneMetrics;
+                var mainSceneCenter = mainScene.Center;
+                AdvanceClock();
+                Require(expected < staleQuote && Call(host, "TryCompanionNurse", actor).ToString() == "Treated" &&
+                    total - NativeRecoveryServiceChecks.Total(human) - NativeRecoveryServiceChecks.Total(patient) == expected &&
+                    !patient.ZoneHallow && ReferenceEquals(mainScene, Main.PlayerSceneMetrics) && mainScene.Center == mainSceneCenter,
+                    "distant payer and stale zone flags still charge the native local Hallow quote and leave the human scene alone");
+                patient.ZoneHallow = stale;
+            }
+            finally
+            {
+                human.position = previousHumanPosition;
+                for (int x = 0; x < 16; x++)
+                    for (int y = 0; y < 10; y++) Main.tile[86 + x, 32 + y] = savedTiles[x, y];
+            }
         }
 
         private static void CheckNurseCaptureRetry(object host, object actor, Harmony harness)
@@ -464,7 +557,7 @@ namespace NativeWorldTextProbe
 
         private static void PutCoin(Item[] items, int slot, int type, int count) { items[slot] = NativeCoinChecks.Coin(type, count); }
         private static bool SkipHeadlessOutlet() { return false; }
-        private static bool KeepGrowthAchievements(int __1) { return __1 == 0 || __1 == 1 || __1 == 2 || __1 == 24; }
+        private static bool KeepGrowthAchievements(int __1) { return __1 == 0 || __1 == 1 || __1 == 2 || __1 == 24 || __1 == 25; }
         private static AchievementCondition GrowthAchievement(AchievementManager manager, string name)
         {
             var achievement = new Achievement(name);

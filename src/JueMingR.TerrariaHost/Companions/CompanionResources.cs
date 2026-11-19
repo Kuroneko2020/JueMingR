@@ -46,7 +46,10 @@ namespace JueMingR.TerrariaHost.Companions
             if (item == null || item.IsAir || item.stack <= 0) return Failed("该槽位没有物品。");
             if (Blocked(source, area, slot, fromOwner ? ownerOperations : null, supplyBlocked)) return Failed("该物品正在使用，请先结束相关操作。");
             int requested = wholeStack ? item.stack : 1;
-            int moved = MoveToInventory(item, destination, requested, fromOwner ? null : ownerOperations, supplyBlocked);
+            bool locked = !CompanionItemRules.Available(source, area, slot);
+            if (locked && requested != item.stack) return Failed("该槽位当前只可取回整组装备。");
+            int moved = MoveToInventory(item, destination, requested, fromOwner ? null : ownerOperations, supplyBlocked,
+                clearFavorite: area != CompanionInventoryArea.Inventory, requireFullStack: locked);
             if (moved == 0) return Failed("接收方背包没有可用空间，物品未移动。");
             return new CompanionResourceResult(moved, moved == requested ? "已转移 " + moved + " 个。" : "背包空间有限，已转移 " + moved + " 个。");
         }
@@ -61,12 +64,17 @@ namespace JueMingR.TerrariaHost.Companions
             if (Blocked(source, CompanionInventoryArea.Inventory, inventorySlot, fromOwner ? ownerOperations : null, supplyBlocked)) return Failed("该物品正在使用，请先结束相关操作。");
             CompanionInventoryArea area; int target = EquipmentSlot(companion, item, out area);
             if (target < 0) return Failed("此物品当前没有可用装备槽位。");
-            if (Blocked(companion, area, target, null, supplyBlocked)) return Failed("当前装备参与正在进行的用物，请稍后再试。");
+            if (!CompanionItemRules.Available(companion, area, target) || Blocked(companion, area, target, null, supplyBlocked))
+                return Failed("当前装备槽不可用，请稍后再试。");
             var equipment = Items(companion, area);
             Item previous = equipment[target];
             if (!previous.IsAir && item.stack > 1) return Failed("请先卸下该槽位的装备，再放入这一组物品。");
-            Item equipped = item.Clone(); equipped.stack = 1;
-            if (item.stack == 1) source.inventory[inventorySlot] = previous;
+            Item equipped = item.Clone(); equipped.stack = 1; equipped.favorited = false;
+            if (item.stack == 1)
+            {
+                source.inventory[inventorySlot] = previous.Clone();
+                source.inventory[inventorySlot].favorited = false;
+            }
             else { item.stack--; }
             equipment[target] = equipped;
             // Do not call UpdateEquips in isolation: it accumulates derived stats.
@@ -89,7 +97,8 @@ namespace JueMingR.TerrariaHost.Companions
             var item = equipment[slot];
             if (item == null || item.IsAir) return Failed("该槽位没有装备。");
             if (Blocked(companion, area, slot, null, supplyBlocked)) return Failed("当前装备参与正在进行的用物，请稍后再试。");
-            int moved = MoveToInventory(item, companion, item.stack, null, supplyBlocked);
+            int moved = MoveToInventory(item, companion, item.stack, null, supplyBlocked, clearFavorite: true,
+                requireFullStack: !CompanionItemRules.Available(companion, area, slot));
             return moved == 0 ? Failed("队友背包没有可用空间，装备未卸下。") : new CompanionResourceResult(moved, "已卸下到队友背包。");
         }
         private static bool Usable(Player owner, Player companion)
@@ -104,7 +113,7 @@ namespace JueMingR.TerrariaHost.Companions
         private sealed class Placement
         { internal int Slot; internal Item NewItem; }
         private static int MoveToInventory(Item source, Player destination, int requested, ItemOperationOwnership operations,
-            Func<Player, Item[], int, bool> supplyBlocked)
+            Func<Player, Item[], int, bool> supplyBlocked, bool clearFavorite = false, bool requireFullStack = false)
         {
             int remaining = Math.Min(source.stack, requested);
             var placements = new List<Placement>();
@@ -122,11 +131,12 @@ namespace JueMingR.TerrariaHost.Companions
                     int count = Math.Min(remaining, capacity);
                     if (count == 0) continue;
                     Item replacement = target.IsAir ? source.Clone() : target.Clone();
+                    if (target.IsAir && clearFavorite) replacement.favorited = false;
                     replacement.stack = (target.IsAir ? 0 : target.stack) + count;
                     placements.Add(new Placement { Slot = slot, NewItem = replacement }); remaining -= count;
                 }
             int moved = Math.Min(source.stack, requested) - remaining;
-            if (moved == 0) return 0;
+            if (moved == 0 || requireFullStack && remaining != 0) return 0;
             // Allocate and validate before either side changes. No native use,
             // disk I/O or network callback runs between these two local commits.
             foreach (var placement in placements) destination.inventory[placement.Slot] = placement.NewItem;

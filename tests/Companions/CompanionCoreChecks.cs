@@ -19,7 +19,7 @@ namespace JueMingR.ArchitectureTests
             string parent = Path.GetFullPath(Path.GetTempPath());
             string root = Path.GetFullPath(Path.Combine(parent, "JueMingR-companion-checks-" + Guid.NewGuid().ToString("N")));
             Directory.CreateDirectory(root);
-            try { ArchiveRoundTrip(root); PreferenceRoundTrip(root); FailedCreation(root); CoalescedReset(root); CorruptIsolation(root); MenuMigration(root); TerminalArchive(root); LegacyArchive(root); ContinuousJump(); RejectedTakeoff(); }
+            try { ArchiveRoundTrip(root); PreferenceRoundTrip(root); FailedCreation(root); CoalescedReset(root); CorruptIsolation(root); RetryRead(root); RetireOwner(root); MenuMigration(root); TerminalArchive(root); LegacyArchive(root); ContinuousJump(); RejectedTakeoff(); }
             catch (Exception exception) { failures.Add("companion core: " + exception); }
             finally
             {
@@ -279,6 +279,73 @@ namespace JueMingR.ArchitectureTests
                 Require(manager.Error != null && manager.Error.Contains(bad.ToString("N")), "saving a healthy migrated profile cannot erase its owner's corrupt-profile feedback");
             }
             Require(File.ReadAllBytes(corrupt).SequenceEqual(new byte[] { 255, 255 }), "migration and healthy saves preserve the corrupt source bytes");
+        }
+        private static void RetryRead(string root)
+        {
+            const string key="retry-local-owner";
+            string game=Path.Combine(root,"retry-read");
+            string archiveRoot=Path.Combine(game,"JueMingRData","companions");
+            Guid owner, healthy=Guid.NewGuid(), blocked=Guid.NewGuid();
+            using(var archive=new FileCompanionArchive(game))
+            {
+                owner=archive.LoadOwner(key).OwnerId;
+                archive.Save(new CompanionProfile(healthy,owner,"可用",1,1,new CompanionBehavior(),new byte[]{1}));
+                archive.Save(new CompanionProfile(blocked,owner,"暂时占用",1,1,new CompanionBehavior(),new byte[]{2}));
+            }
+            string ownerFile=Directory.GetFiles(Path.Combine(archiveRoot,"owners"),"*.bin").Single();
+            string memberFile=Path.Combine(archiveRoot,"characters",owner.ToString("N"),blocked.ToString("N")+".bin");
+            byte[] memberBytes=File.ReadAllBytes(memberFile);
+            using(var manager=new CompanionProfileManager(new FileCompanionArchive(game)))
+            {
+                using(var locked=new FileStream(ownerFile+".lock",FileMode.Open,FileAccess.ReadWrite,FileShare.None))
+                {
+                    manager.SetOwner(key);Wait(manager,()=>manager.LoadError!=null);
+                    Require(!manager.Ready && !manager.Loading && manager.Profiles.Count==0,"unreadable owner is distinguishable from a loaded empty roster");
+                }
+                File.WriteAllBytes(memberFile,new byte[]{255});
+                manager.RetryLoad();Wait(manager,()=>manager.Ready && !manager.Loading);
+                Require(manager.OwnerId==owner && manager.Profiles.Single().Id==healthy && manager.LoadError.Contains(blocked.ToString("N")),
+                    "same owner retry restores the healthy member and isolates corrupt contents");
+                var newer=manager.Find(healthy).Revise(new byte[]{9});manager.Update(newer);Wait(manager,()=>manager.IsSaved(healthy));
+                // A failed semantic read had acquired the document lease.
+                // Repairing its source must become visible to explicit retry.
+                File.WriteAllBytes(memberFile,memberBytes);
+                using(var locked=new FileStream(memberFile+".lock",FileMode.Open,FileAccess.ReadWrite,FileShare.None))
+                {
+                    manager.RetryLoad();Wait(manager,()=>!manager.Loading);
+                    Require(manager.LoadError!=null && manager.Profiles.Single().Id==healthy,"still-busy member keeps exact error and healthy roster");
+                }
+                manager.RetryLoad();Wait(manager,()=>!manager.Loading && manager.LoadError==null);
+                Require(manager.Profiles.Count==2 && manager.Find(blocked).NativeData[0]==2 &&
+                    manager.Find(healthy).Revision==newer.Revision && manager.Find(healthy).NativeData[0]==9,
+                    "same owner retry restores the complete roster while preserving the healthy newer save");
+            }
+        }
+        private static void RetireOwner(string root)
+        {
+            var gated=new GatedArchive(new FileCompanionArchive(Path.Combine(root,"retire-owner")));
+            using(var manager=new CompanionProfileManager(gated))
+            {
+                manager.SetOwner("first");Wait(manager,()=>manager.Ready);
+                Guid owner=manager.OwnerId,id=Guid.NewGuid();
+                manager.Add(new CompanionProfile(id,owner,"在途创建",1,1,new CompanionBehavior(),new byte[]{3}));
+                Require(gated.Entered.Wait(5000),"worker obtained first creation before the player leaves");
+                manager.SetOwner(null);
+                Require(!manager.Ready && manager.Profiles.Count==0 && manager.Find(id)==null,"leaving removes even a previously accepted draft from visible ownership");
+                manager.SetOwner("second");gated.Allow.Set();Wait(manager,()=>manager.Ready);
+                Require(manager.OwnerId!=owner && manager.Profiles.Count==0 && manager.Find(id)==null && manager.IsSaved(id),
+                    "first owner's committed creation never publishes into the second owner's roster");
+                manager.SetOwner("first");
+                Require(manager.Profiles.Single().Id==id,"returning owner gets the committed creation");
+                Require(manager.TryReserve(id,out long generation),"returning owner reserves its committed profile");
+                manager.SetOwner(null);
+                var captured=manager.FindActivated(id,generation).Revise(new byte[]{4});
+                manager.Update(captured,generation);Wait(manager,()=>manager.IsSaved(id));
+                manager.Release(id,generation);
+                Require(manager.Find(id)==null && manager.FindActivated(id,generation)==null,"retired activation can settle accepted bytes and releases narrow ownership");
+                manager.SetOwner("first");
+                Require(manager.Find(id).NativeData[0]==4,"next same-owner entry sees the latest departed body bytes");
+            }
         }
         private static void WaitMigration(CompanionProfileManager manager, string key)
         {

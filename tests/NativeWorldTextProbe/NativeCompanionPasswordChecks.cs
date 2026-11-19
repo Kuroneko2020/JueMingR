@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using HarmonyLib;
 using JueMingR.Platform.Companions;
 using Terraria;
@@ -36,6 +37,7 @@ namespace NativeWorldTextProbe
                 var id = fixture.Create("口令初次角色");
                 var first = fixture.Start(id, 42);
                 fixture.WaitForPrompt(1, out long originalToken);
+                OwnerLossBeforeUpdate(context,fixture,originalToken);
                 Require(fixture.Submit(originalToken, "loopback-wrong"), "submit one fresh input to the exact awaiting attempt");
                 fixture.Authenticate(first, 42, "loopback-wrong", false);
                 fixture.WaitForPrompt(1, out long retryToken);
@@ -122,8 +124,44 @@ namespace NativeWorldTextProbe
                 fixture.Joined(primaryFlow, 50);
                 Require(fixture.Ready(primaryCredential) && !fixture.Prompt(out _, out _) && fixture.OwnerConnected,
                     "only native primary message 3 publishes the human's accepted current-session password");
+
+                fixture.DelayedLobbyCredential();
             }
             Console.WriteLine("PASS native password: actual TCP 1/37/38/2/3, fresh retry flow, ready join, latest accepted reuse, stale reply, shared cancellation, and ordinary rejection.");
+        }
+
+        private static void OwnerLossBeforeUpdate(object context,Fixture fixture,long token)
+        {
+            var window=Get(Get(context,"Shell"),"CompanionUi");
+            var text=Get(window,"textInput");
+            var ime=text.GetType().GetField("ime",BindingFlags.Instance|BindingFlags.NonPublic);
+            object previous=ime.GetValue(text);
+            bool previousSsc=Main.ServerSideCharacter;
+            ime.SetValue(text,new NativeCompanionUiChecks.InputIme(ime.FieldType).GetTransparentProxy());
+            try
+            {
+                Call(window,"BeforeInput",true);
+                Call(Get(window,"editor"),"Insert","retired-projected-password");
+                Require((bool)Get(window,"PasswordPromptVisible") && (bool)Get(window,"OwnsTextToken"),
+                    "real pending loopback authentication opens and owns the companion text lease without drawing");
+                Main.ServerSideCharacter=true;
+                Require(!fixture.Prompt(out _,out _) && !fixture.Submit(token,"retired-projected-password"),
+                    "SSC identity retires visible authentication and rejects its earlier submit before Host update");
+                Call(window,"BeforeInput",true);
+                Require(GetOptional(window,"editor")==null && GetOptional(text,"prepared")==null && GetOptional(text,"bound")==null &&
+                    !(bool)Get(window,"OwnsTextToken") && !(bool)Get(window,"PasswordPromptVisible"),
+                    "input prefix releases the actual masked buffer and bound lease before the next sample");
+                Main.ServerSideCharacter=previousSsc;
+                Call(window,"BeforeInput",true);
+                Require((string)Get(Get(window,"editor"),"Text")=="" && fixture.Prompt(out var resumed,out _) && resumed==token,
+                    "returning to the current original identity can resume the same challenge with a fresh draft");
+            }
+            finally
+            {
+                Main.ServerSideCharacter=previousSsc;
+                Call(window,"Close");
+                ime.SetValue(text,previous);
+            }
         }
 
         internal static void WithChallenge(object context, Action<object> show)
@@ -254,7 +292,7 @@ namespace NativeWorldTextProbe
 
             internal void Joined(TcpClient peer, int slot)
             {
-                NativeQuickItemChecks.Until(() => { Pump(); return Slot(slot) != null; });
+                NativeQuickItemChecks.Until(() => { Pump(); return ((IDictionary)Get(Host, "joiningSlots")).Contains(slot); });
                 Read(peer, 6);
                 Write(peer, Frame(7, w =>
                 {
@@ -263,10 +301,18 @@ namespace NativeWorldTextProbe
                     w.Write(0); w.Write("isolated password world"); w.Write((byte)Main.GameMode);
                     w.Write(Main.ActiveWorldFileData.UniqueId.ToByteArray());
                 }));
-                NativeQuickItemChecks.Until(() => { Pump(); var actor = Slot(slot); return actor != null && (bool)Get(actor, "SpawnSent"); });
+                NativeQuickItemChecks.Until(() => { Pump(); var actor = ((IDictionary)Get(Host, "joiningSlots"))[slot]; return actor != null && (bool)Get(actor, "SpawnSent"); });
                 Read(peer, 8);
-                Write(peer, Frame(49)); Write(peer, Frame(129));
-                NativeQuickItemChecks.Until(() => { Pump(); return (bool)Get(Slot(slot), "Ready"); });
+                Write(peer, Frame(49));
+                var pending = ((IDictionary)Get(Host, "joiningSlots"))[slot];
+                NativeQuickItemChecks.Until(() => { Pump(); return (bool)Get(pending, "InitialNpcComplete"); });
+                for (int n = 0; n < 32 && !(bool)Get(pending, "PrimarySlotConfirmed"); n++)
+                    Decode(Read(primaryPeer, 154), 256);
+                Require((bool)Get(pending, "PrimarySlotConfirmed"), "native primary acknowledgement opens this secondary birth");
+                Pump();
+                Read(peer, 12);
+                Write(peer, Frame(129));
+                NativeQuickItemChecks.Until(() => { Pump(); return Slot(slot) is object actor && (bool)Get(actor, "Ready"); });
             }
 
             internal bool Prompt(out long token, out int waiting)
@@ -287,7 +333,7 @@ namespace NativeWorldTextProbe
             internal void RejectNormally(int slot)
             { Server(() => NetMessage.SendData(2, slot, -1, NetworkText.FromLiteral("普通拒绝：测试退出"))); }
 
-            internal void AcceptPrimaryPassword()
+            internal void AcceptPrimaryPassword(bool finish = true)
             {
                 int slot = owner.whoAmI;
                 Netplay.Connection.State = 1;
@@ -298,7 +344,47 @@ namespace NativeWorldTextProbe
                 Decode(Read(primary, 3), 256);
                 Require(Netplay.Connection.State == 3 && ReferenceEquals(Main.LocalPlayer, owner),
                     "the original 3 consumer completes the primary authentication with the same player");
-                Netplay.Connection.State = 10;
+                if (finish) Netplay.Connection.State = 10;
+            }
+
+            internal void DelayedLobbyCredential()
+            {
+                var lobby = Main.LobbyId;
+                var worldId = Main.ActiveWorldFileData.UniqueId;
+                var socket = Netplay.Connection.Socket;
+                try
+                {
+                    Call(Host, "EndPasswordSession");
+                    Main.LobbyId = 0;
+                    AcceptPrimaryPassword(false);
+                    // Native 38 and 3 above ran through real wire/consumers.
+                    // Exercise the first world-data handoff with the state and
+                    // newly revealed lobby it supplies to this same socket.
+                    Main.LobbyId = 87UL;
+                    Netplay.Connection.State = 4;
+                    Call(Host, "HumanWorldArrived");
+                    Netplay.Connection.State = 10;
+                    Call(Host, "BeginPasswordSession");
+                    var id = Create("迟到大厅身份的真人口令");
+                    var flow = Start(id, 51);
+                    Authenticate(flow, 51, "loopback-cancelled-batch", true);
+                    Joined(flow, 51);
+                    Require(Ready(id) && !Prompt(out _, out _),
+                        "initial world data supplies the missing lobby identity and the first companion reuses the accepted human credential");
+
+                    Main.ActiveWorldFileData.UniqueId = Guid.NewGuid();
+                    Require(!(bool)Call(Host, "CurrentAuthentication"), "changing world identity on the same socket invalidates credentials");
+                    Main.ActiveWorldFileData.UniqueId = worldId;
+                    Netplay.Connection.Socket = new TcpSocket();
+                    Require(!(bool)Call(Host, "CurrentAuthentication"), "replacing the primary socket cannot reuse credentials");
+                    Netplay.Connection.Socket.Close();
+                }
+                finally
+                {
+                    Main.LobbyId = lobby;
+                    Main.ActiveWorldFileData.UniqueId = worldId;
+                    Netplay.Connection.Socket = socket;
+                }
             }
 
             private static void Server(Action action)

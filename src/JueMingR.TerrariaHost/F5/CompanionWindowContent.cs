@@ -35,7 +35,7 @@ namespace JueMingR.TerrariaHost.F5
                 BuildActor(profile == null ? null : body, false, companionView, bodyOffset, row);
                 return;
             }
-            if (profile == null) { BodyText(pendingCreatedName??"点击左下角＋创建队友", row); FinishBody(); return; }
+            if (profile == null) { BodyText(pendingCreatedName??(host.CanCreate?"点击左下角＋创建队友":""), row); FinishBody(); return; }
             BuildConfiguration(profile,row);
         }
         private float SharedResources(float paneWidth)
@@ -161,14 +161,14 @@ namespace JueMingR.TerrariaHost.F5
             bool aiWeaponSlot = !c.Owner && c.Area == CompanionInventoryArea.Inventory && c.Slot < CompanionBehavior.MainInventorySlots;
             bool candidate = aiWeaponSlot && weaponDraft != null && CompanionItemRules.WeaponEligible(item);
             bool active = aiWeaponSlot && c.Slot == activeWeaponSlot && body.selectedItem == c.Slot && CompanionItemRules.WeaponEligible(item);
-            bool enabled = weaponDraft == null ? (c.Owner || selectedTransfer) && !locked : candidate;
+            bool enabled = weaponDraft == null ? (c.Owner || selectedTransfer) && (!locked || item?.IsAir == false && !host.HasItemGesture) : candidate;
             bool chosen = aiWeaponSlot && (c.Slot == displayedWeaponSlots[0] || c.Slot == displayedWeaponSlots[1]);
             string unavailable=c.Owner?null:selectedUnavailable;
             if(c.Prefix==prefix&&c.ItemType==type&&c.Stack==stack&&c.Enabled==enabled&&c.Selected==chosen&&c.Availability==unavailable&&c.Locked==locked&&c.WeaponCandidate==candidate&&c.ActiveWeapon==active) return false;
             bool changedType=c.ItemType!=type;
             if(c.Stack!=stack||c.StackText==null)c.StackText=stack.ToString();c.ItemType=type;c.Stack=stack;c.Prefix=prefix;c.Enabled=enabled;c.Selected=chosen;
             c.Availability=unavailable;c.Locked=locked;c.WeaponCandidate=candidate;c.ActiveWeapon=active;
-            c.Hint=unavailable??(locked?"此饰品槽尚未解锁。":SlotHint(c.Area,item));
+            c.Hint=unavailable??(locked?item?.IsAir==false?"此槽尚未解锁，只可取回已有装备。":"此槽尚未解锁。":SlotHint(c.Area,item));
             if (chosen) c.Hint += "\n主要武器";
             if (active) c.Hint += "\n当前使用的武器";
             c.EmptyIcon=-1;c.Placeholder=null;

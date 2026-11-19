@@ -18,6 +18,7 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool installed;
         [ThreadStatic] internal static Player Spawning;
         [ThreadStatic] private static Scope current;
+        [ThreadStatic] private static PlayerStep playerStep;
         internal static HostCompanions.Actor CurrentActor => current?.Actor;
         internal static HostCompanions.Actor SupplyActor(Player player) => host?.Owned(player);
         private static readonly MethodInfo enemyDamage=AccessTools.Method(typeof(Projectile),"Damage_EVP");
@@ -31,13 +32,14 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Main),"UpdateWorld_NPCs",postfix:nameof(NpcWorldAfter));
             Patch(typeof(Main),"UpdateWorld_Items",postfix:nameof(PersonalItemsAfter));
             Patch(typeof(Player),"ItemCheck",nameof(UseBefore),finalizer:nameof(ScopeFinal));
+            InstallAchievements();
             Patch(typeof(Player),"PlaceThing",nameof(PlaceBefore),args:new[]{typeof(bool),typeof(Player.ItemCheckContext).MakeByRefType()});
             Patch(typeof(Player),"ItemCheck_UseWiringTools",nameof(PlaceBefore));
             Patch(typeof(Player),"UpdatePlacementPreview",nameof(PreviewBefore));
             Harmony.Patch(AccessTools.PropertyGetter(typeof(PlayerInput),"ShouldFastUseItem"),postfix:Hook(nameof(FastUse)));
             Patch(typeof(PlayerInput),"TryEndingFastUse",nameof(EndFastUse));
             Patch(typeof(Main),"LocalPlayerHasPendingInventoryActions",nameof(PendingInventory));
-            Patch(typeof(Player),"Hurt",nameof(UseBefore),finalizer:nameof(ScopeFinal));
+            Patch(typeof(Player),"Hurt",nameof(UseBefore),finalizer:nameof(ScopeFinal),transpiler:nameof(PaladinDamageReceiver));
             Patch(typeof(Player),"CheckDrowning",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Player),"UpdateLifeRegen",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Player),"UpdateBuffs",nameof(UseBefore),finalizer:nameof(ScopeFinal));
@@ -48,8 +50,9 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player),"Spawn",transpiler:nameof(SpawnLocals));
             Patch(typeof(Player),"PickupItem",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Player),"GrabItems",nameof(UseBefore),finalizer:nameof(ScopeFinal));
+            Patch(typeof(Player),"PurgeDD2EnergyCrystals",transpiler:nameof(TrackEnergyPurge));
             Patch(typeof(WorldItem),"UpdateItem",postfix:nameof(ItemOwner));
-            Patch(typeof(Projectile),"AI",nameof(ProjectileBefore),finalizer:nameof(ScopeFinal));
+            Patch(typeof(Projectile),"AI",nameof(ProjectileBefore),finalizer:nameof(ScopeFinal),transpiler:nameof(DeferSharedProjectileHeal));
             Patch(typeof(Projectile),"Update",transpiler:nameof(ProjectileSyncTail),args:new[]{typeof(int)});
             Patch(typeof(Projectile),"AI_075",transpiler:nameof(DrillTileGate));
             Patch(typeof(Projectile),"Damage",nameof(ProjectileBefore),nameof(ProjectileDamageAfter),nameof(ScopeFinal));
@@ -103,6 +106,9 @@ namespace JueMingR.TerrariaHost.Companions
             private readonly NPC[] npcTable;
             private readonly uint[,] staticHits;
             private readonly IDisposable personalView;
+            internal int HumanIndex => previous == null ? oldPlayer : previous.HumanIndex;
+            internal List<ShieldImpact> HumanShieldHits;
+            internal Scope Root => previous == null ? this : previous.Root;
             private static ulong Resources(Player p){unchecked{ulong value=1469598103934665603;for(int i=0;i<p.inventory.Length;i++){var item=p.inventory[i];value=(value^(uint)(item.type*31+item.stack))*1099511628211;}return value;}}
             internal Scope(HostCompanions.Actor actor,Vector2 aim,bool inventory,bool personalItems)
             {
@@ -135,18 +141,33 @@ namespace JueMingR.TerrariaHost.Companions
                     // Nested scopes return to their exact prior owner even if
                     // observation/cleanup fails; the exception still propagates.
                     try{try{personalView?.Dispose();}finally{try{host.LeaveNpcObservation(npcTable);}finally{host.LeaveObservedNpcHitState(staticHits);}}}
-                    finally{Main.myPlayer=oldPlayer;Main.mouseX=x;Main.mouseY=y;Player.tileTargetX=tileX;Player.tileTargetY=tileY;Main.mapFullscreen=map;Main.mouseItem=mouse;current=previous;}
+                    finally
+                    {
+                        Main.myPlayer=oldPlayer;Main.mouseX=x;Main.mouseY=y;Player.tileTargetX=tileX;Player.tileTargetY=tileY;Main.mapFullscreen=map;Main.mouseItem=mouse;current=previous;
+                        ApplyHumanShieldHits(HumanShieldHits);
+                    }
                 }
             }
         }
-        private sealed class PlayerStep {internal int X,Y;internal NPC[] Npcs;internal uint[,] StaticHits;}
+        private sealed class PlayerStep
+        {
+            internal int X,Y;
+            internal NPC[] Npcs;
+            internal uint[,] StaticHits;
+            internal PlayerStep Previous;
+            internal Scope EntryScope;
+            internal List<ShieldImpact> HumanShieldHits;
+            internal PlayerStep Root => Previous == null ? this : Previous.Root;
+        }
         private static bool PlayerBefore(Player __instance,ref PlayerStep __state)
         {
             var a=host?.Owned(__instance);if(a==null)return true;
             if(!a.Ready || a.Closing || a.Faulted)return false;
             if(a.LastUpdate==Main.GameUpdateCount)return false;
-            __state=new PlayerStep{X=Player.tileTargetX,Y=Player.tileTargetY,StaticHits=host.EnterObservedNpcHitState(Main.npc)};__state.Npcs=host.EnterNpcObservation();
+            __state=new PlayerStep{X=Player.tileTargetX,Y=Player.tileTargetY,StaticHits=host.EnterObservedNpcHitState(Main.npc),Previous=playerStep,EntryScope=current};__state.Npcs=host.EnterNpcObservation();
+            playerStep=__state;
             a.LastUpdate=Main.GameUpdateCount;
+            PurgeCompanionEnergy(__instance);
             host.Control(a);
             return true;
         }
@@ -157,12 +178,17 @@ namespace JueMingR.TerrariaHost.Companions
         private static void PersonalItemsAfter(){host?.AdvancePersonalItems();}
         private static Exception PlayerFinal(Exception __exception,Player __instance,PlayerStep __state)
         {
-            if(__state!=null){try{host.LeaveNpcObservation(__state.Npcs);}finally{host.LeaveObservedNpcHitState(__state.StaticHits);Player.tileTargetX=__state.X;Player.tileTargetY=__state.Y;}}
+            if(__state!=null)
+            {
+                try{try{host.LeaveNpcObservation(__state.Npcs);}finally{host.LeaveObservedNpcHitState(__state.StaticHits);}}
+                finally{Player.tileTargetX=__state.X;Player.tileTargetY=__state.Y;playerStep=__state.Previous;}
+                ApplyHumanShieldHits(__state.HumanShieldHits);
+            }
             if(__exception!=null){var a=host?.Owned(__instance);if(a!=null){
                 a.Status="人物更新失败："+__exception.Message;a.Faulted=true;a.Body.controlUseItem=false;a.Body.channel=false;return null;}}return __exception;
         }
         private static void UseBefore(Player __instance,MethodBase __originalMethod,ref Scope __state)
-        {var a=host?.Owned(__instance);if(a!=null && a.Ready && !a.Closing){bool use=__originalMethod.Name=="ItemCheck";if(use){var hits=host.EnterObservedNpcHitState(Main.npc);var table=host.EnterNpcObservation();try{host.PrepareUse(a);}finally{try{host.LeaveNpcObservation(table);}finally{host.LeaveObservedNpcHitState(hits);}}}__state=new Scope(a,a.Aim,__originalMethod.Name=="PickupItem" || use && (__instance.controlUseItem || __instance.itemAnimation>0 || __instance.channel),__originalMethod.Name=="GrabItems");}}
+        {var a=host?.Owned(__instance);if(a!=null && a.Ready && !a.Closing){if(__originalMethod.Name=="UpdateBuffs" && ReferenceEquals(a,CurrentActor))return;bool use=__originalMethod.Name=="ItemCheck";if(use){var hits=host.EnterObservedNpcHitState(Main.npc);var table=host.EnterNpcObservation();try{host.PrepareUse(a);}finally{try{host.LeaveNpcObservation(table);}finally{host.LeaveObservedNpcHitState(hits);}}}__state=new Scope(a,a.Aim,__originalMethod.Name=="PickupItem" || use && (__instance.controlUseItem || __instance.itemAnimation>0 || __instance.channel),__originalMethod.Name=="GrabItems");}}
         private static void FastUse(ref bool __result){if(current!=null)__result=false;}
         private static bool EndFastUse(){return current==null;}
         private static bool PendingInventory(ref bool __result){if(current==null)return true;__result=false;return false;}
@@ -216,7 +242,13 @@ namespace JueMingR.TerrariaHost.Companions
         // owned body, leave native drops/penalty intact, and retire its own archive.
         private static bool PermanentDeath(Player __instance)
         {var a=host?.Owned(__instance);if(a==null)return true;a.PermanentDeathPending=true;return false;}
-        private static void DeathBefore(Player __instance,ref Scope __state){var a=host?.Owned(__instance);if(a!=null && a.Ready && !a.Closing)__state=Enter(a,a.Aim);}
+        private static void DeathBefore(Player __instance,ref Scope __state)
+        {
+            var a=host?.Owned(__instance);
+            if(a==null || !a.Ready || a.Closing || __instance.creativeGodMode || __instance.dead)return;
+            __state=Enter(a,a.Aim);
+            host.PublishSlotsBeforeDeath(a);
+        }
         private static bool CollectMinions(Terraria.DataStructures.MinionRespawner __instance,Player player)
         {
             var a=host?.Owned(player);
@@ -278,7 +310,10 @@ namespace JueMingR.TerrariaHost.Companions
             if(Main.netMode==1 && current==null && data!=null && data.Length>=3 && data[2]==154)host?.PrimaryPingSent();
 
             if(Main.netMode!=1 || current==null || current.Actor.Connection==null)return true;
-            int length=data[0]|data[1]<<8;var copy=new byte[length];Buffer.BlockCopy(data,0,copy,0,length);current.PacketAccepted=current.Actor.Connection.TrySend(copy);return false;
+            int length=data[0]|data[1]<<8;var copy=new byte[length];Buffer.BlockCopy(data,0,copy,0,length);
+            current.PacketAccepted=current.Actor.Connection.TrySend(copy);
+            if(current.PacketAccepted)host.RecordActorPacket(current.Actor,copy);
+            return false;
         }
         private static bool Packet(MessageBuffer __instance,int start,int length,ref int messageType,out bool __state)
         {
@@ -287,7 +322,8 @@ namespace JueMingR.TerrariaHost.Companions
             if (host.Decoding == null && length > 0)
             {
                 byte kind = __instance.readBuffer[start];
-                __state = kind == 3 && __instance.whoAmI == 256 && Netplay.Connection?.State == 1;
+                __state = __instance.whoAmI == 256 &&
+                    (kind == 3 && Netplay.Connection?.State == 1 || kind == 7 && Netplay.Connection?.State == 3);
                 if (kind == 154 && host.PrimaryPingReceived()) { messageType = 154; return false; }
             }
             if (host.AcceptPrimary(__instance.readBuffer,start,length)) return true;
@@ -299,7 +335,10 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if (!__runOriginal || Main.netMode != 1 || host == null || host.ReadingObservation || host.Decoding != null) return;
             if (messageType == 3 && __state) host.HumanAccepted();
-            if (messageType == 23 || messageType == 28 || messageType == 54) host.PrimaryNpcApplied(__instance.readBuffer,start,length);
+            if (messageType == 7 && __state) host.HumanWorldArrived();
+            if (messageType == 66 && length >= 4 && BitConverter.ToInt16(__instance.readBuffer,start+2)>0)
+                host.SharedHealApplied(__instance.readBuffer[start+1]);
+            if (messageType == 23 || messageType == 28 || messageType == 54 || messageType == 60) host.PrimaryNpcApplied(__instance.readBuffer,start,length);
         }
         private static bool ObservationPending(ref int damage,ref bool phaseChange)
         {if(host==null || !host.ReadingObservation)return true;damage=0;phaseChange=false;return false;}
@@ -359,7 +398,9 @@ namespace JueMingR.TerrariaHost.Companions
             foreach(var instruction in c)if(instruction.Calls(AccessTools.Method(typeof(Player),"GrappleMovement"))){instruction.opcode=OpCodes.Call;instruction.operand=AccessTools.Method(typeof(CompanionHooks),nameof(ContactThenGrapple));contacts++;}
             // UpdateBuffs decrements locally; this separate original Update
             // block owns DelBuff/compaction after expiry. Neither is replayed.
-            if(falls!=1 || lavas!=1 || contacts!=1 || expiredBuffs!=1)throw new InvalidOperationException("Companion native survival layout changed: fall="+falls+" lava="+lavas+" contact="+contacts+" buffs="+expiredBuffs);return c;
+            if(falls!=1 || lavas!=1 || contacts!=1 || expiredBuffs!=1)throw new InvalidOperationException("Companion native survival layout changed: fall="+falls+" lava="+lavas+" contact="+contacts+" buffs="+expiredBuffs);
+            ExtendActiveBodyUpdate(c);
+            return c;
         }
         private static void ContactThenGrapple(Player p)
         {

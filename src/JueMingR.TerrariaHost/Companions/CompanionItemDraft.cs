@@ -105,7 +105,10 @@ namespace JueMingR.TerrariaHost.Companions
                 if (!CompanionItemRules.ValidSlot(Body(cell.Owner), cell.Area, cell.Slot) ||
                     !ReferenceEquals(CompanionResources.Items(Body(cell.Owner), cell.Area), cell.Array) ||
                     !ReferenceEquals(cell.Array[cell.Slot], cell.Original) || !Same(cell.Array[cell.Slot], cell.Baseline)) return false;
-                if (cell.Written && Blocked(cell.Owner, cell.Area, cell.Slot)) return false;
+                if (!cell.Written) continue;
+                if (Blocked(cell.Owner, cell.Area, cell.Slot)) return false;
+                if (!CompanionItemRules.Available(Body(cell.Owner), cell.Area, cell.Slot) &&
+                    (!cell.Preview.IsAir || cell.Baseline.IsAir)) return false;
             }
             return true;
         }
@@ -155,15 +158,21 @@ namespace JueMingR.TerrariaHost.Companions
         private bool GestureCore(bool owner, CompanionInventoryArea area, int slot, CompanionItemGesture gesture, out string message)
         {
             message = null;
-            if (!CompanionItemRules.Available(Body(owner), area, slot)) { message = "该槽位当前不可用。"; return false; }
+            if (!CompanionItemRules.ValidSlot(Body(owner), area, slot)) { message = "该槽位当前不可用。"; return false; }
+            bool locked = !CompanionItemRules.Available(Body(owner), area, slot);
+            // Difficulty can make an occupied slot unusable. Its original
+            // equipment remains recoverable, but the slot cannot take a write.
+            if (locked && (!Cursor.IsAir || Preview(owner, area, slot)?.IsAir != false))
+            { message = "该槽位当前只可取回已有装备。"; return false; }
             if (Blocked(owner, area, slot)) { message = "该物品正在使用，请先结束相关操作。"; return false; }
             var cell = Touch(owner, area, slot);
-            if (gesture == CompanionItemGesture.Shift) return QuickTransfer(owner, cell, out message);
+            if (gesture == CompanionItemGesture.Shift) return QuickTransfer(owner, cell, locked, out message);
             if (Cursor.IsAir)
             {
                 if (cell.Preview.IsAir) return false;
-                int count = gesture == CompanionItemGesture.Right ? 1 : cell.Preview.stack;
+                int count = gesture == CompanionItemGesture.Right && !locked ? 1 : cell.Preview.stack;
                 Cursor = cell.Preview.Clone(); Cursor.stack = count;
+                if (area != CompanionInventoryArea.Inventory || count < cell.Preview.stack) Cursor.favorited = false;
                 cell.Preview = Remainder(cell.Preview, count); cell.Written = true;
                 rightSource = gesture == CompanionItemGesture.Right ? cell : null;
                 return true;
@@ -184,6 +193,7 @@ namespace JueMingR.TerrariaHost.Companions
                 var next = cell.Preview.IsAir ? Cursor.Clone() : cell.Preview.Clone();
                 next.stack = (cell.Preview.IsAir ? 0 : cell.Preview.stack) + count;
                 if (!Accepts(owner, area, slot, next)) { message = "此物品不能放入该槽位。"; return false; }
+                if (area != CompanionInventoryArea.Inventory) next.favorited = false;
                 cell.Preview = next; Cursor = Remainder(Cursor, count); cell.Written = true;
                 return true;
             }
@@ -192,10 +202,13 @@ namespace JueMingR.TerrariaHost.Companions
             // Swaps can leave an unrelated item on this window's cursor. Do not
             // push it back into the first source (which could be a helmet slot).
             var previous = cell.Preview; cell.Preview = Cursor; Cursor = previous; cell.Written = true;
+            // Vanilla clears both ends of an equipment swap. On armor and
+            // dye, that bit means shared loadout ownership, not a backpack mark.
+            if (area != CompanionInventoryArea.Inventory) cell.Preview.favorited = Cursor.favorited = false;
             return true;
         }
 
-        private bool QuickTransfer(bool fromOwner, Cell source, out string message)
+        private bool QuickTransfer(bool fromOwner, Cell source, bool locked, out string message)
         {
             message = null;
             if (!Cursor.IsAir) { message = "请先放下手中的物品。"; return false; }
@@ -212,9 +225,11 @@ namespace JueMingR.TerrariaHost.Companions
                     int count = Math.Min(remaining, Math.Max(0, source.Preview.maxStack - (target.IsAir ? 0 : target.stack)));
                     if (count == 0) continue;
                     Item replacement = target.IsAir ? source.Preview.Clone() : target.Clone(); replacement.stack = (target.IsAir ? 0 : target.stack) + count;
+                    if (target.IsAir && source.Area != CompanionInventoryArea.Inventory) replacement.favorited = false;
                     placements.Add(Tuple.Create(slot, replacement)); remaining -= count;
                 }
             if (remaining == requested) { message = "接收方背包没有可用空间。"; return false; }
+            if (locked && remaining != 0) { message = "请腾出空间以取回这组装备。"; return false; }
             foreach (var placement in placements)
             {
                 var cell = Touch(!fromOwner, CompanionInventoryArea.Inventory, placement.Item1);

@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             internal object Primary, Socket, World;
             internal ulong Lobby;
+            internal Guid WorldId;
             internal long Session;
             internal PasswordCredential Accepted;
         }
@@ -50,14 +51,20 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static bool SamePrimary(PasswordSession context)
         {
+            return SamePrimarySocket(context) && context.Lobby == Main.LobbyId;
+        }
+
+        private static bool SamePrimarySocket(PasswordSession context)
+        {
             return context != null && Main.netMode == 1 && ReferenceEquals(context.Primary, Netplay.Connection) &&
-                ReferenceEquals(context.Socket, Netplay.Connection?.Socket) && context.Lobby == Main.LobbyId;
+                ReferenceEquals(context.Socket, Netplay.Connection?.Socket);
         }
 
         private bool CurrentAuthentication()
         {
             return SamePrimary(authentication) && authentication.Session == session &&
-                ReferenceEquals(authentication.World, world) && ReferenceEquals(world, Main.ActiveWorldFileData);
+                ReferenceEquals(authentication.World, world) && ReferenceEquals(world, Main.ActiveWorldFileData) &&
+                authentication.WorldId == Main.ActiveWorldFileData?.UniqueId;
         }
 
         private void BeginPasswordSession()
@@ -66,8 +73,11 @@ namespace JueMingR.TerrariaHost.Companions
             if (authentication != null)
             {
                 authentication.World = world;
+                authentication.WorldId = Main.ActiveWorldFileData?.UniqueId ?? Guid.Empty;
                 authentication.Session = session;
-                if (SamePrimary(humanAuthentication)) authentication.Accepted = humanAuthentication.Accepted;
+                if (SamePrimary(humanAuthentication) && ReferenceEquals(world, humanAuthentication.World) &&
+                    authentication.WorldId == humanAuthentication.WorldId)
+                    authentication.Accepted = humanAuthentication.Accepted;
             }
             humanAuthentication = null;
             humanCandidate = null;
@@ -92,7 +102,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal void HumanAccepted()
         {
             var proposed = humanAuthentication;
-            if (Netplay.Connection?.State != 3 || !SamePrimary(proposed) || humanCandidate == null) return;
+            if (Netplay.Connection?.State != 3 || !SamePrimarySocket(proposed) || humanCandidate == null) return;
             proposed.Accepted = humanCandidate;
             humanCandidate = null;
             if (CurrentAuthentication())
@@ -100,6 +110,18 @@ namespace JueMingR.TerrariaHost.Companions
                 RememberAccepted(proposed.Accepted);
                 humanAuthentication = null;
             }
+        }
+
+        internal void HumanWorldArrived()
+        {
+            var proposed = humanAuthentication;
+            if (!SamePrimarySocket(proposed) || Netplay.Connection.State != 4 || proposed.Accepted == null) return;
+            // 38/3 precede initial WorldData. Its successful native state
+            // transition binds the accepted socket credential to the first
+            // decoded world and lobby, even if the earlier lobby was unset.
+            proposed.World = Main.ActiveWorldFileData;
+            proposed.WorldId = Main.ActiveWorldFileData?.UniqueId ?? Guid.Empty;
+            proposed.Lobby = Main.LobbyId;
         }
 
         private void StartConnectionAttempt(Actor actor, PasswordCredential proposed)
@@ -228,7 +250,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             token = passwordPrompt;
             waiting = 0;
-            if (!promptPending || !CurrentAuthentication()) return false;
+            if (!promptPending || !ArchiveIdentityCurrent() || !CurrentAuthentication()) return false;
             foreach (var actor in actors.Values)
                 if (actor.PasswordAttempt?.Waiting == true && CurrentAttempt(actor, actor.PasswordAttempt)) waiting++;
             if (waiting == 0) promptPending = false;

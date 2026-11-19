@@ -101,6 +101,7 @@ namespace JueMingR.TerrariaHost.F5
         private Guid selected,pendingCreatedId;
         private string pendingCreatedName;
         private long pendingCreationToken;
+        private bool archiveRetry, archiveCreate;
         private int page, listOffset, bodyOffset, listMaximum, bodyMaximum, generation, armedGeneration, skin;
         private bool previousLeft, leftTail, rightTail, ready, confirmingReset;
         public TextEditBuffer Editor { get { return editor; } }
@@ -143,19 +144,24 @@ namespace JueMingR.TerrariaHost.F5
         internal bool Contains(float x, float y) { return Visible && ready && panel.Contains(x, y); }
         internal void BeforeInput(bool active)
         {
+            if (!active && editor != null) Close();
+            RetireInvalidPasswordOwner();
             if (active && !textInput.OtherTextOwner) SyncPasswordPrompt();
             textInput.BeforeSample(active && Visible);
         }
         internal void CloseWithParent() { if (!Independent) Close(); }
-        internal void CancelForFocusLoss()
+        internal void CancelForFocusLoss() { Close(); }
+        private void CancelDrag()
         {
-            if (dragging) { requestedPosition = dragStartPosition; userPositioned = dragStartPositioned; }
-            Close();
+            if (!dragging) return;
+            requestedPosition = dragStartPosition; userPositioned = dragStartPositioned;
+            dragging = false;
         }
         internal void Close()
         {
             if (!Visible && !ready && editor == null) return;
-            Visible = false; ready = false; armedKey = null; confirmingReset = dragging = false;expandedConfiguration=null;
+            CancelDrag();
+            Visible = false; ready = false; armedKey = null; confirmingReset = false;expandedConfiguration=null;
             CancelWeaponSelection();
             ResetPasswordPresentation();
             host.CancelItemGesture(); host.EndItemRepeat(); rightSlot=null; rightRepeat=0; ownerPreview.Clear(); companionPreview.Clear(); railPreviews.Clear(); resourceDisplay.ClearNumbers(); CancelEdit(); icons.Clear(); renderer.Dispose(); controls.Clear(); labels.Clear(); generation++;
@@ -166,6 +172,7 @@ namespace JueMingR.TerrariaHost.F5
         internal void Prepare(Matrix transform, Vector2 physical) { PrepareCore(transform, physical, true); }
         private void PrepareCore(Matrix transform, Vector2 physical, bool resources)
         {
+            RetireInvalidPasswordOwner();
             if (!Visible) return;
             if (PasswordPromptVisible)
             {
@@ -184,7 +191,9 @@ namespace JueMingR.TerrariaHost.F5
             float width=Math.Min(104+2*(10*44+24),logical.X-24);
             float height=Math.Min(PreferredHeight(width,rowHeight),logical.Y-24);
             if (width < 520 || height < 270) { Close(); return; }
-            if (dragging && (matrix != transform || screen != physical || skin != renderer.Generation)) dragging = false;
+            // A change in viewport retires the unconfirmed grab. Clamp the
+            // previous position in the new geometry, not the drag preview.
+            if (dragging && (matrix != transform || screen != physical || skin != renderer.Generation)) CancelDrag();
             Vector2 origin = userPositioned ? requestedPosition : new Vector2((logical.X - width) / 2, (logical.Y - height) / 2);
             var next = new F5Rect(Math.Max(12, Math.Min(logical.X - width - 12, origin.X)),
                 Math.Max(12, Math.Min(logical.Y - height - 12, origin.Y)), width, height);
@@ -217,7 +226,7 @@ namespace JueMingR.TerrariaHost.F5
             Button("close", "×", new F5Rect(panel.Right - 40, panel.Y + 4, 30, row), Close);
             BuildList(row);
             viewDataEpoch = CurrentProfile()?.DataEpoch ?? 0;
-            Button("create", "＋", new F5Rect(listView.X, panel.Bottom - AvatarSize - 12, AvatarSize, AvatarSize), StartCreation);
+            Button("create", "＋", new F5Rect(listView.X, panel.Bottom - AvatarSize - 12, AvatarSize, AvatarSize), StartCreation, host.CanCreate);
             Button("inventory", "背包", new F5Rect(panel.Right-198,panel.Y+4,72,row), () => SelectPage(0), true, page == 0);
             Button("configuration", "配置", new F5Rect(panel.Right-120,panel.Y+4,72,row), () => SelectPage(1), true, page == 1);
             var retiredHeads=new List<Guid>();foreach(var id in railPreviews.Keys)if(!controls.Exists(c=>c.ProfileId==id))retiredHeads.Add(id);foreach(var id in retiredHeads)railPreviews.Remove(id);
@@ -234,8 +243,17 @@ namespace JueMingR.TerrariaHost.F5
                 icons.BeginVisibleSet(); groups.Clear(); actorHeaders.Clear();configurationDividers.Clear();supplyRows.Clear();configurationWeaponLabel=configurationMainWeaponsLabel=-1; selectedStatusLabel=respawnLabel=-1; bodyOffsetClamped = false;
                 BuildSelected(row);
             }
+            float noticeWidth=bodyView.Width;
+            if (host.CanRetryArchive)
+            {
+                const string retryText="重试读取";
+                float retryWidth=ConfigurationWidth(retryText);
+                Button("retry-archive",retryText,new F5Rect(bodyView.Right-retryWidth,panel.Bottom-40,retryWidth,row),()=>
+                { notice=null;host.RetryArchive(); });
+                noticeWidth-=retryWidth+8;
+            }
             displayedNotice=NoticeText(); noticeLabel=labels.Count;
-            labels.Add(new F5Element(F5ElementKind.Text,new F5Rect(bodyView.X,panel.Bottom-38,bodyView.Width,30),displayedNotice??"",default(F5Size),.65f,F5Command.None));
+            labels.Add(new F5Element(F5ElementKind.Text,new F5Rect(bodyView.X,panel.Bottom-38,noticeWidth,30),displayedNotice??"",default(F5Size),.65f,F5Command.None));
             icons.EndVisibleSet(); if (resources) icons.Prepare(); if(pressed!=null) { var replacement=controls.Find(c=>c.Key==pressed.Key); if(replacement==null||!replacement.Enabled||!replacement.Rect.Equals(pressed.Rect)){armedKey=null;generation++;} }
             ready = true; LayoutBuilds++; contentInvalidated=false; CaptureView(); RefreshDynamicPresentation(); PrepareEditPresentation();
         }
@@ -309,7 +327,8 @@ namespace JueMingR.TerrariaHost.F5
         // unrelated count change nor a save message retires an armed button.
         private bool ViewChanged()
         {
-            if (contentInvalidated || preparedGeneration != generation || editing != (editor != null) || !ReferenceEquals(presentedOwner,Main.LocalPlayer) || presentedOwnerName != Main.LocalPlayer?.name) return true;
+            if (contentInvalidated || preparedGeneration != generation || editing != (editor != null) || !ReferenceEquals(presentedOwner,Main.LocalPlayer) ||
+                presentedOwnerName != Main.LocalPlayer?.name || archiveRetry != host.CanRetryArchive || archiveCreate != host.CanCreate) return true;
             var profiles = host.Profiles;
             if (profiles.Count != previousProfileCount) return true;
             for (int i = 0; i < visibleIds.Count; i++)
@@ -324,7 +343,7 @@ namespace JueMingR.TerrariaHost.F5
             return false;
         }
         private string NoticeText()
-        { return host.HasItemGesture?"未放完时，离开窗口会取消本次操作。":notice??textInput.Error??editor?.Error??WeaponEditingNotice()??host.Feedback; }
+        { return host.HasItemGesture?"未放完时，离开窗口会取消本次操作。":notice??textInput.Error??editor?.Error??WeaponEditingNotice()??host.ArchiveNotice??host.Feedback; }
         private void RefreshNotice()
         {
             string next=NoticeText(); if(next==displayedNotice||noticeLabel<0||noticeLabel>=labels.Count) return;
@@ -334,6 +353,7 @@ namespace JueMingR.TerrariaHost.F5
         private void CaptureView()
         {
             resourceStyle=Main.ResourceSetsManager?.ActiveSetKeyName??"Default"; ownerLifeMax=Main.LocalPlayer?.statLifeMax2??0; ownerManaMax=Main.LocalPlayer?.statManaMax2??0; presentedOwner=Main.LocalPlayer;presentedOwnerName=Main.LocalPlayer?.name; preparedGeneration = generation; editing = editor != null;
+            archiveRetry=host.CanRetryArchive;archiveCreate=host.CanCreate;
             var profiles = host.Profiles; previousProfileCount = profiles.Count;
             visibleIds.Clear(); visibleNames.Clear(); visibleStatuses.Clear(); visibleBodies.Clear();
             int count = Math.Max(1, (int)(listView.Height / AvatarStep));
@@ -359,10 +379,12 @@ namespace JueMingR.TerrariaHost.F5
         { ProcessCore(active, keys, point, transform, physical, focused, wheel, false); }
         private void ProcessCore(bool active, KeyboardState keys, Vector2 point, Matrix transform, Vector2 physical, bool focused, int wheel, bool resources)
         {
+            RetireInvalidPasswordOwner();
             pointer = point; OwnsPointer = ConsumeWheel = false;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
             ConsumeLeft = leftTail; ConsumeRight = rightTail;
             bool wasEditing = editor != null;
+            if ((!active || !focused) && wasEditing) CancelEdit();
             textInput.AfterSample(active && Visible && focused, null, keys, focused);
             if (!active || !focused)
             {
@@ -385,7 +407,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 leftTail = true;
                 if (left) { requestedPosition = point - grabOffset; PrepareCore(transform, physical, resources); }
-                else dragging = false;
+                else { dragging = false; requestedPosition = new Vector2(panel.X, panel.Y); }
             }
             OwnsPointer = Captured || Contains(point.X, point.Y);
             if (OwnsPointer) { if (left) leftTail = true; if (right) rightTail = true; }
@@ -431,7 +453,13 @@ namespace JueMingR.TerrariaHost.F5
             RetirePasswordPrompt();
             return true;
         }
-        public void CancelEdit() { textInput.Release(true); editor = null; editComposition = null; editRevision = -1; editElement = null; }
+        public void CancelEdit()
+        {
+            textInput.Release(true);
+            editor = null;
+            textInput.ForgetRetiredDraft();
+            editComposition = null; editRevision = -1; editElement = null;
+        }
         public void PreserveUncommittedInput(TextEditBuffer value) { }
         private void PrepareEditPresentation()
         {

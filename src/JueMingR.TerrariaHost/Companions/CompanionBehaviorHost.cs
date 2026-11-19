@@ -45,12 +45,15 @@ namespace JueMingR.TerrariaHost.Companions
             // retain Y velocity. Never retire a jump from zero velocity alone.
             // Native stairFall outlives the down edge while passing a platform;
             // it is not a fresh support/drop-planning opportunity next frame.
-            bool grounded = body.velocity.Y >= 0 && CompanionNavigation.Supported(body, body.position, !body.controlDown && !body.stairFall);
+            bool grounded = body.velocity.Y >= 0 && (!body.wet || needsAir) &&
+                CompanionNavigation.Supported(body, body.position, !body.controlDown && !body.stairFall);
             // Supported at +1px is a geometry observation. JumpMovement runs
             // before collision and still requires native zero Y (or sliding)
             // and a previously consumed release, unless native auto-jump applies.
             bool canTakeOff = grounded && (body.sliding || body.velocity.Y == 0) &&
                 (body.releaseJump || body.autoJump && !body.sliding);
+            bool canSwimUp = needsAir && (body.accFlipper || body.merman) &&
+                (!body.mount.Active || !body.mount.Cart) && (body.releaseJump || body.merman);
             bool lavaDanger = body.lavaWet && !body.lavaImmune;
             int threatEscape; bool jumpClear;
             if (++threatStamp == Int32.MaxValue) { Array.Clear(seenThreats, 0, seenThreats.Length); threatStamp = 1; }
@@ -94,9 +97,11 @@ namespace JueMingR.TerrariaHost.Companions
                 VelocityX = body.velocity.X, VelocityY = body.velocity.Y,
                 Grounded = grounded, CanTakeOff = canTakeOff, Controlled = body.CCed, Dead = body.dead || !body.active,
                 WalkSafe = walk, Wall = wall,
-                JumpSafe = canTakeOff && (lavaDanger || danger && jumpClear || planNeeded && navigation.JumpSafe(body, target, direction, allowPlanning)),
+                JumpSafe = canTakeOff && (lavaDanger || danger && jumpClear ||
+                    needsAir && CompanionNavigation.SafeBody(body, body.position + new Vector2(0, -8 * body.gravDir)) ||
+                    planNeeded && navigation.JumpSafe(body, target, direction, allowPlanning)),
                 DropSafe = grounded && target.Y > body.Center.Y + 56 && navigation.PlanDrop(body, allowPlanning),
-                Danger = danger, NeedsAir = needsAir, EscapeLeft = left, EscapeRight = right, EscapeDirection = escape,
+                Danger = danger, NeedsAir = needsAir, CanSwimUp = canSwimUp, EscapeLeft = left, EscapeRight = right, EscapeDirection = escape,
                 JumpHoldTicks = navigation.JumpHold, StopDistance = stopDistance, ResumeDistance = resumeDistance
             };
             var frame = brain.Decide(observation);

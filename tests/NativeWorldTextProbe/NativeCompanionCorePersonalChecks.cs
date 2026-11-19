@@ -6,6 +6,7 @@ using HarmonyLib;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.GameContent.Achievements;
 using Terraria.ID;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
@@ -44,6 +45,7 @@ namespace NativeWorldTextProbe
         {
             var human=Main.LocalPlayer;var original=Main.item[399];var profile=(CompanionProfile)Get(a,"Profile");
             int beforeA=Wood(first),beforeB=Wood(second),beforeH=Wood(human);
+            var timber=ItemPickupCondition.Create(ItemID.Wood);
             var sync=new Harmony("JueMingR.Tests.CompanionPersonalSync");pickingSlot=first.whoAmI;pickingActor=a;syncOwnedView=false;
             // SyncItem is a one-call wrapper and can be caller-inlined. Observe
             // its real native primitive before instanced's intentional return.
@@ -61,7 +63,9 @@ namespace NativeWorldTextProbe
                 Require(updatesA==1 && updatesB==1 && ReferenceEquals(Main.item[399],humanDrop),"two actual private instances update once per world step, not twice or an entire per-role pool");
                 Call(first,"GrabItems",first.whoAmI);Require(Wood(first)==beforeA,"far personal instance obeys native pickup distance");
                 Call(second,"GrabItems",second.whoAmI);Call(second,"GrabItems",second.whoAmI);
+                Require(Wood(second)==beforeB+11 && !timber.IsCompleted,"native AI GrabItems and PickupItem award wood to the body without earning the human TIMBER condition");
                 Call(human,"GrabItems",human.whoAmI);Call(human,"GrabItems",human.whoAmI);
+                Require(timber.IsCompleted,"native human pickup still completes its original wood condition");
                 Console.WriteLine("PERSONAL COUNTS human="+beforeH+" -> "+Wood(human)+" second="+beforeB+" -> "+Wood(second)+" humanAnim="+human.itemAnimation+" selected="+human.HeldItem.type+" humanDead="+human.dead+" reserved="+humanDrop.playerIndexTheItemIsReservedFor+" active="+humanDrop.active);
                 Require(Wood(second)==beforeB+11 && Wood(human)==beforeH+5 && ReferenceEquals(Main.item[399],humanDrop),"human/second role same native slot each collect their own share exactly once");
                 var sparse=(IDictionary)Get(a,"PersonalItems");var individual=(WorldItem)sparse[399];

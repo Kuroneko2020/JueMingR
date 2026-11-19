@@ -77,9 +77,10 @@ namespace JueMingR.TerrariaHost.Companions
             public void Dispose() { Collision.up=up; Collision.down=down; Collision.stair=stair; Collision.stairFall=fall;
                 Collision.sloping=slope; Collision.honey=honey; Collision.shimmer=shimmer; Collision.landMine=mine; }
         }
-        private static bool Ordinary(Player body)
-        { return body != null && body.gravDir == 1 && !body.mount.Active && !body.wet && !body.shimmering &&
+        private static bool GroundContactBody(Player body)
+        { return body != null && body.gravDir == 1 && !body.mount.Active && !body.shimmering &&
             body.grappling[0] == -1 && body.carpetFrame == -1 && !body.IsRidingTracks; }
+        private static bool Ordinary(Player body) { return GroundContactBody(body) && !body.wet; }
         internal void ObserveCapabilities(Player body)
         { if (Ordinary(body)) { jumpSpeed=Math.Max(0,Player.jumpSpeed); jumpHold=Math.Max(1,Player.jumpHeight); } }
         private static int TileValue(Tile tile)
@@ -135,7 +136,9 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal static bool Supported(Player body,Vector2 position,bool platforms=true)
         {
-            if(!Ordinary(body))return false;
+            // Liquid forbids a dry trajectory prediction, but still permits
+            // native bottom support and a normal released jump input.
+            if(!GroundContactBody(body))return false;
             using(Scratch.Save()) { Step step; return Move(body,position,new Vector2(0,1),platforms,false,out step) && step.Ground; }
         }
         internal static bool SafeBody(Player body,Vector2 position)

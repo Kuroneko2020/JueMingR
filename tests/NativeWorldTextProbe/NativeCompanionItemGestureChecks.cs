@@ -159,6 +159,7 @@ namespace NativeWorldTextProbe
                 Put(human.inventory, 22, ItemID.Aglet); Gesture(host, id, true, CompanionInventoryArea.Inventory, 22, "Left");
                 Require(!Gesture(host, id, false, CompanionInventoryArea.Armor, 8, "Left"), "target AI unlocks, not human unlocks, control its locked accessory slot");
                 Call(host, "CancelItemGesture"); human.extraAccessory = extra;
+                LockedAndFavoritedEquipment(host,id,human,companion);
                 Put(companion.armor, 3, ItemID.CloudinaBottle); Put(human.inventory, 22, ItemID.CloudinaBottle);
                 Gesture(host, id, true, CompanionInventoryArea.Inventory, 22, "Left");
                 Require(!Gesture(host, id, false, CompanionInventoryArea.Armor, 4, "Left"), "second exact accessory slot rejects a duplicate"); Call(host, "CancelItemGesture");
@@ -234,11 +235,112 @@ namespace NativeWorldTextProbe
                 finally { failCapture = false; fault.UnpatchAll(fault.Id); }
                 NetworkPublication(host, id, actor, human, companion);
                 LifecycleIsolation(host, profiles, id, human, companion);
+                ArchiveIdentity(host,profiles,id,human);
                 Require(ReferenceEquals(Main.mouseItem, nativeCursor) && ReferenceEquals(human.inventory[58], native58) && native58.stack == 3,
                     "all panel operations preserve native mouse and legitimate slot58 identity/content");
                 Console.WriteLine("PASS companion items: real host bounded drafts, exact body slots/rules, right-repeat direction, conservation/cancel/conflicts, Store/Use/Recovery, partial Shift, latest archive retry. No game/Steam/FPS claim.");
             }
             finally { Call(host, "CancelItemGesture"); Main.mouseItem = nativeCursor; companion.dead = false; Call(host, "Recall", id); }
+        }
+
+        private static void LockedAndFavoritedEquipment(object host,Guid id,Player human,Player companion)
+        {
+            Put(companion.armor,8,ItemID.Aglet);companion.armor[8].favorited=true;
+            Put(human.inventory,22,ItemID.HermesBoots);human.inventory[22].favorited=true;
+            Require(Gesture(host,id,true,CompanionInventoryArea.Inventory,22,"Left") &&
+                !Gesture(host,id,false,CompanionInventoryArea.Armor,8,"Left") && companion.armor[8].type==ItemID.Aglet,
+                "locked occupied armor rejects replacement while a cursor item is held");
+            Call(host,"CancelItemGesture");
+            human.inventory[24]=new Item();
+            Require(Gesture(host,id,false,CompanionInventoryArea.Armor,8,"Left") &&
+                !Gesture(host,id,false,CompanionInventoryArea.Armor,8,"Left") &&
+                Gesture(host,id,true,CompanionInventoryArea.Inventory,24,"Left") &&
+                companion.armor[8].IsAir && human.inventory[24].type==ItemID.Aglet && !human.inventory[24].favorited,
+                "empty cursor takes existing locked shared equipment, cannot backfill, and lands it without its loadout bit");
+            Require(Gesture(host,id,true,CompanionInventoryArea.Inventory,22,"Left") &&
+                Gesture(host,id,false,CompanionInventoryArea.Armor,4,"Left") &&
+                companion.armor[4].type==ItemID.HermesBoots && !companion.armor[4].favorited,
+                "favorited inventory item does not silently become a shared loadout item on equip");
+
+            var patch=new Harmony("JueMingR.Tests.CompanionHumanEquipment");
+            patch.Patch(AccessTools.Method(typeof(Terraria.GameContent.Achievements.AchievementsHelper),"HandleOnEquip"),
+                prefix:new HarmonyMethod(typeof(NativeCompanionItemGestureChecks),nameof(EquipmentNotification)));
+            try
+            {
+                equipmentNotifications.Clear();
+                Put(human.inventory,22,ItemID.GrapplingHook);human.inventory[22].favorited=true;
+                Require(Gesture(host,id,true,CompanionInventoryArea.Inventory,22,"Left") &&
+                    !Gesture(host,id,true,CompanionInventoryArea.Armor,0,"Left"),"rejected human equip stays a draft");
+                Call(host,"CancelItemGesture");
+                Require(equipmentNotifications.Count==0 && human.inventory[22].favorited,"rejection and cancel preserve original favorite and send no achievement");
+                Require(Gesture(host,id,true,CompanionInventoryArea.Inventory,22,"Left") &&
+                    Gesture(host,id,true,CompanionInventoryArea.Misc,4,"Left") &&
+                    human.miscEquips[4].type==ItemID.GrapplingHook && !human.miscEquips[4].favorited,"human hook equip commits and clears inventory favorite");
+                Require(equipmentNotifications.Count==1 && ReferenceEquals(equipmentNotifications[0].Item1,human) &&
+                    ReferenceEquals(equipmentNotifications[0].Item2,human.miscEquips[4]) && equipmentNotifications[0].Item3==16,
+                    "one native achievement notification receives the committed human hook and original context 16");
+                Require(Gesture(host,id,true,CompanionInventoryArea.Misc,4,"Left") &&
+                    Gesture(host,id,true,CompanionInventoryArea.Inventory,22,"Left"),"human hook can be removed");
+                Put(companion.miscEquips,4,ItemID.IvyWhip);
+                Require(Gesture(host,id,true,CompanionInventoryArea.Inventory,22,"Left") &&
+                    Gesture(host,id,false,CompanionInventoryArea.Misc,4,"Left") &&
+                    Gesture(host,id,true,CompanionInventoryArea.Inventory,22,"Left") &&
+                    human.inventory[22].type==ItemID.IvyWhip && companion.miscEquips[4].type==ItemID.GrapplingHook && equipmentNotifications.Count==1,
+                    "AI hook swap and human removal cannot send another achievement");
+            }
+            finally { equipmentNotifications.Clear();patch.UnpatchAll(patch.Id); }
+        }
+        private static readonly List<Tuple<Player,Item,int>> equipmentNotifications=new List<Tuple<Player,Item,int>>();
+        private static bool EquipmentNotification(Player player,Item item,int context)
+        { equipmentNotifications.Add(Tuple.Create(player,item,context));return false; }
+
+        private static void ArchiveIdentity(object host,object profiles,Guid id,Player human)
+        {
+            NativeQuickItemChecks.Until(()=>{Call(host,"Update",0UL);return !(bool)Call(host,"IsJoined",id);});
+            Require((bool)Call(host,"Join",id),"owner can rejoin before identity changes");
+            var body=(Player)Call(host,"GetBody",id);var actor=Call(host,"Owned",body);
+            var hooks=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionHooks",true);
+            long session=(long)Get(host,"CreationSessionToken");
+            using((IDisposable)hooks.GetMethod("Enter",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,new object[]{actor,body.Center,false}))
+            {
+                Require(ReferenceEquals(Main.LocalPlayer,body),"fixture borrows the actual native myPlayer while the human file remains active");
+                Call(host,"Update",0UL);
+            }
+            Require((long)Get(host,"CreationSessionToken")==session && ReferenceEquals(Call(host,"GetBody",id),body) &&
+                (bool)Call(host,"CanTransfer",id),"a borrowed native actor slot does not retire the human archive or change the active body");
+
+            var file=Main.ActivePlayerFileData;bool ssc=Main.ServerSideCharacter;
+            try
+            {
+                body.statLifeMax=260;body.statManaMax=120;body.statLifeMax2=350;body.statManaMax2=210;
+                Put(human.inventory,44,ItemID.StoneBlock,6);
+                Require(Gesture(host,id,true,CompanionInventoryArea.Inventory,44,"Left"),"old owner has a projected held item");
+                Main.ServerSideCharacter=true;
+                Require(!((IEnumerable)Get(host,"Profiles")).Cast<object>().Any() && !(bool)Call(host,"Create","SSC不能创建") &&
+                    !(bool)Call(host,"SetTeam",id,3) && !(bool)Call(host,"Reset",id) && !(bool)Call(host,"Join",id),
+                    "real SSC identity hides and cannot operate the former owner before the next tick");
+                Require(!(bool)Get(host,"HasItemGesture") && ((Item)Get(host,"CursorItem")).IsAir &&
+                    Preview(host,id,true,CompanionInventoryArea.Inventory,44)==null && human.inventory[44].stack==6,
+                    "actual identity loss immediately hides old item previews and leaves the real source unchanged");
+                Call(host,"Update",0UL);
+                Require(!body.active && !(bool)Get(profiles,"Ready"),"SSC transition detaches the exact actor and retires publication");
+                Main.ServerSideCharacter=false;
+                Main.ActivePlayerFileData=new Terraria.IO.PlayerFileData { Player=human };
+                Call(host,"Update",0UL);
+                Require(!((IEnumerable)Get(host,"Profiles")).Cast<object>().Any() && !(bool)Call(host,"Join",id),
+                    "pathless human does not borrow a previous roster");
+                Main.ActivePlayerFileData=file;
+                NativeQuickItemChecks.Until(()=>{Call(host,"Update",0UL);return (bool)Get(profiles,"Ready") && !(bool)Call(host,"IsJoined",id);});
+                var offline=(Player)Call(host,"GetBody",id);
+                Require(!ReferenceEquals(offline,body) && offline.statLifeMax==260 && offline.statLifeMax2==260 &&
+                    offline.statManaMax==120 && offline.statManaMax2==120,"same owner's offline preview restores saved base life/mana rather than live equipment maxima");
+                Call(host,"OnSessionEnded");
+                Require(!((IEnumerable)Get(host,"Profiles")).Cast<object>().Any() && !(bool)Get(profiles,"Ready") &&
+                    !(bool)Call(host,"Reset",id) && !(bool)Call(host,"Join",id),"session end clears management identity immediately");
+                Call(host,"OnSessionStarted");
+                NativeQuickItemChecks.Until(()=>{Call(host,"Update",0UL);return (bool)Get(profiles,"Ready");});
+            }
+            finally { Main.ServerSideCharacter=ssc;Main.ActivePlayerFileData=file; }
         }
 
         private static void QuickTrash(object host,object profiles,Guid id,object actor,Player human,Player companion,ItemOperationOwnership ownership)
@@ -351,7 +453,7 @@ namespace NativeWorldTextProbe
 
         private static void NetworkPublication(object host, Guid id, object actor, Player human, Player companion)
         {
-            int mode = Main.netMode; var socket = Netplay.Connection.Socket; var buffer = NetMessage.buffer[256];
+            int mode = Main.netMode, connectionState = Netplay.Connection.State; var socket = Netplay.Connection.Socket; var buffer = NetMessage.buffer[256];
             var previousConnection = GetOptional(actor, "Connection"); var frames = new List<byte[]>();
             var connectionType = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionConnection");
             var connection = Activator.CreateInstance(connectionType, Flags, null, new object[] { new Action<byte[]>(p => frames.Add(p)), new Action(() => { }) }, null);
@@ -362,7 +464,7 @@ namespace NativeWorldTextProbe
             patch.Patch(AccessTools.Method(typeof(NetMessage), "SendPacketToServer"), prefix: new HarmonyMethod(typeof(NativeCompanionItemGestureChecks), nameof(CapturePrimary)));
             try
             {
-                Main.netMode = 1; primaryPackets.Clear(); frames.Clear();
+                Main.netMode = 1; Netplay.Connection.State=10; primaryPackets.Clear(); frames.Clear();
                 human.armor[0] = new Item(); human.dye[0] = new Item(); human.miscEquips[4] = new Item(); human.miscDyes[4] = new Item();
                 EquipExact(host, id, human, companion, ItemID.IronHelmet, CompanionInventoryArea.Armor, 0);
                 // The helper places into AI. Move that exact equipment back to
@@ -392,7 +494,7 @@ namespace NativeWorldTextProbe
             }
             finally
             {
-                failSend = false; patch.UnpatchAll(patch.Id); Main.netMode = mode; Set(actor, "Connection", previousConnection);
+                failSend = false; patch.UnpatchAll(patch.Id); Main.netMode = mode; Netplay.Connection.State=connectionState; Set(actor, "Connection", previousConnection);
                 ((IDisposable)connection).Dispose(); Netplay.Connection.Socket = socket; NetMessage.buffer[256] = buffer;
                 client.Dispose(); peer.Dispose(); listener.Stop();
             }

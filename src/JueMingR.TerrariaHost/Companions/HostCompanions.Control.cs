@@ -242,7 +242,7 @@ namespace JueMingR.TerrariaHost.Companions
             var hand=a.Combat.Hand;
             if(hand.Weapon!=null && DoesStaySummoned(hand.Weapon) && a.Body.ItemAnimationJustStarted && Main.GameUpdateCount>=a.Combat.NextSummon)
                 a.Combat.NextSummon=Main.GameUpdateCount+90;
-            if(a.Body.dead && !a.Profile.Behavior.AutoRespawn){Publish(a);return;}
+            if(a.Body.dead && !a.Preferences.AutoRespawn){Publish(a);return;}
             // Native skip sets the timer to one. Do not reset the zero reached
             // by the next native UpdateDead, or a legally skipped death never ends.
             if(a.Body.dead && a.Body.respawnTimer>1 && a.Body.AllowsRespawnTimerSkip())a.Body.SkipRespawnTime();

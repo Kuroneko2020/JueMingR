@@ -38,33 +38,41 @@ namespace JueMingR.Infrastructure.Companions
             }
             else
             {
-                if (ownerDocument.Contents.Length != 16) throw new InvalidDataException("创建者关联记录损坏，未创建替代人物。");
-                owner = new Guid(ownerDocument.Contents);
-                if (owner == Guid.Empty) throw new InvalidDataException("创建者关联记录无效。");
+                owner = ownerDocument.Contents.Length == 16 ? new Guid(ownerDocument.Contents) : Guid.Empty;
+                if (owner == Guid.Empty)
+                {
+                    Release(ownerDocument);
+                    throw new InvalidDataException("创建者关联记录无效，未创建替代人物。");
+                }
             }
             string directory = Path.Combine(root, "characters", owner.ToString("N"));
             var profiles = new List<CompanionProfile>();
             var errors = new List<string>();
-            if (Directory.Exists(directory))
+            var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
             {
-                var paths = new HashSet<string>(Directory.GetFiles(directory, "*.bin"), StringComparer.OrdinalIgnoreCase);
+                paths.UnionWith(Directory.GetFiles(directory, "*.bin"));
                 foreach (string material in Directory.GetFiles(directory, "*.bin.*"))
                     if (material.EndsWith(".bak", StringComparison.OrdinalIgnoreCase) || material.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) paths.Add(material.Substring(0, material.Length - 4));
-                foreach (string path in paths)
+            }
+            catch (DirectoryNotFoundException) when (paths.Count == 0) { }
+            foreach (string path in paths)
+            {
+                Document document = null;
+                try
                 {
-                    try
-                    {
-                        var document = Open(path);
-                        var profile = Decode(document.Contents);
-                        if (profile.OwnerId != owner || !String.Equals(Path.GetFileNameWithoutExtension(path), profile.Id.ToString("N"), StringComparison.OrdinalIgnoreCase))
-                            throw new InvalidDataException("队友档案身份与目录不符。");
-                        profiles.Add(profile);
-                    }
-                    // Semantic corruption is local to this character just like
-                    // an unreadable file. Retain its bytes and report the actual
-                    // failure while making the owner's other profiles available.
-                    catch (Exception exception) when (exception is InvalidDataException || exception is IOException || exception is ArgumentException || exception is UnauthorizedAccessException)
-                    { errors.Add(Path.GetFileName(path) + "：" + exception.Message); }
+                    document = Open(path);
+                    var profile = Decode(document.Contents);
+                    if (profile.OwnerId != owner || !String.Equals(Path.GetFileNameWithoutExtension(path), profile.Id.ToString("N"), StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("队友档案身份与目录不符。");
+                    profiles.Add(profile);
+                }
+                catch (Exception exception) when (exception is InvalidDataException || exception is IOException || exception is ArgumentException || exception is UnauthorizedAccessException)
+                {
+                    // Release only the failed document. An explicit reload can
+                    // re-read it after repair without disturbing healthy leases.
+                    if (document != null) Release(document);
+                    errors.Add(Path.GetFileName(path) + "：" + exception.Message);
                 }
             }
             profiles.Sort((a, b) => StringComparer.Ordinal.Compare(a.Name, b.Name));
@@ -137,11 +145,13 @@ namespace JueMingR.Infrastructure.Companions
             var result = document.Storage.Write(document.Identity, bytes);
             if (result.Status != PreferenceWriteStatus.Saved)
             {
-                document.Storage.Dispose(); documents.Remove(document.Path);
+                Release(document);
                 throw new IOException("队友档案保存失败：" + result.Error + (result.CommitUnconfirmed ? "（提交结果未确认）" : ""));
             }
             document.Identity = result.Identity; document.Contents = bytes;
         }
+        private void Release(Document document)
+        { document.Storage.Dispose(); documents.Remove(document.Path); }
 
         private static byte[] Encode(CompanionProfile profile)
         {

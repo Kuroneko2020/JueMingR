@@ -5,6 +5,7 @@ using JueMingR.Platform.Companions;
 using JueMingR.Platform.Items;
 using JueMingR.TerrariaHost.Items;
 using Terraria;
+using Terraria.GameContent.Achievements;
 using Terraria.ID;
 using Terraria.UI;
 using Terraria.GameInput;
@@ -20,8 +21,8 @@ namespace JueMingR.TerrariaHost.Companions
         private CompanionItemDraft itemDraft;
         private readonly Item emptyItemCursor = new Item();
         internal long ItemGestureRevision { get; private set; }
-        internal bool HasItemGesture { get { return itemDraft != null; } }
-        internal Item CursorItem { get { return itemDraft?.Cursor ?? emptyItemCursor; } }
+        internal bool HasItemGesture { get { return itemDraft != null && ArchiveIdentityCurrent(); } }
+        internal Item CursorItem { get { return HasItemGesture ? itemDraft.Cursor : emptyItemCursor; } }
         private readonly HashSet<Guid> pendingItemCaptures = new HashSet<Guid>();
         private readonly List<ItemSync> pendingItemSync = new List<ItemSync>();
         private uint nextItemSync;
@@ -92,9 +93,8 @@ namespace JueMingR.TerrariaHost.Companions
 
         private bool ItemOwnerCurrent()
         {
-            return Thread.CurrentThread.ManagedThreadId == itemThread && !Main.gameMenu && owner != null && owner.active &&
-                !owner.dead && !owner.ghost && !Main.LocalPlayerHasPendingInventoryActions() && ReferenceEquals(owner, Main.LocalPlayer) &&
-                ReferenceEquals(world, Main.ActiveWorldFileData) && session > 0;
+            return Thread.CurrentThread.ManagedThreadId == itemThread && ArchiveIdentityCurrent() && owner.active &&
+                !owner.dead && !owner.ghost && !Main.LocalPlayerHasPendingInventoryActions();
         }
 
         private bool ItemActorCurrent(Guid id, Actor actor)
@@ -117,13 +117,14 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal Item ItemPreview(Guid id, bool fromOwner, CompanionInventoryArea area, int slot)
         {
+            if (!ArchiveIdentityCurrent()) return null;
             if (itemDraft != null && itemDraft.Profile == id)
             { var preview = itemDraft.Preview(fromOwner, area, slot); if (preview != null) return preview; }
             var body = fromOwner ? owner : GetBody(id);
             return CompanionItemRules.ValidSlot(body, area, slot) ? CompanionResources.Items(body, area)[slot] : null;
         }
         internal Item ItemPreview(bool fromOwner, CompanionInventoryArea area, int slot)
-        { return itemDraft == null ? null : itemDraft.Preview(fromOwner, area, slot); }
+        { return HasItemGesture ? itemDraft.Preview(fromOwner, area, slot) : null; }
 
         internal bool ItemGesture(Guid id, bool fromOwner, CompanionInventoryArea area, int slot, CompanionItemGesture gesture)
         {
@@ -197,6 +198,14 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     try { OwnerItems?.NotifyManualItemReplacement(owner, change.Array, change.Slot, change.Before, change.After); }
                     catch (Exception) { failure = "物品已移动，物品状态通知失败。"; }
+                    int context = CompanionItemRules.EquipmentContext(change.Area, change.Slot);
+                    if (context >= 0 && change.After?.IsAir == false)
+                    {
+                        // Only a completed human equipment write reaches the
+                        // achievement helper; projected slots and AI never do.
+                        try { AchievementsHelper.HandleOnEquip(owner, change.After, context); }
+                        catch (Exception) { failure = "装备已移动，原版成就通知未完成。"; }
+                    }
                 }
                 if (Main.netMode == 1) QueueItemSync(change.Owner ? owner : actor.Body, change.Owner ? null : actor,
                     change.OwnerTrash ? PlayerItemSlotID.TrashItem : NetworkSlot(change.Area, change.Slot));

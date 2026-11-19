@@ -22,6 +22,8 @@ namespace JueMingR.TerrariaHost.Companions
             internal bool InterestRetired,InterestInside,InactiveBaseline,RequiredBaseline;
             internal bool FilteredCandidate;internal Vector2 FilteredPoint;
             internal int Key;
+            internal NpcHousing Housing;
+            internal NpcHousing PrimaryHousing;
 
         }
         private readonly SourceFlow primarySource=new SourceFlow();
@@ -52,6 +54,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void RetireLease(WorldLease lease,Actor actor)
         {
+            if(ReferenceEquals(lease.Housing.Source,actor)){lease.Housing.HasSource=false;lease.Housing.Source=null;}
             if(!ReferenceEquals(lease.Source,actor) && (!lease.Waiting || !ReferenceEquals(lease.Pending,actor)))return;
             lease.Source=lease.Pending=null;lease.Waiting=lease.AwaitBaseline=true;
             lease.Barrier=primarySource.Sent+1;primarySource.Requested=true;
@@ -67,10 +70,23 @@ namespace JueMingR.TerrariaHost.Companions
                 if(!a.Ready || a.Closing || a.Connection==null)continue;
                 int x=Math.Max(10,Math.Min(Main.maxTilesX-11,(int)(a.Body.Center.X/16)));
                 int y=Math.Max(10,Math.Min(Main.maxTilesY-11,(int)(a.Body.Center.Y/16)));
-                int sx=Netplay.GetSectionX(x),sy=Netplay.GetSectionY(y),key=sx*65536+sy;
-                if(Main.sectionManager.SectionLoaded(sx,sy) || !terrainRequested.Add(key))continue;
-                NetMessage.SendData(8,-1,-1,null,x,y,a.Body.team);break;
+                if(TryRequestTerrain(x,y,a.Body.team))return;
             }
+            var pending=nurseTerrainRequest;
+            nurseTerrainRequest=null;
+            if(pending.HasValue && nurseTerrainSession==session && HasActors)
+                TryRequestTerrain(pending.Value.X,pending.Value.Y,nurseTerrainTeam);
+        }
+        private static int TerrainKey(int sectionX,int sectionY)
+        {
+            return sectionX*65536+sectionY;
+        }
+        private bool TryRequestTerrain(int tileX,int tileY,int team)
+        {
+            int x=Netplay.GetSectionX(tileX),y=Netplay.GetSectionY(tileY);
+            if(Main.sectionManager.SectionLoaded(x,y) || !terrainRequested.Add(TerrainKey(x,y)))return false;
+            NetMessage.SendData(8,-1,-1,null,tileX,tileY,team);
+            return true;
         }
         private bool SourceAlive(Actor a){return a==null?owner!=null:a.Ready && !a.Closing && a.Connection!=null;}
         private bool Route(WorldLease lease,Actor received,Vector2 point,bool baseline=false)
@@ -193,10 +209,11 @@ namespace JueMingR.TerrariaHost.Companions
             if(source==null){lease.Source=lease.Pending=null;lease.Waiting=lease.AwaitBaseline=false;return true;}
             return Route(lease,source,point,true);
         }
-        internal void PrimaryPingSent(){primarySource.Pings.Enqueue(issuingPrimaryBarrier?primarySource.Sent:0);}
+        internal void PrimaryPingSent(){primarySource.Pings.Enqueue(sendingPlayerSlotFence!=0?-sendingPlayerSlotFence:issuingPrimaryBarrier?primarySource.Sent:0);}
         internal bool PrimaryPingReceived()
         {
             if(primarySource.Pings.Count==0)return false;long marker=primarySource.Pings.Dequeue();if(marker==0)return false;
+            if(marker<0){CompletePrimarySlotFence(-marker);return true;}
             CompleteSource(null,marker);return true;
         }
         private void ActorPingReceived(Actor a)

@@ -54,6 +54,9 @@ namespace JueMingR.TerrariaHost.Companions
         internal IReadOnlyList<CompanionProfile> Profiles { get { return manager.Profiles; } }
         internal Guid OwnerId { get { return manager.OwnerId; } }
         internal bool Ready { get { return manager.Ready && installed; } }
+        internal bool CanCreate { get { return Ready && !manager.Loading && manager.LoadError == null; } }
+        internal bool Loading { get { return manager.Loading; } }
+        internal string LoadError { get { return manager.LoadError; } }
         internal string Error { get { return manager.Error; } }
         internal void SetOwner(string key) { manager.SetOwner(key); }
         internal void Pump() { manager.Pump(); }
@@ -74,7 +77,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             CompanionCreation.Validate(draft);
             string name = draft.name.Trim();
-            if (!Ready) throw new InvalidOperationException("队友档案尚未就绪。");
+            if (!CanCreate) throw new InvalidOperationException(LoadError ?? "队友档案尚未就绪。");
             var existing = manager.FindName(name);
             if (existing != null) throw new InvalidOperationException("已有此人物，请在左侧选择。");
             Player body = NewCharacter(name, draft.difficulty);
@@ -113,9 +116,9 @@ namespace JueMingR.TerrariaHost.Companions
         { return CapturePreferencesAndSave(id, body, activation, null); }
         internal CompanionProfile CapturePreferencesAndSave(Guid id, Player body, long activation, CompanionBehavior preferences)
         {
-            var current = manager.Find(id);
-            if (current == null || !manager.OwnsActivation(id, activation)) throw new InvalidOperationException("队友实例已失效，未保存旧身体。");
-            var revised = current.Revise(Capture(body), preferences); manager.Update(revised); return revised;
+            var current = manager.FindActivated(id, activation);
+            if (current == null) throw new InvalidOperationException("队友实例已失效，未保存旧身体。");
+            var revised = current.Revise(Capture(body), preferences); manager.Update(revised, activation); return revised;
         }
         internal CompanionProfile SetOfflineTeam(Guid id, int team)
         {
@@ -126,13 +129,13 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal CompanionProfile MarkPermanentDeath(Guid id, long activation)
         {
-            var current = manager.Find(id);
-            if (current == null || !manager.OwnsActivation(id, activation)) throw new InvalidOperationException("队友实例已失效。");
+            var current = manager.FindActivated(id, activation);
+            if (current == null) throw new InvalidOperationException("队友实例已失效。");
             // Publish terminal identity before attempting native capture. If capture
             // fails, the existing close retry retains the one final body; old
             // bytes can never be joined as a living character in the meantime.
             if (current.PermanentlyDead) return current;
-            var revised = current.Revise(current.NativeData, permanentlyDead: true); manager.Update(revised); return revised;
+            var revised = current.Revise(current.NativeData, permanentlyDead: true); manager.Update(revised, activation); return revised;
         }
         internal CompanionProfile SetBehavior(Guid id, CompanionBehavior behavior)
         {
@@ -140,9 +143,9 @@ namespace JueMingR.TerrariaHost.Companions
             if (current == null) throw new InvalidOperationException("未找到自己的队友。");
             var revised = current.Revise(current.NativeData, behavior); manager.Update(revised); return revised;
         }
-        internal CompanionProfile Reset(Guid id)
+        internal CompanionProfile Reset(Guid id, long activation = 0)
         {
-            var current = manager.Find(id);
+            var current = activation == 0 ? manager.Find(id) : manager.FindActivated(id, activation);
             if (current == null) throw new InvalidOperationException("未找到自己的队友。");
             Player previous = LoadBody(current), body = NewCharacter(current.Name, previous.difficulty);
             body.hair = previous.hair; body.hairDye = previous.hairDye; body.skinVariant = previous.skinVariant;
@@ -151,7 +154,7 @@ namespace JueMingR.TerrariaHost.Companions
             body.pantsColor = previous.pantsColor; body.shoeColor = previous.shoeColor;
             body.voiceVariant = previous.voiceVariant; body.voicePitchOffset = previous.voicePitchOffset;
             var revised = current.Revise(Capture(body), new CompanionBehavior(), reset: true);
-            manager.Update(revised); return revised;
+            manager.Update(revised, activation); return revised;
         }
         private PlayerFileData File(Player body)
         { return files.GetValue(body, player => new PlayerFileData { Player = player }); }

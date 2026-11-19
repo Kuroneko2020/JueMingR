@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using HarmonyLib;
 using Terraria;
+using Terraria.DataStructures;
 using Terraria.ID;
 using Terraria.Net.Sockets;
 using JueMingR.Platform.Companions;
@@ -40,6 +41,7 @@ namespace NativeWorldTextProbe
             try
             {
                 NativeCompanionCoreLifecycleChecks.PrepareHuman();
+                NativeCompanionTransportChecks.Run();
                 var host=Get(context,"Companions");var profiles=Get(host,"profiles");
                 NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");return (bool)Get(profiles,"Ready");});
                 Require((bool)Call(host,"Create","队伍接收甲") && (bool)Call(host,"Create","队伍接收乙"),"native network profiles accepted");
@@ -83,6 +85,11 @@ namespace NativeWorldTextProbe
             {var frame=Frame(stream);result.Add(frame);if(frame[2]==5)items++;if(frame[2]==45)teams++;}
             Require(items==itemFrames && teams==teamFrames,"actual TCP stream supplied all native item/team frames");return result;
         }
+        private static byte[] ReadKind(NetworkStream stream, byte kind)
+        {
+            for (int n = 0; n < 512; n++) { var frame = Frame(stream); if (frame[2] == kind) return frame; }
+            throw new InvalidDataException("missing native wire frame " + kind);
+        }
         private static void Apply(byte[] frame,int sender)
         {var buffer=new MessageBuffer{whoAmI=sender};Buffer.BlockCopy(frame,2,buffer.readBuffer,0,frame.Length-2);buffer.ResetReader();int type;buffer.GetData(0,frame.Length-2,out type);}
         private static Player Replica(Player source)
@@ -95,7 +102,7 @@ namespace NativeWorldTextProbe
             Require(observerSlot!=humanSlot && observerSlot!=actorSlot && observerSlot!=otherSlot,"separate native observing slot");
             var actor=Call(host,"Owned",actorBody);var originalActorConnection=GetOptional(actor,"Connection");
             var sourcePlayers=Main.player;var clients=Netplay.Clients;var buffers=NetMessage.buffer;var socket=Netplay.Connection.Socket;
-            int mode=Main.netMode,myPlayer=Main.myPlayer,humanTeam=human.team,otherTeam=other.team;bool dedicated=Main.dedServ;
+            int mode=Main.netMode,myPlayer=Main.myPlayer,humanTeam=human.team,otherTeam=other.team,primaryState=Netplay.Connection.State;bool dedicated=Main.dedServ;
             var diagnostics=AccessTools.Field(typeof(Main),"_activeNetDiagnosticsUI");var oldDiagnostics=diagnostics.GetValue(null);
             var connectionType=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionConnection");
             var listener=new TcpListener(IPAddress.Loopback,0);listener.Start();object connection=null,closed=null;TcpClient aiPeer=null;
@@ -109,7 +116,7 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Until(()=>listener.Pending());aiPeer=listener.AcceptTcpClient();aiPeer.NoDelay=true;aiPeer.GetStream().ReadTimeout=5000;
                 closed=Activator.CreateInstance(connectionType,Flags,null,new object[]{new Action<byte[]>(_=>{}),new Action(()=>{})},null);Call(closed,"Disconnect","isolated closed team connection");
                 outlets.Unpatch(noNetwork,HarmonyPatchType.Prefix,outlets.Id);
-                Main.netMode=1;Main.dedServ=false;NetMessage.buffer[256]=new MessageBuffer{whoAmI=256};
+                Main.netMode=1;Main.dedServ=false;NetMessage.buffer[256]=new MessageBuffer{whoAmI=256};Netplay.Connection.State=10;
                 Netplay.Connection.Socket=new TcpSocket();Set(actor,"Connection",closed);
                 captureTarget=actorBody;failCapture=true;
                 fault.Patch(AccessTools.Method(Get(host,"profiles").GetType(),"Capture"),prefix:new HarmonyMethod(typeof(NativeCompanionTeamChecks),nameof(CaptureFailure)));
@@ -155,16 +162,288 @@ namespace NativeWorldTextProbe
                 Main.player=sourcePlayers;Main.myPlayer=myPlayer;
                 var echo=ReadKinds(ownerWire.Client.GetStream(),0,1).First(p=>p[2]==45);Apply(echo,256);
                 Require(actorBody.team==5 && human.team==humanTeam && other.team==otherTeam,"late old primary team echo cannot revert current owned intent or affect another role");
+                Healing(host, actor, actorBody, other, human, observerSlot, sourcePlayers, server, ownerWire.Client, aiPeer);
+                SlotGeneration(host, observerSlot, ownerWire);
+                MediumcoreDeathInventory(host, actor, actorBody, sourcePlayers, server, aiPeer);
                 Console.WriteLine("PASS actual loopback TCP owner+AI source streams -> native server(5/45) -> separate observer native(5/45); rapid teams 2->5/old echo, human private trash and both source debits, capture retry and disconnected/changed-connection intent. Pre-admitted component topology, not full server startup/Steam/gameplay/FPS.");
             }
             finally
             {
                 failCapture=false;captureTarget=null;fault.UnpatchAll(fault.Id);
-                Main.player=sourcePlayers;Main.myPlayer=myPlayer;Main.netMode=mode;Main.dedServ=dedicated;Netplay.Clients=clients;NetMessage.buffer=buffers;Netplay.Connection.Socket=socket;
+                Main.player=sourcePlayers;Main.myPlayer=myPlayer;Main.netMode=mode;Main.dedServ=dedicated;Netplay.Clients=clients;NetMessage.buffer=buffers;Netplay.Connection.Socket=socket;Netplay.Connection.State=primaryState;
                 diagnostics.SetValue(null,oldDiagnostics);Set(actor,"Connection",originalActorConnection);
                 if(connection!=null)((IDisposable)connection).Dispose();if(closed!=null)((IDisposable)closed).Dispose();aiPeer?.Dispose();listener.Stop();
                 outlets.Patch(noNetwork,prefix:new HarmonyMethod(typeof(NativeQuickItemChecks),"NoNetwork"));
             }
+        }
+        private static void Healing(object host, object actor, Player source, Player teammate, Player human, int externalSlot,
+            Player[] client, Player[] server, TcpClient primary, TcpClient secondary)
+        {
+            var hooks = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionHooks");
+            var enter = hooks.GetMethod("Enter", BindingFlags.Static | BindingFlags.NonPublic);
+            var oldRemote = client[externalSlot];
+            var oldMoon = source.moonLeech;
+            int primarySlot = Main.myPlayer;
+            client[externalSlot] = Replica(server[externalSlot]);
+            try
+            {
+                source.moonLeech = false;
+                foreach (var recipient in new[] { source, teammate, human, client[externalSlot] })
+                {
+                    int slot = recipient.whoAmI;
+                    int oldLife = recipient.statLife, oldCap = recipient.statLifeMax2;
+                    try
+                    {
+                        recipient.statLife = server[slot].statLife = 20;
+                        recipient.statLifeMax2 = server[slot].statLifeMax2 = 100;
+                        var actorFlow = Get(actor, "Connection");
+                        if (slot == source.whoAmI)
+                        {
+                            Set(actor, "NextPublish", 0U);
+                            Call(host, "Publish", actor);
+                            Require(BitConverter.ToInt16(ReadKind(secondary.GetStream(), 16), 4) == 20,
+                                "the real HP baseline is first sent on its normal secondary wire");
+                        }
+                        var projectile = new Projectile();
+                        projectile.SetDefaults(ProjectileID.SpiritHeal);
+                        projectile.owner = source.whoAmI;
+                        projectile.Center = recipient.Center;
+                        projectile.ai[0] = slot;
+                        projectile.ai[1] = 7;
+                        projectile.active = true;
+                        using ((IDisposable)enter.Invoke(null, new object[] { actor, projectile.Center, false })) projectile.AI();
+                        var frame = ReadKind(secondary.GetStream(), 66);
+                        Require(frame[3] == slot && BitConverter.ToInt16(frame, 4) == 7 && recipient.statLife == 20,
+                            "native MP shot emits on its own secondary connection and leaves shared HP to the primary packet");
+                        if (slot == source.whoAmI)
+                        {
+                            Set(actor, "NextPublish", 0U);
+                            Call(host, "Publish", actor);
+                            Call(actorFlow, "Send", new byte[] { 3, 0, 154 });
+                            byte id;
+                            do
+                            {
+                                id = Frame(secondary.GetStream())[2];
+                                Require(id != 16, "unchanged absolute HP cannot be sent over the unconsumed heal");
+                            } while (id != 154);
+                        }
+
+                        Main.player = server; Main.myPlayer = 255; Main.netMode = 2; Main.dedServ = true;
+                        // The same target and amount come separately from an
+                        // ordinary external player, in both relative orders.
+                        if ((slot & 1) == 0) Apply(frame, externalSlot);
+                        Apply(frame, source.whoAmI);
+                        if ((slot & 1) != 0) Apply(frame, externalSlot);
+                        Require(server[slot].statLife == 34, "native server settles both independent 66 frames");
+                        Main.player = client; Main.myPlayer = primarySlot; Main.netMode = 1; Main.dedServ = false;
+                        Apply(ReadKind(primary.GetStream(), 66), 256);
+                        Require(recipient.statLife == 27, "the primary applies one native heal once");
+                        Apply(ReadKind(primary.GetStream(), 66), 256);
+                        Require(recipient.statLife == 34, "same-valued independent remote heal is also applied once");
+                        if (slot == source.whoAmI)
+                        {
+                            Set(actor, "NextPublish", 0U);
+                            Call(host, "Publish", actor);
+                            Require(BitConverter.ToInt16(ReadKind(secondary.GetStream(), 16), 4) == 34,
+                                "the changed shared HP is synchronized after primary consumption");
+                        }
+                    }
+                    finally
+                    {
+                        Main.player = client; Main.myPlayer = primarySlot; Main.netMode = 1; Main.dedServ = false;
+                        recipient.statLife = oldLife; recipient.statLifeMax2 = oldCap;
+                    }
+                }
+            }
+            finally { client[externalSlot] = oldRemote; source.moonLeech = oldMoon; }
+            Console.WriteLine("PASS native style-52 secondary healing through real TCP/server broadcasts and primary decode for self, teammate, human, and external targets with equal independent 66.");
+        }
+        private static void MediumcoreDeathInventory(object host, object actor, Player body, Player[] client, Player[] server, TcpClient secondary)
+        {
+            var hooks = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionHooks");
+            var enter = hooks.GetMethod("Enter", BindingFlags.Static | BindingFlags.NonPublic);
+            var priorItem = body.inventory[39];
+            byte oldDifficulty = body.difficulty;
+            int originalPrimary = Main.myPlayer;
+            int slot = body.whoAmI;
+            try
+            {
+                body.difficulty = server[slot].difficulty = 1;
+                Put(body.inventory, 39, ItemID.Wood, 19);
+                Set(actor, "NextPublish", 0U);
+                Call(host, "Publish", actor);
+                var flow = Get(actor, "Connection");
+                // The ordinary periodic snapshot was 19. An immediate native
+                // sync of 22 then reaches the wire before the slot returns to
+                // 19 within the same six-frame publish window.
+                body.inventory[39].stack = 22;
+                using ((IDisposable)enter.Invoke(null, new object[] { actor, body.Center, false }))
+                    NetMessage.SendData(5, -1, -1, null, slot, 39);
+                body.inventory[39].stack = 19;
+                body.KillMe(PlayerDeathReason.ByCustomReason("fixture mediumcore order"), 999, 0);
+                Require(body.dead && body.inventory[39].IsAir, "the real mediumcore KillMe mutates the local body through native DropItems");
+                Require(ReferenceEquals(flow, Get(actor, "Connection")), "ordinary death retains its independent connection for respawn");
+                Main.player = server; Main.myPlayer = 255; Main.netMode = 2; Main.dedServ = true;
+                var updates = new List<int>();
+                for (int n = 0; n < 512; n++)
+                {
+                    byte[] frame = Frame(secondary.GetStream());
+                    if (frame[2] == 5)
+                    {
+                        if (BitConverter.ToInt16(frame, 4) == 39) updates.Add(BitConverter.ToInt16(frame, 6));
+                        Apply(frame, slot);
+                    }
+                    if (frame[2] != 118) continue;
+                    Require(updates.SequenceEqual(new[] { 19, 22, 19 }) && server[slot].inventory[39].stack == 19,
+                        "native server reads the latest actual slot before the real 118, including an immediate send reverted within the periodic window");
+                    Apply(frame, slot);
+                    Require(server[slot].dead && server[slot].inventory[39].IsAir, "native server KillMe settles the current mediumcore inventory");
+                    Console.WriteLine("PASS native mediumcore KillMe publishes 5 delta before TCP 118 and original server consumes current inventory.");
+                    return;
+                }
+                throw new InvalidDataException("native mediumcore death did not emit 118");
+            }
+            finally
+            {
+                Main.player = client; Main.myPlayer = originalPrimary; Main.netMode = 1; Main.dedServ = false;
+                body.difficulty = oldDifficulty;
+                body.inventory[39] = priorItem;
+            }
+        }
+        private static byte[] Packet(byte id, Action<BinaryWriter> write = null)
+        {
+            using (var stream = new MemoryStream())
+            using (var writer = new BinaryWriter(stream))
+            {
+                writer.Write((ushort)0);
+                writer.Write(id);
+                write?.Invoke(writer);
+                writer.Flush();
+                var frame = stream.ToArray();
+                frame[0] = (byte)frame.Length;
+                frame[1] = (byte)(frame.Length >> 8);
+                return frame;
+            }
+        }
+        private static void WritePacket(NetworkStream stream, byte[] frame) => stream.Write(frame, 0, frame.Length);
+        private static byte[] Presence(int slot, bool active) => new byte[] { 5, 0, 14, (byte)slot, active ? (byte)1 : (byte)0 };
+        private static byte[] Death(int slot) => Packet(118, w =>
+        {
+            w.Write((byte)slot);
+            PlayerDeathReason.ByCustomReason("fixture previous generation").WriteSelfTo(w);
+            w.Write((short)999);
+            w.Write((byte)1);
+            w.Write((byte)0);
+        });
+        private static void SlotGeneration(object host, int externalSlot, Pair wire)
+        {
+            for (int phase = 0; phase < 3; phase++)
+            {
+                int slot = externalSlot - 1 - phase;
+                var old = Main.player[slot];
+                try
+                {
+                    Require((bool)Call(host, "Create", "槽接管" + phase), "create the real reservation test profile");
+                    var id = (Guid)Get(host, "LastCreatedId");
+                    Saved(host, id);
+                    Require((bool)Call(host, "Join", id), "normal Join starts the exact secondary");
+                    NativeQuickItemChecks.Until(wire.Listener.Pending);
+                    using (var secondary = wire.Listener.AcceptTcpClient())
+                    {
+                        var output = secondary.GetStream();
+                        output.ReadTimeout = 5000;
+                        var joining = (IDictionary)Get(host, "joiningSlots");
+                        var previousBody = new Player { whoAmI = slot, active = true, difficulty = 1, name = "original remote" };
+                        previousBody.position = Main.LocalPlayer.position;
+                        Put(previousBody.inventory, 39, ItemID.Wood, 7);
+                        Main.player[slot] = previousBody;
+                        WritePacket(output, Packet(3, w => { w.Write((byte)slot); w.Write(false); }));
+                        NativeQuickItemChecks.Until(() => { Call(host, "Update", 0UL); return joining.Contains(slot); });
+                        var role = joining[slot];
+                        var body = (Player)Get(role, "Body");
+                        Put(body.inventory, 39, ItemID.Wood, 23);
+                        ReadKind(output, 6);
+                        Require(ReferenceEquals(Main.player[slot], previousBody) && Call(host, "OwnedSlot", slot) == null,
+                            "header 3 reserves serialization, leaving the primary's original player installed");
+                        Apply(Death(slot), 256);
+                        Require(previousBody.dead && previousBody.inventory[39].IsAir && !body.dead && body.inventory[39].stack == 23,
+                            "original GetData(118) settles the previous remote body without killing the reserved AI or dropping its property");
+                        Apply(Presence(slot, false), 256);
+
+                        WritePacket(output, Packet(7, w =>
+                        {
+                            w.Write(0); w.Write((byte)0); w.Write((byte)0);
+                            for (int i = 0; i < 6; i++) w.Write((short)0);
+                            w.Write(0); w.Write("isolated takeover world"); w.Write((byte)Main.GameMode);
+                            w.Write(Main.ActiveWorldFileData.UniqueId.ToByteArray());
+                        }));
+                        NativeQuickItemChecks.Until(() => { Call(host, "Update", 0UL); return (bool)Get(role, "SpawnSent"); });
+                        ReadKind(output, 8);
+                        WritePacket(output, Packet(49));
+                        NativeQuickItemChecks.Until(() => { Call(host, "Update", 0UL); return (bool)Get(role, "InitialNpcComplete"); });
+                        var ping = ReadKind(wire.Peer.GetStream(), 154);
+                        Require(!(bool)Get(role, "BirthSubmitted"), "49 starts a primary fence and cannot send 12 ahead of its reply");
+                        if (phase != 0)
+                        {
+                            Apply(ping, 256);
+                            Call(host, "Update", 0UL);
+                            ReadKind(output, 12);
+                            Require(!ReferenceEquals(Main.player[slot], body), "outgoing birth still leaves the primary's remote body intact until 129");
+                            if (phase == 2)
+                            {
+                                WritePacket(output, Packet(129));
+                                NativeQuickItemChecks.Until(() => { Call(host, "Update", 0UL); return ReferenceEquals(Call(host, "OwnedSlot", slot), role); });
+                                Apply(Presence(slot, false), 256);
+                                Require(ReferenceEquals(Main.player[slot], body) && body.active && ReferenceEquals(Call(host, "OwnedSlot", slot), role),
+                                    "a previous-generation off after the marker and before this on cannot retire the attached AI");
+                                Apply(Presence(slot, true), 256);
+                                Apply(Death(slot), 256);
+                                Require(!body.dead && body.inventory[39].stack == 23, "owned death relay is an echo after 129 and cannot settle twice");
+                            }
+                            else
+                            {
+                                Apply(Presence(slot, false), 256);
+                                Require(joining.Contains(slot), "a delayed previous off can straddle the primary fence before this join");
+                                Apply(Presence(slot, true), 256);
+                            }
+                        }
+                        // Before the fence and between 12/129 a real off/on
+                        // still reaches native remote storage. After 129 an
+                        // immediate native reuse can omit the separate off.
+                        if (phase != 2) Apply(Presence(slot, false), 256);
+                        Apply(Presence(slot, true), 256);
+                        var successor = Main.player[slot];
+                        var remote = new Player
+                        {
+                            whoAmI = slot, active = true, name = "takeover " + phase,
+                            position = Main.LocalPlayer.position + new Microsoft.Xna.Framework.Vector2(24, 0), controlRight = true
+                        };
+                        Put(remote.armor, 0, ItemID.CopperHelmet, 1);
+                        byte[][] frames;
+                        Main.player[slot] = remote;
+                        try
+                        {
+                            NetMessage.SendData(4, -1, -1, null, slot);
+                            NetMessage.SendData(5, -1, -1, null, slot, PlayerItemSlotID.Armor0);
+                            NetMessage.SendData(13, -1, -1, null, slot);
+                            frames = new[] { ReadKind(wire.Peer.GetStream(), 4), ReadKind(wire.Peer.GetStream(), 5), ReadKind(wire.Peer.GetStream(), 13) };
+                        }
+                        finally { Main.player[slot] = successor; }
+                        foreach (var frame in frames) Apply(frame, 256);
+                        Require(successor.active && !ReferenceEquals(successor, body) && successor.name == remote.name &&
+                            successor.armor[0].type == ItemID.CopperHelmet && successor.controlRight && successor.position == remote.position &&
+                            Call(host, "OwnedSlot", slot) == null,
+                            "the successor's first native join, name, equipment and control retain their own player immediately");
+                        secondary.Close();
+                        if (phase == 0) Apply(ping, 256);
+                        NativeQuickItemChecks.Until(() => { Call(host, "Update", 0UL); return !joining.Contains(slot); });
+                        Require(ReferenceEquals(Main.player[slot], successor) && successor.active,
+                            "late secondary disconnect or marker cannot replace a takeover already consumed by the primary");
+                    }
+                }
+                finally { Main.player[slot] = old; }
+            }
+            Console.WriteLine("PASS native FIFO slot generations: prior 118, takeover before the fence and 129, and first real successor packets after 129 even without a separate off.");
         }
     }
 }

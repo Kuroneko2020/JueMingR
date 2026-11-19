@@ -56,11 +56,17 @@ namespace NativeWorldTextProbe
                 Main.netMode=1;Set(actor,"Target",null);Set(actor,"Behavior",Activator.CreateInstance(actorState["Behavior"].GetType(),true));body.selectedItemState.Select(0);body.selectedItemState.Update();
                 Main.sectionManager=new WorldSections((Main.maxTilesX+199)/200,(Main.maxTilesY+149)/150);
                 Main.sectionManager.SetSectionLoaded(Netplay.GetSectionX(tx),Netplay.GetSectionY(ty));
-                var missing=new Vector2(tx*16+8,ty*16+8);Main.tile[tx,ty]=null;
+                var missing=new Vector2(tx*16+8,ty*16+8);
                 if(!drillOnly)
                 {
-                Set(actor,"Aim",missing);Call(host,"Spawn",actor,PlayerSpawnContext.ReviveFromDeath);
-                Require((Vector2)Get(actor,"Aim")==body.Center && GetOptional(actor,"Target")==null && !(bool)Get(actor,"HasAim"),"native respawn retires pre-spawn/old-target aim");
+                    Set(actor,"Aim",missing);Call(host,"Spawn",actor,PlayerSpawnContext.ReviveFromDeath);
+                    Require((Vector2)Get(actor,"Aim")==body.Center && GetOptional(actor,"Target")==null && !(bool)Get(actor,"HasAim"),"native respawn retires pre-spawn/old-target aim");
+                }
+                // Spawn checks this fixture's nearby support area through
+                // native collision. Remove the use target after real Spawn.
+                Main.tile[tx,ty]=null;
+                if(!drillOnly)
+                {
                 Set(actor,"Aim",missing);Call(host,"Control",actor);
                 Require((Vector2)Get(actor,"Aim")==body.Center,"no-target control uses this body's current center");
                 var profile=(CompanionProfile)Get(actor,"Profile");var disabled=profile.Behavior;disabled.AttackEnabled=false;

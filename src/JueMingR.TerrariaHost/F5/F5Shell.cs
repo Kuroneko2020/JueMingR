@@ -284,11 +284,22 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void ToggleCompanionsFromHotkey(HotkeyChord chord)
         {
-            if(!CanToggleCompanionsFromHotkey)return;
+            if(!CanToggleCompanionsFromHotkey || !CompanionHotkeyPointerFree(chord))return;
             // Keep shared physical history intact: one accepted edge clears this
             // epoch, without suppressing unrelated held movement until release.
             inputState.ConsumeHotkeyActions();
             ToggleCompanionWindow(default(F5Rect),true,chord);
+        }
+        private bool CompanionHotkeyPointerFree(HotkeyChord chord)
+        {
+            if(chord==null || chord.MainKey<256)return true;
+            if(OwnsPointer || inputState.HotkeyPointerOwned)return false;
+            var player=Main.LocalPlayer;
+            if(player==null || player.mouseInterface || player.lastMouseInterface)return false;
+            // Native slot hit-testing runs in DrawInventory. A first click
+            // can reach the inventory before the previous Draw reported hover.
+            const HotkeyModifiers control=HotkeyModifiers.LeftControl|HotkeyModifiers.RightControl;
+            return !Main.playerInventory || chord.MainKey!=256 || (chord.Modifiers&control)==0;
         }
         private void ToggleCompanionWindow(F5Rect anchor,bool independent,HotkeyChord chord)
         {
@@ -1020,8 +1031,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             // Hover may coexist with this keyboard-only UI intent. A mouse
             // primary already owned by a real control can never also toggle it.
-            if(action.Id==CompanionWindow.ActionId)return dispatchCompanion &&
-                (chord.MainKey<256 || !OwnsPointer && !inputState.HotkeyPointerOwned);
+            if(action.Id==CompanionWindow.ActionId)return dispatchCompanion && CompanionHotkeyPointerFree(chord);
             if (blueprint != null && blueprint.ProjectionEditing && blueprint.CanRetainEdit &&
                 (chord.MainKey == 256 || chord.MainKey == 257))
                 return dispatchBlueprint && action.Id == BlueprintControls.ConfirmTrimAction &&

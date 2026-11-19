@@ -8,6 +8,7 @@ using Terraria;
 using Terraria.DataStructures;
 using Terraria.GameContent;
 using Terraria.ID;
+using Terraria.WorldBuilding;
 
 namespace JueMingR.TerrariaHost.Companions
 {
@@ -16,6 +17,12 @@ namespace JueMingR.TerrariaHost.Companions
     internal sealed partial class HostCompanions
     {
         private ShopHelper companionNurseShop;
+        private SceneMetrics nurseScene;
+        private Player nurseShoppingPerspective;
+        private NPC[] nurseResidentView;
+        private Point? nurseTerrainRequest;
+        private int nurseTerrainTeam;
+        private long nurseTerrainSession;
         private readonly Dictionary<Guid, long> pendingNurse = new Dictionary<Guid, long>();
         private long nurseSession = -1;
 
@@ -68,6 +75,96 @@ namespace JueMingR.TerrariaHost.Companions
             return state.Nurse;
         }
 
+        [Flags]
+        internal enum NurseBiome
+        {
+            Dungeon = 1, Corrupt = 2, Crimson = 4, Hallow = 8, Jungle = 16,
+            Snow = 32, Desert = 64, Glowshroom = 128, Beach = 256
+        }
+
+        private bool NurseBiomeTerrainKnown(Player body, bool request)
+        {
+            Point center = body.Center.ToTileCoordinates();
+            if (Main.tile == null || !WorldGen.InWorld(center.X, center.Y, 1)) return false;
+            bool known = Main.tile[center.X, center.Y] != null;
+            if (Main.netMode != 1) return known;
+            if (Main.sectionManager == null) return false;
+            var scan = WorldUtils.ClampToWorld(Utils.CenteredRectangle(center, SceneMetrics.ZoneScanSize));
+            int bottom = scan.Bottom - 1;
+            if (Main.dualDungeonsSeed) bottom = Math.Max(bottom, Math.Min(center.Y + 299, Main.maxTilesY - 1));
+            for (int x = Netplay.GetSectionX(scan.Left); x <= Netplay.GetSectionX(scan.Right - 1); x++)
+                for (int y = Netplay.GetSectionY(scan.Top); y <= Netplay.GetSectionY(bottom); y++)
+                {
+                    if (Main.sectionManager.SectionLoaded(x, y)) continue;
+                    known = false;
+                    if (!request || nurseTerrainRequest.HasValue && nurseTerrainSession == session ||
+                        terrainRequested.Contains(TerrainKey(x, y))) continue;
+                    // The outer world update publishes one ordinary primary
+                    // tile request, sharing the movement loader's budget.
+                    nurseTerrainRequest = new Point(Math.Min(x * Main.sectionWidth + Main.sectionWidth / 2, Main.maxTilesX - 11),
+                        Math.Min(y * Main.sectionHeight + Main.sectionHeight / 2, Main.maxTilesY - 11));
+                    nurseTerrainSession = session;
+                    nurseTerrainTeam = body.team;
+                }
+            return known;
+        }
+
+        private ShoppingSettings NurseShoppingSettings(Actor actor, NPC nurse)
+        {
+            var patient = actor.Body;
+            var state = actor.Supplies;
+            Point center = patient.Center.ToTileCoordinates();
+            if (state.NurseBiomeCenter != center || state.NurseBiomeGeneration != actor.Generation ||
+                Main.GameUpdateCount >= state.NextNurseBiomeScan)
+            {
+                if (nurseScene == null) nurseScene = new SceneMetrics();
+                // Use the native scan around the patient's current tile only
+                // when an actual quote needs it. The human SceneMetrics and
+                // the AI's live movement/network zone flags stay untouched.
+                nurseScene.Scan(new SceneMetricsScanSettings { BiomeScanCenterPositionInWorld = patient.Center });
+                state.NurseBiomeCenter = center;
+                state.NurseBiomeGeneration = actor.Generation;
+                state.NextNurseBiomeScan = Main.GameUpdateCount + 60;
+                state.NurseBiomes = (nurseScene.ZoneDungeon ? NurseBiome.Dungeon : 0) |
+                    (nurseScene.ZoneCorrupt ? NurseBiome.Corrupt : 0) | (nurseScene.ZoneCrimson ? NurseBiome.Crimson : 0) |
+                    (nurseScene.ZoneHallow ? NurseBiome.Hallow : 0) | (nurseScene.ZoneJungle ? NurseBiome.Jungle : 0) |
+                    (nurseScene.ZoneSnow ? NurseBiome.Snow : 0) | (nurseScene.ZoneDesert ? NurseBiome.Desert : 0) |
+                    (nurseScene.ZoneGlowshroom ? NurseBiome.Glowshroom : 0) | (nurseScene.ZoneBeach ? NurseBiome.Beach : 0);
+            }
+            if (companionNurseShop == null) companionNurseShop = new ShopHelper();
+            if (nurseShoppingPerspective == null) nurseShoppingPerspective = new Player();
+            // ShopHelper reads the supplied player's shopping zones (including
+            // the native forest/depth predicates), while the native treatment
+            // price still reads the real patient's life, buffs and discounts.
+            var perspective = nurseShoppingPerspective;
+            var biomes = state.NurseBiomes;
+            perspective.Center = patient.Center;
+            perspective.ZoneDungeon = (biomes & NurseBiome.Dungeon) != 0;
+            perspective.ZoneCorrupt = (biomes & NurseBiome.Corrupt) != 0;
+            perspective.ZoneCrimson = (biomes & NurseBiome.Crimson) != 0;
+            perspective.ZoneHallow = (biomes & NurseBiome.Hallow) != 0;
+            perspective.ZoneJungle = (biomes & NurseBiome.Jungle) != 0;
+            perspective.ZoneSnow = (biomes & NurseBiome.Snow) != 0;
+            perspective.ZoneDesert = (biomes & NurseBiome.Desert) != 0;
+            perspective.ZoneGlowshroom = (biomes & NurseBiome.Glowshroom) != 0;
+            perspective.ZoneBeach = (biomes & NurseBiome.Beach) != 0;
+            var observed = Main.npc;
+            var primary = primaryNpcsBeforeObservation;
+            if (primary == null || ReferenceEquals(primary, observed))
+                return companionNurseShop.GetShoppingSettings(perspective, nurse);
+
+            // Native mood checks every active town resident's HOME. A
+            // resident wandering beyond the actor's simulation radius can
+            // still be a neighbour, as observed on the ordinary primary
+            // town stream. Keep the one best available NPC in each slot.
+            if (nurseResidentView == null) nurseResidentView = new NPC[Main.maxNPCs];
+            for (int i = 0; i < nurseResidentView.Length; i++)
+                nurseResidentView[i] = observed[i].active ? observed[i] : primary[i];
+            Main.npc = nurseResidentView;
+            try { return companionNurseShop.GetShoppingSettings(perspective, nurse); }
+            finally { Main.npc = observed; }
+        }
+
         private CompanionNurseOutcome TryCompanionNurse(Actor actor)
         {
             var body = actor.Body;
@@ -85,11 +182,11 @@ namespace JueMingR.TerrariaHost.Companions
                 return CompanionNurseOutcome.NotRun;
 
             NPC nurse = FindNurse(actor);
-            if (nurse == null || Main.GameUpdateCount < actor.Supplies.NextNurseAttempt)
+            if (nurse == null || Main.GameUpdateCount < actor.Supplies.NextNurseAttempt ||
+                !NurseHousingKnown(nurse) || !NurseBiomeTerrainKnown(body, request: true))
                 return CompanionNurseOutcome.NotRun;
             actor.Supplies.NextNurseAttempt = Main.GameUpdateCount + 30;
 
-            if (companionNurseShop == null) companionNurseShop = new ShopHelper();
             ShoppingSettings before = body.currentShoppingSettings;
             ShoppingSettings terms = default(ShoppingSettings);
             bool shoppingApplied = false;
@@ -103,14 +200,15 @@ namespace JueMingR.TerrariaHost.Companions
                     // Both native consumers read the temporary scoped player. A
                     // shopping quote needs no talkNPC, so neither player opens or
                     // closes a chat and there is no talk packet to publish.
-                    terms = companionNurseShop.GetShoppingSettings(body, nurse);
+                    if (!CompanionNurseWallet.TryBalance(body, out long patientBalance) ||
+                        !CompanionNurseWallet.TryBalance(payer, out long ownerBalance) ||
+                        patientBalance + ownerBalance == 0) return CompanionNurseOutcome.Unpaid;
+                    terms = NurseShoppingSettings(actor, nurse);
                     body.currentShoppingSettings = terms;
                     shoppingApplied = true;
                     quote = Main.GetNurseHealCost();
                     if (quote <= 0) return CompanionNurseOutcome.Unpaid;
-                    if (!CompanionNurseWallet.TryBalance(body, out long patientBalance) ||
-                        !CompanionNurseWallet.TryBalance(payer, out long ownerBalance) ||
-                        patientBalance + ownerBalance < quote) return CompanionNurseOutcome.Unpaid;
+                    if (patientBalance + ownerBalance < quote) return CompanionNurseOutcome.Unpaid;
                     long firstShare = Math.Min(patientBalance, quote);
 #if DEBUG
                     actor.Supplies.WalletPlans++;
@@ -234,9 +332,10 @@ namespace JueMingR.TerrariaHost.Companions
                     !ReferenceEquals(Payer, Main.ActivePlayerFileData?.Player) ||
                     Main.netMode == 1 && (!ReferenceEquals(connection, Netplay.Connection) ||
                         !ReferenceEquals(socket, Netplay.Connection?.Socket) || !ReferenceEquals(actorConnection, Actor.Connection)) ||
-                    !NurseCurrent(patient, nurse, slot, generation) || !NurseNeedsService(patient) ||
+                    !NurseCurrent(patient, nurse, slot, generation) || !host.NurseHousingKnown(nurse) ||
+                    !host.NurseBiomeTerrainKnown(patient, request: false) || !NurseNeedsService(patient) ||
                     !patient.currentShoppingSettings.Equals(terms) ||
-                    host.companionNurseShop.GetShoppingSettings(patient, nurse).PriceAdjustment != terms.PriceAdjustment ||
+                    host.NurseShoppingSettings(Actor, nurse).PriceAdjustment != terms.PriceAdjustment ||
                     Main.GetNurseHealCost() != Quote || !PatientWallet.Current() || !PayerWallet.Current())
                     return false;
 

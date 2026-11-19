@@ -75,7 +75,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal bool CreateDraft(Player draft)
         {
-            if (Main.gameMenu || owner == null) return Result(false,"请先进入世界。");
+            if (!CanCreate) return Result(false,ArchiveNotice??"队友档案尚未就绪。");
             if (draft == null) return Result(false,"请先创建人物草稿。");
             object accepted;
             if (submittedDrafts.TryGetValue(draft,out accepted)) return Result(false,"此人物已经创建。");

@@ -8,10 +8,25 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal sealed partial class HostCompanions
     {
+        private struct NpcHousing
+        {
+            internal Actor Source;
+            internal bool HasSource, Received, Homeless;
+            internal byte Generation;
+            internal int X, Y, Type;
+
+            internal bool IsFor(NPC npc) { return Received && Generation==npc.generation && Type==npc.type; }
+
+            internal void Apply(NPC npc)
+            {
+                npc.homeTileX=X; npc.homeTileY=Y; npc.homeless=Homeless;
+            }
+        }
         // One bounded native ABI table for the whole team, never one world per
         // actor. Only currently relevant server observations become active.
         // The human table remains the original primary-stream native table.
         private NPC[] observedNpcs;
+        private NPC[] primaryNpcsBeforeObservation;
         private uint[] observedTicks;private long[] observedRevisions,advancedRevisions;private long nextObservationRevision;
         private uint observationStep=UInt32.MaxValue;
         private int observationDecodeSlot=-1;
@@ -36,9 +51,14 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(Main.netMode!=1 || !HasActors)return null;
             EnsureNpcObservation();if(ReferenceEquals(Main.npc,observedNpcs))return null;
-            var old=Main.npc;Main.npc=observedNpcs;return old;
+            var old=Main.npc;primaryNpcsBeforeObservation=old;Main.npc=observedNpcs;return old;
         }
-        internal void LeaveNpcObservation(NPC[] previous){if(previous!=null)Main.npc=previous;}
+        internal void LeaveNpcObservation(NPC[] previous)
+        {
+            if(previous==null)return;
+            Main.npc=previous;
+            primaryNpcsBeforeObservation=null;
+        }
         private bool NeededNpc(Microsoft.Xna.Framework.Vector2 point)
         {
             foreach(var actor in actors.Values)if(actor.Ready && !actor.Closing && Microsoft.Xna.Framework.Vector2.DistanceSquared(actor.Body.Center,point)<2200*2200)return true;
@@ -151,14 +171,47 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(!HasActors || ReadingObservation || length<3)return;
             EnsureNpcObservation();int slot=packet[start]==54?BitConverter.ToInt16(packet,start+1):packet[start+1];if(slot<0 || slot>=observedNpcs.Length)return;
+            npcSources.TryGetValue(slot,out var housingLease);
             if(packet[start]==23 && length>=19 && !RequiredNpcSlot(slot) && !RequiredNpcPacket(packet,start,length))
-            {var point=new Vector2(BitConverter.ToSingle(packet,start+3),BitConverter.ToSingle(packet,start+7));if(!NeededNpc(point)){RetireNpcInterest(slot,false);RememberFilteredNpc(slot,point);return;}}
+            {
+                var point=new Vector2(BitConverter.ToSingle(packet,start+3),BitConverter.ToSingle(packet,start+7));
+                if(!NeededNpc(point))
+                {
+                    RetireNpcInterest(slot,false);RememberFilteredNpc(slot,point);
+                    RememberHousingSource(npcSources[slot],source,packet[start+2]);return;
+                }
+            }
             var previous=Main.npc;var decoding=Decoding;int previousSlot=observationDecodeSlot;Main.npc=observedNpcs;ReadingObservation=true;Decoding=source;observationDecodeSlot=packet[start]==23?slot:-1;
             try
             {
                 Buffer.BlockCopy(packet,start,observationDecoder.readBuffer,0,length);observationDecoder.ResetReader();int id;observationDecoder.GetData(0,length,out id);
                 if(id==23)
                 {
+                    var observed=observedNpcs[slot];
+                    if(housingLease!=null)
+                    {
+                        RememberHousingSource(housingLease,source,observed.generation);
+                        if(observed.active && observed.isLikeATownNPC)
+                        {
+                            // The primary may have received its initial room
+                            // before any actor joined. A matching active
+                            // identity and native room coordinates can seed it.
+                            var primary=previous[slot];
+                            if(source==null && housingLease.PrimaryHousing.IsFor(observed))
+                            {
+                                housingLease.Housing=housingLease.PrimaryHousing;
+                                housingLease.Housing.HasSource=true;
+                            }
+                            else if(!housingLease.Housing.Received && primary.active &&
+                                observed.generation==primary.generation && observed.type==primary.type &&
+                                primary.homeTileX>0 && primary.homeTileY>0)
+                            {
+                                housingLease.Housing.Received=true;housingLease.Housing.Homeless=primary.homeless;
+                                housingLease.Housing.X=primary.homeTileX;housingLease.Housing.Y=primary.homeTileY;
+                            }
+                            if(housingLease.Housing.Received)housingLease.Housing.Apply(observed);
+                        }
+                    }
                     AcceptObservedNpcHitGeneration(slot,observedNpcs[slot].generation,previous);
                     PrepareNpcObservationState(observedNpcs[slot],true,source,new Vector2(BitConverter.ToSingle(packet,start+3),BitConverter.ToSingle(packet,start+7)));
                     // The native full-health bit means the CURRENT form's
@@ -176,13 +229,73 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(ReadingObservation || !HasActors || length<3)return;int id=packet[start];
             if(id==23 || id==28)
-            {if(RouteNpc(null,packet,start,length))DecodeNpcObservation(null,packet,start,length);}
+            {
+                int slot=packet[start+1];
+                if(id==23 && slot<Main.npc.Length && npcSources.TryGetValue(slot,out var lease) &&
+                    !lease.PrimaryHousing.IsFor(Main.npc[slot]))lease.PrimaryHousing=default(NpcHousing);
+                if(RouteNpc(null,packet,start,length))DecodeNpcObservation(null,packet,start,length);
+            }
+            else if(id==60)
+            {
+                RememberPrimaryHousing(packet,start,length);
+                ObserveNpcHousing(null,packet,start,length);
+            }
             else if(id==54 && observedNpcs!=null)
             {
                 int slot=BitConverter.ToInt16(packet,start+1);
                 WorldLease lease;
                 if(slot>=0 && slot<observedNpcs.Length && observedNpcs[slot].active && observedNpcs[slot].generation==Main.npc[slot].generation && npcSources.TryGetValue(slot,out lease) && lease.NpcBaseline && lease.Source==null && !lease.Waiting && !lease.AwaitBaseline)DecodeNpcObservation(null,packet,start,length);
             }
+        }
+
+        private void RememberPrimaryHousing(byte[] packet,int start,int length)
+        {
+            if(length<8)return;
+            int slot=BitConverter.ToInt16(packet,start+1);
+            if(slot<0 || slot>=Main.npc.Length || !npcSources.TryGetValue(slot,out var lease))return;
+            var npc=Main.npc[slot];
+            if(!npc.active || !npc.isLikeATownNPC)return;
+            // The human's FIFO can consume a legitimate room assignment
+            // while the observation lease is waiting for its 154/23 baseline.
+            // Save the already-applied value for that exact native identity.
+            lease.PrimaryHousing=new NpcHousing
+            {
+                Received=true,Generation=npc.generation,Type=npc.type,
+                X=npc.homeTileX,Y=npc.homeTileY,Homeless=npc.homeless
+            };
+        }
+
+        private static void RememberHousingSource(WorldLease lease,Actor source,byte generation)
+        {
+            if(lease.Housing.Generation!=generation)lease.Housing=default(NpcHousing);
+            lease.Housing.Generation=generation;
+            lease.Housing.Source=source;
+            lease.Housing.HasSource=true;
+        }
+
+        private bool NurseHousingKnown(NPC nurse)
+        {
+            return Main.netMode!=1 || npcSources.TryGetValue(nurse.whoAmI,out var lease) &&
+                lease.NpcBaseline && !lease.Waiting && !lease.AwaitBaseline && lease.Housing.Received &&
+                lease.Housing.Generation==nurse.generation;
+        }
+
+        internal void ObserveNpcHousing(Actor source,byte[] packet,int start,int length)
+        {
+            if(observedNpcs==null || length<8)return;
+            int slot=BitConverter.ToInt16(packet,start+1);
+            if(slot<0 || slot>=observedNpcs.Length || !npcSources.TryGetValue(slot,out var lease) ||
+                !lease.Housing.HasSource || !ReferenceEquals(lease.Housing.Source,source) || !ReferenceEquals(lease.Source,source))return;
+            // A filtered 23 still supplies FIFO identity to its subsequent
+            // 60. Retain these fields for a later same-generation interest
+            // baseline, without materializing a distant NPC or town manager.
+            lease.Housing.X=BitConverter.ToInt16(packet,start+3);
+            lease.Housing.Y=BitConverter.ToInt16(packet,start+5);
+            lease.Housing.Homeless=packet[start+7]==1;
+            lease.Housing.Received=true;
+            var npc=observedNpcs[slot];
+            if(lease.NpcBaseline && !lease.Waiting && !lease.AwaitBaseline && npc.active &&
+                npc.isLikeATownNPC && npc.generation==lease.Housing.Generation)lease.Housing.Apply(npc);
         }
     }
 }

@@ -11,7 +11,7 @@ namespace JueMingR.Platform.Companions
     {
         public float X, Y, TargetX, TargetY, VelocityX, VelocityY;
         public bool Grounded, CanTakeOff, Controlled, Dead, WalkSafe, Wall, JumpSafe, DropSafe;
-        public bool Danger, EscapeLeft, EscapeRight, NeedsAir;
+        public bool Danger, EscapeLeft, EscapeRight, NeedsAir, CanSwimUp;
         public int StopDistance, ResumeDistance;
         public int EscapeDirection, JumpHoldTicks;
     }

@@ -7,6 +7,8 @@ using HarmonyLib;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.DataStructures;
+using Terraria.GameContent.Events;
 using Terraria.ID;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
@@ -96,6 +98,9 @@ namespace NativeWorldTextProbe
                 NativeLanding(host,actor,body,human);
                 NativeWallCrossing(host,actor,body,human);
                 NativeAttackChoice(host,actor,body,human);
+                NativeAirEscape(host,actor,body,human,id);
+                NativePetAndEventItems(host,body);
+                NativePaladinShare(host,body,human);
                 Console.WriteLine("PASS companion navigation: native slope/halfbrick/platform contact, continuous uphill, cliff/drop, scratch/tile identity, bounded dependency cache and actual update landing-direction retirement. No historical exact terrain/Steam/FPS claim.");
             }
             finally
@@ -343,6 +348,126 @@ namespace NativeWorldTextProbe
             for(int tick=0;tick<105;tick++)NativeCombatStep(host,body);
             Require(count(ProjectileID.BabySlime)==1 && count(ProjectileID.SpiderHiver)==1 && sentry.active,
                 "full minion and sentry slots keep existing native instances without automatic replacement");
+            body.AddBuff(BuffID.WarTable,3600);
+            for(int tick=0;tick<180 && count(ProjectileID.SpiderHiver)<2;tick++)NativeCombatStep(host,body);
+            Require(body.maxTurrets==2 && count(ProjectileID.SpiderHiver)==2 && sentry.active,
+                "native extra turret capacity adds a second identical sentry without replacing the first");
+            var second=Main.projectile.First(p=>p.active && p.owner==body.whoAmI && p.type==ProjectileID.SpiderHiver && !ReferenceEquals(p,sentry));
+            for(int tick=0;tick<150;tick++)NativeCombatStep(host,body);
+            Require(count(ProjectileID.SpiderHiver)==2 && sentry.active && second.active,
+                "two full native slots cause no duplicate placement or replacement after cooldown");
+            body.ClearBuff(BuffID.WarTable);
+        }
+
+        private static void NativeAirEscape(object host,object actor,Player body,Player human,Guid id)
+        {
+            Call(host,"SetBehavior",id,new CompanionBehavior{Follow=true,AttackEnabled=false});
+            Set(actor,"Behavior",Activator.CreateInstance(Get(actor,"Behavior").GetType(),true));
+            for(int x=96;x<=105;x++)for(int y=65;y<73;y++)
+            {
+                Main.tile[x,y]=new Tile { liquid=255 };
+            }
+            body.position=new Vector2(100*16,66*16);
+            body.velocity=new Vector2(0,2);
+            body.wet=true;body.releaseJump=false;body.breath=body.breathMax/4;
+            human.Center=body.Center-new Vector2(0,180);
+            NativeStep(host,body);
+            Require(!body.controlJump && body.releaseJump && body.velocity.Y>0 && !body.accFlipper,
+                "ordinary native body falling underwater releases rejected jump for the next legal input");
+            bool landed=false,tookOff=false;
+            for(int tick=0;tick<80 && !tookOff;tick++)
+            {
+                NativeStep(host,body);
+                landed|=body.velocity.Y==0 && Support(body);
+                tookOff=landed && body.controlJump && body.velocity.Y<0;
+            }
+            Require(tookOff && body.wet && !(bool)Get(actor,"Faulted"),
+                "after a real pool-bottom collision the same ordinary body can make a native jump: position="+body.position+" velocity="+body.velocity+" status="+Get(actor,"Status"));
+            for(int x=96;x<=105;x++)for(int y=65;y<73;y++)Main.tile[x,y].liquid=0;
+            human.Center=body.Center;
+            for(int tick=0;tick<55;tick++)NativeStep(host,body);
+            Require(!body.wet && !body.controlJump && body.releaseJump,
+                "dry-ground transition retires the water escape hold in the real native controls");
+            Console.WriteLine("PASS ordinary low-air descent, native pool-bottom jump retry and dry-land input release.");
+        }
+
+        private static void NativePetAndEventItems(object host,Player body)
+        {
+            var originalCursor=Main.mouseItem;
+            var originalTrash=body.trashItem;
+            var originalEnergy=body.inventory[52];
+            var originalPet=body.miscEquips[0];var originalLight=body.miscEquips[1];
+            bool petsHidden=body.hideMisc[0], lightHidden=body.hideMisc[1], ongoing=DD2Event.Ongoing;
+            try
+            {
+                var cursor=new Item(ItemID.DD2EnergyCrystal){stack=3};Main.mouseItem=cursor;
+                var energy=new Item(ItemID.DD2EnergyCrystal){stack=7};body.inventory[52]=energy;
+                body.trashItem=new Item(ItemID.DD2EnergyCrystal){stack=2};
+                var pet=new Item(ItemID.ZephyrFish);var light=new Item(ItemID.ShadowOrb);
+                body.miscEquips[0]=pet;body.miscEquips[1]=light;body.hideMisc[0]=body.hideMisc[1]=false;
+                DD2Event.Ongoing=true;
+                for(int tick=0;tick<6;tick++)NativeCombatStep(host,body);
+                Require(energy.stack==7 && body.trashItem.stack==2,"active native Old One's Army keeps the actual actor energy");
+                foreach(var equipment in new[]{pet,light})
+                    Require(body.FindBuffIndex(equipment.buffType)>=0 &&
+                        Main.projectile.Any(p=>p.active && p.owner==body.whoAmI && p.type==equipment.shoot && !p.isAPreviewDummy),
+                        "equipped item generates its native in-world pet projectile and buff: "+equipment.type);
+                DD2Event.Ongoing=false;
+                NativeStep(host,body);
+                Require(body.inventory[52].IsAir && body.trashItem.IsAir && ReferenceEquals(Main.mouseItem,cursor) && cursor.stack==3,
+                    "ended event purges only the actor's native item slots and leaves human cursor intact");
+            }
+            finally
+            {
+                Main.mouseItem=originalCursor;body.trashItem=originalTrash;body.inventory[52]=originalEnergy;
+                body.miscEquips[0]=originalPet;body.miscEquips[1]=originalLight;
+                body.hideMisc[0]=petsHidden;body.hideMisc[1]=lightHidden;DD2Event.Ongoing=ongoing;
+            }
+            Console.WriteLine("PASS actual owned vanity/light projectiles, active/ended event energy lifetime and human cursor isolation.");
+        }
+
+        private static bool NoSave() { return false; }
+        private static void NativePaladinShare(object host,Player body,Player human)
+        {
+            var harmony=new Harmony("JueMingR.Tests.CompanionShieldSave");
+            harmony.Patch(AccessTools.Method(typeof(WorldGen),"saveToonWhilePlaying"),prefix:new HarmonyMethod(typeof(NativeCompanionNavigationChecks),nameof(NoSave)));
+            try
+            {
+                human.position=body.position+new Vector2(35,0);
+                human.team=body.team=1;
+                body.statLife=body.statLifeMax=body.statLifeMax2=400;
+                body.armor[3]=new Item(ItemID.PaladinsShield);
+                for(int tick=0;tick<12;tick++)NativeStep(host,body);
+                Require(body.hasPaladinShield && human.FindBuffIndex(BuffID.PaladinsShield)>=0,
+                    "native companion equipment gives the local human its regular team buff");
+                human.UpdateBuffs(human.whoAmI);
+                human.statLife=100;human.statDefense=0;human.immune=false;human.immuneTime=0;
+                int defenderLife=body.statLife;
+                human.Hurt(PlayerDeathReason.ByOther(0),40,0,dodgeable:false);
+                Require(human.statLife==70 && body.statLife<defenderLife &&
+                    body.hurtCooldowns[ImmunityCooldownID.PaladinsShield]>0,
+                    "native human takes 75 percent and charges the single selected AI through its shield Hurt cooldown: human="+
+                    human.statLife+" AI="+body.statLife+"/"+defenderLife+" aura="+human.defendedByPaladin+
+                    " cooldown="+body.hurtCooldowns[ImmunityCooldownID.PaladinsShield]);
+
+                body.armor[3]=new Item();human.armor[3]=new Item(ItemID.PaladinsShield);
+                human.statLife=30;human.statLifeMax=human.statLifeMax2=100;
+                human.UpdateEquips(human.whoAmI);
+                for(int tick=0;tick<12;tick++)NativeStep(host,body);
+                Require(!body.hasPaladinShield && human.hasPaladinShield && body.FindBuffIndex(BuffID.PaladinsShield)>=0,
+                    "native human equipment in turn gives a close same-team AI the regular buff");
+                body.statDefense=0;body.immune=false;body.immuneTime=0;
+                int patientLife=body.statLife;
+                Main.mapFullscreen=true;
+                var cursor=Main.mouseItem;Main.mouseItem=new Item(ItemID.Wood){stack=3};
+                body.Hurt(PlayerDeathReason.ByOther(0),160,0,dodgeable:false);
+                Require(body.statLife==patientLife-120 && human.dead && !Main.mapFullscreen &&
+                    ReferenceEquals(Main.mouseItem,human.inventory[58]) && ReferenceEquals(Main.LocalPlayer,human),
+                    "AI takes native 75 percent; lethal recipient preserves real human death cursor and map changes after scope restoration");
+                Main.mouseItem=cursor;
+            }
+            finally{harmony.UnpatchAll(harmony.Id);}
+            Console.WriteLine("PASS native shield aura and damage transfer in both directions, including lethal human recipient ownership.");
         }
 
         private static void InitializeTarget(NPC target,int slot,Vector2 center)

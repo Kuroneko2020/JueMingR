@@ -97,15 +97,14 @@ namespace NativeWorldTextProbe
                 body=(Player)Call(host,"GetBody",ids[difficulty]);AssertAppearance(body,draft);Require(body.difficulty==difficulty,"explicit reset preserves all four native difficulty values");
             }
             Require(!oldJourney,"terminal fixture uses a non-Journey world");
-            string sentinel=Path.GetFullPath(Main.playerPathName);
+            var humanFile=Main.ActivePlayerFileData;
+            string sentinel=Path.GetFullPath(humanFile.Path);
             Require(sentinel.StartsWith(Path.GetFullPath(output).TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase),"human sentinel remains under this invocation root");
             string backup=sentinel+".bak";
             File.WriteAllText(sentinel,"human-sentinel");File.WriteAllText(backup,"human-backup");
-            var priorFile=Main.ActivePlayerFileData;bool oldStarve=Main.dontStarveWorld,oldAnniversary=Main.tenthAnniversaryWorld,oldGood=Main.getGoodWorld;
-            var humanFile=new PlayerFileData(sentinel,false){Player=Main.LocalPlayer};
+            bool oldStarve=Main.dontStarveWorld,oldAnniversary=Main.tenthAnniversaryWorld,oldGood=Main.getGoodWorld;
             try
             {
-                Main.ActivePlayerFileData=humanFile;
                 Require((bool)Call(host,"Join",ids[1]),"mediumcore joins");var medium=(Player)Call(host,"GetBody",ids[1]);
                 medium.inventory[12].SetDefaults(ItemID.Wood);medium.inventory[12].stack=37;
                 medium.KillMe(PlayerDeathReason.ByCustomReason("isolated mediumcore death"),99999,0);
@@ -140,12 +139,15 @@ namespace NativeWorldTextProbe
                 using(var reader=new JueMingR.Infrastructure.Companions.FileCompanionArchive(isolated))
                 {var read=reader.LoadOwner((string)Get(Get(profiles,"manager"),"ownerKey"));Require(read.Profiles.Single().PermanentlyDead,"fresh archive reader retains terminal state across re-entry");}
                 Require((bool)Call(host,"Reset",ids[2]),"explicit reset creates a new body epoch");Saved(host,ids[2]);
-                Require(!Profile(host,ids[2]).PermanentlyDead && ((Player)Call(host,"GetBody",ids[2])).difficulty==2,"explicit reset clears terminal state while preserving hardcore difficulty");
+                Require(!Profile(host,ids[2]).PermanentlyDead && ((Player)Call(host,"GetBody",ids[2])).difficulty==2 &&
+                    (string)Call(host,"Status",ids[2])=="已收回" && (bool)Call(host,"Join",ids[2]),
+                    "explicit reset clears the terminal record and label and permits a fresh hardcore body");
+                Recalled(host,ids[2]);
                 // A non-owned player's original exit must still reach native file
                 // deletion. Both sentinels are disposable invocation-owned paths.
                 new Player().KillMeForGood();Require(!File.Exists(sentinel) && !File.Exists(backup) && !ReferenceEquals(Main.ActivePlayerFileData,humanFile),"non-owned native terminal path still deletes its own isolated files");
             }
-            finally{Main.ActivePlayerFileData=priorFile;Main.dontStarveWorld=oldStarve;Main.tenthAnniversaryWorld=oldAnniversary;Main.getGoodWorld=oldGood;}
+            finally{Main.ActivePlayerFileData=humanFile;Main.dontStarveWorld=oldStarve;Main.tenthAnniversaryWorld=oldAnniversary;Main.getGoodWorld=oldGood;}
             Console.WriteLine("PASS creation: seven colors, complete hair/voice, four difficulty roundtrip/reset, mediumcore native drops/respawn, hardcore exception/terminal/archive/sentinel safety");
         }
         private static void AssertAppearance(Player actual,Player expected)

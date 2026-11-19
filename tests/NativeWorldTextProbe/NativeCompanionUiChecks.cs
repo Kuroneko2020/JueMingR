@@ -65,13 +65,22 @@ namespace NativeWorldTextProbe
                     (float)Get(Get(window, "panel"), "Y") == (float)Get(oldPanel, "Y") + 8 &&
                     (int)Get(window, "LayoutBuilds") == builds && (int)Get(layout, "MeasurementCount") == measurements,
                     "real title drag translates prepared geometry without rebuilding cells or remeasuring text");
-                var beforeList = Get(window, "listView"); var body = Get(window, "bodyView");
+                // Force actual overflow. At the taller fixture size the full
+                // inventory fits, so a consumed wheel cannot move its offset.
+                screen = new Vector2(1280, 480); prepare();
+                int ownerOffset = (int)Get(window, "ownerOffset");
+                var beforeList = Get(window, "listView"); var body = Get(window, "companionView");
                 var bodyPoint = NativeToolsUiChecks.Point(body);
+                Require((int)Get(window, "bodyMaximum") > 0, "right inventory viewport is actually shorter than its slot content");
                 sample(bodyPoint, false, true, -120);
-                Require((int)Get(window, "bodyOffset") > 0 && Get(window, "listView").Equals(beforeList) && (bool)Get(window, "ConsumeWheel"),
+                Require((int)Get(window, "bodyOffset") > 0 && (int)Get(window, "ownerOffset") == ownerOffset &&
+                    Get(window, "listView").Equals(beforeList) && (bool)Get(window, "ConsumeWheel"),
                     "actual right inventory scroll consumes the wheel while retaining the left list geometry");
                 click("configuration");
-                Require((int)Get(window, "page") == 1 && Get(window, "listView").Equals(beforeList), "configuration keeps the same left character list");
+                var configList = Get(window, "listView");
+                Require((int)Get(window, "page") == 1 && (Guid)Get(window, "selected") == other &&
+                    (float)Get(configList, "X") == (float)Get(beforeList, "X") && (float)Get(configList, "Width") == (float)Get(beforeList, "Width"),
+                    "configuration keeps the same selected character in the left rail while its content determines panel height");
                 click("config-tab:Character");
                 screen=new Vector2(1280,360);prepare();body=Get(window,"configurationViewport");bodyPoint=NativeToolsUiChecks.Point(body);
                 Action scrollBottom = () =>
@@ -254,8 +263,11 @@ namespace NativeWorldTextProbe
                 pulse();
                 Require((float)Get(Get(window, "panel"), "X") == (float)Get(accepted, "X") && (float)Get(Get(window, "panel"), "Y") == (float)Get(accepted, "Y"),
                     "interrupted drag restores the last accepted temporary position");
-                title = NativeToolsUiChecks.Point(Get(window, "titleBar")); frame(title, true, neutral);
-                Main.screenWidth = 1440; Main.screenHeight = 900; Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = 1.5f;
+                Main.screenWidth = 1440; Main.screenHeight = 900; Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions();
+                release(); title = NativeToolsUiChecks.Point(Get(window, "titleBar")); accepted=Get(window,"panel");
+                frame(title, true, neutral);frame(title+new Vector2(76,32),true,neutral);
+                Require(!Get(window,"panel").Equals(accepted),"scale fixture has a visible unconfirmed drag offset");
+                Main.UIScale = 1.5f;
                 Require(Math.Abs(Main.UIScale - 1.5f) < .001f, "scale check uses the actual supported native 150 percent setting");
                 frame(title, true, neutral); frame(title, false, neutral);
                 var scaledPanel = Get(window, "panel"); var transform = Main.UIScaleMatrix;
@@ -263,6 +275,10 @@ namespace NativeWorldTextProbe
                     (float)Get(scaledPanel, "Right") <= 1440 / transform.M11 - 12 + .01f &&
                     (float)Get(scaledPanel, "Bottom") <= 900 / transform.M22 - 12 + .01f,
                     "viewport/scale change cancels the old grab and clamps the entire independent panel in the new logical domain");
+                float acceptedX=Math.Max(12,Math.Min((float)Get(accepted,"X"),1440/transform.M11-(float)Get(scaledPanel,"Width")-12));
+                float acceptedY=Math.Max(12,Math.Min((float)Get(accepted,"Y"),900/transform.M22-(float)Get(scaledPanel,"Height")-12));
+                Require(Math.Abs((float)Get(scaledPanel,"X")-acceptedX)<.01f && Math.Abs((float)Get(scaledPanel,"Y")-acceptedY)<.01f,
+                    "scale clamps the last accepted coordinates and discards the uncommitted offset");
                 graphics.Image(Path.Combine(output, "companion-independent-native-150.png"), () => Call(shell, "DrawLayer"), transform, 1440, 900);
                 Main.screenWidth = 960; Main.screenHeight = 760; Terraria.GameInput.PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = 1; release();
                 var plus = NativeToolsUiChecks.Point(Get(control("create/"), "Rect"));
@@ -285,6 +301,7 @@ namespace NativeWorldTextProbe
                 Require(bindings.CompletionSucceeded && bindings.Get(actionId) == null, "the same public binding popup reliably clears the independent action");
                 NativeToolsUiChecks.PopupClick(context, popup, "Close"); release(); frame(Vector2.Zero, false, new[] { Keys.F5 }); release(); pulse();
                 Require(!(bool)Get(window, "Visible") && !(bool)Get(state, "Visible"), "cleared key no longer opens either management or F5");
+                NativeMouseBinding(context,bindings,window);
                 NativeCompanionUiV3Checks.Draw(context,graphics,output);
                 Console.WriteLine("PASS actual shared keyboard recorder/save, independent closed-F5 open/close/DrawLayer, title gesture/native mouse consumption, focus-neutral rearm and text/chat boundaries. OS IME and FPS remain unverified.");
             }
@@ -293,6 +310,36 @@ namespace NativeWorldTextProbe
                 Main.drawingPlayerChat = false; Call(window, "Close"); Call(shell, "CloseAndSubmitPosition");
                 imeField.SetValue(text, previousIme); Set(input, "foregroundWindow", previousForeground); Set(input, "gameWindow", previousGameWindow);
                 NativeToolsUiChecks.Mouse(Vector2.Zero, false);
+            }
+        }
+        private static void NativeMouseBinding(object context,HotkeyBindings bindings,object window)
+        {
+            const string action="companions.manage";
+            Require(HotkeyChord.TryCreate(256,HotkeyModifiers.LeftControl,out var mouseChord,out _) &&
+                bindings.TrySet(action,mouseChord,null,out _,out _),"the normal registry accepts Ctrl+Mouse1");
+            NativeQuickItemChecks.Until(()=>{NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);return !bindings.Busy;});
+            var player=Main.LocalPlayer;bool inventory=Main.playerInventory, mouseInterface=player.mouseInterface,lastInterface=player.lastMouseInterface;
+            try
+            {
+                Main.playerInventory=true;player.mouseInterface=player.lastMouseInterface=false;
+                NativeToolsUiChecks.UiFrame(context,new Vector2(30,30),true,Keys.LeftControl);
+                Require(!(bool)Get(window,"Visible") && Main.mouseLeft &&
+                    Terraria.GameInput.PlayerInput.Triggers.Current.MouseLeft,"fresh Ctrl+Mouse1 in native inventory reaches its vanilla click instead of the manager");
+                NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
+                Main.playerInventory=false;player.mouseInterface=true;
+                NativeToolsUiChecks.UiFrame(context,new Vector2(30,30),true,Keys.LeftControl);
+                Require(!(bool)Get(window,"Visible") && Main.mouseLeft,"another native UI's pointer claim wins without an inventory flag");
+                NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
+                player.mouseInterface=player.lastMouseInterface=false;
+                NativeToolsUiChecks.UiFrame(context,Vector2.Zero,true,Keys.LeftControl);
+                Require((bool)Get(window,"Visible"),"the same mouse chord still opens in the unobstructed world");
+            }
+            finally
+            {
+                Call(window,"Close");Main.playerInventory=inventory;player.mouseInterface=mouseInterface;player.lastMouseInterface=lastInterface;
+                NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);
+                Require(bindings.TrySet(action,null,null,out _,out _),"remove the temporary mouse binding");
+                NativeQuickItemChecks.Until(()=>{NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false);return !bindings.Busy;});
             }
         }
         private static void NotesCapture(object context, Keys[] chordKeys)
@@ -380,7 +427,7 @@ namespace NativeWorldTextProbe
         }
         // Only the OS IME service is replaced. Native character queues, text
         // lease, trusted input phases and the binding writer stay production.
-        private sealed class InputIme : RealProxy
+        internal sealed class InputIme : RealProxy
         {
             internal InputIme(Type type) : base(type) { }
             public override IMessage Invoke(IMessage message)
