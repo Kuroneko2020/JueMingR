@@ -124,7 +124,12 @@ foreach($scope in @('CompanionFontVisual','CompanionConfigVisual','CompanionCrea
 }
 foreach($helper in @('','Behavior','Continuous','Lifecycle','Persistence','Prediction','Transport','Ui')){
     $companionLeaf='tests/NativeWorldTextProbe/NativeCompanion'+$helper+'Checks.cs'
-    $expectedCompanionLeaf=if($helper -ceq 'Ui'){'native-CompanionCpu|native-CompanionVisual|native-CompanionCreationInputVisual'}elseif($helper -ceq ''){'native-CompanionCpu|native-CompanionObservationCombatCpu'}else{'native-CompanionCpu'}
+    $expectedCompanionLeaf=switch -CaseSensitive ($helper) {
+        'Ui' { 'native-CompanionCpu|native-CompanionVisual|native-CompanionCreationInputVisual|native-CompanionPasswordCpu' }
+        'Transport' { 'native-CompanionCpu|native-CompanionNetworkCpu' }
+        '' { 'native-CompanionCpu|native-CompanionObservationCombatCpu' }
+        default { 'native-CompanionCpu' }
+    }
     Assert-Route ((@(Get-WorkloadPathChecks $companionLeaf)-join '|') -ceq $expectedCompanionLeaf) ('companion private leaf retains its real callers '+$companionLeaf)
 }
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs') -join '|') -ceq 'native-CompanionFontVisual|native-CompanionConfigVisual|native-CompanionCreationInputVisual|native-CompanionShowcaseVisual|native-CompanionVisual|native-CompanionNetworkCpu|native-CompanionPasswordCpu|native-CompanionSuppliesCpu|native-CompanionObservationCombatCpu|native-CompanionSessionCpu|native-CompanionNavigationCpu|native-CompanionCpu|native-CompanionCreationCpu|native-CompanionItemsCpu') 'native companion preparation retains each actual CPU caller'
