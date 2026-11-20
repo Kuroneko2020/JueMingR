@@ -78,7 +78,12 @@ namespace JueMingR.TerrariaHost.Companions
                         if(!flows.TryGetValue(key,out f))continue;
                         var payload=r.ReadBytes((int)(s.Length-s.Position));
                         if(kind==3){if(f.Server)f.Connection.Send(payload);else f.Connection.ReceiveRelay(payload);}
-                        else if(kind==4 || kind==5){f.Connection.Disconnect(kind==5?System.Text.Encoding.UTF8.GetString(payload):"Steam队友流已关闭。");if(f.Server){f.Connection.Dispose();flows.Remove(key);}}
+                        else if(kind==4 || kind==5)
+                        {
+                            string reason=kind==5?System.Text.Encoding.UTF8.GetString(payload):"Steam队友流已关闭。";
+                            if(f.Server){flows.Remove(key);RetireServerConnection(f.Connection,reason);}
+                            else f.Connection.Disconnect(reason);
+                        }
                         else if(kind==1){f.Acknowledged=true;Status="Steam桥接双向握手已到达创建者";}
                         }catch(Exception failure){FailFlow(peer,id,f,failure.GetBaseException().Message);}
                     }
@@ -87,7 +92,12 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     var f=pair.Value;
                     try{
-                    if(!Member(f.Peer)){f.Connection.Disconnect("Steam房间成员已离开。");if(f.Server){f.Connection.Dispose();flows.Remove(pair.Key);}continue;}
+                    if(!Member(f.Peer))
+                    {
+                        if(f.Server){flows.Remove(pair.Key);RetireServerConnection(f.Connection,"Steam房间成员已离开。");}
+                        else f.Connection.Disconnect("Steam房间成员已离开。");
+                        continue;
+                    }
                     if(f.Server)
                     {
                         for(int n=0;n<96;n++){var payload=f.Connection.Receive();if(payload==null)break;var framed=new byte[payload.Length+2];framed[0]=(byte)framed.Length;framed[1]=(byte)(framed.Length>>8);Buffer.BlockCopy(payload,0,framed,2,payload.Length);Send(f.Peer,f.Id,3,framed);}
@@ -97,17 +107,43 @@ namespace JueMingR.TerrariaHost.Companions
                     }catch(Exception failure){FailFlow(f.Peer,f.Id,f,failure.GetBaseException().Message);}
                 }
             }
-            catch(Exception e){error=e.Message;Status=error;foreach(var f in flows.Values)f.Connection.Disconnect(error);}
+            catch(Exception e)
+            {
+                error=e.Message;Status=error;
+                foreach(var pair in flows.ToArray())
+                {
+                    var f=pair.Value;
+                    if(f.Server){flows.Remove(pair.Key);RetireServerConnection(f.Connection,error);}
+                    else f.Connection.Disconnect(error);
+                }
+            }
         }
         private void FailFlow(ulong peer,Guid id,Flow flow,string message)
         {
             // A known stream failure never retires unrelated healthy streams.
             if(flow==null)flows.TryGetValue(Key(peer,id),out flow);flows.Remove(Key(peer,id));
-            if(flow!=null){flow.Connection.Disconnect(message);if(flow.Server)flow.Connection.Dispose();}
+            if(flow!=null)
+            {
+                if(flow.Server)RetireServerConnection(flow.Connection,message);
+                else flow.Connection.Disconnect(message);
+            }
             try{Send(peer,id,5,System.Text.Encoding.UTF8.GetBytes(message));}catch{}
             Status=message;
         }
+        private static void RetireServerConnection(CompanionConnection connection,string reason=null)
+        {
+            // Steam close can follow an accepted 118 in the same Pump, before
+            // the host TCP worker has sent it. Give that worker ownership of
+            // the remaining FIFO and its bounded native settlement fence.
+            if(connection.HasUnconfirmedDeath)
+            {
+                try{if(connection.CloseAfterDeath())return;}
+                catch(IOException){/* A full queue cannot accept the fence. */}
+            }
+            if(reason!=null)connection.Disconnect(reason);
+            connection.Dispose();
+        }
         public void Dispose()
-        {foreach(var f in flows.Values.ToArray()){try{Send(f.Peer,f.Id,4,null);}catch{}if(f.Server)f.Connection.Dispose();else f.Connection.Disconnect("Steam会话已结束。");}flows.Clear();lobby=0;}
+        {foreach(var f in flows.Values.ToArray()){try{Send(f.Peer,f.Id,4,null);}catch{}if(f.Server)RetireServerConnection(f.Connection);else f.Connection.Disconnect("Steam会话已结束。");}flows.Clear();lobby=0;}
     }
 }

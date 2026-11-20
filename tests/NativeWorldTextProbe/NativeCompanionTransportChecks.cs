@@ -30,6 +30,8 @@ namespace NativeWorldTextProbe
             finally{((IDisposable)transport).Dispose();listener.Stop();}
             DeathFence(type);
             SteamFlowFaults(assembly);
+            SteamDeathFence(assembly, false);
+            SteamDeathFence(assembly, true);
         }
         private static void DeathFence(Type type)
         {
@@ -74,14 +76,12 @@ namespace NativeWorldTextProbe
         }
         private static void SteamFlowFaults(Assembly assembly)
         {
-            var bridge=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionSteamBridge"),true);var flowType=bridge.GetType().GetNestedType("Flow",BindingFlags.NonPublic);
-            var flows=(IDictionary)Get(bridge,"flows");var connectionType=assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionConnection");
-            Set(bridge,"steamId",typeof(FaultSteamId));Set(bridge,"network",typeof(FaultSteamApi));Set(bridge,"matchmaking",typeof(FaultSteamApi));Set(bridge,"user",typeof(FaultSteamApi));Set(bridge,"reliable",FaultSend.Reliable);Set(bridge,"resolved",true);Set(bridge,"lobby",100UL);
+            var bridge=SteamFixture(assembly);var flows=(IDictionary)Get(bridge,"flows");var connectionType=assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionConnection");
             var bad=Guid.NewGuid();var good=Guid.NewGuid();var sendBad=Guid.NewGuid();
             Func<ulong,Guid,bool,object> add=(peer,id,server)=>
             {
                 var c=Activator.CreateInstance(connectionType,BindingFlags.Instance|BindingFlags.NonPublic,null,new object[]{new Action<byte[]>(p=>{}),new Action(()=>{})},null);
-                var flow=Activator.CreateInstance(flowType,true);Set(flow,"Peer",peer);Set(flow,"Id",id);Set(flow,"Server",server);Set(flow,"Connection",c);Set(flow,"Opened",DateTime.UtcNow);Set(flow,"Acknowledged",true);flows.Add(peer+":"+id.ToString("N"),flow);return c;
+                AddSteamFlow(bridge,peer,id,server,c);return c;
             };
             var badConnection=add(2,bad,false);var healthy=add(3,good,false);var sendFailure=add(2,sendBad,true);
             ulong lobby=Main.LobbyId;int mode=Main.netMode;bool menu=Main.gameMenu;Main.LobbyId=100;Main.netMode=1;Main.gameMenu=false;
@@ -97,8 +97,78 @@ namespace NativeWorldTextProbe
             }
             finally{((IDisposable)bridge).Dispose();Main.LobbyId=lobby;Main.netMode=mode;Main.gameMenu=menu;FaultSteamApi.Pending.Clear();}
         }
-        private static byte[] Envelope(Guid stream,byte[] payload)
-        {using(var s=new MemoryStream())using(var w=new BinaryWriter(s)){w.Write(0x43524d4aU);w.Write((byte)1);w.Write((byte)3);w.Write(100UL);w.Write(stream.ToByteArray());w.Write(payload);return s.ToArray();}}
+        private static object SteamFixture(Assembly assembly)
+        {
+            var bridge=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionSteamBridge"),true);
+            Set(bridge,"steamId",typeof(FaultSteamId));Set(bridge,"network",typeof(FaultSteamApi));Set(bridge,"matchmaking",typeof(FaultSteamApi));Set(bridge,"user",typeof(FaultSteamApi));Set(bridge,"reliable",FaultSend.Reliable);Set(bridge,"resolved",true);Set(bridge,"lobby",100UL);
+            return bridge;
+        }
+        private static void AddSteamFlow(object bridge,ulong peer,Guid id,bool server,object connection)
+        {
+            var flow=Activator.CreateInstance(bridge.GetType().GetNestedType("Flow",BindingFlags.NonPublic),true);
+            Set(flow,"Peer",peer);Set(flow,"Id",id);Set(flow,"Server",server);Set(flow,"Connection",connection);Set(flow,"Opened",DateTime.UtcNow);Set(flow,"Acknowledged",true);
+            ((IDictionary)Get(bridge,"flows")).Add(peer+":"+id.ToString("N"),flow);
+        }
+        private static void SteamDeathFence(Assembly assembly, bool responseSendFails)
+        {
+            var type=assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionConnection");
+            var listener=new TcpListener(IPAddress.Loopback,0);listener.Start();
+            object[] address={"127.0.0.1",((IPEndPoint)listener.LocalEndpoint).Port};
+            var retiring=Activator.CreateInstance(type,BindingFlags.Instance|BindingFlags.NonPublic,null,address,null);
+            var ordinary=Activator.CreateInstance(type,BindingFlags.Instance|BindingFlags.NonPublic,null,address,null);
+            var bridge=SteamFixture(assembly);var deadId=Guid.NewGuid();var ordinaryId=Guid.NewGuid();
+            AddSteamFlow(bridge,2,deadId,true,retiring);AddSteamFlow(bridge,3,ordinaryId,true,ordinary);
+            ulong lobby=Main.LobbyId;int mode=Main.netMode;bool menu=Main.gameMenu;
+            Main.LobbyId=100;Main.netMode=1;Main.gameMenu=false;
+            Guid previousFailure=FaultSteamApi.Fail;
+            try
+            {
+                var ping=new byte[]{3,0,154};
+                FaultSteamApi.Pending.Enqueue(Tuple.Create(2UL,Envelope(deadId,ping)));
+                FaultSteamApi.Pending.Enqueue(Tuple.Create(2UL,Envelope(deadId,new byte[]{4,0,5,72})));
+                FaultSteamApi.Pending.Enqueue(Tuple.Create(2UL,Envelope(deadId,new byte[]{4,0,118,72})));
+                if(responseSendFails)
+                {
+                    // An earlier server message can be ready for forwarding
+                    // before any of this tick's client frames are sent.
+                    Call(retiring,"ReceiveRelay",new byte[]{3,0,1});
+                    FaultSteamApi.Fail=deadId;
+                }
+                else FaultSteamApi.Pending.Enqueue(Tuple.Create(2UL,Envelope(deadId,Array.Empty<byte>(),4)));
+                FaultSteamApi.Pending.Enqueue(Tuple.Create(3UL,Envelope(ordinaryId,ping)));
+                FaultSteamApi.Pending.Enqueue(Tuple.Create(3UL,Envelope(ordinaryId,Array.Empty<byte>(),4)));
+                // Model both close envelopes reaching the pump before the
+                // OS schedules the TCP worker to deliver any queued byte.
+                Call(bridge,"Pump");
+                Require(((IDictionary)Get(bridge,"flows")).Count==0 && (bool)Get(ordinary,"stopped"),"a normal Steam close immediately releases an ordinary flow even with an older ping pending");
+                Require(!(bool)Get(retiring,"stopped") && (long)Get(retiring,"deathClosePing")==2,"Steam close or response failure transfers the pending death to the existing TCP retirement fence");
+                if(responseSendFails)Require(((string)Get(bridge,"Status")).Contains("Steam队友通道发送失败"),"the failed Steam response stays visible while the server independently settles the queued death");
+                Call(retiring,"Start");NativeQuickItemChecks.Until(listener.Pending);
+                using(var peer=listener.AcceptTcpClient())
+                using(var stream=peer.GetStream())
+                using(var reader=new BinaryReader(stream))
+                {
+                    stream.ReadTimeout=5000;
+                    var wire=new List<byte>();
+                    for(int i=0;i<4;i++)wire.Add(reader.ReadBytes(reader.ReadUInt16()-2)[0]);
+                    Require(wire.SequenceEqual(new byte[]{154,5,118,154}),"the host TCP worker emits the accepted Steam death and a fresh fence in sequence after the virtual stream closed");
+                    stream.Write(ping,0,ping.Length);
+                    NativeQuickItemChecks.Until(()=>(long)Get(retiring,"receivedPings")==1);
+                    Require(!(bool)Get(retiring,"DeathConfirmed") && !(bool)Get(retiring,"Finished"),"the previous ping cannot settle the detached Steam death");
+                    stream.Write(ping,0,ping.Length);
+                    NativeQuickItemChecks.Until(()=>(bool)Get(retiring,"Finished"));
+                    Require((bool)Get(retiring,"DeathConfirmed") && stream.ReadByte()==-1,"the original TCP receives settlement and then closes after the Steam virtual stream is gone");
+                }
+                Console.WriteLine("PASS Steam "+(responseSendFails?"response-send failure":"same-pump virtual close")+" drains an already accepted death through the host's real TCP; ordinary close is immediate. SDK boundary injected.");
+            }
+            finally
+            {
+                ((IDisposable)bridge).Dispose();((IDisposable)retiring).Dispose();((IDisposable)ordinary).Dispose();listener.Stop();
+                Main.LobbyId=lobby;Main.netMode=mode;Main.gameMenu=menu;FaultSteamApi.Pending.Clear();FaultSteamApi.Fail=previousFailure;
+            }
+        }
+        private static byte[] Envelope(Guid stream,byte[] payload,byte kind=3)
+        {using(var s=new MemoryStream())using(var w=new BinaryWriter(s)){w.Write(0x43524d4aU);w.Write((byte)1);w.Write(kind);w.Write(100UL);w.Write(stream.ToByteArray());w.Write(payload);return s.ToArray();}}
         public struct FaultSteamId {public ulong m_SteamID;public FaultSteamId(ulong value){m_SteamID=value;}}
         public enum FaultSend {Reliable}
         // Explicit fault injection at the SDK boundary, not an SDK substitute
