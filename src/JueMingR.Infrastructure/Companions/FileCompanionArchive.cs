@@ -158,7 +158,7 @@ namespace JueMingR.Infrastructure.Companions
             using (var stream = new MemoryStream())
             using (var writer = new BinaryWriter(stream, new UTF8Encoding(false, true)))
             {
-                writer.Write("JueMingR.Companion"); writer.Write(4);
+                writer.Write("JueMingR.Companion"); writer.Write(5);
                 writer.Write(profile.Id.ToByteArray()); writer.Write(profile.OwnerId.ToByteArray());
                 writer.Write(profile.Name); writer.Write(profile.Revision); writer.Write(profile.DataEpoch);
                 var behavior = profile.Behavior;
@@ -169,7 +169,8 @@ namespace JueMingR.Infrastructure.Companions
                     writer.Write(weapon.Type); writer.Write((byte)weapon.Prefix); writer.Write((byte)weapon.SlotHint);
                 }
                 writer.Write(behavior.HealthRecoveryEnabled); writer.Write((byte)behavior.HealthRecoveryMode);
-                writer.Write(behavior.ManaRecoveryEnabled); writer.Write(behavior.AllowNurse); writer.Write(behavior.ConsumablesEnabled);
+                writer.Write(behavior.ManaRecoveryEnabled); writer.Write(behavior.AllowNurse);
+                writer.Write(behavior.BuffEnabled); writer.Write(behavior.GrowthEnabled);
                 WriteTypes(writer, behavior.ExcludedHealingTypes);
                 WriteTypes(writer, behavior.ExcludedManaTypes);
                 WriteTypes(writer, behavior.AllowedGrowthTypes);
@@ -195,11 +196,11 @@ namespace JueMingR.Infrastructure.Companions
             {
                 if (reader.ReadString() != "JueMingR.Companion") throw new InvalidDataException("不支持的队友档案格式。");
                 int version = reader.ReadInt32();
-                if (version < 1 || version > 4) throw new InvalidDataException("不支持的队友档案格式。");
+                if (version < 1 || version > 5) throw new InvalidDataException("不支持的队友档案格式。");
                 Guid id = new Guid(reader.ReadBytes(16)), owner = new Guid(reader.ReadBytes(16));
                 string name = reader.ReadString(); long revision = reader.ReadInt64(), epoch = reader.ReadInt64();
                 var behavior = new CompanionBehavior { Follow = ReadBoolean(reader), AttackEnabled = ReadBoolean(reader) };
-                bool permanentlyDead = version == 4 ? ReadCurrent(reader, behavior) : ReadLegacy(reader, version, behavior);
+                bool permanentlyDead = version >= 4 ? ReadSupplyPreferences(reader, version, behavior) : ReadLegacy(reader, version, behavior);
                 int length = reader.ReadInt32();
                 if (length <= 0 || length > MaximumBytes || length != stream.Length - stream.Position)
                     throw new InvalidDataException("队友人物数据长度不符。");
@@ -223,7 +224,7 @@ namespace JueMingR.Infrastructure.Companions
             return permanentlyDead;
         }
 
-        private static bool ReadCurrent(BinaryReader reader, CompanionBehavior behavior)
+        private static bool ReadSupplyPreferences(BinaryReader reader, int version, CompanionBehavior behavior)
         {
             behavior.AutoRespawn = ReadBoolean(reader);
             bool permanentlyDead = ReadBoolean(reader);
@@ -240,7 +241,9 @@ namespace JueMingR.Infrastructure.Companions
             behavior.HealthRecoveryMode = (CompanionHealthRecoveryMode)reader.ReadByte();
             behavior.ManaRecoveryEnabled = ReadBoolean(reader);
             behavior.AllowNurse = ReadBoolean(reader);
-            behavior.ConsumablesEnabled = ReadBoolean(reader);
+            // v4's shared permission must consume just one byte before the type lists.
+            behavior.BuffEnabled = ReadBoolean(reader);
+            behavior.GrowthEnabled = version >= 5 ? ReadBoolean(reader) : behavior.BuffEnabled;
             behavior.ExcludedHealingTypes = ReadTypes(reader);
             behavior.ExcludedManaTypes = ReadTypes(reader);
             behavior.AllowedGrowthTypes = ReadTypes(reader);

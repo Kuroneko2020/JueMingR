@@ -18,11 +18,13 @@ namespace JueMingR.TerrariaHost.Companions
             ItemID.GalaxyPearl, ItemID.GummyWorm, ItemID.Ambrosia, ItemID.TorchGodsFavor, ItemID.MinecartPowerup
         };
         private static readonly IReadOnlyList<Item>[] Catalog = new IReadOnlyList<Item>[4];
+        private static IReadOnlyList<Item> groupedDefinitions;
+        private static IGrouping<int, Item>[] buffGroups;
         private static int definitionCount;
 
         // Definitions come from the game's pinned catalog and stay available
         // when an actual player runs out or reaches their growth cap.
-        internal static IEnumerable<Item> Definitions(CompanionSupplyKind kind)
+        internal static IReadOnlyList<Item> Definitions(CompanionSupplyKind kind)
         {
             var definitions = ContentSamples.ItemsByType;
             if (definitionCount != definitions.Count)
@@ -39,6 +41,17 @@ namespace JueMingR.TerrariaHost.Companions
                 Catalog[index] = Array.AsReadOnly(items.ToArray());
             }
             return Catalog[index];
+        }
+
+        internal static IEnumerable<IGrouping<int, Item>> BuffGroups()
+        {
+            var definitions = Definitions(CompanionSupplyKind.Buff);
+            if (!ReferenceEquals(definitions, groupedDefinitions))
+            {
+                groupedDefinitions = definitions;
+                buffGroups = definitions.GroupBy(item => item.buffType).OrderBy(group => group.Key).ToArray();
+            }
+            return buffGroups;
         }
 
         internal static bool PotionAllowedByDefault(CompanionSupplyKind kind, int type)
@@ -63,20 +76,23 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
 
-        internal static int Count(Player body, CompanionSupplyKind kind, int type)
+        internal static int Count(Player body, CompanionSupplyKind kind, int[] types)
         {
             if (body == null) return 0;
-            int count = Count(body.inventory, kind == CompanionSupplyKind.Growth ? 50 : 58, type);
+            int count = Count(body.inventory, kind == CompanionSupplyKind.Growth ? 50 : 58, types);
             if (kind != CompanionSupplyKind.Growth && body.useVoidBag())
-                count += Count(body.bank4.item, body.bank4.maxItems, type);
+                count += Count(body.bank4.item, body.bank4.maxItems, types);
             return count;
         }
 
-        private static int Count(Item[] items, int slots, int type)
+        private static int Count(Item[] items, int slots, int[] types)
         {
             int count = 0;
             for (int i = 0; i < slots; i++)
-                if (items[i]?.type == type && items[i].stack > 0) count += items[i].stack;
+            {
+                var item = items[i];
+                if (item?.stack > 0 && Array.BinarySearch(types, item.type) >= 0) count += item.stack;
+            }
             return count;
         }
 

@@ -50,7 +50,8 @@ namespace NativeWorldTextProbe
                     Call(connection, "Send", ping);
                     Call(connection, "Send", new byte[] { 4, 0, 5, 72 });
                     Call(connection, "Send", new byte[] { 4, 0, 118, 72 });
-                    Require((bool)Call(connection, "CloseAfterDeath", 1), "detached TCP death fence is queued after accepted property/death frames");
+                    Require((bool)Get(connection, "HasUnconfirmedDeath") && (bool)Call(connection, "CloseAfterDeath"),
+                        "detached TCP death fence is queued after accepted property/death frames");
                     var wire = new List<byte>();
                     for (int i = 0; i < 4; i++)
                     {
@@ -59,7 +60,7 @@ namespace NativeWorldTextProbe
                     }
                     Require(wire.SequenceEqual(new byte[] { 154, 5, 118, 154 }), "real TCP sends all predeath frames and then the native death fence in order");
                     stream.Write(ping, 0, ping.Length);
-                    NativeQuickItemChecks.Until(() => (int)Get(connection, "deathReplies") == 1);
+                    NativeQuickItemChecks.Until(() => (long)Get(connection, "receivedPings") == 1);
                     Require(!(bool)Get(connection, "DeathConfirmed") && !(bool)Get(connection, "Finished"),
                         "an older same-stream ping does not acknowledge the death or close the socket");
                     stream.Write(ping, 0, ping.Length);

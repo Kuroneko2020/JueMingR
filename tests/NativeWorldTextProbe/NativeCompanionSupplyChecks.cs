@@ -62,6 +62,7 @@ namespace NativeWorldTextProbe
                 CheckPersonalPickup((Player)Get(first, "Body"), human);
                 CheckShortcuts(host, first, second, human);
                 CheckLongTerm(host, first);
+                CheckPortableVoid(host, first);
                 CheckNurse(host, first, second, human, harness);
             }
             finally
@@ -141,7 +142,7 @@ namespace NativeWorldTextProbe
                     Call(host, "TryCompanionLife", actor);
                     Call(host, "TryCompanionMana", actor, spell);
                     Call(host, "TryCompanionBuff", actor);
-                    Require((int)Call(host, "CompanionGrowthSlot", actor) == -1, "empty long-term permits never activate growth");
+                    Require((int)Call(host, "CompanionGrowthSlot", actor, true) == -1, "empty long-term permits never activate growth");
                 }
             }
             foreach (var actor in tested)
@@ -249,6 +250,7 @@ namespace NativeWorldTextProbe
             var fruitAchievement = GrowthAchievement(achievements, "GET_A_LIFE");
             GrowthAchievement(achievements, "GAIN_TORCH_GODS_FAVOR");
             SetAchievementManager(achievements);
+            CheckManualAndFood(host, actor);
             body.statLife = body.statLifeMax = body.statLifeMax2 = 360;
             body.statMana = body.statManaMax = body.statManaMax2 = 160;
             var settings = new CompanionBehavior
@@ -280,7 +282,9 @@ namespace NativeWorldTextProbe
                 "native one-time flags and quick-spawn output belong to the actor while unlicensed fruit is preserved");
             Require(body.inventory[21].stack == 1 && body.inventory[22].stack == 2 &&
                 body.inventory[23].stack == 1 && body.inventory[24].stack == 1 && body.FindBuffIndex(BuffID.Ironskin) >= 0,
-                "narrow native QuickBuff uses only licensed sources, same food group stops replacement");
+                $"narrow native QuickBuff uses only licensed sources, same food group stops replacement " +
+                $"(pie={body.inventory[21].stack}, apple={body.inventory[22].stack}, ironskin={body.inventory[23].stack}, " +
+                $"endurance={body.inventory[24].stack}, ironskin effect={body.FindBuffIndex(BuffID.Ironskin) >= 0}, animation={body.itemAnimation})");
             body.inventory[25] = new Item(ItemID.SwiftnessPotion);
             for (int i = 0; i < 65; i++) Step(host, body, actor);
             Require(body.inventory[25].IsAir && body.FindBuffIndex(BuffID.Swiftness) >= 0 &&
@@ -305,6 +309,107 @@ namespace NativeWorldTextProbe
             Require(body.statLifeMax == 500 && body.inventory[19].stack == 2 && !topped.IsCompleted && !fruitAchievement.IsCompleted,
                 "original life-fruit reaches its higher cap with one debit and leaves both human achievements alone");
             Console.WriteLine("PASS companion native growth caps, permanent marker, mode eligibility and minecart output, exact Buff source and restock permissions.");
+        }
+
+        private static void CheckManualAndFood(object host, object actor)
+        {
+            var body = (Player)Get(actor, "Body");
+            var id = ((CompanionProfile)Get(actor, "Profile")).Id;
+            var settings = new CompanionBehavior { HealthRecoveryEnabled = false, ManaRecoveryEnabled = false,
+                GrowthEnabled = false, BuffEnabled = true, AllowedGrowthTypes = new[] { (int)ItemID.LifeCrystal },
+                AllowedBuffTypes = new[] { (int)ItemID.Apple, ItemID.PumpkinPie, ItemID.SeafoodDinner } };
+            Configure(host, actor, settings);
+            body.statLife = body.statLifeMax = body.statLifeMax2 = 300;
+            body.inventory[15] = new Item(ItemID.LifeCrystal) { stack = 10 };
+            body.inventory[20] = new Item(ItemID.Apple) { stack = 2 };
+            body.inventory[21] = new Item(ItemID.PumpkinPie) { stack = 2 };
+            body.inventory[22] = new Item(ItemID.SeafoodDinner) { stack = 2 };
+            Require((bool)Call(host, "UseItemOnce", id, CompanionInventoryArea.Inventory, 15),
+                "manual crystal admission ignores the disabled automatic growth toggle");
+            for (int i = 0; i < 65; i++) Step(host, body, actor);
+            var behavior = ((CompanionProfile)Get(actor, "Profile")).Behavior;
+            Require(body.statLifeMax == 320 && body.inventory[15].stack == 9 && !behavior.GrowthEnabled &&
+                behavior.AllowedGrowthTypes.SequenceEqual(new[] { (int)ItemID.LifeCrystal }),
+                "one actual crystal effect and debit leave automatic growth and its policy untouched");
+            Require(body.inventory[20].stack == 2 && body.inventory[21].stack == 2 && body.inventory[22].stack == 1 &&
+                body.FindBuffIndex(body.inventory[22].buffType) >= 0,
+                "automatic food picks the highest permitted native tier after scanning past earlier lower-tier food");
+            body.DelBuff(body.FindBuffIndex(body.inventory[22].buffType));
+            settings.BuffEnabled = false;
+            Configure(host, actor, settings);
+            Require((bool)Call(host, "UseItemOnce", id, CompanionInventoryArea.Inventory, 20),
+                "manual choice can request one precise food source while its policy is disabled");
+            for (int i = 0; i < 35; i++) Step(host, body, actor);
+            Require(body.inventory[20].stack == 1 && body.inventory[21].stack == 2 && body.inventory[22].stack == 1 &&
+                body.FindBuffIndex(body.inventory[20].buffType) >= 0,
+                "manual native QuickBuff eats only the selected lower-tier food");
+            body.DelBuff(body.FindBuffIndex(body.inventory[20].buffType));
+            body.inventory[20] = body.inventory[21] = body.inventory[22] = new Item();
+            body.inventory[23] = new Item(ItemID.ManaPotion) { stack = 2 };
+            body.statLife = body.statLifeMax2;
+            body.statMana = 10;
+            body.statManaMax = body.statManaMax2 = 160;
+            body.potionDelay = body.manaPotionDelay = 0;
+            Require((bool)Call(host, "UseItemOnce", id, CompanionInventoryArea.Inventory, 23),
+                "manual mana potion is valid when only mana is missing");
+            Step(host, body, actor);
+            Require(body.statMana > 10 && body.inventory[23].stack == 1,
+                "one potion uses the native mana entrance and debits its exact source once");
+            body.inventory[23] = new Item();
+        }
+
+        private static void CheckPortableVoid(object host, object actor)
+        {
+            var body = (Player)Get(actor, "Body");
+            var id = ((CompanionProfile)Get(actor, "Profile")).Id;
+            var area = CompanionInventoryArea.VoidVault;
+            var priorItem = body.inventory[24];
+            var priorBank = body.bank4.item[7];
+            int priorLock = body.disableVoidBag;
+            int priorSelection = body.selectedItem;
+            Projectile provider = null;
+            try
+            {
+                var bag = new Item(ItemID.ClosedVoidBag);
+                body.inventory[24] = bag;
+                Require(!body.useVoidBag() && !(bool)Call(host, "StorageAvailable", new object[] { id, area, null }),
+                    "a carried closed void bag gives no automatic supply or manual storage entrance");
+                Require((bool)Call(host, "OpenStorage", id, area) &&
+                    !(bool)Call(host, "StorageAvailable", new object[] { id, area, null }),
+                    "accepting a portable-use command does not unlock the bank before ItemCheck");
+                for (int tick = 0; tick < 70 && provider == null; tick++)
+                {
+                    Step(host, body, actor);
+                    provider = Main.projectile.FirstOrDefault(p => p.active && p.type == ProjectileID.VoidLens && p.owner == body.whoAmI);
+                }
+                Require(provider != null && body.inventory[24].type == ItemID.ClosedVoidBag && !body.useVoidBag() &&
+                    (bool)Call(host, "StorageAvailable", new object[] { id, area, null }),
+                    "real companion ItemCheck spawns 734 and opens manual Bank4 without activating automatic void supply");
+                Require(body.itemAnimation > 0, "the provider was born before the real portable animation was over");
+                var gestureType = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionItemGesture", true);
+                body.bank4.item[7] = new Item(ItemID.Wood) { stack = 6 };
+                Require((bool)Call(host, "ItemGesture", id, false, area, 7, Enum.Parse(gestureType, "Left")),
+                    "the live portable provider admits a draft");
+                body.LockNetSlot(PlayerItemSlotID.Bank4_0 + 7);
+                Require(!(bool)Call(host, "StorageAvailable", new object[] { id, area, null }) &&
+                    !(bool)Call(host, "ValidateItemGesture") && body.bank4.item[7].stack == 6,
+                    "native void slot lock revokes UI access and cancels the bank draft with no debit");
+                // A projectile can appear on the first use tick. Finish its
+                // native hand animation before handing this body to another case.
+                for (int tick = 0; tick <= bag.useAnimation + 2 &&
+                    (body.UsingOrReusingItem || body.itemTime > 0 || body.selectedItem != priorSelection); tick++)
+                    Step(host, body, actor);
+                Require(!body.UsingOrReusingItem && body.itemTime == 0 && body.selectedItem == priorSelection,
+                    "the portable command lets the real hand settle and restores the previous selection");
+            }
+            finally
+            {
+                if (provider?.active == true) provider.Kill();
+                body.inventory[24] = priorItem;
+                body.bank4.item[7] = priorBank;
+                body.disableVoidBag = priorLock;
+                Call(host, "SetItemStorage", id, CompanionInventoryArea.Inventory);
+            }
         }
 
         private static void CheckNurse(object host, object first, object second, Player human, Harmony harness)
@@ -335,6 +440,7 @@ namespace NativeWorldTextProbe
             nurse.homeTileX = 63;
             nurse.homeTileY = 60;
             Main.npc[0] = nurse;
+            CheckNurseActorRange(host, first, body, nurse);
             int bodyLife = body.statLifeMax2;
             human.statLife = human.statLifeMax2 - 1;
             int humanLife = human.statLife;
@@ -444,6 +550,42 @@ namespace NativeWorldTextProbe
             CheckNurseHallow(host, second, human, nurse);
             Console.WriteLine("PASS original nurse quote + treatment + native TryPurchasing, both wallets and change, no funds, stale range, post-payment uncertainty, capture/rejoin without debit replay and human dialogue/achievement.");
             NativeCompanionSupplyWireChecks.Run(host, second, human, nurse);
+        }
+
+        private static void CheckNurseActorRange(object host, object actor, Player body, NPC nurse)
+        {
+            Vector2 position = nurse.position;
+            int ownerX = Player.tileRangeX, ownerY = Player.tileRangeY;
+            bool accessory = body.equippedAnyTileRangeAcc, pending = (bool)Get(actor, "TileReachPending");
+            var state = Get(actor, "Supplies");
+            try
+            {
+                nurse.position = body.position + new Vector2(126, 0);
+                Player.tileRangeX = Player.tileRangeY = 20;
+                body.equippedAnyTileRangeAcc = false;
+                Require(Call(host, "FindNurse", actor) == null, "the AI cannot borrow the human's expanded native reach for nurse discovery");
+                Player.tileRangeX = Player.DefaultTileRangeX;
+                Player.tileRangeY = Player.DefaultTileRangeY;
+                body.equippedAnyTileRangeAcc = true;
+                Require(ReferenceEquals(Call(host, "FindNurse", actor), nurse) &&
+                    (bool)Call(host, "NurseCurrent", body, nurse, 0, nurse.generation),
+                    "the same nurse is eligible through this AI's own effective range accessory at scan and treatment");
+                Call(host, "InvalidateActorTileReach", body);
+                Require(Call(host, "FindNurse", actor) == null &&
+                    !(bool)Call(host, "NurseCurrent", body, nurse, 0, nurse.generation),
+                    "an equipment write retires the stale cached range before the native body refresh");
+            }
+            finally
+            {
+                nurse.position = position;
+                Player.tileRangeX = ownerX;
+                Player.tileRangeY = ownerY;
+                body.equippedAnyTileRangeAcc = accessory;
+                Set(actor, "TileReachPending", pending);
+                Set(state, "Nurse", null);
+                Set(state, "NurseSlot", -1);
+                Set(state, "NurseScan", 0u);
+            }
         }
 
         private static void CheckNurseHallow(object host, object actor, Player human, NPC nurse)

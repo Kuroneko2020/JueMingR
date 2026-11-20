@@ -21,11 +21,6 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal void RecordActorPacket(Actor a, byte[] frame)
         {
-            if (frame[2] == 118)
-            {
-                a.DeathPacketAccepted = a.PermanentDeathPending;
-                return;
-            }
             if (frame.Length >= 8 && frame[2] == 16 && frame[3] == a.Body.whoAmI)
             {
                 a.SyncLife = BitConverter.ToInt16(frame, 4);
@@ -63,16 +58,16 @@ namespace JueMingR.TerrariaHost.Companions
             var connection = a.Connection;
             if (connection == null) return;
             string deathFailure = null;
-            if (a.DeathPacketAccepted && !connection.Finished)
+            bool unconfirmedDeath = connection.HasUnconfirmedDeath;
+            if (unconfirmedDeath && !connection.Finished)
             {
-                a.DeathPacketAccepted = false;
                 // The native server may discard unread data as soon as the
                 // socket closes. Its ordered 154 response proves it consumed
                 // the preceding death frame and native settlement, including
                 // through the Steam relay. The detached body cannot send again.
                 try
                 {
-                    if (connection.CloseAfterDeath(a.WorldSource.Pings.Count))
+                    if (connection.CloseAfterDeath())
                     {
                         closingDeathFlows.Add(connection);
                         return;
@@ -80,7 +75,7 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 catch (Exception e) { deathFailure = e.Message; }
             }
-            if (a.Profile.PermanentlyDead || a.PermanentDeathPending)
+            if (unconfirmedDeath)
                 Feedback = deathFailure == null ? "无法确认服务器已处理队友死亡。" : "无法确认服务器已处理队友死亡：" + deathFailure;
             connection.Dispose();
         }

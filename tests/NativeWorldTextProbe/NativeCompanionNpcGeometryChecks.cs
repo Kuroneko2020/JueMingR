@@ -15,10 +15,11 @@ namespace NativeWorldTextProbe
         private static Player geometryBody;private static NPC geometryNpc;private static int geometryDepth,geometryRays;private static Vector2 geometryRayPoint;
         private static void GeometryControl(object a){if(ReferenceEquals(Get(a,"Body"),geometryBody))geometryDepth++;}
         private static Exception GeometryFinal(object a,Exception __exception){if(ReferenceEquals(Get(a,"Body"),geometryBody))geometryDepth--;return __exception;}
-        private static void GeometryRay(Vector2 __2,bool __result)
+        private static void GeometryRay(NPC target, Vector2 point, object __result)
         {
-            if(geometryDepth<=0 || !__result || geometryNpc==null || __2!=geometryNpc.Center+geometryNpc.netOffset)return;
-            geometryRays++;geometryRayPoint=__2;
+            if(geometryDepth<=0 || !ReferenceEquals(target,geometryNpc) || geometryNpc==null ||
+                __result.ToString()!="Reachable" || !ReferenceEquals(Main.npc[target.whoAmI],target)) return;
+            geometryRays++;geometryRayPoint=point;
         }
         private static void NativeClubStep(NPC source)
         {
@@ -36,8 +37,8 @@ namespace NativeWorldTextProbe
             var shots=Main.projectile.Select(p=>p.active?(int)p.key:0).ToArray();
             var patch=new Harmony("JueMingR.Tests.CompanionCurrentGeometry");geometryBody=first;geometryDepth=geometryRays=0;
             patch.Patch(AccessTools.Method(host.GetType(),"Control"),prefix:new HarmonyMethod(typeof(NativeCompanionNpcStateChecks),nameof(GeometryControl)),finalizer:new HarmonyMethod(typeof(NativeCompanionNpcStateChecks),nameof(GeometryFinal)));
-            var aim=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackAim",true);
-            patch.Patch(AccessTools.Method(aim,"ActorDirectLine"),postfix:new HarmonyMethod(typeof(NativeCompanionNpcStateChecks),nameof(GeometryRay)));
+            var aim=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionShotGeometry",true);
+            patch.Patch(AccessTools.Method(aim,"Opening"),postfix:new HarmonyMethod(typeof(NativeCompanionNpcStateChecks),nameof(GeometryRay)));
             try
             {
                 Call(host,"ClearWorldSources");human.position=new Vector2(1000,918);first.position=new Vector2(1050,918);second.position=new Vector2(1250,918);

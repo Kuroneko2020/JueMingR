@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace JueMingR.Platform.Companions
 {
-    public enum CompanionInventoryArea { Inventory, Armor, Dye, Misc, MiscDye }
+    public enum CompanionInventoryArea { Inventory, Armor, Dye, Misc, MiscDye, PiggyBank, Safe, DefenderForge, VoidVault }
     public enum CompanionHealthRecoveryMode { Fast = 1, Smart = 2 }
 
     public readonly struct CompanionWeaponPreference
@@ -29,7 +29,8 @@ namespace JueMingR.Platform.Companions
         public CompanionHealthRecoveryMode HealthRecoveryMode { get; set; } = CompanionHealthRecoveryMode.Smart;
         public bool ManaRecoveryEnabled { get; set; } = true;
         public bool AllowNurse { get; set; } = true;
-        public bool ConsumablesEnabled { get; set; } = true;
+        public bool BuffEnabled { get; set; } = true;
+        public bool GrowthEnabled { get; set; } = true;
         // Empty override sets preserve potion defaults. Empty permission sets grant nothing.
         public int[] ExcludedHealingTypes { get; set; } = Array.Empty<int>();
         public int[] ExcludedManaTypes { get; set; } = Array.Empty<int>();

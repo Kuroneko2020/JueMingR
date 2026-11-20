@@ -97,7 +97,7 @@ namespace NativeWorldTextProbe
                 if(mount)Require(p.Center!=p.MountedCenter,"native mounted pose has a real Center/MountedCenter distinction");
                 foreach(var delta in new[]{Vector2.Zero,new Vector2(13,-27)})
                 {
-                    var args=new object[]{p,3065,origin+delta,new Vector2(1100,1000),p.HeldItem.shootSpeed,null,null};sky.GetMethod("Launch",F).Invoke(null,args);var birth=(Vector2)args[5];
+                    var args=new object[]{p,p.HeldItem,origin+delta,new Vector2(1100,1000),p.HeldItem.shootSpeed,null,null};sky.GetMethod("Launch",F).Invoke(null,args);var birth=(Vector2)args[5];
                     Require(birth.Y==p.Center.Y-600+delta.Y && birth.X==p.Center.X-200*p.direction+delta.X,"Star Wrath uses Center plus the supplied default-origin-relative future delta");
                     Console.WriteLine("SKY-3065 mount="+mount+" center="+p.Center+" mounted="+p.MountedCenter+" defaultOrigin="+origin+" futureDelta="+delta+" birth="+birth);
                 }

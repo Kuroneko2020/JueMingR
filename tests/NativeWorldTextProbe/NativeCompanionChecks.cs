@@ -14,6 +14,9 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCompanionChecks
     {
+        private static Player basicAttackBody;
+        private static bool BasicOnly(Player player) => !ReferenceEquals(player, basicAttackBody);
+
         internal static void RunObservationCombat(object context)
         {
             NativeCombatAimChecks.Initialize();
@@ -40,12 +43,101 @@ namespace NativeWorldTextProbe
             foreach (string name in new[] { "HandleSpecialEvent", "HandleMining", "HandleRunning" })
                 isolation.Patch(AccessTools.Method(typeof(Terraria.GameContent.Achievements.AchievementsHelper), name),
                     prefix: new HarmonyMethod(typeof(NativeCompanionChecks), nameof(SkipCosmetic)));
-            try { NativeCompanionCoreNetworkChecks.RunObservationCombat(host, (Player)Call(host, "GetBody", list[0].Id), list[1].Id); }
+            try
+            {
+                var body = (Player)Call(host, "GetBody", list[0].Id);
+                NativeBasicCombat(host, body, isolation);
+                NativeCompanionCoreNetworkChecks.RunObservationCombat(host, body, list[1].Id);
+            }
             finally
             {
                 isolation.UnpatchAll(isolation.Id);
                 Call(host, "OnSessionEnded");
             }
+        }
+
+        private static void NativeBasicCombat(object host, Player body, Harmony isolation)
+        {
+            var actor = Call(host, "Owned", body);
+            var profile = (CompanionProfile)Get(actor, "Profile");
+            var held = body.inventory[0]; var ammo = body.inventory[54];
+            var originalPosition = body.position; var originalVelocity = body.velocity;
+            var originalHuman = Main.LocalPlayer.position;
+            var originalWeaponState = body.selectedItemState;
+            var originalNpcs = Main.npc;
+            var originalShots = Main.projectile;
+            int wall = 66;
+            var cells = new Tile[12];
+            for (int y = 48; y < 60; y++) cells[y - 48] = Main.tile[wall, y];
+            var solve = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackAim")
+                .GetMethod("ActorSolution", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            var behavior = profile.Behavior;
+            behavior.Follow = false;
+            try
+            {
+                // Deliberately withhold only optional future trajectory.
+                // The actual Player.Update, ItemCheck and projectile birth
+                // must still spend ammo only for a native basic opening.
+                basicAttackBody = body;
+                isolation.Patch(solve, prefix: new HarmonyMethod(typeof(NativeCompanionChecks), nameof(BasicOnly)));
+                Set(actor, "Profile", profile.Revise(profile.NativeData, behavior));
+                Main.npc = originalNpcs.Select((npc, i) => new NPC { whoAmI = i }).ToArray();
+                Main.projectile = originalShots.Select((shot, i) => new Projectile { whoAmI = i }).ToArray();
+                for (int y = 48; y < 60; y++)
+                {
+                    var stone = new Tile { type = TileID.Stone };
+                    stone.active(true); Main.tile[wall, y] = stone;
+                }
+                body.position = new Vector2(1000, 960 - body.height);
+                Main.LocalPlayer.position = body.position;
+                body.velocity = Vector2.Zero;
+                body.inventory[0] = new Item(ItemID.WoodenBow);
+                body.inventory[54] = new Item(ItemID.WoodenArrow) { stack = 12 };
+                body.selectedItemState.Select(0);
+                var bunny = PutCombatTarget(0, NPCID.Bunny, body.position + new Vector2(-48, 0));
+                var blocked = PutCombatTarget(1, NPCID.Zombie, body.position + new Vector2(112, 0));
+                void Tick(int ticks)
+                {
+                    for (int step = 0; step < ticks; step++)
+                    {
+                        NativeQuickItemChecks.BeginWorldStep();
+                        Call(host, "Update", (ulong)step);
+                        body.Update(body.whoAmI);
+                        Require(!(bool)Get(actor, "Faulted"), "real native attack body keeps updating: " + Get(actor, "Status"));
+                    }
+                }
+                Tick(16);
+                Require(body.inventory[54].stack == 12 && !Main.projectile.Any(p => p.active && p.owner == body.whoAmI),
+                    "ordinary critter and an enemy behind a known wall cannot start or spend a real shot");
+                var open = PutCombatTarget(2, NPCID.Zombie, body.position + new Vector2(-135, 0));
+                open.damage = 0; open.chaseable = false;
+                Tick(18);
+                Require(ReferenceEquals(Get(actor, "Target"), open) && body.inventory[54].stack < 12 &&
+                    Main.projectile.Any(p => p.active && p.owner == body.whoAmI && p.type == ProjectileID.WoodenArrowFriendly && p.velocity.X < 0),
+                    "real native bow switches to the open zero-contact-damage phase and fires without optional trajectory");
+                Require(bunny.active && blocked.active, "native alternatives remain live while the selector skips them");
+                Console.WriteLine("PASS native companion target policy and basic actual bow: wall and critter retain ammo; open zero-contact-damage enemy receives a real shot selection without optional trajectory.");
+            }
+            finally
+            {
+                basicAttackBody = null;
+                isolation.Unpatch(solve, HarmonyPatchType.Prefix, isolation.Id);
+                Main.npc = originalNpcs; Main.projectile = originalShots;
+                for (int y = 48; y < 60; y++) Main.tile[wall, y] = cells[y - 48];
+                body.position = originalPosition; body.velocity = originalVelocity; Main.LocalPlayer.position = originalHuman;
+                body.inventory[0] = held; body.inventory[54] = ammo; body.selectedItemState = originalWeaponState;
+                body.itemAnimation = body.itemTime = 0; body.channel = false; body.releaseUseItem = true;
+                Set(actor, "Profile", profile);
+                Call(Get(actor, "Combat"), "Reset");
+            }
+        }
+
+        private static NPC PutCombatTarget(int slot, int type, Vector2 position)
+        {
+            var target = Main.npc[slot];
+            target.SetDefaults(type);
+            target.whoAmI = slot; target.position = position; target.active = true;
+            return target;
         }
 
         internal static void Run(object context)
@@ -78,6 +170,7 @@ namespace NativeWorldTextProbe
             Require(restored.inventory[0].type==3507 && restored.bank.item.Length==40,"full native character load preserves starter and bank shape");
             var shell=Get(context,"Shell");var renderer=Get(shell,"renderer");Call(renderer,"RefreshResources");Call(renderer,"Prepare",Get(shell,"State"),960f,760f,1f);
             NativeCompanionUiChecks.Run(shell);
+            NativeCompanionUiChecks.ProfileHotkeys(context,list[0].Id,list[1].Id);
             var tiles=new Tile[160,120];for(int x=0;x<160;x++)for(int y=0;y<120;y++)tiles[x,y]=x<Main.maxTilesX?Main.tile[x,y]:new Tile();Main.maxTilesX=160;Main.tile=tiles;Main.Map=new Terraria.Map.WorldMap(160,120);
             NativeCompanionBehaviorChecks.Run(host);
             NativeCompanionLifecycleChecks.FailedLoad(host,list[0].Id);

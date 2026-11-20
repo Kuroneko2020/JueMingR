@@ -91,10 +91,14 @@ namespace JueMingR.TerrariaHost.Items
         internal void Button(F5Element element, bool selected, bool enabled, bool off, bool hovered, bool pressed = false)
         { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null, subduedWhenDisabled: true, pressed: pressed, transform: passMatrix, scaledOutline: ScaledTextOutline); }
         internal void ItemButton(F5Rect rect, bool enabled, bool hovered)
+        { DrawItemButton(rect, enabled, hovered, 2); }
+        internal void CompactItemButton(F5Rect rect, bool enabled, bool hovered)
+        { DrawItemButton(rect, enabled, hovered, 1); }
+        private void DrawItemButton(F5Rect rect, bool enabled, bool hovered, float inset)
         {
             // Inset only the borrowed skin. Icon fitting and input still use
             // the full card, so tighter frames never shrink or clip the item.
-            var frame = new F5Rect(rect.X + 2, rect.Y + 2, rect.Width - 4, rect.Height - 4);
+            var frame = new F5Rect(rect.X + inset, rect.Y + inset, rect.Width - 2 * inset, rect.Height - 2 * inset);
             UiSurface.Panel(batch, pixel, frame, surface,
                 enabled && hovered ? Color.White : !enabled ? new Color(165, 165, 165) : new Color(220, 220, 220), fractionalSurface: true);
         }

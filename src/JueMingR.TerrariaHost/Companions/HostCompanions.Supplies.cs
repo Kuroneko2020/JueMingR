@@ -14,10 +14,13 @@ namespace JueMingR.TerrariaHost.Companions
         internal uint NextBuffScan, NextGrowthScan, NextNurseAttempt, NextLifeScan, NextManaScan;
         internal CompanionBehavior LastPreferences;
         internal RecoverySource Quick, Growth, PlannedBuff;
+        internal HostCompanions.ItemOnce Once, HeldOnce;
+        internal int RestoreSelection = -1;
         internal CompanionSupplyKind QuickKind;
         internal int GrowthValue, QuickBuffType, LifeDeficit, ManaCost;
         internal Item ManaWeapon;
         internal bool QuickObserved, QuickBuffTried, NativeMana;
+        internal bool ManualQuick;
         internal readonly ulong[] Unconfirmed = new ulong[5];
         internal readonly ulong[] PaymentSlots = new ulong[5];
         internal NPC Nurse;
@@ -160,7 +163,7 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal bool CompanionBuffPending(Actor actor)
         {
-            if (!actor.Preferences.ConsumablesEnabled || actor.Preferences.AllowedBuffTypes.Length == 0 ||
+            if (!actor.Preferences.BuffEnabled || actor.Preferences.AllowedBuffTypes.Length == 0 ||
                 !SupplyActorReady(actor)) return false;
             RefreshSupplyPreferences(actor);
             var body = actor.Body;
@@ -190,8 +193,9 @@ namespace JueMingR.TerrariaHost.Companions
             var body = actor.Body;
             var preferences = actor.Preferences;
             int mode = (int)preferences.HealthRecoveryMode;
-            int amount = 0;
+            int amount = 0, foodPriority = 0;
             RecoverySource best = default(RecoverySource);
+            RecoverySource firstOtherBuff = default(RecoverySource);
             bool voidBag = body.useVoidBag();
             for (int account = 0; account <= (voidBag ? 4 : 0); account += 4)
             {
@@ -221,22 +225,47 @@ namespace JueMingR.TerrariaHost.Companions
                             amount = item.healMana;
                             break;
                         case CompanionSupplyKind.Buff:
-                            if (Array.IndexOf(preferences.AllowedBuffTypes, item.type) >= 0 && BuffRecovery.Missing(body, item.buffType))
-                                return SupplySource(actor, items, account, slot);
+                            if (Array.IndexOf(preferences.AllowedBuffTypes, item.type) < 0 || !BuffRecovery.Missing(body, item.buffType)) continue;
+                            int priority = FoodPriority(item.buffType);
+                            if (priority == 0)
+                            {
+                                if (!firstOtherBuff.Found) firstOtherBuff = SupplySource(actor, items, account, slot);
+                                continue;
+                            }
+                            // Native QuickBuff handles food first by tier and
+                            // duration. Other effects keep their source order.
+                            if (!best.Found || priority > foodPriority ||
+                                priority == foodPriority && item.buffTime > best.Item.buffTime)
+                            {
+                                best = SupplySource(actor, items, account, slot);
+                                foodPriority = priority;
+                            }
                             continue;
                     }
                     best = SupplySource(actor, items, account, slot);
                 }
             }
-            return best;
+            return best.Found ? best : firstOtherBuff;
         }
 
-        private void UseQuick(Actor actor, CompanionSupplyKind kind, RecoverySource source)
+        private static int FoodPriority(int buff)
+        {
+            switch (buff)
+            {
+                case BuffID.WellFed: return 1;
+                case BuffID.WellFed2: return 2;
+                case BuffID.WellFed3: return 3;
+                default: return 0;
+            }
+        }
+
+        private void UseQuick(Actor actor, CompanionSupplyKind kind, RecoverySource source, bool manual = false)
         {
             var state = actor.Supplies;
             if (!source.Found || state.Quick.Found || !SourceCurrent(actor, source)) return;
             state.Quick = source;
             state.QuickKind = kind;
+            state.ManualQuick = manual;
             state.QuickObserved = false;
             state.QuickBuffTried = false;
             state.QuickBuffType = source.Item.buffType;
@@ -270,7 +299,9 @@ namespace JueMingR.TerrariaHost.Companions
             var source = state.Quick;
             if (!source.Found) return;
             var kind = state.QuickKind;
+            bool manual = state.ManualQuick;
             state.Quick = default(RecoverySource);
+            state.ManualQuick = false;
             var after = source.Items[source.Slot];
             bool changed = !ReferenceEquals(after, source.Item) || after.type != source.Type || after.stack != source.Stack;
             if (kind == CompanionSupplyKind.Buff) state.QuickObserved = BuffRecovery.HasEffect(actor.Body, state.QuickBuffType);
@@ -279,11 +310,16 @@ namespace JueMingR.TerrariaHost.Companions
                 state.Unconfirmed[source.Account] |= 1UL << source.Slot;
             else if (!state.QuickObserved)
                 state.Refusals[(int)kind] = new SupplyFailure { Source = source, Until = Main.GameUpdateCount + 120 };
+            if (manual)
+                Feedback = !returned || changed && !state.QuickObserved ? "本次使用结果未确认。" :
+                    state.QuickObserved ? "队友已使用一次。" : "原版用物条件未满足，本次未使用。";
         }
 
-        internal int CompanionGrowthSlot(Actor actor)
+        internal int CompanionGrowthSlot(Actor actor, bool includeAutomatic = true)
         {
-            if (!actor.Preferences.ConsumablesEnabled || actor.Preferences.AllowedGrowthTypes.Length == 0 ||
+            if (actor.Supplies.Once is ItemOnce command && command.Kind == CompanionSupplyKind.Growth)
+                return command.Source.Slot;
+            if (!includeAutomatic || !actor.Preferences.GrowthEnabled || actor.Preferences.AllowedGrowthTypes.Length == 0 ||
                 !SupplyActorReady(actor) || actor.Body.noItems || actor.Body.CCed || actor.Body.cursed) return -1;
             RefreshSupplyPreferences(actor);
             var state = actor.Supplies;
@@ -309,26 +345,41 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var state = actor.Supplies;
             if (state.Growth.Found || slot < 0 || slot >= 50) return;
-            var source = SupplySource(actor, actor.Body.inventory, 0, slot);
-            if (!SourceCurrent(actor, source) || !CompanionSupplyCatalog.GrowthEligible(actor.Body, source.Type) ||
+            var command = state.Once;
+            var source = command?.Source ?? SupplySource(actor, actor.Body.inventory, 0, slot);
+            if (source.Slot != slot || !SourceCurrent(actor, source) ||
+                command?.Portable != true && !CompanionSupplyCatalog.GrowthEligible(actor.Body, source.Type) ||
                 !SupplyAdmitted(actor, source.Items, 0, slot, ownsSelected: true))
             {
+                if (command != null) CancelCompanionItemOnce(actor);
                 actor.Body.controlUseItem = false;
                 return;
             }
             state.Growth = source;
             state.GrowthValue = GrowthValue(actor.Body, source.Type);
+            if (command != null)
+            {
+                state.HeldOnce = command;
+                state.Once = null;
+                state.RestoreSelection = command.PreviousSelection;
+            }
         }
 
         internal void ValidateCompanionGrowth(Actor actor)
         {
-            var source = actor.Supplies.Growth;
-            if (!source.Found || SourceCurrent(actor, source) && SupplyActorReady(actor) &&
-                actor.Body.selectedItem == source.Slot && actor.Preferences.ConsumablesEnabled &&
-                Array.IndexOf(actor.Preferences.AllowedGrowthTypes, source.Type) >= 0 &&
-                CompanionSupplyCatalog.GrowthEligible(actor.Body, source.Type)) return;
+            var state = actor.Supplies;
+            var source = state.Growth;
+            if (!source.Found) return;
+            var command = state.HeldOnce;
+            bool allowed = command != null || actor.Preferences.GrowthEnabled &&
+                Array.IndexOf(actor.Preferences.AllowedGrowthTypes, source.Type) >= 0;
+            if (allowed && SourceCurrent(actor, source) && SupplyActorReady(actor) &&
+                actor.Body.selectedItem == source.Slot && !actor.Body.noItems && !actor.Body.CCed && !actor.Body.cursed &&
+                (command?.Portable == true || CompanionSupplyCatalog.GrowthEligible(actor.Body, source.Type))) return;
             actor.Body.controlUseItem = false;
-            actor.Supplies.Growth = default(RecoverySource);
+            state.Growth = default(RecoverySource);
+            state.HeldOnce = null;
+            if (command != null) Feedback = "物品或队友状态已变化，本次使用已取消。";
         }
 
         private static int GrowthValue(Player body, int type)
@@ -344,6 +395,19 @@ namespace JueMingR.TerrariaHost.Companions
             var source = state.Growth;
             if (!source.Found) return;
             state.Growth = default(RecoverySource);
+            var command = state.HeldOnce;
+            state.HeldOnce = null;
+            if (command?.Portable == true)
+            {
+                var area = source.Type == ItemID.MoneyTrough ? CompanionInventoryArea.PiggyBank : CompanionInventoryArea.VoidVault;
+                // The animation may precede the network receipt. The UI will
+                // admit a bank only after observing its actual provider.
+                nextBankSearch = 0;
+                Feedback = !returned ? "储存道具的使用结果未确认。" :
+                    SearchBank(actor, area) != null ? "队友附近的储存入口已就绪。" :
+                    actor.Body.ItemAnimationJustStarted ? "正在等待可用的储存入口出现。" : "原版用物条件未满足，未召出储存入口。";
+                return;
+            }
             bool effect = GrowthValue(actor.Body, source.Type) != state.GrowthValue;
             var after = source.Items[source.Slot];
             bool debit = after.type != source.Type || after.stack < source.Stack;
@@ -352,6 +416,32 @@ namespace JueMingR.TerrariaHost.Companions
                 state.Unconfirmed[0] |= 1UL << source.Slot;
             else if (!effect)
                 state.Refusals[(int)CompanionSupplyKind.Growth] = new SupplyFailure { Source = source, Until = Main.GameUpdateCount + 60 };
+            if (command != null)
+                Feedback = !returned || debit != effect ? "本次使用结果未确认。" :
+                    effect ? "队友已使用一次。" : "原版用物条件未满足，本次未使用。";
+        }
+
+        internal void AbandonCompanionGrowth(Actor actor, Exception failure)
+        {
+            if (failure != null) { EndCompanionGrowth(actor, returned: false); return; }
+            // No ItemCheck ran in this normal update; no source was used
+            // and an accepted manual command is not eligible for replay.
+            if (actor.Supplies.HeldOnce != null) Feedback = "原版没有开始本次用物。";
+            actor.Supplies.HeldOnce = null;
+            actor.Supplies.Growth = default(RecoverySource);
+        }
+
+        private static void InvalidateItemSources(Actor actor)
+        {
+            var state = actor.Supplies;
+            state.NextLifeScan = state.NextManaScan = state.NextBuffScan = state.NextGrowthScan = 0;
+            state.PlannedBuff = default(RecoverySource);
+            Array.Clear(state.Refusals, 0, state.Refusals.Length);
+            var combat = actor.Combat;
+            if (combat.Choice.Weapon != null && !combat.Choice.SameWeapon(actor.Body)) combat.Choice = default(CompanionAttackChoice);
+            if (combat.ReadyChoice.Weapon != null && !combat.ReadyChoice.SameWeapon(actor.Body)) combat.ReadyChoice = default(CompanionAttackChoice);
+            if (combat.Probe.Weapon != null && !combat.Probe.SameWeapon(actor.Body)) combat.Probe = default(CompanionAttackChoice);
+            if (combat.Pursuit.Weapon != null && !combat.Pursuit.SameWeapon(actor.Body)) combat.Pursuit = default(CompanionAttackChoice);
         }
 
         private void RecordSupplyChange(Actor actor, RecoverySource source, bool itemsChanged)

@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using HarmonyLib;
+using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.GameContent;
@@ -187,6 +188,17 @@ namespace NativeWorldTextProbe
                 var actorFrames = Read(actorPeer.GetStream(), actorChanged, actorSlot, true);
                 Require(actorFrames.Count(frame => frame[2] == 35) == 1 && actorFrames.All(frame => frame[2] != 66),
                     "AI healing emits the original visual 35 with no fabricated 66");
+                const int ownerItemSlot = 32, bankItemSlot = 39;
+                // Native nurse change can already occupy the human's last
+                // Bank4 cell. The panel must leave that exact state alone.
+                var ownerBankBeforeTransfer = human.bank4.item[bankItemSlot].Clone();
+                StageVoidTransfer(host, actor, human, body, serverHuman, serverBody, ownerItemSlot, bankItemSlot);
+                Require(!human.bank4.item[bankItemSlot].IsNetStateDifferent(ownerBankBeforeTransfer),
+                    "the local panel transfer leaves the human's corresponding void cell unchanged");
+                humanFrames.AddRange(Read(humanPeer.GetStream(), new HashSet<int> { PlayerItemSlotID.Inventory0 + ownerItemSlot },
+                    humanSlot, false, human.inventory[ownerItemSlot]));
+                actorFrames.AddRange(Read(actorPeer.GetStream(), new HashSet<int> { PlayerItemSlotID.Bank4_0 + bankItemSlot },
+                    actorSlot, false, body.bank4.item[bankItemSlot]));
                 VerifyPrimaryRoomHandoff(host, actor, human, nurse);
 
                 Main.netMode = 2;
@@ -206,7 +218,14 @@ namespace NativeWorldTextProbe
                     NativeRecoveryServiceChecks.Total(serverHuman) == NativeRecoveryServiceChecks.Total(human) &&
                     NativeRecoveryServiceChecks.Total(serverBody) + NativeRecoveryServiceChecks.Total(serverHuman) < oldBalance,
                     "original server decodes actor life/debuff and both native main/void balances");
+                Require(serverHuman.inventory[ownerItemSlot].IsAir,
+                    "original server consumes the real owner's packet5 debit from the main inventory");
+                Require(serverBody.bank4.item[bankItemSlot].type == ItemID.Wood && serverBody.bank4.item[bankItemSlot].stack == 7,
+                    "original server consumes the real AI's Wood×7 packet5 into its last actual Bank4 slot");
+                Require(!serverHuman.bank4.item[bankItemSlot].IsNetStateDifferent(ownerBankBeforeTransfer),
+                    "original server keeps the human's corresponding Bank4 cell at its post-nurse value");
                 Console.WriteLine("PASS split nurse actual owner and AI TCP send streams -> original server 5/16/35/50; no 66; pre-admitted links.");
+                Console.WriteLine("PASS panel void transfer uses separate original TCP player-slot 5 send and receive, with no chest 32.");
             }
             finally
             {
@@ -234,6 +253,35 @@ namespace NativeWorldTextProbe
                 if (Harmony.GetPatchInfo(send)?.Prefixes.Any(patch => patch.owner == outlets.Id) != true)
                     outlets.Patch(send, prefix: new HarmonyMethod(typeof(NativeQuickItemChecks), "NoNetwork"));
             }
+        }
+
+        private static void StageVoidTransfer(object host, object actor, Player human, Player body,
+            Player serverHuman, Player serverBody, int sourceSlot, int targetSlot)
+        {
+            var id = ((CompanionProfile)Get(actor, "Profile")).Id;
+            var area = CompanionInventoryArea.VoidVault;
+            var topLeft = body.Center.ToTileCoordinates();
+            for (int column = 0; column < 3; column++)
+                for (int row = 0; row < 3; row++)
+                {
+                    var tile = Main.tile[topLeft.X + column, topLeft.Y + row];
+                    tile.type = 491;
+                    tile.frameX = (short)(column * 18);
+                    tile.frameY = (short)(row * 18);
+                    tile.active(true);
+                }
+            human.inventory[sourceSlot] = new Item(ItemID.Wood) { stack = 7 };
+            serverHuman.inventory[sourceSlot] = human.inventory[sourceSlot].Clone();
+            body.bank4.item[targetSlot] = new Item();
+            serverBody.bank4.item[targetSlot] = new Item();
+            Require((bool)Call(host, "OpenStorage", id, area), "the loaded nearby native void vault provides the actual actor bank");
+            var gestureType = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionItemGesture", true);
+            var left = Enum.Parse(gestureType, "Left");
+            Require((bool)Call(host, "ItemGesture", id, true, CompanionInventoryArea.Inventory, sourceSlot, left) &&
+                (bool)Call(host, "ItemGesture", id, false, area, targetSlot, left) &&
+                human.inventory[sourceSlot].IsAir && body.bank4.item[targetSlot].stack == 7,
+                "the real panel transaction debits owner inventory and writes the actor's actual Bank4 array");
+            Call(host, "SetItemStorage", id, CompanionInventoryArea.Inventory);
         }
 
         private static void VerifyPrimaryRoomHandoff(object host, object actor, Player human, NPC nurse)
@@ -335,7 +383,7 @@ namespace NativeWorldTextProbe
         private static HashSet<int> Changed(Dictionary<int, int> before, Dictionary<int, int> after)
         { return new HashSet<int>(before.Keys.Where(slot => before[slot] != after[slot])); }
 
-        private static List<byte[]> Read(NetworkStream stream, HashSet<int> slots, int sender, bool expectActorStatus)
+        private static List<byte[]> Read(NetworkStream stream, HashSet<int> slots, int sender, bool expectActorStatus, Item expectedItem = null)
         {
             var frames = new List<byte[]>();
             var remaining = new HashSet<int>(slots);
@@ -350,8 +398,16 @@ namespace NativeWorldTextProbe
                     Require(frame.Length == length - 2, "real TCP frame bytes");
                     switch (frame[0])
                     {
-                        case 5: remaining.Remove(frame[2] | frame[3] << 8); break;
+                        case 5:
+                            // A periodic publication could have queued the
+                            // same slot before the manual transaction wrote it.
+                            if (expectedItem == null || frame.Length == 10 &&
+                                BitConverter.ToInt16(frame, 4) == expectedItem.stack && frame[6] == expectedItem.prefix &&
+                                BitConverter.ToInt16(frame, 7) == expectedItem.type && ((frame[9] & 1) != 0) == expectedItem.favorited)
+                                remaining.Remove(frame[2] | frame[3] << 8);
+                            break;
                         case 16: life = true; break;
+                        case 32: throw new InvalidOperationException("unexpected world chest packet on personal storage stream");
                         case 35: heal = true; break;
                         case 50: buffs = true; break;
                         case 66: throw new InvalidOperationException("unexpected nonvisual healing 66");

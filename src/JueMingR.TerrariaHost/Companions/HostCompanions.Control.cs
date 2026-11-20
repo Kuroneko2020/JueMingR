@@ -30,14 +30,15 @@ namespace JueMingR.TerrariaHost.Companions
             var p=a.Body;
             if((p.selectedItem<0 || p.selectedItem>=CompanionBehavior.MainInventorySlots) && FreeHand(p))p.selectedItemState.Select(0);
             p.controlLeft=p.controlRight=p.controlJump=p.controlDown=p.controlUp=p.controlUseItem=p.controlUseTile=p.controlHook=p.controlThrow=false;
-            if(p.dead || !p.active){a.Combat.ResetHand();a.Status="等待复活";return;}
+            if(p.dead || !p.active){CancelCompanionItemOnce(a);a.Combat.ResetHand();a.Status="等待复活";return;}
             var behavior=a.Preferences;
             var combat=a.Combat;
             bool planning=ReferenceEquals(a,planningActor) || planningActor==null && actors.Count<=1;
 
             // Native recovery can coexist with movement and an active hand.
             // Read its result before selecting the next actual item action.
-            TryCompanionLife(a);
+            bool manualSupply = RunCompanionItemOnce(a);
+            if (!manualSupply) TryCompanionLife(a);
             if(behavior.AttackEnabled && planning && !p.noItems && !p.CCed)ChooseAttacks(a,behavior);
             if(!behavior.AttackEnabled)combat.Reset();
             var chosen=combat.Choice;
@@ -45,8 +46,8 @@ namespace JueMingR.TerrariaHost.Companions
             int manaCost=0;
             bool valid=behavior.AttackEnabled && CurrentAttack(a,chosen,out manaCost,out point);
             bool clearOpening=valid, waitingForMana=false;
-            int growth=CompanionGrowthSlot(a);
-            bool buff=growth<0 && CompanionBuffPending(a);
+            int growth=CompanionGrowthSlot(a, includeAutomatic: !manualSupply);
+            bool buff=!manualSupply && growth<0 && CompanionBuffPending(a);
 
             // A pending exclusive maintenance action owns the release edge.
             // ItemCheck and live projectiles finish their normal animation and
@@ -66,7 +67,7 @@ namespace JueMingR.TerrariaHost.Companions
                     else TryCompanionBuff(a);
                 }
             }
-            else if(valid)
+            else if(valid && !manualSupply)
             {
                 if(manaCost>p.statMana)
                 {
@@ -93,7 +94,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             var pursuit=combat.Pursuit;
             var movementTarget=TargetCurrent(a,pursuit.Target,pursuit.TargetGeneration)?pursuit.Target:null;
-            var frame=a.Behavior.DecideMovement(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening || valid);
+            var frame=a.Behavior.DecideMovement(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening || valid,pursuit.Weapon);
             p.controlLeft=frame.Move<0;p.controlRight=frame.Move>0;p.controlJump=frame.Jump;p.controlDown=frame.Drop;
             a.Status=frame.Status;
             if(frame.Status=="停留" && behavior.AttackEnabled && combat.NearbyCount>0)
@@ -168,6 +169,9 @@ namespace JueMingR.TerrariaHost.Companions
             if(p.controlUseItem && hand.Weapon!=null)
             {
                 Vector2 point;
+                // Player.Update may move the body and can change what the
+                // current weapon geometry reads before native ItemCheck.
+                a.Combat.ShotTerrainTick = UInt32.MaxValue;
                 if(p.selectedItem!=hand.Slot || !CurrentAttack(a,hand,out int fee,out point) || fee>p.statMana && !CanNativeMana(a))
                 {p.controlUseItem=false;a.WasUsing=false;}
                 else a.Aim=point;
@@ -238,6 +242,9 @@ namespace JueMingR.TerrariaHost.Companions
         internal void AfterBody(Actor a)
         {
             if(a.Profile.PermanentlyDead || a.PermanentDeathPending)return;
+            // A completed live update has recomputed effective accessories.
+            // Inventory changes must not use the previous accessory result.
+            if(!a.Body.dead)a.TileReachPending=false;
             a.Behavior.ObserveCapabilities(a.Body);
             var hand=a.Combat.Hand;
             if(hand.Weapon!=null && DoesStaySummoned(hand.Weapon) && a.Body.ItemAnimationJustStarted && Main.GameUpdateCount>=a.Combat.NextSummon)
@@ -257,6 +264,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal void ObserveDeath(Actor a)
         {
             if(a.Closing)return;
+            CancelCompanionItemOnce(a);
             if(a.PermanentDeathPending)
             {
                 // Only the actual native terminal exit sets this marker. The

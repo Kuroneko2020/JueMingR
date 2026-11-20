@@ -29,8 +29,6 @@ namespace NativeWorldTextProbe
         private static bool SkipCosmetic(){return false;}
         private static void Saved(object host,Guid id)
         {NativeQuickItemChecks.Until(()=>{Call(host,"Update",0UL);return (bool)Call(Get(host,"profiles"),"IsSaved",id);});}
-        private static void Recalled(object host,Guid id)
-        {Require((bool)Call(host,"Recall",id),"wire fixture recall accepted");NativeQuickItemChecks.Until(()=>{Call(host,"Update",0UL);return !(bool)Call(host,"IsJoined",id);});}
         internal static void Run(object context)
         {
             NativeCombatAimChecks.Initialize();
@@ -53,9 +51,10 @@ namespace NativeWorldTextProbe
                 var a=(Player)Call(host,"GetBody",first);var b=(Player)Call(host,"GetBody",second);
                 Require(a.team==2 && b.team==3,"native offline team state is restored on join");
                 WireScene(host,first,a,b);
-                Saved(host,first);Recalled(host,first);Require((bool)Call(host,"Join",first),"same archive rejoins after actual wire publication");
+                Saved(host,first);Require(!(bool)Call(host,"IsJoined",first) && (bool)Call(host,"Join",first),"same archive rejoins after actual wire death and public recall");
                 var reloaded=(Player)Call(host,"GetBody",first);
-                Require(reloaded.team==5 && reloaded.inventory[42].IsAir,"latest team and already trashed source survive archive capture/rejoin");
+                Require(reloaded.team==5 && reloaded.inventory[42].IsAir && reloaded.inventory[39].IsAir &&
+                    reloaded.armor[0].IsAir, "recall saves the unique post-death body and latest team");
             }
             finally {cosmetics.UnpatchAll(cosmetics.Id);Call(Get(context,"Companions"),"OnSessionEnded");}
         }
@@ -164,7 +163,24 @@ namespace NativeWorldTextProbe
                 Require(actorBody.team==5 && human.team==humanTeam && other.team==otherTeam,"late old primary team echo cannot revert current owned intent or affect another role");
                 Healing(host, actor, actorBody, other, human, observerSlot, sourcePlayers, server, ownerWire.Client, aiPeer);
                 SlotGeneration(host, observerSlot, ownerWire);
-                MediumcoreDeathInventory(host, actor, actorBody, sourcePlayers, server, aiPeer);
+                DeathThenRecall(host, id, actor, actorBody, sourcePlayers, server, aiPeer, true);
+                var ordinaryId = ((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Single(p => p.Name == other.name).Id;
+                var ordinaryActor = Call(host, "Owned", other);
+                var ordinaryConnection = Activator.CreateInstance(connectionType, Flags, null,
+                    new object[] { IPAddress.Loopback.ToString(), ((IPEndPoint)listener.LocalEndpoint).Port }, null);
+                using ((IDisposable)ordinaryConnection)
+                {
+                    Call(ordinaryConnection, "Start");
+                    NativeQuickItemChecks.Until(listener.Pending);
+                    using (var ordinaryPeer = listener.AcceptTcpClient())
+                    {
+                        ordinaryPeer.GetStream().ReadTimeout = 5000;
+                        Netplay.Clients[otherSlot] = new RemoteClient { Id = otherSlot, State = 10, Socket = new TcpSocket(ordinaryPeer) };
+                        NetMessage.buffer[otherSlot].broadcast = true;
+                        Set(ordinaryActor, "Connection", ordinaryConnection);
+                        DeathThenRecall(host, ordinaryId, ordinaryActor, other, sourcePlayers, server, ordinaryPeer, false);
+                    }
+                }
                 Console.WriteLine("PASS actual loopback TCP owner+AI source streams -> native server(5/45) -> separate observer native(5/45); rapid teams 2->5/old echo, human private trash and both source debits, capture retry and disconnected/changed-connection intent. Pre-admitted component topology, not full server startup/Steam/gameplay/FPS.");
             }
             finally
@@ -229,6 +245,7 @@ namespace NativeWorldTextProbe
                         }
 
                         Main.player = server; Main.myPlayer = 255; Main.netMode = 2; Main.dedServ = true;
+                        if (slot == source.whoAmI) Apply(Packet(154), source.whoAmI);
                         // The same target and amount come separately from an
                         // ordinary external player, in both relative orders.
                         if ((slot & 1) == 0) Apply(frame, externalSlot);
@@ -258,47 +275,91 @@ namespace NativeWorldTextProbe
             finally { client[externalSlot] = oldRemote; source.moonLeech = oldMoon; }
             Console.WriteLine("PASS native style-52 secondary healing through real TCP/server broadcasts and primary decode for self, teammate, human, and external targets with equal independent 66.");
         }
-        private static void MediumcoreDeathInventory(object host, object actor, Player body, Player[] client, Player[] server, TcpClient secondary)
+        private static void DeathThenRecall(object host, Guid id, object actor, Player body, Player[] client,
+            Player[] server, TcpClient secondary, bool mediumcore)
         {
             var hooks = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionHooks");
             var enter = hooks.GetMethod("Enter", BindingFlags.Static | BindingFlags.NonPublic);
-            var priorItem = body.inventory[39];
-            byte oldDifficulty = body.difficulty;
+            var savedDrops = Main.item;
             int originalPrimary = Main.myPlayer;
             int slot = body.whoAmI;
+            var wire = secondary.GetStream();
+            var previousPing = Packet(154);
+            int droppedType = mediumcore ? ItemID.Wood : ItemID.LargeAmethyst;
+            int droppedCount = mediumcore ? 19 : 1;
             try
             {
-                body.difficulty = server[slot].difficulty = 1;
-                Put(body.inventory, 39, ItemID.Wood, 19);
+                Main.item = new WorldItem[savedDrops.Length];
+                for (int i = 0; i < Main.item.Length; i++) Main.item[i] = new WorldItem { whoAmI = i };
+                body.difficulty = server[slot].difficulty = (byte)(mediumcore ? 1 : 0);
+                Put(body.inventory, 39, droppedType, droppedCount);
+                Put(body.armor, 0, ItemID.CopperHelmet, 1);
                 Set(actor, "NextPublish", 0U);
                 Call(host, "Publish", actor);
                 var flow = Get(actor, "Connection");
+                long olderReply = (long)Get(flow, "sentPings") + 1;
+                Call(flow, "Send", previousPing);
                 // The ordinary periodic snapshot was 19. An immediate native
                 // sync of 22 then reaches the wire before the slot returns to
                 // 19 within the same six-frame publish window.
-                body.inventory[39].stack = 22;
-                using ((IDisposable)enter.Invoke(null, new object[] { actor, body.Center, false }))
-                    NetMessage.SendData(5, -1, -1, null, slot, 39);
-                body.inventory[39].stack = 19;
-                body.KillMe(PlayerDeathReason.ByCustomReason("fixture mediumcore order"), 999, 0);
-                Require(body.dead && body.inventory[39].IsAir, "the real mediumcore KillMe mutates the local body through native DropItems");
+                if (mediumcore)
+                {
+                    body.inventory[39].stack = 22;
+                    using ((IDisposable)enter.Invoke(null, new object[] { actor, body.Center, false }))
+                        NetMessage.SendData(5, -1, -1, null, slot, 39);
+                    body.inventory[39].stack = 19;
+                }
+                body.KillMe(PlayerDeathReason.ByCustomReason("fixture death before recall"), 999, 0);
+                Require(body.dead && body.inventory[39].IsAir && body.armor[0].IsAir == mediumcore,
+                    "the local body mutates through the actual difficulty-specific DropItems");
                 Require(ReferenceEquals(flow, Get(actor, "Connection")), "ordinary death retains its independent connection for respawn");
+                // No server frame is consumed until the public action detaches
+                // the body. The live decoder never sees the old ping or death reply.
+                Require((bool)Call(host, "Recall", id) && !body.active && !server[slot].dead,
+                    "public Recall detaches the body before the native server consumes any death");
+                Require((bool)Get(flow, "HasUnconfirmedDeath") && !(bool)Get(flow, "Finished"),
+                    "the detached flow remains responsible for the queued death");
                 Main.player = server; Main.myPlayer = 255; Main.netMode = 2; Main.dedServ = true;
                 var updates = new List<int>();
+                int deaths = 0;
+                bool sentOldPing = false;
                 for (int n = 0; n < 512; n++)
                 {
-                    byte[] frame = Frame(secondary.GetStream());
+                    byte[] frame = Frame(wire);
                     if (frame[2] == 5)
                     {
                         if (BitConverter.ToInt16(frame, 4) == 39) updates.Add(BitConverter.ToInt16(frame, 6));
                         Apply(frame, slot);
                     }
-                    if (frame[2] != 118) continue;
-                    Require(updates.SequenceEqual(new[] { 19, 22, 19 }) && server[slot].inventory[39].stack == 19,
-                        "native server reads the latest actual slot before the real 118, including an immediate send reverted within the periodic window");
+                    if (frame[2] == 118)
+                    {
+                        deaths++;
+                        var expected = mediumcore ? new[] { 19, 22, 19 } : new[] { 1 };
+                        Require(updates.SequenceEqual(expected) && server[slot].inventory[39].stack == droppedCount &&
+                            server[slot].armor[0].type == ItemID.CopperHelmet, "server reads current native inventory and equipment before actual 118");
+                        Apply(frame, slot);
+                        Require(server[slot].dead && server[slot].inventory[39].IsAir &&
+                            server[slot].armor[0].IsAir == mediumcore, "native server settles the actual difficulty's property");
+                    }
+                    if (frame[2] != 154) continue;
+                    if (!sentOldPing)
+                    {
+                        Require(deaths == 0, "outstanding ping is older than this death");
+                        Apply(frame, slot); sentOldPing = true;
+                        NativeQuickItemChecks.Until(() => (long)Get(flow, "receivedPings") == olderReply);
+                        Require(!(bool)Get(flow, "DeathConfirmed") && !(bool)Get(flow, "Finished"),
+                            "older native reply cannot close the detached flow");
+                        continue;
+                    }
+                    Require(deaths == 1 && Main.item.Count(item => item.type == droppedType) == 1 &&
+                        Main.item.Single(item => item.type == droppedType).stack == droppedCount &&
+                        Main.item.Count(item => item.type == ItemID.CopperHelmet) == (mediumcore ? 1 : 0),
+                        "the final 154 follows exactly one native death and one set of difficulty-specific drops");
                     Apply(frame, slot);
-                    Require(server[slot].dead && server[slot].inventory[39].IsAir, "native server KillMe settles the current mediumcore inventory");
-                    Console.WriteLine("PASS native mediumcore KillMe publishes 5 delta before TCP 118 and original server consumes current inventory.");
+                    NativeQuickItemChecks.Until(() => (bool)Get(flow, "Finished"));
+                    Require((bool)Get(flow, "DeathConfirmed"), "only the post-settlement native reply retires the TCP worker");
+                    Console.WriteLine(mediumcore ? "PASS real mediumcore KillMe -> public Recall -> native server inventory and equipment drops -> fresh 154."
+                        : "PASS real softcore KillMe -> public Recall -> native server large gem drop -> fresh 154.");
                     return;
                 }
                 throw new InvalidDataException("native mediumcore death did not emit 118");
@@ -306,8 +367,7 @@ namespace NativeWorldTextProbe
             finally
             {
                 Main.player = client; Main.myPlayer = originalPrimary; Main.netMode = 1; Main.dedServ = false;
-                body.difficulty = oldDifficulty;
-                body.inventory[39] = priorItem;
+                Main.item = savedDrops;
             }
         }
         private static byte[] Packet(byte id, Action<BinaryWriter> write = null)

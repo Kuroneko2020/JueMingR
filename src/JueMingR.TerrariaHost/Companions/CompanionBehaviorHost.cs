@@ -17,6 +17,7 @@ namespace JueMingR.TerrariaHost.Companions
         private bool hasAir, hadOwner;
         private int stalled, threatStamp;
         private NPC lateralTarget;
+        private Item lateralWeapon;
         private int lateralGeneration;
         private uint lateralUntil;
         private Vector2 lateralGoal, lateralEnemy;
@@ -24,10 +25,10 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly int[] seenThreats = new int[Main.projectile.Length + Main.npc.Length];
         internal void ObserveCapabilities(Player body) { navigation.ObserveCapabilities(body); }
         internal CompanionControlFrame Decide(Player body, Player owner, CompanionBehavior behavior, bool allowPlanning)
-        { return DecideMovement(body, owner, behavior, allowPlanning, null, false, false); }
+        { return DecideMovement(body, owner, behavior, allowPlanning, null, false, false, null); }
 
         internal CompanionControlFrame DecideMovement(Player body, Player owner, CompanionBehavior behavior, bool allowPlanning,
-            NPC combatTarget, bool closeCombat, bool canAttack)
+            NPC combatTarget, bool closeCombat, bool canAttack, Item pursuitWeapon)
         {
             if (!hasStand || wasFollowing && !behavior.Follow) { stand = body.Center; hasStand = true; }
             wasFollowing = behavior.Follow;
@@ -60,7 +61,7 @@ namespace JueMingR.TerrariaHost.Companions
             bool danger = CompanionThreatField.Observe(body, seenThreats, threatStamp, out threatEscape, out jumpClear) || lavaDanger;
             Vector2 combatPosition = target;
             bool reposition = !danger && !needsAir && !canAttack && combatTarget != null &&
-                TryCombatPosition(body, target, combatTarget, closeCombat, allowPlanning, out combatPosition);
+                TryCombatPosition(body, target, combatTarget, pursuitWeapon, closeCombat, allowPlanning, out combatPosition);
             if (reposition) target = combatPosition;
             if (danger || needsAir || canAttack || combatTarget == null) lateralTarget = null;
             int stopDistance = reposition ? 10 : 32, resumeDistance = reposition ? 18 : 56;
@@ -115,7 +116,7 @@ namespace JueMingR.TerrariaHost.Companions
             return frame;
         }
 
-        private bool TryCombatPosition(Player body, Vector2 anchor, NPC target, bool closeCombat, bool allowPlanning, out Vector2 position)
+        private bool TryCombatPosition(Player body, Vector2 anchor, NPC target, Item weapon, bool closeCombat, bool allowPlanning, out Vector2 position)
         {
             const int leash = 320;
             position = body.Center;
@@ -131,7 +132,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             // An admitted local goal can survive another actor's planning
             // slice. Its real walk/jump admission is still checked each frame.
-            if (ReferenceEquals(lateralTarget, target) && lateralGeneration == target.generation &&
+            if (ReferenceEquals(lateralTarget, target) && ReferenceEquals(lateralWeapon, weapon) && lateralGeneration == target.generation &&
                 Main.GameUpdateCount < lateralUntil && Vector2.DistanceSquared(enemy, lateralEnemy) < 24 * 24 &&
                 Vector2.DistanceSquared(lateralGoal, anchor) <= leash * leash && lateralTerrain.Current &&
                 (Math.Abs(lateralGoal.X - body.Center.X) > 10 || lateralGoal.Y < body.Center.Y - 36))
@@ -141,25 +142,33 @@ namespace JueMingR.TerrariaHost.Companions
             // Two local sight probes spend this actor's normal planning slice.
             // Movement still goes through the same walking/jump safety checks.
             if (toward == 0) toward = body.direction;
+            var geometry = new CompanionShotGeometry(body, weapon);
             for (int side = toward; side != 0; side = side == toward ? -toward : 0)
             {
                 Vector2 offset = new Vector2(side * 96, 0);
                 var destination = body.Center + offset;
                 if (Vector2.DistanceSquared(destination, anchor) > leash * leash) continue;
                 var route = navigation.PlanWalk(body, side, allowPlanning);
-                if (route == CompanionNavigation.WalkOutcome.Clear && HostAttackAim.ActorDirectLine(sight, destination, enemy))
-                { position = RetainCombatPosition(target, enemy, destination); return true; }
+                if (route == CompanionNavigation.WalkOutcome.Clear && LocalOpening(body, target, geometry, destination, enemy))
+                { position = RetainCombatPosition(target, weapon, enemy, destination); return true; }
             }
             var high = body.Center + new Vector2(toward * 64, -52);
-            if (Vector2.DistanceSquared(high, anchor) <= leash * leash && HostAttackAim.ActorDirectLine(sight, high, enemy) &&
+            if (Vector2.DistanceSquared(high, anchor) <= leash * leash && LocalOpening(body, target, geometry, high, enemy) &&
                 navigation.JumpSafe(body, high, toward, true))
-            { position = RetainCombatPosition(target, enemy, high); return true; }
+            { position = RetainCombatPosition(target, weapon, enemy, high); return true; }
             return false;
         }
 
-        private Vector2 RetainCombatPosition(NPC target, Vector2 enemy, Vector2 destination)
+        private bool LocalOpening(Player body, NPC target, CompanionShotGeometry geometry, Vector2 destination, Vector2 enemy)
         {
-            lateralTarget = target; lateralGeneration = target.generation; lateralEnemy = enemy;
+            if (!geometry.KnownFamily) return HostAttackAim.ActorDirectLine(sight, destination, enemy);
+            sight.Reset();
+            return geometry.Opening(body, target, sight, destination - body.Center, out _) == HostAttackReachability.Reachable;
+        }
+
+        private Vector2 RetainCombatPosition(NPC target, Item weapon, Vector2 enemy, Vector2 destination)
+        {
+            lateralTarget = target; lateralWeapon = weapon; lateralGeneration = target.generation; lateralEnemy = enemy;
             lateralGoal = destination; lateralUntil = Main.GameUpdateCount + 45;
             lateralTerrain = sight.FreezeCells();
             return destination;

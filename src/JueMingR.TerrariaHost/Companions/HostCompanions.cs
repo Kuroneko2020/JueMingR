@@ -44,7 +44,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal CompanionBehaviorHost Behavior=new CompanionBehaviorHost();
             internal bool HasAim;
             internal bool Dirty,Faulted,WasUsing;
-            internal bool DeathObserved,PermanentDeathPending,DeathPacketAccepted;
+            internal bool DeathObserved,PermanentDeathPending,TileReachPending;
             internal bool TeamPending,TeamSavePending;
             internal uint NextTeamPublish;
             internal long TeamSession,TeamGeneration;
@@ -215,6 +215,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             RetireJoinFeedback(a);
             a.TeamPending=false;a.TeamConnection=null;
+            CancelCompanionItemOnce(a);
             CancelItemGestureForActor(a);
             if(ReferenceEquals(planningActor,a))planningActor=null;
             if(ReferenceEquals(aimSelected,a)){aimSelected=null;aimSelectionStep=UInt32.MaxValue;}
@@ -271,7 +272,7 @@ namespace JueMingR.TerrariaHost.Companions
                     CaptureActorState(a, behavior);
                 else if (a != null) return Result(false, "等待队友收回后再修改设置。");
                 else profiles.SetBehavior(id, behavior);
-                return Result(true, "行为设置已更新。");
+                return Result(true, "");
             }
             catch (Exception e) { return Result(false, e.Message); }
         }

@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.Combat
         {return Prepare(player,item,ammo,timeline,mounted,age,terrain,beforeNpc,obstacles,delay).Contact;}
         internal static HostAttackSolution Prepare(Player player,Item item,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 mounted,int age,PredictionTerrain terrain,bool beforeNpc,HostAttackObstacles obstacles,int delay)
         {
-            if(item.type==3029)return HostNativeArrowBirthAttack.Prepare(player,ammo,timeline,mounted,new HostAttackClock(timeline,beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld,delay),terrain,obstacles).WithSemantics(AttackPointSemantics.WorldPoint);
+            if(item.type==3029)return HostNativeArrowBirthAttack.Prepare(player,item,ammo,timeline,mounted,new HostAttackClock(timeline,beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld,delay),terrain,obstacles).WithSemantics(AttackPointSemantics.WorldPoint);
             Projectile sample;if(ammo==null || !ContentSamples.ProjectilesByType.TryGetValue(ammo.Projectile,out sample))return default(HostAttackSolution);
             var receive=HostAttackReceive.Capture(player,sample,timeline.Identity.Slot,beforeNpc,!beforeNpc);
             AttackMotion ordinary;float gravity=0;int start=0;
@@ -45,7 +45,7 @@ namespace JueMingR.TerrariaHost.Combat
             // origin once, instead of replaying a full lifetime for every
             // guessed cursor time. Its gate is constant for cursors below
             // player.Center.Y-200; other gate classes retain the old route.
-            Vector2 birth,ignored;Launch(player,item.type,mounted,player.Center,motion.Speed,out birth,out ignored);
+            Vector2 birth,ignored;Launch(player,item,mounted,player.Center,motion.Speed,out birth,out ignored);
             float gate=player.Center.Y-200;bool collides=sample.tileCollide;
             AttackPassage passage=(x,y,nx,ny,w,h)=>
             {collides|=y>gate;return HostProjectileEnvironment.Dry(sample,terrain,x,y,nx-x) && (!collides || terrain.ProjectilePassage(x,y,nx,ny,(int)w,(int)h));};
@@ -56,7 +56,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(direction.Y<=0 || player.Center.Y-birth.Y<20)return null;
             float cursorY=Math.Max(gate+1,contact.ReceiveBounds.CenterY);
             var aim=new Vector2(birth.X+direction.X/direction.Y*(cursorY-birth.Y),cursorY);
-            Vector2 launch,velocity;Launch(player,item.type,mounted,aim,motion.Speed,out launch,out velocity);
+            Vector2 launch,velocity;Launch(player,item,mounted,aim,motion.Speed,out launch,out velocity);
             // The actual cursor consumer encodes integral screen pixels. This
             // final replay validates that same launch, including the gate and
             // integer receiver edges; the inverse proposal grants no input.
@@ -65,7 +65,7 @@ namespace JueMingR.TerrariaHost.Combat
             // a symmetric midpoint rule also retains negative-screen direction.
             // Cursor height and the native collision gate keep their old rule.
             aim=new Vector2((float)Math.Round(aim.X-Main.screenPosition.X,MidpointRounding.AwayFromZero)+Main.screenPosition.X,(int)(aim.Y-Main.screenPosition.Y)+Main.screenPosition.Y);
-            Launch(player,item.type,mounted,aim,motion.Speed,out launch,out velocity);collides=sample.tileCollide;
+            Launch(player,item,mounted,aim,motion.Speed,out launch,out velocity);collides=sample.tileCollide;
             var replay=AttackIntercept.Replay(aim.X,aim.Y,launch.X,launch.Y,velocity.X,velocity.Y,motion,timeline,age,passage,t=>receive.Allows(t+delay),(k,t,x,y)=>obstacles.PassOuter(k,t,delay+motion.OuterAtSubupdate(k),x,y),before);
             // Integral cursor projection can move an inner-edge ray enough
             // to delay a still-valid hit. Both contacts use this same timeline,
@@ -75,9 +75,10 @@ namespace JueMingR.TerrariaHost.Combat
             // its existing bounded fallback and unchanged work allowance.
             return replay!=null && replay.Tick<=contact.Tick?replay:null;
         }
-        private static void Launch(Player p,int type,Vector2 mounted,Vector2 aim,float speed,out Vector2 birth,out Vector2 velocity)
+        private static void Launch(Player p,Item item,Vector2 mounted,Vector2 aim,float speed,out Vector2 birth,out Vector2 velocity)
         {
-            var facts=new LaunchFacts(p,type,mounted,type==65 && aim.X<p.Left.X+mounted.X-HostAttackModels.LaunchOrigin(p,p.HeldItem).X);
+            int type=item.type;
+            var facts=new LaunchFacts(p,item,mounted,type==65 && aim.X<p.Left.X+mounted.X-HostAttackModels.LaunchOrigin(p,item).X);
             birth=new Vector2(facts.A*aim.X+facts.B,facts.Y);
             velocity=aim-birth;if(type!=65)velocity.Y=Math.Max(20,Math.Abs(velocity.Y));
             velocity=velocity.SafeNormalize(Vector2.UnitY)*speed;if(type==4381)velocity.X*=.675f;

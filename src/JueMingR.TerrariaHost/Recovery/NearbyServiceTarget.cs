@@ -45,8 +45,12 @@ namespace JueMingR.TerrariaHost.Recovery
         internal bool Valid(Player p){return npc!=null && slot>=0 && slot<Main.maxNPCs && ReferenceEquals(Main.npc[slot],npc) && npc.generation==generation && Eligible(p,npc,type,allowMouseInterface?.Invoke()??false);}
         internal static bool Eligible(Player p,NPC npc,int type,bool allowMouseInterface=false)
         {
+            return Eligible(p,npc,type,TileReachCheckSettings.Simple,allowMouseInterface);
+        }
+        internal static bool Eligible(Player p,NPC npc,int type,TileReachCheckSettings reach,bool allowMouseInterface=false)
+        {
             if(p==null || npc==null || !npc.active || npc.type!=type || !npc.townNPC || npc.CurrentlyShimmerTransparent() || p.stinky || !allowMouseInterface && p.mouseInterface || p.dead || p.ownedProjectileCounts[651]>0 || p.tileInteractionHappened)return false;
-            return TileReachCheckSettings.Simple.GetWorldRegion(p).Intersects(new Rectangle((int)(npc.position.X+npc.netOffset.X),(int)(npc.position.Y+npc.netOffset.Y),npc.width,npc.height));
+            return reach.GetWorldRegion(p).Intersects(new Rectangle((int)(npc.position.X+npc.netOffset.X),(int)(npc.position.Y+npc.netOffset.Y),npc.width,npc.height));
         }
     }
 

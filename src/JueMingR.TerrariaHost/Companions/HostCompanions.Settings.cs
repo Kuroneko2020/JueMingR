@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using JueMingR.Platform.Companions;
+using JueMingR.TerrariaHost.Hotkeys;
 using Terraria;
 
 namespace JueMingR.TerrariaHost.Companions
@@ -9,6 +10,45 @@ namespace JueMingR.TerrariaHost.Companions
     {
         internal long CreationSessionToken { get { return session; } }
         internal Guid LastCreatedId { get; private set; }
+        internal bool CompanionSettingCurrent(Guid ownerId, Guid id) => Find(id)?.OwnerId == ownerId;
+
+        internal bool CanChangeCompanionPresence(Guid id, bool recall, out string reason)
+        {
+            var profile = Find(id);
+            reason = failed || profile == null ? "当前人物不可用。" : null;
+            if (reason != null) return false;
+            if (actors.TryGetValue(id, out var actor))
+            {
+                // A pending connection remains cancelable by the actual
+                // Recall command. Once closing, its save/retry owns the body.
+                reason = !recall || actor.Closing ? Status(id) : null;
+                return recall && !actor.Closing;
+            }
+            reason = recall ? "人物已收回。" : profile.PermanentlyDead ? "永久死亡人物无法加入。" :
+                profiles.SaveFailed(id) ? Status(id) : null;
+            return reason == null;
+        }
+
+        internal void ToggleCompanionSetting(Guid ownerId, Guid id, CompanionSetting setting)
+        {
+            var profile = Find(id);
+            if (profile?.OwnerId != ownerId) return;
+            var behavior = profile.Behavior;
+            switch (setting)
+            {
+                case CompanionSetting.Follow: behavior.Follow = !behavior.Follow; break;
+                case CompanionSetting.Attack: behavior.AttackEnabled = !behavior.AttackEnabled; break;
+                // Off preserves the last mode, so the same chord can resume it.
+                case CompanionSetting.Life: behavior.HealthRecoveryEnabled = !behavior.HealthRecoveryEnabled; break;
+                case CompanionSetting.Mana: behavior.ManaRecoveryEnabled = !behavior.ManaRecoveryEnabled; break;
+                case CompanionSetting.Buff: behavior.BuffEnabled = !behavior.BuffEnabled; break;
+                case CompanionSetting.Growth: behavior.GrowthEnabled = !behavior.GrowthEnabled; break;
+                case CompanionSetting.Respawn: behavior.AutoRespawn = !behavior.AutoRespawn; break;
+                default: return;
+            }
+            if (!SetBehavior(id, behavior) && !String.IsNullOrEmpty(Feedback))
+                Main.NewText(Feedback, Microsoft.Xna.Framework.Color.Salmon);
+        }
         internal string RespawnStatus(Guid id)
         {
             var profile=Find(id);if(profile==null)return "";

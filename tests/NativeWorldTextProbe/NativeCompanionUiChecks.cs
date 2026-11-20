@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.Remoting.Messaging;
 using System.Runtime.Remoting.Proxies;
 using JueMingR.Platform.Hotkeys;
@@ -9,6 +10,7 @@ using JueMingR.Features.Notes;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
+using Terraria.GameInput;
 using Terraria.ID;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
@@ -76,12 +78,13 @@ namespace NativeWorldTextProbe
                 Require((int)Get(window, "bodyOffset") > 0 && (int)Get(window, "ownerOffset") == ownerOffset &&
                     Get(window, "listView").Equals(beforeList) && (bool)Get(window, "ConsumeWheel"),
                     "actual right inventory scroll consumes the wheel while retaining the left list geometry");
+                var previousPanel = Get(window, "panel");
                 click("configuration");
                 var configList = Get(window, "listView");
                 Require((int)Get(window, "page") == 1 && (Guid)Get(window, "selected") == other &&
                     (float)Get(configList, "X") == (float)Get(beforeList, "X") && (float)Get(configList, "Width") == (float)Get(beforeList, "Width"),
-                    "configuration keeps the same selected character in the left rail while its content determines panel height");
-                click("config-tab:Character");
+                    "configuration keeps the same selected character in the left rail");
+                Require(Get(window,"panel").Equals(previousPanel),"inventory and configuration preserve the same outer rectangle");
                 screen=new Vector2(1280,360);prepare();body=Get(window,"configurationViewport");bodyPoint=NativeToolsUiChecks.Point(body);
                 Action scrollBottom = () =>
                 {
@@ -134,6 +137,116 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS companion actual two-page layout, native profile selection, stable/closed work, independent scroll, changed matrix/focus gesture retirement and real close release tail; no Draw, Windows IME, owner input or FPS claim.");
             }
             finally { Call(window, "Close"); NativeToolsUiChecks.Mouse(origin, false); }
+        }
+
+        internal static void ProfileHotkeys(object context, Guid first, Guid second)
+        {
+            var shell = Get(context, "Shell");
+            var host = Get(shell, "Companions");
+            var window = Get(shell, "CompanionUi");
+            var input = Get(context, "Input");
+            var popup = Get(shell, "HotkeyPopup");
+            var bindings = (HotkeyBindings)Get(Get(shell, "hotkeys"), "Bindings");
+            var screen = new Vector2(1280, 900);
+            var state = Get(shell, "State");
+            Func<Guid, JueMingR.Platform.Companions.CompanionProfile> profile = id =>
+                ((IEnumerable)Get(host, "Profiles")).Cast<JueMingR.Platform.Companions.CompanionProfile>().Single(p => p.Id == id);
+            var originalFirst = profile(first).Behavior;
+            var originalSecond = profile(second).Behavior;
+            string prefix = "companions.profile." + profile(first).OwnerId.ToString("N") + ".";
+            string firstAction = prefix + first.ToString("N") + ".follow";
+            string secondAction = prefix + second.ToString("N") + ".mana";
+
+            // The headless route uses the production layout-only input inlet
+            // and the exact F5 Shell popup admission/parent ownership consumer.
+            // Synthetic CPU font geometry supplies no draw or pixel evidence.
+            var renderer = Get(shell, "renderer");
+            Call(renderer, "RefreshResources");
+            Call(renderer, "Prepare", state, screen.X, screen.Y, 1f);
+            var layout = Get(state, "Layout");
+            var measure = layout.GetType().GetMethod("DynamicTextSize", BindingFlags.Instance | BindingFlags.NonPublic);
+            var measureType = typeof(Func<,,>).MakeGenericType(typeof(string), typeof(float), measure.ReturnType);
+            var measureDelegate = Delegate.CreateDelegate(measureType, layout, measure);
+            var font = Terraria.GameContent.FontAssets.MouseText.Value;
+            Action<Vector2, bool, Keys[]> frame = (point, left, keys) =>
+            {
+                NativeToolsUiChecks.Mouse(point, left);
+                PlayerInput.Triggers.Reset();
+                PlayerInput.Triggers.Current.MouseLeft = left;
+                PlayerInput.Triggers.Update();
+                Call(input, "BeginUpdate"); Call(input, "AfterMapping");
+                // The native keyboard refresh follows guarded mapping. Setting
+                // keyState first would let popup-owned mapping erase Escape.
+                Main.keyState = new KeyboardState(keys);
+                Call(input, "AfterKeyboardRefresh");
+                Call(window, "PrepareLayout", Matrix.Identity, screen);
+                Call(popup, "Prepare", screen.X, screen.Y, font, measureDelegate, 0);
+                if (!(bool)Call(shell, "ProcessHotkeyPopupInput", true, point, true, 0, false))
+                    Call(window, "ProcessLayoutInput", true, new KeyboardState(keys), point, Matrix.Identity, screen, true, 0);
+                Call(shell, "ValidateCompanionHotkeyAnchor");
+            };
+            var neutral = Array.Empty<Keys>();
+            Action<string> click = key =>
+            {
+                var control = Controls(window).Single(c => ((string)Get(c, "Key")).StartsWith(key + "/", StringComparison.Ordinal));
+                Vector2 point = NativeToolsUiChecks.Point(Get(control, "Rect"));
+                frame(point, false, neutral); frame(point, true, neutral); frame(point, false, neutral);
+            };
+            Action<string, Keys> bind = (id, key) =>
+            {
+                Require(HotkeyChord.TryCreate((int)key, HotkeyModifiers.None, out var chord, out _), "fixture chord");
+                Require(bindings.TrySet(id, chord, null, out _, out string reason), "profile binding saves through its actual document: " + reason);
+                NativeQuickItemChecks.Until(() => { bindings.Poll(); return !bindings.Busy; });
+                Require(bindings.CompletionSucceeded, "profile binding committed");
+            };
+            Action<Keys[]> dispatch = keys =>
+            {
+                NativeQuickItemChecks.Sample(input, keys);
+                Call(shell, "ProcessInput");
+            };
+            try
+            {
+                Call(shell, "CloseAndSubmitPosition");
+                Main.LocalPlayer.mouseInterface = false;
+                NativeQuickItemChecks.Until(() => { bindings.Poll(); return bindings.Loaded; });
+                Call(window, "ToggleIndependent", new object[] { null });
+                Set(window, "selected", first); Set(window, "page", 1);
+                frame(Vector2.Zero, false, neutral);
+
+                click("binding-" + firstAction);
+                Require(!(bool)Get(popup, "Visible") && (string)Get(popup, "TrackingTarget") == firstAction,
+                    "the real first click survives while both the main F5 and popup are hidden");
+                click("binding-" + firstAction);
+                Require((bool)Get(popup, "Visible") && !(bool)Get(state, "Visible") && (bool)Get(window, "Visible"),
+                    "a second real click opens the shared popup with its independent parent");
+                click("profile:" + second);
+                Require((Guid)Get(window, "selected") == first && (bool)Get(window, "ConsumeLeft"),
+                    "an upper popup owns the physical click and release above the profile rail");
+                frame(Vector2.Zero, false, new[] { Keys.Escape });
+                Require(!(bool)Get(popup, "Visible") && (bool)Get(window, "Visible"), "Escape retires only the popup");
+                bind(firstAction, Keys.F14);
+                frame(Vector2.Zero, false, neutral);
+                click("profile:" + second);
+                // This real first click publishes the unbound selected entry.
+                click("binding-" + secondAction);
+                bind(secondAction, Keys.F15);
+                Call(window, "Close");
+                dispatch(neutral); dispatch(new[] { Keys.F14 }); dispatch(neutral);
+                Require(profile(first).Behavior.Follow != originalFirst.Follow &&
+                    profile(second).Behavior.ManaRecoveryEnabled == originalSecond.ManaRecoveryEnabled,
+                    "gameplay edge with the window closed reaches its bound character");
+                dispatch(new[] { Keys.F15 }); dispatch(neutral);
+                Require(profile(second).Behavior.ManaRecoveryEnabled != originalSecond.ManaRecoveryEnabled &&
+                    profile(first).Behavior.Follow != originalFirst.Follow,
+                    "the second gameplay binding belongs to a different character and setting");
+                Console.WriteLine("PASS companion CPU real popup double-click, parent rail and Escape input, and independent closed-window physical hotkeys (no Draw).");
+            }
+            finally
+            {
+                Call(window, "Close"); Call(popup, "Close");
+                Call(host, "SetBehavior", first, originalFirst); Call(host, "SetBehavior", second, originalSecond);
+                NativeToolsUiChecks.Mouse(Vector2.Zero, false);
+            }
         }
         internal static void FullInput(object context, ProbeGraphics graphics, string output)
         {
@@ -451,6 +564,11 @@ namespace NativeWorldTextProbe
                 Call(window,"PrepareLayout",Matrix.Identity,new Vector2(1280,900));
                 var status=Controls(window).Single(c=>((string)Get(c,"Key")).StartsWith("actor-state/",StringComparison.Ordinal));
                 Require((bool)Get(status,"ActorState")&&(bool)Get(status,"Enabled")&&((string)Get(status,"Hint")).Contains(joined?"收回":"加入"),"actual inventory status control offers "+(joined?"recall for an ineligible joined actor":"join for an archived offline profile"));
+                var statusRect=Get(status,"Rect");var portrait=Get(window,"companionShowcasePanel");
+                Require((float)Get(statusRect,"Right")<(float)Get(portrait,"X")&&
+                    (float)Get(statusRect,"Bottom")== (float)Get(portrait,"Bottom")&&
+                    (string)Get(status,"Text")== (joined?"点击收回":"点击加入"),
+                    "the correct action is outside the portrait on the left and aligned to its bottom");
                 Console.WriteLine("PASS companion native membership layout joined="+joined+" transfer=false action="+(joined?"recall":"join")+"; no Draw/death-lifecycle claim");
             }
             finally {body.dead=dead;Call(window,"Close");NativeToolsUiChecks.Mouse(Vector2.Zero,false);}

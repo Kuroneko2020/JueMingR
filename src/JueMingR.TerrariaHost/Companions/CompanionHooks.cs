@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using HarmonyLib;
+using JueMingR.TerrariaHost.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.GameInput;
@@ -31,6 +32,7 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player),"Update",nameof(PlayerBefore),nameof(PlayerAfter),nameof(PlayerFinal),nameof(UpdateGates),new[]{typeof(int)});
             Patch(typeof(Main),"UpdateWorld_NPCs",postfix:nameof(NpcWorldAfter));
             Patch(typeof(Main),"UpdateWorld_Items",postfix:nameof(PersonalItemsAfter));
+            Patch(typeof(Main),"DrawPlayerChatBubbles",postfix:nameof(CompanionNamesAfter));
             Patch(typeof(Player),"ItemCheck",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             InstallAchievements();
             Patch(typeof(Player),"PlaceThing",nameof(PlaceBefore),args:new[]{typeof(bool),typeof(Player.ItemCheckContext).MakeByRefType()});
@@ -110,7 +112,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal List<ShieldImpact> HumanShieldHits;
             internal Scope Root => previous == null ? this : previous.Root;
             private static ulong Resources(Player p){unchecked{ulong value=1469598103934665603;for(int i=0;i<p.inventory.Length;i++){var item=p.inventory[i];value=(value^(uint)(item.type*31+item.stack))*1099511628211;}return value;}}
-            internal Scope(HostCompanions.Actor actor,Vector2 aim,bool inventory,bool personalItems)
+            internal Scope(HostCompanions.Actor actor,Vector2 aim,bool inventory,bool personalItems,bool rawCursor=false)
             {
                 this.inventory=inventory;life=actor.Body.statLife;mana=actor.Body.statMana;if(inventory)resources=Resources(actor.Body);
                 staticHits=host.EnterObservedNpcHitState(Main.npc);npcTable=host.EnterNpcObservation();
@@ -119,7 +121,7 @@ namespace JueMingR.TerrariaHost.Companions
                 // example flails) see their own non-map input, while finally
                 // restores the exact entering human or outer-scope value.
                 Main.mapFullscreen=false;
-                Main.myPlayer=actor.Body.whoAmI;Main.mouseX=(int)(aim.X-Main.screenPosition.X);Main.mouseY=(int)(actor.Body.gravDir<0?Main.screenHeight-aim.Y+Main.screenPosition.Y:aim.Y-Main.screenPosition.Y);
+                Main.myPlayer=actor.Body.whoAmI;Main.mouseX=(int)(aim.X-Main.screenPosition.X);Main.mouseY=(int)(!rawCursor && actor.Body.gravDir<0?Main.screenHeight-aim.Y+Main.screenPosition.Y:aim.Y-Main.screenPosition.Y);
                 Player.tileTargetX=(int)(aim.X/16);Player.tileTargetY=(int)(aim.Y/16);
                 // Mouse aim remains the real combat/prism point. An unknown
                 // tile is not empty and cannot authorize native tile work;
@@ -176,6 +178,7 @@ namespace JueMingR.TerrariaHost.Companions
             host.AfterBody(a);}}
         private static void NpcWorldAfter(){host?.AdvanceNpcObservation();}
         private static void PersonalItemsAfter(){host?.AdvancePersonalItems();}
+        private static void CompanionNamesAfter(){host?.DrawCompanionNames();}
         private static Exception PlayerFinal(Exception __exception,Player __instance,PlayerStep __state)
         {
             if(__state!=null)
@@ -188,7 +191,23 @@ namespace JueMingR.TerrariaHost.Companions
                 a.Status="人物更新失败："+__exception.Message;a.Faulted=true;a.Body.controlUseItem=false;a.Body.channel=false;return null;}}return __exception;
         }
         private static void UseBefore(Player __instance,MethodBase __originalMethod,ref Scope __state)
-        {var a=host?.Owned(__instance);if(a!=null && a.Ready && !a.Closing){if(__originalMethod.Name=="UpdateBuffs" && ReferenceEquals(a,CurrentActor))return;bool use=__originalMethod.Name=="ItemCheck";if(use){var hits=host.EnterObservedNpcHitState(Main.npc);var table=host.EnterNpcObservation();try{host.PrepareUse(a);}finally{try{host.LeaveNpcObservation(table);}finally{host.LeaveObservedNpcHitState(hits);}}}__state=new Scope(a,a.Aim,__originalMethod.Name=="PickupItem" || use && (__instance.controlUseItem || __instance.itemAnimation>0 || __instance.channel),__originalMethod.Name=="GrabItems");}}
+        {
+            var a=host?.Owned(__instance);
+            if(a==null || !a.Ready || a.Closing || __originalMethod.Name=="UpdateBuffs" && ReferenceEquals(a,CurrentActor))return;
+            bool use=__originalMethod.Name=="ItemCheck";
+            if(use)
+            {
+                var hits=host.EnterObservedNpcHitState(Main.npc);var table=host.EnterNpcObservation();
+                try{host.PrepareUse(a);}
+                finally{try{host.LeaveNpcObservation(table);}finally{host.LeaveObservedNpcHitState(hits);}}
+            }
+            // These native sky births reread raw mouse Y in Shoot. Keep that
+            // point through the actual item consumer even in reverse gravity.
+            bool rawCursor=use && HostSkyAttack.RawCursor(a.Combat.Hand.Weapon?.type??0);
+            __state=new Scope(a,a.Aim,__originalMethod.Name=="PickupItem" || use &&
+                (__instance.controlUseItem || __instance.itemAnimation>0 || __instance.channel),
+                __originalMethod.Name=="GrabItems",rawCursor);
+        }
         private static void FastUse(ref bool __result){if(current!=null)__result=false;}
         private static bool EndFastUse(){return current==null;}
         private static bool PendingInventory(ref bool __result){if(current==null)return true;__result=false;return false;}

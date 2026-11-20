@@ -17,9 +17,16 @@ namespace NativeWorldTextProbe
         private static object lifecycleHost;
         private static Player planningSecond;
         private static int planningSlices,secondSlices;
-        private static void PlanningSlice(Player __0){planningSlices++;if(ReferenceEquals(__0,planningSecond))secondSlices++;}
-        private static void PlanningResult(object __instance,Player body,Vector2 target,int direction,bool allowPlanning,bool __result)
-        {if(ReferenceEquals(body,planningSecond) && allowPlanning)Console.WriteLine("PLAN RESULT accepted="+__result+" body="+body.position+" vel="+body.velocity+" gravity="+body.gravity+" maxFall="+body.maxFallSpeed+" jump="+Get(__instance,"jumpSpeed")+" hold="+Get(__instance,"jumpHold")+" target="+target+" dir="+direction+" landed="+Get(__instance,"hasLanding"));}
+        private static void PlanningBefore(object __instance, out int __state)
+        { __state=(int)Get(__instance,"TrajectoryBuilds"); }
+        private static void PlanningResult(object __instance,Player body,Vector2 target,int direction,bool allowPlanning,bool __result,int __state)
+        {
+            int builds=(int)Get(__instance,"TrajectoryBuilds")-__state;
+            planningSlices+=builds;
+            if(!ReferenceEquals(body,planningSecond))return;
+            secondSlices+=builds;
+            if(allowPlanning)Console.WriteLine("PLAN RESULT accepted="+__result+" body="+body.position+" vel="+body.velocity+" gravity="+body.gravity+" maxFall="+body.maxFallSpeed+" jump="+Get(__instance,"jumpSpeed")+" hold="+Get(__instance,"jumpHold")+" target="+target+" dir="+direction+" landed="+Get(__instance,"hasLanding"));
+        }
         private static Player preparedHuman;
         private static bool HumanDiskSink(){return Call(lifecycleHost,"Owned",Main.LocalPlayer)!=null;}
         internal static void PrepareHuman()
@@ -69,12 +76,12 @@ namespace NativeWorldTextProbe
                 Require(first.FindBuffIndex(BuffID.Poisoned)<0 && second.FindBuffIndex(BuffID.Poisoned)<0 && !first.buffType.Contains(BuffID.Poisoned),"native expired debuff actually deleted while attack disabled");
                 first.inventory[10].SetDefaults(ItemID.HealingPotion);first.inventory[10].stack=2;
                 first.immune=false;first.immuneTime=0;Array.Clear(first.hurtCooldowns,0,first.hurtCooldowns.Length);
-                first.Hurt(PlayerDeathReason.ByCustomReason("fixture native healing injury"),Math.Max(1,first.statLife-first.statLifeMax2/2),0);
+                first.Hurt(PlayerDeathReason.ByCustomReason("fixture native healing injury"),Math.Max(1,first.statLife-first.statLifeMax2/4),0);
                 Step(host,first,second);
                 Require(first.inventory[10].stack==1 && first.potionDelay>0 && (first.FindBuffIndex(BuffID.PotionSickness)>=0),"first native low-life action drinks one real potion");
                 int cooldown=first.potionDelay;for(int i=0;i<cooldown+2;i++)Step(host,first,second);
                 Require(first.potionDelay==0 && !(first.FindBuffIndex(BuffID.PotionSickness)>=0),"original sickness/cooldown naturally expires without clearing it");
-                first.Hurt(PlayerDeathReason.ByCustomReason("fixture second native healing injury"),Math.Max(1,first.statLife-first.statLifeMax2/2),0);Step(host,first,second);
+                first.Hurt(PlayerDeathReason.ByCustomReason("fixture second native healing injury"),Math.Max(1,first.statLife-first.statLifeMax2/4),0);Step(host,first,second);
                 Require(first.inventory[10].IsAir && first.potionDelay>0,"second low-life action consumes second bottle after real native timer");
                 Console.WriteLine("PASS companion native buff timing/deletion and first potion -> full native cooldown -> second potion.");
                 Minions(host,first,second,a,b);
@@ -97,8 +104,9 @@ namespace NativeWorldTextProbe
             var originalItems=new[]{first.inventory[0],first.inventory[54]};int selected=first.selectedItem;
             double surface=Main.worldSurface;
             var oldNpc=Main.npc[11];var tiles=new List<Tuple<int,int,Tile>>();var existing=new HashSet<int>(Main.projectile.Where(p=>p.active).Select(p=>(int)p.key));
-            var probe=new Harmony("JueMingR.Tests.CompanionMovementSlices");probe.Patch(AccessTools.Method(navigation,"TerrainIdentity"),prefix:new HarmonyMethod(typeof(NativeCompanionCoreLifecycleChecks),nameof(PlanningSlice)));
-            probe.Patch(AccessTools.Method(navigation,"JumpSafe"),postfix:new HarmonyMethod(typeof(NativeCompanionCoreLifecycleChecks),nameof(PlanningResult)));
+            var probe=new Harmony("JueMingR.Tests.CompanionMovementSlices");
+            probe.Patch(AccessTools.Method(navigation,"JumpSafe"),prefix:new HarmonyMethod(typeof(NativeCompanionCoreLifecycleChecks),nameof(PlanningBefore)),
+                postfix:new HarmonyMethod(typeof(NativeCompanionCoreLifecycleChecks),nameof(PlanningResult)));
             try
             {
                 // Reuse the established real jump scene's complete vertical

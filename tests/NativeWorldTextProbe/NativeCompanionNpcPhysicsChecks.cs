@@ -20,10 +20,10 @@ namespace NativeWorldTextProbe
         private static bool rayTable,contactTable;private static Vector2 rayPoint;private static Rectangle contactRect;
         private static void ControlBefore(object a){if(ReferenceEquals(Get(a,"Body"),body))controlDepth++;}
         private static Exception ControlFinal(object a,Exception __exception){if(ReferenceEquals(Get(a,"Body"),body))controlDepth--;return __exception;}
-        private static void Ray(Vector2 __2,bool __result)
+        private static void Ray(NPC target, Vector2 point, object __result)
         {
-            if(controlDepth<=0 || expected==null || __2!=expected.Center+expected.netOffset)return;
-            rays++;rayPoint=__2;rayTable=__result && ReferenceEquals(Main.npc[Slot],expected);
+            if(controlDepth<=0 || !ReferenceEquals(target, expected))return;
+            rays++;rayPoint=point;rayTable=__result.ToString()=="Reachable" && ReferenceEquals(Main.npc[Slot],expected);
         }
         private static void Contact(Player __instance){if(ReferenceEquals(__instance,body)){contacts++;contactTable=ReferenceEquals(Main.npc[Slot],expected);contactRect=__instance.Hitbox;}}
         private static void Prepared(NPC npc){if(npc.whoAmI==Slot)prepares++;}
@@ -45,8 +45,8 @@ namespace NativeWorldTextProbe
             var old=Main.npc[Slot];double surface=Main.worldSurface;var tiles=new List<Tuple<int,int,Tile>>();
             var patch=new Harmony("JueMingR.Tests.CompanionNpcPhysics");body=first;controlDepth=rays=contacts=prepares=sharedAi=0;
             patch.Patch(AccessTools.Method(host.GetType(),"Control"),prefix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(ControlBefore)),finalizer:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(ControlFinal)));
-            var aim=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackAim",true);
-            patch.Patch(AccessTools.Method(aim,"ActorDirectLine"),postfix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(Ray)));
+            var aim=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionShotGeometry",true);
+            patch.Patch(AccessTools.Method(aim,"Opening"),postfix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(Ray)));
             patch.Patch(AccessTools.Method(typeof(Player),"Update_NPCCollision"),prefix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(Contact)));
             patch.Patch(AccessTools.Method(host.GetType(),"PrepareNpcObservationPhysics"),postfix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(Prepared)));
             patch.Patch(AccessTools.Method(typeof(NPC),"AI"),prefix:new HarmonyMethod(typeof(NativeCompanionNpcPhysicsChecks),nameof(Ai)));
@@ -82,6 +82,8 @@ namespace NativeWorldTextProbe
                     Console.WriteLine("NPC PHYSICS no23 age="+step+" native="+source.position+" observed="+point+" legacyGravity="+falling.position);
                 }
                 Require(attackFrames>=4,"both planning turns allow sustained qualification of the real supported flying target");
+                Require(first.inventory[54].stack<20 && Main.projectile.Any(p=>p.active && p.owner==first.whoAmI &&
+                    p.type==ProjectileID.Bullet),"the real connected companion spends its own actual ammo and spawns its own projectile");
                 Require(falling.position.Y-expected.position.Y>1,"finite clear flight distinguishes the old false-gravity path by more than a pixel");
                 first.position=new Vector2(expected.position.X,(float)Math.Floor(expected.position.Y)+1-first.height);first.velocity=Vector2.Zero;first.immune=false;first.immuneTime=0;Array.Clear(first.hurtCooldowns,0,first.hurtCooldowns.Length);
                 int before=first.statLife,humanLife=human.statLife,contactBefore=contacts;Require(!first.creativeGodMode && !first.npcTypeNoAggro[expected.type],"contact witness is a real vulnerable fixture player");

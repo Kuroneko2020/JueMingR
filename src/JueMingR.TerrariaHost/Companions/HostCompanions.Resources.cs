@@ -65,9 +65,12 @@ namespace JueMingR.TerrariaHost.Companions
             if (itemDraft != null) return Result(false, "请先放下手中的物品。");
             Actor actor; actors.TryGetValue(id, out actor);
             if (!fromOwner && !ItemActorCurrent(id, actor)) return Result(false, "队友尚未就绪，当前不能交接物品。");
+            if (!fromOwner && CompanionResources.IsBank(area) && !StorageAvailable(id, area, out string reason)) return Result(false, reason);
             if (OwnerOperations?.DiscardBlocked == true) return Result(false, "垃圾桶正在使用，请稍后再试。");
+            var access = bankAccess;
             var draft = new CompanionItemDraft(owner, actor?.Body, id, actor?.Generation ?? 0, session, world,
-                (isOwner, a, s) => ItemSlotBlocked(isOwner, isOwner ? owner : actor?.Body, a, s), () => OwnerOperations?.DiscardBlocked == true);
+                (isOwner, a, s) => ItemSlotBlocked(isOwner, isOwner ? owner : actor?.Body, a, s),
+                () => OwnerOperations?.DiscardBlocked == true, bankCurrent: bank => BankCurrent(access, bank));
             if (!draft.QuickTrash(fromOwner, area, slot)) return Result(false, "该物品当前不能丢弃。");
             List<CompanionItemChange> changes;
             if (!draft.TryPrepare(out changes)) return Result(false, "物品已变化，请重试。");
@@ -112,12 +115,15 @@ namespace JueMingR.TerrariaHost.Companions
                 current = actors.TryGetValue(draft.Profile, out actor) && ItemActorCurrent(draft.Profile, actor) &&
                     actor.Generation == draft.Generation && ReferenceEquals(actor.Body, draft.Companion);
             if (current && draft.Validate()) return true;
-            CancelItemGesture(); Feedback = "物品已变化，请重新拿取。"; return false;
+            CancelItemGesture();
+            Feedback = draft.InvalidBank ? "队友储存入口已失效，请重新打开储存。" : "物品已变化，请重新拿取。";
+            return false;
         }
 
         internal Item ItemPreview(Guid id, bool fromOwner, CompanionInventoryArea area, int slot)
         {
             if (!ArchiveIdentityCurrent()) return null;
+            if (CompanionResources.IsBank(area) && (fromOwner || bankAccess?.Profile != id || bankAccess.Area != area)) return null;
             if (itemDraft != null && itemDraft.Profile == id)
             { var preview = itemDraft.Preview(fromOwner, area, slot); if (preview != null) return preview; }
             var body = fromOwner ? owner : GetBody(id);
@@ -135,10 +141,23 @@ namespace JueMingR.TerrariaHost.Companions
             Actor actor; actors.TryGetValue(id, out actor);
             bool usesCompanion = !fromOwner || gesture == CompanionItemGesture.Shift;
             if (usesCompanion && !ItemActorCurrent(id, actor)) return Result(false, "队友尚未就绪，当前不能交接物品。");
+            var targetArea = itemStorageProfile == id && CompanionResources.IsBank(itemStorageArea) ? itemStorageArea : CompanionInventoryArea.Inventory;
+            var bankArea = !fromOwner ? area : gesture == CompanionItemGesture.Shift ? targetArea : CompanionInventoryArea.Inventory;
+            if (CompanionResources.IsBank(bankArea) && !StorageAvailable(id, bankArea, out string reason)) return Result(false, reason);
             if (gesture == CompanionItemGesture.Shift && itemDraft != null) return Result(false, "请先放下手中的物品。");
             if (itemDraft == null)
+            {
+                var access = bankAccess;
                 itemDraft = new CompanionItemDraft(owner, actor?.Body, id, actor?.Generation ?? 0, session, world,
-                    (isOwner, a, s) => ItemSlotBlocked(isOwner, isOwner ? owner : actor?.Body, a, s));
+                    (isOwner, a, s) => ItemSlotBlocked(isOwner, isOwner ? owner : actor?.Body, a, s),
+                    transferTarget: targetArea, bankCurrent: bank =>
+                    {
+                        // An owner-only cursor may first cross into the bank
+                        // later. Once bound, its provider can never be swapped.
+                        if (access == null) access = bankAccess;
+                        return BankCurrent(access, bank);
+                    });
+            }
             // Owner-only organization is allowed with an offline AI. A newly
             // joined AI cannot silently become the target of that older chain.
             if (usesCompanion && (itemDraft.Generation != actor.Generation || !ReferenceEquals(itemDraft.Companion, actor.Body)))
@@ -194,6 +213,8 @@ namespace JueMingR.TerrariaHost.Companions
             foreach (var change in changes)
             {
                 companionChanged |= !change.Owner;
+                if (!change.Owner && change.Area == CompanionInventoryArea.Armor)
+                    InvalidateActorTileReach(actor.Body);
                 if (change.Owner && !change.OwnerTrash)
                 {
                     try { OwnerItems?.NotifyManualItemReplacement(owner, change.Array, change.Slot, change.Before, change.After); }
@@ -212,6 +233,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if (companionChanged && actor != null)
             {
+                InvalidateItemSources(actor);
                 // Capture failure retains this exact latest body. Retry only
                 // captures/sends; it never executes the accepted transfer twice.
                 actor.Dirty = true;
@@ -275,7 +297,10 @@ namespace JueMingR.TerrariaHost.Companions
         // Preserve existing internal command consumers; the actual window now
         // owns only the gesture chain. Legacy calls also notify/publish changes.
         internal bool Transfer(Guid id, bool fromOwner, CompanionInventoryArea area, int slot, bool wholeStack)
-        { return Resource(id, a => CompanionResources.Transfer(owner, a.Body, fromOwner, area, slot, wholeStack, OwnerOperations, SupplySlotBlocked)); }
+        {
+            if (CompanionResources.IsBank(area)) return Result(false, "请从当前储存页面转移物品。");
+            return Resource(id, a => CompanionResources.Transfer(owner, a.Body, fromOwner, area, slot, wholeStack, OwnerOperations, SupplySlotBlocked));
+        }
         internal bool Equip(Guid id, bool fromOwner, int inventorySlot)
         { return Resource(id, a => CompanionResources.Equip(owner, a.Body, fromOwner, inventorySlot, OwnerOperations, SupplySlotBlocked)); }
         internal bool Unequip(Guid id, int armorSlot) { return Unequip(id, CompanionInventoryArea.Armor, armorSlot); }
@@ -290,6 +315,7 @@ namespace JueMingR.TerrariaHost.Companions
             var snapshots = new List<CompanionItemChange>(); var values = new List<Item>();
             for (int side = 0; side < 2; side++) foreach (CompanionInventoryArea area in Enum.GetValues(typeof(CompanionInventoryArea)))
             {
+                if (CompanionResources.IsBank(area)) continue;
                 var array = CompanionResources.Items(side == 0 ? owner : actor.Body, area);
                 for (int slot = 0; slot < array.Length && (area != CompanionInventoryArea.Inventory || slot < 58); slot++)
                 { snapshots.Add(new CompanionItemChange { Owner = side == 0, Area = area, Slot = slot, Array = array, Before = array[slot] }); values.Add(array[slot].Clone()); }

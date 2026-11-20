@@ -14,15 +14,18 @@ namespace JueMingR.TerrariaHost.F5
             { c.Joined=host.IsJoined(c.ProfileId);string state=host.Status(c.ProfileId);if(c.StateText!=state){c.StateText=state;c.Hint=c.Text+"\n"+state;} }
             var body=host.GetBody(selected);
             foreach(var c in controls) {
-                if(c.ActorState){string status=ActorStatus();if(c.Text!=status)c.Text=status;c.Hint=host.IsJoined(selected)?"点击收回人物":c.Enabled?"点击加入当前世界":"永久死亡人物无法加入";}
+                if(c.ActorState)
+                {
+                    bool recall = host.IsJoined(selected);
+                    c.Enabled = host.CanChangeCompanionPresence(selected, recall, out string reason);
+                    c.Hint = reason ?? (recall ? "收回人物" : "加入当前世界");
+                }
                 if(c.TeamIcon>=0)c.Selected=body!=null&&body.team==c.TeamIcon;
             }
             UpdateLabel(selectedStatusLabel,host.Status(selected));
             UpdateLabel(respawnLabel,host.RespawnStatus(selected));
             RefreshConfigurationPresentation(body);
         }
-        private string ActorStatus()
-        {return CurrentProfile()?.PermanentlyDead==true?"永久死亡":host.GetBody(selected)?.dead==true&&host.IsJoined(selected)?"已死亡":host.Status(selected);}
         private void DrawActorControl(Control c)
         {
             bool hover=c.Rect.Contains(pointer.X,pointer.Y);
@@ -34,7 +37,6 @@ namespace JueMingR.TerrariaHost.F5
             }
             else {
                 renderer.Button(c.Element,false,c.Enabled,false,hover,hover&&armedKey==c.Key);
-                DrawCentered(c.Text,c.Rect,c.Enabled?Color.White:Color.Gray,.55f);
             }
         }
         private void UpdateLabel(int index,string value)

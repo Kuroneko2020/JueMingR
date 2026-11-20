@@ -20,6 +20,8 @@ namespace NativeWorldTextProbe
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
         private static Type navigation;
+        private static Player basicRangedBody;
+        private static bool UseBasicGeometry(Player player) => !ReferenceEquals(player, basicRangedBody);
         private static bool Query(string name,Player body,params object[] tail)
         { return (bool)navigation.GetMethod(name,Flags).Invoke(null,new object[]{body}.Concat(tail).ToArray()); }
         private static bool Support(Player body,bool platforms=true)
@@ -275,11 +277,13 @@ namespace NativeWorldTextProbe
                 for(int tick=0;tick<100 && body.inventory[54].stack==40;tick++)NativeCombatStep(host,body);
                 Require(body.selectedItem==41 && body.inventory[54].stack<40,"replenished bow again starts a native attack at its preferred range");
                 var combat=Get(actor,"Combat");
-                int sweeps=(int)Get(combat,"CandidateSweeps"),probes=(int)Get(combat,"PairProbes");
+                int sweeps=(int)Get(combat,"CandidateSweeps"),probes=(int)Get(combat,"PairProbes"),shots=(int)Get(combat,"BasicShotReplays");
                 for(int tick=0;tick<12;tick++)
                 { NativeCombatStep(host,body);Require(body.selectedItem==41,"small unchanged distance keeps the same selected weapon"); }
                 int newSweeps=(int)Get(combat,"CandidateSweeps")-sweeps,newProbes=(int)Get(combat,"PairProbes")-probes;
                 Require(newSweeps>0 && newSweeps<=12 && newProbes<=newSweeps,"native attack workload admits at most one sweep and one pair probe per world step");
+                int newShots=(int)Get(combat,"BasicShotReplays")-shots;
+                Require(newShots>0 && newShots<=12*4,"stable open and blocked native targets reuse bounded basic shot checks before the actual item consumer");
                 wallTarget.active=false;
                 openTarget.Center=body.Center+new Vector2(46,-4);
                 for(int tick=0;tick<100 && (body.selectedItem!=40 || body.itemAnimation<=0);tick++)NativeCombatStep(host,body);
@@ -293,6 +297,7 @@ namespace NativeWorldTextProbe
                 float initial=body.position.X;int health=openTarget.life;
                 for(int tick=0;tick<120 && openTarget.life==health;tick++)NativeCombatStep(host,body);
                 Require(body.position.X>initial+36 && openTarget.life<health,"ordinary usable melee plan closes real distance and strikes using the native body");
+                NativeRangedReposition(host,actor,body,human,openTarget,id,zero);
                 NativeManaStandstill(host,body,human,openTarget,id,zero);
                 NativeSummonHands(host,body,openTarget,id,zero);
                 Console.WriteLine("PASS companion combat selection: blocked near receiver, actual far arrow hit, own ammo/fallback/restock, preference stability and native melee approach.");
@@ -301,6 +306,54 @@ namespace NativeWorldTextProbe
             {
                 wallTarget.active=openTarget.active=false;
                 Array.Copy(items,body.inventory,items.Length);
+                foreach(var shot in Main.projectile)if(shot.active && shot.owner==body.whoAmI)shot.active=false;
+            }
+        }
+
+        private static void NativeRangedReposition(object host,object actor,Player body,Player human,NPC target,Guid id,CompanionBehavior preferences)
+        {
+            const int wall=123;
+            var upper=Main.tile[wall,71];var lower=Main.tile[wall,72];
+            var harmony=new Harmony("JueMingR.Tests.CompanionBasicReposition");
+            var aim=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackAim",true);
+            var previousBehavior=Get(actor,"Behavior");
+            basicRangedBody=body;
+            harmony.Patch(aim.GetMethod("ActorSolution",Flags),prefix:new HarmonyMethod(typeof(NativeCompanionNavigationChecks),nameof(UseBasicGeometry)));
+            try
+            {
+                TileAt(wall,71,TileID.Stone);TileAt(wall,72,TileID.Stone);
+                var start=new Vector2(wall*16-body.width-28,73*16-body.height);
+                body.position=human.position=start;
+                body.velocity=Vector2.Zero;body.releaseJump=true;body.releaseUseItem=true;
+                body.itemAnimation=body.itemTime=body.reuseDelay=0;body.channel=false;
+                body.inventory[40]=new Item();body.inventory[41]=new Item(ItemID.WoodenBow);
+                body.inventory[54]=new Item(ItemID.WoodenArrow){stack=20};
+                body.selectedItemState.Select(41);
+                foreach(var shot in Main.projectile)if(shot.active && shot.owner==body.whoAmI)shot.active=false;
+                InitializeTarget(target,8,body.Center+new Vector2(150,0));target.damage=0;
+                Set(actor,"Behavior",Activator.CreateInstance(previousBehavior.GetType(),true));
+                Call(Get(actor,"Combat"),"Reset");
+                var select=preferences.Clone();select.MainWeapons=new[]{new CompanionWeaponPreference(ItemID.WoodenBow,0,41)};
+                Call(host,"SetBehavior",id,select);
+                NativeCombatStep(host,body);
+                Require(body.inventory[54].stack==20,"an initially blocked low-wall shot preserves real ammo");
+                float peak=body.position.Y;
+                for(int tick=0;tick<105 && body.inventory[54].stack==20;tick++)
+                {
+                    NativeCombatStep(host,body);
+                    peak=Math.Min(peak,body.position.Y);
+                }
+                Require(body.inventory[54].stack<20 && peak<start.Y-9 &&
+                    Main.projectile.Any(p=>p.active && p.owner==body.whoAmI && p.type==ProjectileID.WoodenArrowFriendly),
+                    "the only target cannot spend ammo until a real local takeoff opens a native shot: position="+body.position+" peak="+peak+" start="+start+" status="+Get(actor,"Status"));
+                Console.WriteLine("PASS blocked low wall: actual native movement opened the only bow shot and paid ammo.");
+            }
+            finally
+            {
+                basicRangedBody=null;harmony.UnpatchAll(harmony.Id);
+                Main.tile[wall,71]=upper;Main.tile[wall,72]=lower;
+                body.inventory[41]=new Item();body.inventory[54]=new Item();
+                Set(actor,"Behavior",previousBehavior);
                 foreach(var shot in Main.projectile)if(shot.active && shot.owner==body.whoAmI)shot.active=false;
             }
         }

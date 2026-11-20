@@ -49,6 +49,17 @@ namespace JueMingR.TerrariaHost.Companions
         internal uint Until;
     }
 
+    internal struct CompanionShotCheck
+    {
+        internal CompanionAttackChoice Choice;
+        internal CompanionShotGeometry Geometry;
+        internal Vector2 Origin, TargetPosition, Point;
+        internal Rectangle TargetBounds;
+        internal HostAttackReachability Opening;
+        internal float Gravity, Rotation;
+        internal int Facing;
+    }
+
     internal sealed class CompanionCombatState
     {
         internal const int NearbyCapacity = 8;
@@ -58,6 +69,10 @@ namespace JueMingR.TerrariaHost.Companions
         internal readonly bool[] DirectKnown = new bool[NearbyCapacity], DirectClear = new bool[NearbyCapacity];
         internal readonly int[] Preferences = new int[CompanionBehavior.MaxMainWeapons];
         internal readonly PredictionTerrain DirectTerrain = new PredictionTerrain();
+        internal readonly PredictionTerrain ShotTerrain = new PredictionTerrain();
+        internal uint ShotTerrainTick = UInt32.MaxValue;
+        internal readonly CompanionShotCheck[] ShotChecks = new CompanionShotCheck[12];
+        internal int ShotCheckCount;
         internal int ActiveSlot = -1, InventoryCursor, ProbeCursor;
         internal int LastSlot = -1, TurretCount;
         internal Item LastWeapon;
@@ -71,7 +86,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal readonly CompanionAttackProof[] Proofs = new CompanionAttackProof[4];
         internal int ProofCursor;
 #if DEBUG
-        internal int CandidateSweeps, PairProbes, NativeAdmissions;
+        internal int CandidateSweeps, PairProbes, NativeAdmissions, BasicShotReplays;
 #endif
 
         internal void ResetHand()
@@ -109,7 +124,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             return target != null && target.whoAmI >= 0 && target.whoAmI < Main.maxNPCs &&
                 ReferenceEquals(Main.npc[target.whoAmI], target) && target.generation == generation &&
-                CombatSelection.Receives(target, false) && !target.townNPC && ObservedNpcCombatReady(target) && !PredictionDead(a, target) &&
+                CombatSelection.Receives(target, false) && !target.townNPC && !NPCID.Sets.IsTownPet[target.type] &&
+                !NPCID.Sets.CountsAsCritter[target.type] && ObservedNpcCombatReady(target) && !PredictionDead(a, target) &&
                 Vector2.DistanceSquared(a.Body.Center, target.Center + target.netOffset) <= CompanionCombatRadius * CompanionCombatRadius;
         }
 
@@ -232,7 +248,7 @@ namespace JueMingR.TerrariaHost.Companions
                 Velocity=target.velocity,Tick=Main.GameUpdateCount,Revision=NpcObservationRevision(target)};
         }
 
-        private bool AttackLine(Actor a, CompanionAttackChoice choice, out Vector2 point, int nearbyIndex = -1)
+        private bool AttackLine(Actor a, CompanionAttackChoice choice, CompanionShotGeometry geometry, out Vector2 point, int nearbyIndex = -1)
         {
             point = choice.Target.Center + choice.Target.netOffset;
             var proof=ReadAttackProof(a,choice);
@@ -244,8 +260,23 @@ namespace JueMingR.TerrariaHost.Companions
             // margin prevents a stationary boundary from alternating slots.
             if(choice.CloseCombat && a.Combat.LastSlot!=choice.Slot)range-=4;
             if (DistanceToReceiveBox(player, choice.Target) > range) return false;
-            Vector2 origin = choice.Weapon.shoot > 0 ? HostAttackModels.LaunchOrigin(player, choice.Weapon) : player.Center;
             var state=a.Combat;
+            if (geometry.KnownFamily)
+            {
+                if (state.ShotTerrainTick != Main.GameUpdateCount)
+                {
+                    state.ShotTerrain.Reset();
+                    state.ShotTerrainTick = Main.GameUpdateCount;
+                    state.ShotCheckCount = 0;
+                }
+                // A precise basic result does not depend on the NPC sample
+                // revision. Freshness still governs the optional trajectory.
+                return BasicShotOpening(state, player, choice, geometry, out point) == HostAttackReachability.Reachable;
+            }
+            // Sky births need their own solver. Neither an obstructed hand
+            // ray nor a clear hand ray describes a projectile born above.
+            if (HostSkyAttack.Handles(choice.Weapon.type)) return false;
+            Vector2 origin = choice.Weapon.shoot > 0 ? HostAttackModels.LaunchOrigin(player, choice.Weapon) : player.Center;
             if (nearbyIndex<0) return HostAttackAim.ActorDirectLine(state.DirectTerrain, origin, point);
             if (!state.DirectKnown[nearbyIndex] || state.DirectOrigins[nearbyIndex]!=origin)
             {
@@ -255,11 +286,40 @@ namespace JueMingR.TerrariaHost.Companions
             return state.DirectClear[nearbyIndex];
         }
 
+        private static HostAttackReachability BasicShotOpening(CompanionCombatState state, Player player,
+            CompanionAttackChoice choice, CompanionShotGeometry geometry, out Vector2 point)
+        {
+            Vector2 origin = HostAttackModels.LaunchOrigin(player, choice.Weapon);
+            Vector2 targetPosition = choice.Target.position + choice.Target.netOffset;
+            var bounds = choice.Target.Hitbox;
+            for (int i = 0; i < state.ShotCheckCount; i++)
+            {
+                var check = state.ShotChecks[i];
+                if (!check.Choice.SamePair(choice) || !check.Geometry.SameShot(geometry) || check.Origin != origin ||
+                    check.TargetPosition != targetPosition || check.TargetBounds != bounds || check.Gravity != player.gravDir ||
+                    check.Rotation != player.fullRotation || check.Facing != player.direction) continue;
+                point = check.Point;
+                return check.Opening;
+            }
+#if DEBUG
+            state.BasicShotReplays++;
+#endif
+            var result = geometry.Opening(player, choice.Target, state.ShotTerrain, Vector2.Zero, out point);
+            if (state.ShotCheckCount < state.ShotChecks.Length)
+                state.ShotChecks[state.ShotCheckCount++] = new CompanionShotCheck
+                {
+                    Choice = choice, Geometry = geometry, Origin = origin, TargetPosition = targetPosition, TargetBounds = bounds,
+                    Gravity = player.gravDir, Rotation = player.fullRotation, Facing = player.direction, Point = point, Opening = result
+                };
+            return result;
+        }
+
         private bool CurrentAttack(Actor a, CompanionAttackChoice choice, out int manaCost, out Vector2 point)
         {
             manaCost = 0; point = a.Body.Center;
             return choice.SameWeapon(a.Body) && TargetCurrent(a, choice.Target, choice.TargetGeneration) &&
-                LegalResources(a,choice.Slot,choice.Weapon,out manaCost) && AttackLine(a, choice, out point);
+                LegalResources(a,choice.Slot,choice.Weapon,out manaCost) &&
+                AttackLine(a, choice, new CompanionShotGeometry(a.Body, choice.Weapon), out point);
         }
 
         private void NearbyTargets(Actor a)
@@ -361,6 +421,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (!LegalResources(a,slot,weapon,out manaCost)) return;
             bool missingMana = manaCost > a.Body.statMana;
             var state = a.Combat;
+            var geometry = new CompanionShotGeometry(a.Body, weapon);
             int pairCount = CompanionBehavior.MainInventorySlots * CompanionCombatState.NearbyCapacity;
             float range = WeaponRange(a.Body, weapon);
             for (int i = 0; i < state.NearbyCount; i++)
@@ -377,7 +438,8 @@ namespace JueMingR.TerrariaHost.Companions
                 var candidate = new CompanionAttackChoice { Target = target, TargetGeneration = target.generation, Slot = slot,
                     Weapon = weapon, Type = weapon.type, Prefix = weapon.prefix, CloseCombat = close, Score = score };
                 Prefer(ref state.Pursuit, candidate);
-                if (AttackLine(a, candidate, out _, i))
+                if ((BetterAttack(desired, candidate) || !missingMana && BetterAttack(ready, candidate)) &&
+                    AttackLine(a, candidate, geometry, out _, i))
                 {
                     Prefer(ref desired, candidate);
                     if (!missingMana) Prefer(ref ready, candidate);
@@ -398,8 +460,13 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static void Prefer(ref CompanionAttackChoice best, CompanionAttackChoice choice)
         {
-            if (best.Weapon == null || choice.Score < best.Score || choice.Score == best.Score && choice.Slot < best.Slot)
-                best = choice;
+            if (BetterAttack(best, choice)) best = choice;
+        }
+
+        private static bool BetterAttack(CompanionAttackChoice best, CompanionAttackChoice candidate)
+        {
+            return best.Weapon == null || candidate.Score < best.Score ||
+                candidate.Score == best.Score && candidate.Slot < best.Slot;
         }
 
         private bool TryProbeAttack(Actor a, CompanionAttackChoice probe)

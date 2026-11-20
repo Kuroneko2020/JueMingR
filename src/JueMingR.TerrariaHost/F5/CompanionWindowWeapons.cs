@@ -9,11 +9,15 @@ namespace JueMingR.TerrariaHost.F5
 {
     internal sealed partial class CompanionWindow
     {
-        private sealed class WeaponDraft
+        private struct SelectionIdentity
         {
             internal Guid Profile;
             internal long Session, Generation, Epoch;
             internal Player Body;
+        }
+        private sealed class WeaponDraft
+        {
+            internal SelectionIdentity Identity;
             internal readonly List<CompanionWeaponPreference> Choices = new List<CompanionWeaponPreference>(CompanionBehavior.MaxMainWeapons);
         }
 
@@ -21,8 +25,8 @@ namespace JueMingR.TerrariaHost.F5
         private CompanionProfile weaponProfile;
         private CompanionWeaponPreference[] savedWeapons = Array.Empty<CompanionWeaponPreference>();
         private readonly int[] displayedWeaponSlots = { -1, -1 };
+        private static readonly string[] WeaponCountLabels = { "已选 0/2", "已选 1/2", "已选 2/2" };
         private int activeWeaponSlot = -1, weaponCountLabel = -1;
-        private Control weaponSelectButton;
 
         private CompanionWeaponPreference[] SavedWeapons()
         {
@@ -49,31 +53,37 @@ namespace JueMingR.TerrariaHost.F5
         private void UpdateWeaponDraft()
         {
             var draft = weaponDraft;
-            if (draft != null && (draft.Profile != selected || page != 0 ||
-                !host.WeaponSelectionCurrent(draft.Profile, draft.Session, draft.Generation, draft.Epoch, draft.Body)))
+            if (draft != null && !SelectionCurrent(draft.Identity))
                 CancelWeaponSelection();
         }
 
-        private void BeginWeaponSelection()
+        private bool SelectionCurrent(SelectionIdentity draft) => draft.Profile == selected && page == 0 &&
+            storage == CompanionInventoryArea.Inventory &&
+            host.WeaponSelectionCurrent(draft.Profile, draft.Session, draft.Generation, draft.Epoch, draft.Body);
+
+        private SelectionIdentity? CaptureSelection()
         {
-            host.CancelItemGesture();
-            host.EndItemRepeat();
-            rightSlot = null;
-            rightRepeat = 0;
-            Invalidate();
-            if (Main.mouseItem?.IsAir == false)
-            { notice = "请先放回鼠标上的物品。"; return; }
             var profile = CurrentProfile();
-            if (profile == null || !host.CanTransfer(profile.Id)) return;
+            if (profile == null || !host.CanTransfer(profile.Id)) return null;
             var body = host.GetBody(profile.Id);
-            var draft = new WeaponDraft
+            var draft = new SelectionIdentity
             {
                 Profile = profile.Id, Body = body, Epoch = profile.DataEpoch,
                 Session = host.CreationSessionToken, Generation = host.ActivationGeneration(profile.Id)
             };
-            if (!host.WeaponSelectionCurrent(draft.Profile, draft.Session, draft.Generation, draft.Epoch, body)) return;
+            return SelectionCurrent(draft) ? draft : (SelectionIdentity?)null;
+        }
+
+        private void BeginWeaponSelection()
+        {
+            SelectStorage(CompanionInventoryArea.Inventory, false);
+            if (Main.mouseItem?.IsAir == false)
+            { ShowNotice("请先放回鼠标上的物品。"); return; }
+            var identity = CaptureSelection();
+            if (!identity.HasValue) return;
+            var draft = new WeaponDraft { Identity = identity.Value };
             var weapons = SavedWeapons();
-            HostCompanions.MapWeaponSlots(body, weapons, displayedWeaponSlots);
+            HostCompanions.MapWeaponSlots(draft.Identity.Body, weapons, displayedWeaponSlots);
             for (int i = 0; i < weapons.Length; i++)
                 if (displayedWeaponSlots[i] >= 0)
                     draft.Choices.Add(new CompanionWeaponPreference(weapons[i].Type, weapons[i].Prefix, displayedWeaponSlots[i]));
@@ -95,9 +105,10 @@ namespace JueMingR.TerrariaHost.F5
         {
             var draft = weaponDraft;
             if (draft == null) return;
-            if (host.TrySetMainWeapons(draft.Profile, draft.Session, draft.Generation, draft.Epoch, draft.Body, draft.Choices.ToArray()))
+            var identity = draft.Identity;
+            if (host.TrySetMainWeapons(identity.Profile, identity.Session, identity.Generation, identity.Epoch, identity.Body, draft.Choices.ToArray()))
                 CancelWeaponSelection();
-            notice = host.Feedback;
+            else ShowNotice(host.Feedback);
         }
 
         private void ToggleWeapon(Control hit)
@@ -108,8 +119,8 @@ namespace JueMingR.TerrariaHost.F5
             if (prior >= 0) choices.RemoveAt(prior);
             else
             {
-                if (choices.Count == CompanionBehavior.MaxMainWeapons) { notice = "最多选择两把主要武器。"; return; }
-                var item = weaponDraft.Body.inventory[hit.Slot];
+                if (choices.Count == CompanionBehavior.MaxMainWeapons) { ShowNotice("最多选择两把主要武器。"); return; }
+                var item = weaponDraft.Identity.Body.inventory[hit.Slot];
                 if (!CompanionItemRules.WeaponEligible(item)) return;
                 choices.Add(new CompanionWeaponPreference(item.type, item.prefix, hit.Slot));
             }
@@ -119,35 +130,7 @@ namespace JueMingR.TerrariaHost.F5
         private bool WeaponToolbarEligible(Player body)
         { return body != null && selectedTransfer && !body.ghost; }
 
-        private void WeaponToolbar(float row)
-        {
-            weaponCountLabel = -1;
-            weaponSelectButton = null;
-            float x = companionView.X + 12, y = bodyView.Y;
-            if (weaponDraft == null)
-            {
-                weaponSelectButton = Button("weapon-select", "选择主要武器", new F5Rect(x, y, ConfigurationWidth("选择主要武器"), row), BeginWeaponSelection);
-                RefreshWeaponToolbar(host.GetBody(selected));
-                return;
-            }
-            float doneWidth = ConfigurationWidth("完成"), cancelWidth = ConfigurationWidth("取消");
-            Button("weapon-done", "完成", new F5Rect(x, y, doneWidth, row), FinishWeaponSelection);
-            Button("weapon-cancel", "取消", new F5Rect(x + doneWidth + 6, y, cancelWidth, row), CancelWeaponSelection);
-            weaponCountLabel = labels.Count;
-            Text(WeaponCount(), new F5Rect(x + doneWidth + cancelWidth + 14, y,
-                Math.Max(0, companionView.Right - (x + doneWidth + cancelWidth + 20)), row), .65f);
-        }
-
-        private void RefreshWeaponToolbar(Player body)
-        {
-            if (weaponSelectButton == null) return;
-            weaponSelectButton.Enabled = WeaponToolbarEligible(body);
-            weaponSelectButton.Hint = weaponSelectButton.Enabled ? "从队友主背包选择最多两把。金线标记当前使用的武器。" : selectedUnavailable;
-        }
-
-        private string WeaponCount() => "已选 " + weaponDraft.Choices.Count + "/2";
-        private string WeaponEditingNotice() => weaponDraft == null ? null : weaponDraft.Choices.Count == 0 ?
-            "未指定主要武器，自动选择背包武器。" : "点击主背包中的武器进行选择。";
+        private string WeaponCount() => WeaponCountLabels[weaponDraft.Choices.Count];
 
         private void DrawWeaponMarkers(Control control)
         {

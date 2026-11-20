@@ -39,7 +39,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         internal static int Capacity(CompanionInventoryArea area, Item item)
-        { return area == CompanionInventoryArea.Inventory ? item.maxStack : 1; }
+        { return area == CompanionInventoryArea.Inventory || CompanionResources.IsBank(area) ? item.maxStack : 1; }
 
         internal static bool Accepts(Player body, CompanionInventoryArea area, int slot, Item item,
             Func<CompanionInventoryArea, int, Item> read)
@@ -51,7 +51,16 @@ namespace JueMingR.TerrariaHost.Companions
             switch (area)
             {
                 case CompanionInventoryArea.Inventory:
-                    return slot < 50 || slot < 54 ? slot < 50 || item.IsACoin : item.FitsAmmoSlot();
+                    return slot < 50 || (slot < 54 ? item.IsACoin : item.FitsAmmoSlot());
+                case CompanionInventoryArea.PiggyBank:
+                    // ChestUI protects a favorited portable provider from
+                    // being put into the very personal storage it opens.
+                    return !item.favorited || item.type != ItemID.MoneyTrough;
+                case CompanionInventoryArea.VoidVault:
+                    return !item.favorited || item.type != ItemID.VoidLens && item.type != ItemID.ClosedVoidBag;
+                case CompanionInventoryArea.Safe:
+                case CompanionInventoryArea.DefenderForge:
+                    return true;
                 case CompanionInventoryArea.Dye:
                 case CompanionInventoryArea.MiscDye:
                     return item.dye > 0;
@@ -101,6 +110,7 @@ namespace JueMingR.TerrariaHost.Companions
             // and clears native Air locks, then reads LocalPlayer's pending
             // crafting cursor. Only this exact native slot is our dependency.
             if (area == CompanionInventoryArea.Inventory && body.inventoryChestStack[slot]) return true;
+            if (area == CompanionInventoryArea.VoidVault && body.disableVoidBag >= 0) return true;
             if (operations != null && (area == CompanionInventoryArea.Inventory && operations.IsProtected(slot) ||
                 area == CompanionInventoryArea.Armor && operations.IsProtected(5, slot) ||
                 area == CompanionInventoryArea.Misc && operations.IsProtected(6, slot))) return true;

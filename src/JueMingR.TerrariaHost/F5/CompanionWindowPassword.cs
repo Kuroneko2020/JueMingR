@@ -46,7 +46,7 @@ namespace JueMingR.TerrariaHost.F5
             CancelDrag();
             host.CancelItemGesture();
             host.EndItemRepeat();
-            CancelWeaponSelection();
+            CancelSelectionModes();
             RetireConfigurationInput();
             Invalidate();
             // A challenge projects the new controls under an existing physical

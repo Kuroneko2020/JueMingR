@@ -49,12 +49,22 @@ namespace JueMingR.TerrariaHost.Companions
             return false;
         }
         internal bool UsesCompanion { get; private set; }
+        internal bool InvalidBank { get; private set; }
         internal readonly Func<bool, CompanionInventoryArea, int, bool> Blocked;
         private readonly Func<bool> discardBlocked;
+        private readonly CompanionInventoryArea transferTarget;
+        private readonly Func<CompanionInventoryArea, bool> bankCurrent;
 
         internal CompanionItemDraft(Player owner, Player companion, Guid profile, long generation, long session,
-            object world, Func<bool, CompanionInventoryArea, int, bool> blocked, Func<bool> discardBlocked = null)
-        { Owner = owner; Companion = companion; Profile = profile; Generation = generation; Session = session; World = world; Blocked = blocked; this.discardBlocked = discardBlocked; }
+            object world, Func<bool, CompanionInventoryArea, int, bool> blocked, Func<bool> discardBlocked = null,
+            CompanionInventoryArea transferTarget = CompanionInventoryArea.Inventory, Func<CompanionInventoryArea, bool> bankCurrent = null)
+        {
+            Owner = owner; Companion = companion; Profile = profile; Generation = generation; Session = session; World = world;
+            Blocked = blocked; this.discardBlocked = discardBlocked; this.transferTarget = transferTarget; this.bankCurrent = bankCurrent;
+        }
+
+        private bool BankAvailable(bool owner, CompanionInventoryArea area)
+        { return !CompanionResources.IsBank(area) || !owner && bankCurrent?.Invoke(area) == true; }
 
         private Player Body(bool owner) { return owner ? Owner : Companion; }
         private Cell Find(bool owner, CompanionInventoryArea area, int slot)
@@ -95,12 +105,19 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal bool Validate()
         {
+            InvalidBank = false;
+            CompanionInventoryArea checkedBank = CompanionInventoryArea.Inventory;
             foreach (var cell in cells)
             {
                 if (cell.OwnerTrash)
                 {
                     if (discardBlocked?.Invoke() == true || !ReferenceEquals(Owner.trashItem, cell.Original) || !Same(Owner.trashItem, cell.Baseline)) return false;
                     continue;
+                }
+                if (CompanionResources.IsBank(cell.Area) && (cell.Owner || cell.Area != checkedBank))
+                {
+                    if (!BankAvailable(cell.Owner, cell.Area)) { InvalidBank = true; return false; }
+                    checkedBank = cell.Area;
                 }
                 if (!CompanionItemRules.ValidSlot(Body(cell.Owner), cell.Area, cell.Slot) ||
                     !ReferenceEquals(CompanionResources.Items(Body(cell.Owner), cell.Area), cell.Array) ||
@@ -117,7 +134,8 @@ namespace JueMingR.TerrariaHost.Companions
         // Both guards and both reference/value baselines survive through prepare.
         internal bool QuickTrash(bool fromOwner, CompanionInventoryArea area, int slot)
         {
-            if (cells.Count != 0 || !Cursor.IsAir || area != CompanionInventoryArea.Inventory ||
+            if (cells.Count != 0 || !Cursor.IsAir || area != CompanionInventoryArea.Inventory && !CompanionResources.IsBank(area) ||
+                !BankAvailable(fromOwner, area) ||
                 discardBlocked?.Invoke() == true || !CompanionItemRules.Available(Body(fromOwner), area, slot) || Blocked(fromOwner, area, slot)) return false;
             var source = Touch(fromOwner, area, slot);
             if (source.Preview.IsAir || source.Preview.favorited) return false;
@@ -158,7 +176,7 @@ namespace JueMingR.TerrariaHost.Companions
         private bool GestureCore(bool owner, CompanionInventoryArea area, int slot, CompanionItemGesture gesture, out string message)
         {
             message = null;
-            if (!CompanionItemRules.ValidSlot(Body(owner), area, slot)) { message = "该槽位当前不可用。"; return false; }
+            if (!BankAvailable(owner, area) || !CompanionItemRules.ValidSlot(Body(owner), area, slot)) { message = "该槽位当前不可用。"; return false; }
             bool locked = !CompanionItemRules.Available(Body(owner), area, slot);
             // Difficulty can make an occupied slot unusable. Its original
             // equipment remains recoverable, but the slot cannot take a write.
@@ -172,7 +190,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if (cell.Preview.IsAir) return false;
                 int count = gesture == CompanionItemGesture.Right && !locked ? 1 : cell.Preview.stack;
                 Cursor = cell.Preview.Clone(); Cursor.stack = count;
-                if (area != CompanionInventoryArea.Inventory || count < cell.Preview.stack) Cursor.favorited = false;
+                if (CompanionItemRules.EquipmentContext(area, slot) >= 0 || count < cell.Preview.stack) Cursor.favorited = false;
                 cell.Preview = Remainder(cell.Preview, count); cell.Written = true;
                 rightSource = gesture == CompanionItemGesture.Right ? cell : null;
                 return true;
@@ -193,7 +211,7 @@ namespace JueMingR.TerrariaHost.Companions
                 var next = cell.Preview.IsAir ? Cursor.Clone() : cell.Preview.Clone();
                 next.stack = (cell.Preview.IsAir ? 0 : cell.Preview.stack) + count;
                 if (!Accepts(owner, area, slot, next)) { message = "此物品不能放入该槽位。"; return false; }
-                if (area != CompanionInventoryArea.Inventory) next.favorited = false;
+                if (CompanionItemRules.EquipmentContext(area, slot) >= 0) next.favorited = false;
                 cell.Preview = next; Cursor = Remainder(Cursor, count); cell.Written = true;
                 return true;
             }
@@ -204,7 +222,7 @@ namespace JueMingR.TerrariaHost.Companions
             var previous = cell.Preview; cell.Preview = Cursor; Cursor = previous; cell.Written = true;
             // Vanilla clears both ends of an equipment swap. On armor and
             // dye, that bit means shared loadout ownership, not a backpack mark.
-            if (area != CompanionInventoryArea.Inventory) cell.Preview.favorited = Cursor.favorited = false;
+            if (CompanionItemRules.EquipmentContext(area, slot) >= 0) cell.Preview.favorited = Cursor.favorited = false;
             return true;
         }
 
@@ -214,25 +232,28 @@ namespace JueMingR.TerrariaHost.Companions
             if (!Cursor.IsAir) { message = "请先放下手中的物品。"; return false; }
             if (source.Preview.IsAir) return false;
             if (Body(!fromOwner) == null) { message = "队友当前不能交接物品。"; return false; }
+            var targetArea = fromOwner ? transferTarget : CompanionInventoryArea.Inventory;
+            if (!BankAvailable(!fromOwner, targetArea)) { message = "当前储存入口已失效。"; return false; }
+            int countSlots = targetArea == CompanionInventoryArea.Inventory ? 50 : CompanionResources.Items(Body(!fromOwner), targetArea).Length;
             int requested = source.Preview.stack, remaining = requested;
             var placements = new List<Tuple<int, Item>>();
             for (int pass = 0; pass < 2 && remaining > 0; pass++)
-                for (int slot = 0; slot < 50 && remaining > 0; slot++)
+                for (int slot = 0; slot < countSlots && remaining > 0; slot++)
                 {
-                    if (Blocked(!fromOwner, CompanionInventoryArea.Inventory, slot)) continue;
-                    Item target = Preview(!fromOwner, CompanionInventoryArea.Inventory, slot);
+                    if (Blocked(!fromOwner, targetArea, slot)) continue;
+                    Item target = Preview(!fromOwner, targetArea, slot);
                     if (pass == 0 ? target.IsAir || !Item.CanStack(source.Preview, target) : !target.IsAir) continue;
                     int count = Math.Min(remaining, Math.Max(0, source.Preview.maxStack - (target.IsAir ? 0 : target.stack)));
                     if (count == 0) continue;
                     Item replacement = target.IsAir ? source.Preview.Clone() : target.Clone(); replacement.stack = (target.IsAir ? 0 : target.stack) + count;
-                    if (target.IsAir && source.Area != CompanionInventoryArea.Inventory) replacement.favorited = false;
+                    if (target.IsAir && CompanionItemRules.EquipmentContext(source.Area, source.Slot) >= 0) replacement.favorited = false;
                     placements.Add(Tuple.Create(slot, replacement)); remaining -= count;
                 }
             if (remaining == requested) { message = "接收方背包没有可用空间。"; return false; }
             if (locked && remaining != 0) { message = "请腾出空间以取回这组装备。"; return false; }
             foreach (var placement in placements)
             {
-                var cell = Touch(!fromOwner, CompanionInventoryArea.Inventory, placement.Item1);
+                var cell = Touch(!fromOwner, targetArea, placement.Item1);
                 cell.Preview = placement.Item2; cell.Written = true;
             }
             source.Preview = Remainder(source.Preview, requested - remaining); source.Written = true;
@@ -242,6 +263,27 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static Item Remainder(Item item, int removed)
         { if (removed >= item.stack) return new Item(); var copy = item.Clone(); copy.stack -= removed; return copy; }
+
+        // Bulk operations calculate over one detached projection per endpoint.
+        // Capturing each consulted slot makes capacity and ordering real
+        // dependencies even when a particular slot ends up byte-for-byte equal.
+        internal Item[] Project(bool owner, CompanionInventoryArea area, int count)
+        {
+            var projection = new Item[count];
+            for (int slot = 0; slot < count; slot++) projection[slot] = Touch(owner, area, slot).Preview;
+            return projection;
+        }
+
+        internal void Stage(bool owner, CompanionInventoryArea area, Item[] projection)
+        {
+            for (int slot = 0; slot < projection.Length; slot++)
+            {
+                var cell = Find(owner, area, slot);
+                if (Same(projection[slot], cell.Baseline)) continue;
+                cell.Preview = projection[slot];
+                cell.Written = true;
+            }
+        }
 
         internal bool TryPrepare(out List<CompanionItemChange> changes)
         {

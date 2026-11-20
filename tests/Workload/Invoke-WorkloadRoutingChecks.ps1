@@ -125,7 +125,7 @@ foreach($scope in @('CompanionFontVisual','CompanionConfigVisual','CompanionCrea
 foreach($helper in @('','Behavior','Continuous','Lifecycle','Persistence','Prediction','Transport','Ui')){
     $companionLeaf='tests/NativeWorldTextProbe/NativeCompanion'+$helper+'Checks.cs'
     $expectedCompanionLeaf=switch -CaseSensitive ($helper) {
-        'Ui' { 'native-CompanionCpu|native-CompanionVisual|native-CompanionCreationInputVisual|native-CompanionPasswordCpu' }
+        'Ui' { 'native-CompanionCpu|native-CompanionSessionCpu|native-CompanionVisual|native-CompanionCreationInputVisual|native-CompanionPasswordCpu' }
         'Transport' { 'native-CompanionCpu|native-CompanionNetworkCpu' }
         '' { 'native-CompanionCpu|native-CompanionObservationCombatCpu' }
         default { 'native-CompanionCpu' }

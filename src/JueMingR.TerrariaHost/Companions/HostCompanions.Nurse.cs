@@ -40,18 +40,21 @@ namespace JueMingR.TerrariaHost.Companions
                 !BuffID.Sets.NurseCannotRemoveDebuff[type];
         }
 
-        private static bool NurseCurrent(Player body, NPC npc, int slot, byte generation)
+        private bool NurseCurrent(Player body, NPC npc, int slot, byte generation)
         {
             return slot >= 0 && slot < Main.maxNPCs && ReferenceEquals(Main.npc[slot], npc) &&
-                npc.generation == generation && NearbyServiceTarget.Eligible(body, npc, NPCID.Nurse);
+                npc.generation == generation && ActorTileReachReady(body) &&
+                NearbyServiceTarget.Eligible(body, npc, NPCID.Nurse, ActorTileReach(body));
         }
 
         private NPC FindNurse(Actor actor)
         {
+            if (!ActorTileReachReady(actor.Body)) return null;
             var state = actor.Supplies;
             if (state.Nurse != null && NurseCurrent(actor.Body, state.Nurse, state.NurseSlot, state.NurseGeneration))
                 return state.Nurse;
-            var region = TileReachCheckSettings.Simple.GetWorldRegion(actor.Body);
+            var reach = ActorTileReach(actor.Body);
+            var region = reach.GetWorldRegion(actor.Body);
             if (Main.GameUpdateCount < state.NurseScan && region == state.NurseRegion) return null;
             state.Nurse = null;
             state.NurseSlot = -1;
@@ -64,7 +67,7 @@ namespace JueMingR.TerrariaHost.Companions
                 state.NurseReads++;
 #endif
                 NPC candidate = Main.npc[slot];
-                if (!NearbyServiceTarget.Eligible(actor.Body, candidate, NPCID.Nurse)) continue;
+                if (!NearbyServiceTarget.Eligible(actor.Body, candidate, NPCID.Nurse, reach)) continue;
                 float candidateDistance = Vector2.DistanceSquared(actor.Body.Center, candidate.Center + candidate.netOffset);
                 if (candidateDistance >= distance) continue;
                 distance = candidateDistance;
@@ -332,7 +335,7 @@ namespace JueMingR.TerrariaHost.Companions
                     !ReferenceEquals(Payer, Main.ActivePlayerFileData?.Player) ||
                     Main.netMode == 1 && (!ReferenceEquals(connection, Netplay.Connection) ||
                         !ReferenceEquals(socket, Netplay.Connection?.Socket) || !ReferenceEquals(actorConnection, Actor.Connection)) ||
-                    !NurseCurrent(patient, nurse, slot, generation) || !host.NurseHousingKnown(nurse) ||
+                    !host.NurseCurrent(patient, nurse, slot, generation) || !host.NurseHousingKnown(nurse) ||
                     !host.NurseBiomeTerrainKnown(patient, request: false) || !NurseNeedsService(patient) ||
                     !patient.currentShoppingSettings.Equals(terms) ||
                     host.NurseShoppingSettings(Actor, nurse).PriceAdjustment != terms.PriceAdjustment ||

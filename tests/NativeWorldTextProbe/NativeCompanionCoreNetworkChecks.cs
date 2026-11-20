@@ -196,6 +196,11 @@ namespace NativeWorldTextProbe
                 var actor=Call(host,"OwnedSlot",3);var role=(Player)Get(actor,"Body");var flow=Get(actor,"Connection");
                 Require(observed[17].generation==humanNpc.generation && (bool)Get(pendingLease,"NpcBaseline") && ReferenceEquals(Get(pendingLease,"Source"),actor) && Call(host,"Observer",observed[17].Center)==null,"first successful buffered baseline is usable even when human stays closer than the hysteresis margin");
                 Require(observed[16].generation==nextGeneration.generation && observed[16].FindBuffIndex(BuffID.Poisoned)<0,"same-stream old23/old54/new23 cannot attach the old generation's buffs to the new native identity");
+                // The distant shared zombie requires a real ranged weapon;
+                // this newly joined actor's starter sword has melee reach.
+                role.inventory[0]=new Item(ItemID.WoodenBow);
+                role.inventory[54]=new Item(ItemID.WoodenArrow){stack=20};
+                role.selectedItemState.Select(0);
                 Call(host,"SetBehavior",profile.Id,new CompanionBehavior{Follow=false,AttackEnabled=true});NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",0UL);role.Update(role.whoAmI);
                 Require(ReferenceEquals(GetOptional(actor,"Target"),observed[17]) && ReferenceEquals(Main.npc[17],humanNpc),"initial interleaved NPC and buff baseline participates in actual Player.Update target selection without replacing human table");
                 var originalDrop=Main.item[398];Main.item[398]=new WorldItem(new Item(ItemID.Wood)){whoAmI=398,stack=17,position=role.position,playerIndexTheItemIsReservedFor=role.whoAmI};

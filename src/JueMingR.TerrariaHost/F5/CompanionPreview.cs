@@ -22,7 +22,8 @@ namespace JueMingR.TerrariaHost.F5
         private int showcaseRevision=-1,showcaseGeneration=-1;
         private object showcaseAssets;
         private Vector2 showcaseSize,showcaseCenter,showcaseFeet;
-        private float showcaseScale=1.625f;
+        private const float ShowcaseTargetScale = 2.4f;
+        private float showcaseScale=ShowcaseTargetScale;
 #if DEBUG
         internal int ShowcaseMeasurements {get;private set;}
 #endif
@@ -141,12 +142,12 @@ namespace JueMingR.TerrariaHost.F5
                 bool complete;
                 using(var measurement=new CompanionPetPreviewHooks.Measurement(display))
                 {
-                    DrawBodyAt(renderer,Vector2.Zero,1.625f,Matrix.Identity);
-                    petPreview.Draw(display,Vector2.Zero,1.625f,Matrix.Identity);
+                    DrawBodyAt(renderer,Vector2.Zero,ShowcaseTargetScale,Matrix.Identity);
+                    petPreview.Draw(display,Vector2.Zero,ShowcaseTargetScale,Matrix.Identity);
                     var b=measurement.Bounds;
                     if(b.X==Single.MaxValue)b=new Vector4(-16,-44,16,0);
                     float fit=Math.Min(1,Math.Min(Math.Max(1,frame.Width-16)/Math.Max(1,b.Z-b.X),Math.Max(1,frame.Height-16)/Math.Max(1,b.W-b.Y)));
-                    showcaseScale=1.625f*fit;showcaseCenter=new Vector2((b.X+b.Z)/2,(b.Y+b.W)/2)*fit;
+                    showcaseScale=ShowcaseTargetScale*fit;showcaseCenter=new Vector2((b.X+b.Z)/2,(b.Y+b.W)/2)*fit;
                     complete=measurement.Complete;
                 }
                 showcaseRevision=complete?Rebuilds:-1;showcaseGeneration=generation;showcaseSize=size;showcaseAssets=Main.Assets;

@@ -9,6 +9,7 @@ using System.Net.Sockets;
 using HarmonyLib;
 using JueMingR.Platform.Companions;
 using JueMingR.Platform.Items;
+using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ID;
 using Terraria.Net.Sockets;
@@ -102,6 +103,7 @@ namespace NativeWorldTextProbe
             var ownership = (ItemOperationOwnership)Get(host, "OwnerOperations");
             try
             {
+                BankAndBulk(host, id, human, companion);
                 Put(human.inventory, 10, ItemID.Wood, 20); Put(companion.inventory, 12, ItemID.Wood, 3);
                 Require(Gesture(host, id, true, CompanionInventoryArea.Inventory, 10, "Left"), "left takes full source into a projection");
                 Require(human.inventory[10].stack == 20 && ((Item)Get(host, "CursorItem")).stack == 20 && Preview(host, id, true, CompanionInventoryArea.Inventory, 10).IsAir,
@@ -238,9 +240,135 @@ namespace NativeWorldTextProbe
                 ArchiveIdentity(host,profiles,id,human);
                 Require(ReferenceEquals(Main.mouseItem, nativeCursor) && ReferenceEquals(human.inventory[58], native58) && native58.stack == 3,
                     "all panel operations preserve native mouse and legitimate slot58 identity/content");
-                Console.WriteLine("PASS companion items: real host bounded drafts, exact body slots/rules, right-repeat direction, conservation/cancel/conflicts, Store/Use/Recovery, partial Shift, latest archive retry. No game/Steam/FPS claim.");
+                Console.WriteLine("PASS companion items: bank providers and invalidation, five bulk commands, real bounded drafts, native slots, protected sources, and latest archive retry. No game/Steam/FPS claim.");
             }
             finally { Call(host, "CancelItemGesture"); Main.mouseItem = nativeCursor; companion.dead = false; Call(host, "Recall", id); }
+        }
+
+        private static bool Bank(object host, Guid id, CompanionInventoryArea area)
+        {
+            return (bool)Call(host, "StorageAvailable", new object[] { id, area, null });
+        }
+
+        private static bool Bulk(object host, Guid id, CompanionInventoryArea area, string operation)
+        {
+            var type = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionBulkOperation");
+            return (bool)Call(host, "BulkItems", id, area, Enum.Parse(type, operation));
+        }
+
+        private static void BankAndBulk(object host, Guid id, Player human, Player companion)
+        {
+            var humanPosition = human.position;
+            var actorPosition = companion.position;
+            var safe = CompanionInventoryArea.Safe;
+            var piggy = CompanionInventoryArea.PiggyBank;
+            int x = 60, y = 51;
+            var saved = new Tile[2, 2];
+            Projectile provider = null;
+            for (int column = 0; column < 2; column++)
+                for (int row = 0; row < 2; row++)
+                {
+                    saved[column, row] = Main.tile[x + column, y + row];
+                    var tile = new Tile { type = 97, frameX = (short)(column * 18), frameY = (short)(row * 18) };
+                    tile.active(true);
+                    Main.tile[x + column, y + row] = tile;
+                }
+            try
+            {
+                human.Center = new Vector2(x * 16, y * 16);
+                companion.Center = human.Center + new Vector2(400, 0);
+                Require(!Bank(host, id, safe), "human's nearby 2x2 safe does not grant an out-of-range companion access");
+                companion.Center = human.Center;
+                Require((bool)Call(host, "OpenStorage", id, safe), "actual safe frames in the companion's range grant access");
+                Put(human.inventory, 19, ItemID.Wood, 5);
+                Require(Gesture(host, id, true, CompanionInventoryArea.Inventory, 19, "Shift") &&
+                    human.inventory[19].IsAir && companion.bank2.item[0].stack == 5 &&
+                    human.bank2.item[0].IsAir, "shift targets the physical actor's bank instead of his main bag or the owner's bank");
+                Require(Gesture(host, id, false, safe, 0, "Left"), "actual bank item may be picked into a draft");
+                Main.tile[x + 1, y + 1].active(false);
+                Require(!(bool)Call(host, "ValidateItemGesture") && companion.bank2.item[0].stack == 5 &&
+                    !(bool)Get(host, "HasItemGesture"), "breaking one cell retires the bank proof and preserves the original stack");
+                Main.tile[x + 1, y + 1].active(true);
+                Require((bool)Call(host, "OpenStorage", id, safe), "rebuilt safe can be opened for a new command");
+                Put(human.inventory, 50, ItemID.CopperCoin, 100);
+                Put(human.inventory, 3, ItemID.SilverCoin, 2);
+                Put(human.inventory, 49, ItemID.CopperCoin, 3);
+                Put(human.inventory, 10, ItemID.CopperCoin, 7); human.inventory[10].favorited = true;
+                Require(Bulk(host, id, safe, "DepositAll") && human.inventory[50].stack == 100 &&
+                    human.inventory[3].stack == 2 && human.inventory[49].IsAir &&
+                    companion.bank2.item[1].type == ItemID.CopperCoin && companion.bank2.item[1].stack == 3,
+                    "coin-free bank only receives ordinary backpack coins in the native deposit pass");
+                Require(Bulk(host, id, safe, "DepositAll") && human.inventory[50].IsAir &&
+                    human.inventory[3].IsAir && human.inventory[10].stack == 7 &&
+                    companion.bank2.item[1].type == ItemID.SilverCoin && companion.bank2.item[1].stack == 3 &&
+                    companion.bank2.item[2].type == ItemID.CopperCoin && companion.bank2.item[2].stack == 3,
+                    "a bank with coins aggregates the hotbar and dedicated coin slots while conserving value and favorites");
+                Put(human.inventory, 57, ItemID.WoodenArrow);
+                Put(companion.bank2.item, 10, ItemID.WoodenArrow, 5);
+                Require(Bulk(host, id, safe, "Restock") && human.inventory[57].stack == 6 && companion.bank2.item[10].IsAir,
+                    "restock prioritizes the owner's actual ammo deficit");
+                for (int slot = 0; slot < 40; slot++) Put(companion.bank2.item, slot, ItemID.StoneBlock, 9999);
+                Put(companion.bank2.item, 0, ItemID.Wood, 9998);
+                companion.bank2.item[39] = new Item();
+                Put(human.inventory, 14, ItemID.Wood, 5);
+                Require(Bulk(host, id, safe, "QuickStack") && human.inventory[14].IsAir &&
+                    companion.bank2.item[0].stack == 9999 && companion.bank2.item[39].stack == 4,
+                    "quick stack fills the match and uses the real last bank cell for its remainder");
+                Put(human.inventory, 2, ItemID.Wood, 9998); human.inventory[2].favorited = true;
+                Require(Bulk(host, id, safe, "Restock") && human.inventory[2].stack == 9999 &&
+                    companion.bank2.item[0].stack == 9998, "restock pulls into a valid partly filled favorite hotbar stack");
+                Put(human.inventory, 20, ItemID.Wood, 2); human.inventory[20].favorited = true;
+                Put(human.inventory, 21, ItemID.Wood, 3);
+                Require(Bulk(host, id, safe, "DepositAll") && human.inventory[21].IsAir &&
+                    human.inventory[2].stack == 9999 && human.inventory[20].stack == 2, "deposit skips favorites and the hotbar");
+                for (int slot = 0; slot < 50; slot++) Put(human.inventory, slot, ItemID.DirtBlock, 9999);
+                Put(human.inventory, 4, ItemID.Wood, 9998);
+                Require(Bulk(host, id, safe, "LootAll") && human.inventory[4].stack == 9999 &&
+                    companion.bank2.item[0].stack == 9998 && companion.bank2.item[1].stack == 9999,
+                    "loot commits legal partial pickup without taking the other stacks out of the bank");
+                Terraria.UI.ItemSorting.SetupWhiteLists();
+                Put(companion.inventory, 17, ItemID.WoodenBow);
+                Put(companion.inventory, 29, ItemID.IronHelmet); companion.inventory[29].favorited = true;
+                Put(companion.inventory, 56, ItemID.WoodenArrow, new Item(ItemID.WoodenArrow).maxStack);
+                Put(companion.inventory, 40, ItemID.WoodenArrow, 8);
+                Put(companion.inventory, 4, ItemID.FlamingArrow, 4);
+                Put(companion.inventory, 41, ItemID.FlamingArrow, 2);
+                Require(Bulk(host, id, CompanionInventoryArea.Inventory, "Sort") && companion.inventory[0].type == ItemID.WoodenBow &&
+                    companion.inventory[17].IsAir && companion.inventory[29].type == ItemID.IronHelmet &&
+                    human.inventory[4].stack == 9999,
+                    "native actor sorting includes its hotbar, preserves its favorite and leaves the human untouched");
+                Require(((Item)Call(companion, "PickAmmo_PickAmmoItem", companion.inventory[0])).type == ItemID.WoodenArrow &&
+                    companion.inventory[54].type == ItemID.WoodenArrow && companion.inventory[55].stack == 8 &&
+                    companion.inventory[55].type == ItemID.WoodenArrow && companion.inventory[56].type == ItemID.FlamingArrow &&
+                    companion.inventory[56].stack == 6 && companion.inventory[57].IsAir,
+                    "sorting compacts occupied ammo and fills established types before an earlier inventory newcomer can take the next native shot");
+                Put(companion.inventory, 55, ItemID.WoodenArrow, 20);
+                Put(companion.inventory, 40, ItemID.WoodenArrow, 40);
+                Require(Bulk(host, id, CompanionInventoryArea.Inventory, "Sort") && companion.inventory[55].stack == 60 &&
+                    companion.inventory[40].IsAir && companion.inventory[57].IsAir,
+                    "sorting refills a later occupied stack of the same ammo type instead of putting the remainder into another free slot");
+                Put(companion.inventory, 22, ItemID.MoneyTrough);
+                Require(!Bank(host, id, piggy), "carrying a trough does not create bank access");
+                int projectileSlot = Projectile.NewProjectile(human.GetProjectileSource_Item(human.HeldItem),
+                    companion.Center, Vector2.Zero, 525, 0, 0, human.whoAmI);
+                provider = Main.projectile[projectileSlot];
+                Require((bool)Call(host, "OpenStorage", id, piggy), "another player's active native trough opens the companion's own bank");
+                provider.Center += new Vector2(500, 0);
+                Require(!Bank(host, id, piggy), "moving native provider outside the companion interaction region closes the bank");
+                var bankSlot = (int)Call(host, "NetworkSlot", safe, 39);
+                Require(bankSlot == PlayerItemSlotID.Bank2_0 + 39, "bank slot maps to the original player item packet space");
+            }
+            finally
+            {
+                if (provider != null) provider.Kill();
+                human.position = humanPosition;
+                companion.position = actorPosition;
+                for (int column = 0; column < 2; column++)
+                    for (int row = 0; row < 2; row++) Main.tile[x + column, y + row] = saved[column, row];
+                for (int slot = 0; slot < 58; slot++) human.inventory[slot] = companion.inventory[slot] = new Item();
+                for (int slot = 0; slot < 40; slot++) companion.bank2.item[slot] = new Item();
+                Call(host, "SetItemStorage", id, CompanionInventoryArea.Inventory);
+            }
         }
 
         private static void LockedAndFavoritedEquipment(object host,Guid id,Player human,Player companion)

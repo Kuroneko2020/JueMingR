@@ -21,6 +21,9 @@ namespace JueMingR.TerrariaHost.Companions
     // validates owner/world/activation and synchronizes both native identities.
     internal static class CompanionResources
     {
+        internal static bool IsBank(CompanionInventoryArea area)
+        { return area >= CompanionInventoryArea.PiggyBank && area <= CompanionInventoryArea.VoidVault; }
+
         internal static Item[] Items(Player body, CompanionInventoryArea area)
         {
             switch (area)
@@ -30,6 +33,10 @@ namespace JueMingR.TerrariaHost.Companions
                 case CompanionInventoryArea.Dye: return body.dye;
                 case CompanionInventoryArea.Misc: return body.miscEquips;
                 case CompanionInventoryArea.MiscDye: return body.miscDyes;
+                case CompanionInventoryArea.PiggyBank: return body.bank.item;
+                case CompanionInventoryArea.Safe: return body.bank2.item;
+                case CompanionInventoryArea.DefenderForge: return body.bank3.item;
+                case CompanionInventoryArea.VoidVault: return body.bank4.item;
                 default: throw new ArgumentOutOfRangeException(nameof(area));
             }
         }

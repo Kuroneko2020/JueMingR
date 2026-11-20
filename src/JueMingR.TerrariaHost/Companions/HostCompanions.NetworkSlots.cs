@@ -19,6 +19,10 @@ namespace JueMingR.TerrariaHost.Companions
                 case CompanionInventoryArea.Dye: return PlayerItemSlotID.Dye0 + slot;
                 case CompanionInventoryArea.Misc: return PlayerItemSlotID.Misc0 + slot;
                 case CompanionInventoryArea.MiscDye: return PlayerItemSlotID.MiscDye0 + slot;
+                case CompanionInventoryArea.PiggyBank: return PlayerItemSlotID.Bank1_0 + slot;
+                case CompanionInventoryArea.Safe: return PlayerItemSlotID.Bank2_0 + slot;
+                case CompanionInventoryArea.DefenderForge: return PlayerItemSlotID.Bank3_0 + slot;
+                case CompanionInventoryArea.VoidVault: return PlayerItemSlotID.Bank4_0 + slot;
                 default: throw new ArgumentOutOfRangeException(nameof(area));
             }
         }

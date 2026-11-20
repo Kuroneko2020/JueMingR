@@ -181,7 +181,8 @@ namespace JueMingR.TerrariaHost.Companions
         private static Exception AfterPlayerUpdate(Player __instance, Exception __exception)
         {
             var actor = CompanionHooks.SupplyActor(__instance);
-            if (actor != null) actor.Supplies.Growth = default(RecoverySource);
+            if (actor != null && actor.Supplies.Growth.Found)
+                host.AbandonCompanionGrowth(actor, __exception);
             return __exception;
         }
 

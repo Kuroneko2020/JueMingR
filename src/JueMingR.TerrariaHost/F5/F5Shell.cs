@@ -250,6 +250,11 @@ namespace JueMingR.TerrariaHost.F5
             {
                 CompanionUi?.Close();companions=value;
                 CompanionUi=value==null?null:new CompanionWindow(value,inputState,State.Layout.DynamicTextSize);
+                if (CompanionUi != null && hotkeys?.CompanionSettings != null)
+                {
+                    CompanionUi.HotkeyClicked = OpenCompanionHotkey;
+                    CompanionUi.DrawKeyboard = drawKeyboard;
+                }
                 EnsureMiscUi().AttachCompanions(value==null?(Action<F5Rect>)null:OpenCompanions);
                 var prior=State.BeforeLeave;
                 State.BeforeLeave=p=>{if(prior!=null && !prior(p))return false;CompanionUi?.CloseWithParent();return true;};
@@ -364,6 +369,9 @@ namespace JueMingR.TerrariaHost.F5
                 information?.Adjustment.Active == true || adjustmentPending;
         }
         internal readonly HotkeyPopup HotkeyPopup;
+        private const int CompanionHotkeyPage = -2;
+        private bool companionHotkeyPopup;
+        private F5Rect companionHotkeyAnchor;
         internal readonly StylePopup StylePopup;
         internal readonly DeathHistoryPopup DeathPopup;
         private readonly IDeathControls deaths;
@@ -570,6 +578,7 @@ namespace JueMingR.TerrariaHost.F5
         internal void OpenHotkey(string id, F5Rect rect)
         {
             if(HotkeyPopup==null)return;
+            if (companionHotkeyPopup) { HotkeyPopup.Close(); companionHotkeyPopup = false; }
             long now=clickClock.ElapsedMilliseconds;int generation=State.Layout.Generation,page=State.Page;
             // Do not submit a map draft or switch its content for the first
             // half of another binding entry's required double click.
@@ -581,6 +590,46 @@ namespace JueMingR.TerrariaHost.F5
                 if(HotkeyPopup.Visible)
                 {CloseBlueprintReplacementConfiguration();CloseMaterials();FishingUi?.CloseOverlay();CaptureUi?.Close(); CompanionUi?.Close();RecoveryUi?.PotionPopup.Close();StylePopup?.Close();DeathPopup?.Close();FootprintPopup?.Close();}
             });
+        }
+        private void OpenCompanionHotkey(string id, F5Rect rect)
+        {
+            if (HotkeyPopup == null) return;
+            hotkeys.CompanionSettings.Refresh(companions, hotkeys.Bindings, CompanionUi.HotkeyProfile);
+            if (!companionHotkeyPopup) HotkeyPopup.Close();
+            HotkeyPopup.Click(id, rect, CompanionUi.HotkeyGeneration, CompanionHotkeyPage, clickClock.ElapsedMilliseconds);
+            // The first click belongs to this window too. Otherwise hidden
+            // main F5 would discard the shared recorder's double-click history.
+            companionHotkeyPopup = HotkeyPopup.TrackingTarget == id;
+            companionHotkeyAnchor = rect;
+        }
+
+        private void ValidateCompanionHotkeyAnchor()
+        {
+            if (!companionHotkeyPopup) return;
+            string target = HotkeyPopup.TrackingTarget;
+            if (target != null && CompanionUi?.HasHotkeyAnchor(target, companionHotkeyAnchor) == true) return;
+            HotkeyPopup.Close();
+            companionHotkeyPopup = false;
+        }
+
+        private bool ProcessHotkeyPopupInput(bool active, Vector2 pointer, bool geometryCurrent, int wheel, bool mainEntry)
+        {
+            bool companionOwnedSample = companionHotkeyPopup && HotkeyPopup?.Visible == true;
+            ValidateCompanionHotkeyAnchor();
+            bool companionEscape = companionOwnedSample && inputState.Hotkeys.IsNew((int)Keys.Escape);
+            bool companionCapturing = companionOwnedSample && HotkeyPopup.Capturing;
+            if (HotkeyPopup != null) HotkeyPopup.EntryGesture = !companionHotkeyPopup && mainEntry;
+            HotkeyPopup?.Process(active && (companionHotkeyPopup ? CompanionUi?.Visible == true : State.Visible),
+                companionHotkeyPopup ? CompanionHotkeyPage : State.Page, pointer.X, pointer.Y, geometryCurrent, wheel);
+            if (companionEscape)
+            {
+                if (!companionCapturing) HotkeyPopup.Close();
+                inputState.ConsumeCancellation((int)Keys.Escape);
+            }
+            // The popup owned this sample even when a release closed it.
+            // Keep the parent's physical history current without dispatch.
+            if (companionOwnedSample && active) CompanionUi?.BlockForHotkeyPopup(pointer, wheel);
+            return companionOwnedSample;
         }
         private bool ClaimsPopupPointer()
         {
@@ -596,6 +645,7 @@ namespace JueMingR.TerrariaHost.F5
         private bool ClaimsPopupPoint(Vector2 point)
         {
             if (failed || !State.Visible && CompanionUi?.Visible != true && CompanionUi?.Captured != true && BlueprintMaterialsUi?.Visible != true && BlueprintReplacementPopup?.Captured != true || !CanPresentNow) return false;
+            if (companionHotkeyPopup && HotkeyPopup?.Visible == true) return true;
             return CompanionUi != null && (CompanionUi.Captured || CompanionUi.Contains(point.X,point.Y)) || BlueprintReplacementPopup != null && (BlueprintReplacementPopup.Captured || BlueprintReplacementPopup.Contains(point.X, point.Y)) || BlueprintMaterialsUi != null && (BlueprintMaterialsUi.Captured || BlueprintMaterialsUi.Contains(point.X, point.Y)) || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true || ViewZoom?.OwnsPointer==true) || FishingUi != null && (FishingUi.Captured || FishingUi.Contains(point.X,point.Y)) || CaptureUi != null && (CaptureUi.Captured || CaptureUi.Contains(point.X,point.Y)) || RecoveryUi != null && (RecoveryUi.PotionPopup.Captured || RecoveryUi.PotionPopup.Contains(point.X,point.Y)) || StylePopup != null && (StylePopup.HasCapture || StylePopup.ContainsPointer(point.X, point.Y)) || HotkeyPopup != null && HotkeyPopup.ContainsPointer(point.X, point.Y) || DeathPopup != null && (DeathPopup.Pressed >= 0 || DeathPopup.ContainsPointer(point.X, point.Y)) || MapPopup != null && (MapPopup.Pressed >= 0 || MapPopup.ContainsPointer(point.X, point.Y)) || FootprintPopup != null && (FootprintPopup.Pressed >= 0 || FootprintPopup.ContainsPointer(point.X, point.Y));
         }
         private bool OtherPointerOwner { get { return CompanionUi?.OwnsPointer == true || information != null && information.Adjustment.Dragging || BlueprintReplacementPopup?.BlockPointer == true || inputState.HotkeyPointerOwned || BlueprintMaterialsUi != null && BlueprintMaterialsUi.OwnsPointer || (CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true || ViewZoom?.OwnsPointer==true) || BlueprintPlacedUi?.OwnsPointer == true || BlueprintUi != null && BlueprintUi.OwnsPointer || FishingUi != null && FishingUi.OwnsPointer || CaptureUi != null && CaptureUi.OwnsPointer || MiningUi != null && MiningUi.OwnsPointer || MiscUi != null && MiscUi.OwnsPointer || Browser != null && Browser.OwnsPointer || notes.OwnsPointer || ReforgeUi != null && ReforgeUi.OwnsPointer || RecoveryUi != null && RecoveryUi.OwnsPointer || items != null && items.OwnsPointer || HotkeyPopup != null && HotkeyPopup.OwnsPointer || StylePopup != null && StylePopup.OwnsPointer || DeathPopup != null && DeathPopup.OwnsPointer || MapPopup != null && MapPopup.OwnsPointer || FootprintPopup != null && FootprintPopup.OwnsPointer; } }
@@ -815,9 +865,11 @@ namespace JueMingR.TerrariaHost.F5
                     StylePopup.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y,
                         StylePopup.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, matrix.M11, renderer.FontIdentity, renderer.SkinGeneration, StyleAnchor()), PlayerInput.ScrollWheelDeltaForUI);
                 }
-                if(HotkeyPopup!=null)HotkeyPopup.EntryGesture=secondaryEntry?.HotkeyTarget != null || dynamicEntry;
-                HotkeyPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y,
-                    HotkeyPopup.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
+                if (companionHotkeyPopup && HotkeyPopup.Visible) CompanionUi?.Prepare(matrix, screen);
+                bool companionPopupWasVisible = ProcessHotkeyPopupInput(inputActive, pointer,
+                    HotkeyPopup?.Layout.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration) == true,
+                    PlayerInput.ScrollWheelDeltaForUI, secondaryEntry?.HotkeyTarget != null || dynamicEntry);
+                if (companionPopupWasVisible) f5 = false;
                 RefreshPopupAnchors();
                 DeathPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y,
                     DeathPopup.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration), PlayerInput.ScrollWheelDeltaForUI);
@@ -825,7 +877,9 @@ namespace JueMingR.TerrariaHost.F5
                 FootprintPopup?.Process(inputActive && State.Visible, State.Page, pointer.X, pointer.Y, FootprintPopup.Matches(screen.X / matrix.M11, screen.Y / matrix.M11, renderer.FontIdentity, renderer.SkinGeneration));
                 RecoveryUi?.PotionPopup.Process(inputActive && State.Visible && State.Page==10,keySample,pointer,matrix,screen,inputState.SampleFocused,PlayerInput.ScrollWheelDeltaForUI);
                 BlueprintReplacementPopup?.Process(inputActive && State.Visible && State.Page == 6, keySample, pointer, matrix, screen, inputState.SampleFocused, PlayerInput.ScrollWheelDeltaForUI);
-                CompanionUi?.Process(inputActive && (CompanionUi.Independent || CompanionUi.PasswordPromptVisible || State.Visible && State.Page==1),keySample,pointer,matrix,screen,inputState.SampleFocused,PlayerInput.ScrollWheelDeltaForUI);
+                if (!companionPopupWasVisible || !inputActive)
+                    CompanionUi?.Process(inputActive && (CompanionUi.Independent || CompanionUi.PasswordPromptVisible || State.Visible && State.Page==1),keySample,pointer,matrix,screen,inputState.SampleFocused,PlayerInput.ScrollWheelDeltaForUI);
+                ValidateCompanionHotkeyAnchor();
                 CaptureUi?.Process(inputActive && State.Visible && State.Page==1,keySample,pointer,matrix,screen,inputState.SampleFocused);
                 FishingUi?.ProcessPopup(inputActive,keySample,pointer,State.Layout.Matches(screen.X,screen.Y,matrix.M11,State.Page),inputState.SampleFocused,PlayerInput.ScrollWheelDeltaForUI);
                 bool higherPointer = CompanionUi?.Visible == true || CompanionUi?.Captured == true || BlueprintReplacementPopup?.BlockPointer == true || materialsWasVisible || BlueprintMaterialsUi?.BlockPointer == true || FishingUi!=null && FishingUi.BlockPointer || CaptureUi!=null && (CaptureUi.OwnsPointer || CaptureUi.ConsumeLeft || CaptureUi.ConsumeRight) || RecoveryUi != null && RecoveryUi.PotionPopup.OwnsPointer || HotkeyPopup != null && HotkeyPopup.BlockPointer || StylePopup != null && StylePopup.BlockPointer || DeathPopup != null && DeathPopup.BlockPointer || MapPopup != null && MapPopup.BlockPointer || FootprintPopup != null && FootprintPopup.BlockPointer;
@@ -869,7 +923,7 @@ namespace JueMingR.TerrariaHost.F5
                 // Blueprint's ProcessInput below owns hidden-view teardown and
                 // distinguishes focus suspension from an explicit departure.
                 // Repeating Suspend here would cancel its accepted read job.
-                if (!State.Visible) { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); CompanionUi?.CloseWithParent(); MiningUi?.Suspend(); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); }
+                if (!State.Visible) { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); CompanionUi?.CloseWithParent(); MiningUi?.Suspend(); if (!companionHotkeyPopup) HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); }
                 notes.ProcessInput(inputActive, matrix, screen, raw, inputState.SampleFocused, popupPointer, keySample);
                 if(items!=null)items.SecondaryOnly=popupPointer && dynamicEntry;
                 items?.ProcessInput(inputActive, keySample, pointer, State.Layout.Matches(screen.X, screen.Y, matrix.M11, State.Page), inputState.SampleFocused, popupPointer && !dynamicEntry);
@@ -997,6 +1051,7 @@ namespace JueMingR.TerrariaHost.F5
                 dispatchCompanion = inputActive && CanToggleCompanionsFromHotkey;
                 // A single compiled-match pass owns every primary. In particular,
                 // a bound Mouse1 cannot both confirm a preview and start a drag.
+                hotkeys?.CompanionSettings?.Refresh(companions, hotkeys.Bindings, CompanionUi?.HotkeyProfile ?? Guid.Empty);
                 hotkeys?.Bindings.Dispatch(inputState.Hotkeys, Main.netMode == 0 ? HotkeyContext.SinglePlayer : HotkeyContext.Multiplayer,
                     gameplay, admit: admitHotkey);
                 QuickItems?.AfterDispatch(gameplay);
@@ -1228,7 +1283,7 @@ namespace JueMingR.TerrariaHost.F5
                         FishingUi?.DrawPopup(drawKeyboard);
                         renderer.DrawHints(State, matrix, items, hintsBlocked,
                             !biome.CanObserveLocalPlayer || biome.FeatureFailed || !preferences.BiomeLoaded);
-                        if (HotkeyPopup != null) renderer.DrawPopup(HotkeyPopup);
+                        if (HotkeyPopup != null && !companionHotkeyPopup) renderer.DrawPopup(HotkeyPopup);
                         if (StylePopup != null) renderer.DrawStylePopup(StylePopup);
                         if (DeathPopup != null) renderer.DrawDeathPopup(DeathPopup);
                         if (MapPopup != null) renderer.DrawMapPopup(MapPopup);
@@ -1236,6 +1291,8 @@ namespace JueMingR.TerrariaHost.F5
                     }
                     BlueprintMaterialsUi?.Draw();
                     CompanionUi?.Draw();
+                    ValidateCompanionHotkeyAnchor();
+                    if (companionHotkeyPopup) renderer.DrawPopup(HotkeyPopup);
                 }
             }
             catch { FailClosed(); }

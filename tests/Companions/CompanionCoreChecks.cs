@@ -56,9 +56,10 @@ namespace JueMingR.ArchitectureTests
         }
         private static void LegacyArchive(string root)
         {
-            foreach(int version in new[]{1,2,3})
+            foreach(var fixture in new[]{new[]{1,1},new[]{2,1},new[]{3,1},new[]{4,0},new[]{4,1}})
             {
-            string game=Path.Combine(root,"v"+version);Guid owner,id=Guid.NewGuid();
+            int version=fixture[0];bool enabled=fixture[1]!=0, terminal=version==2||version==4;
+            string game=Path.Combine(root,"v"+version+"-"+enabled);Guid owner,id=Guid.NewGuid();
             using(var archive=new FileCompanionArchive(game)){owner=archive.LoadOwner("legacy").OwnerId;}
             string folder=Path.Combine(game,"JueMingRData","companions","characters",owner.ToString("N"));Directory.CreateDirectory(folder);
             string path=Path.Combine(folder,id.ToString("N")+".bin");
@@ -67,9 +68,20 @@ namespace JueMingR.ArchitectureTests
                 // Independently encode the historical formats rather than use
                 // the current encoder to pretend it emitted a legacy file.
                 writer.Write("JueMingR.Companion");writer.Write(version);writer.Write(id.ToByteArray());writer.Write(owner.ToByteArray());
-                writer.Write("旧人物");writer.Write(7L);writer.Write(3L);writer.Write(false);writer.Write(true);writer.Write(true);writer.Write(false);
-                if(version>=2)writer.Write(version==2);
-                if(version==3){writer.Write(false);writer.Write(48);writer.Write(39);writer.Write((byte)60);}
+                writer.Write("旧人物");writer.Write(7L);writer.Write(3L);writer.Write(false);writer.Write(true);
+                if(version<4)
+                {
+                    writer.Write(true);writer.Write(false);
+                    if(version>=2)writer.Write(terminal);
+                    if(version==3){writer.Write(false);writer.Write(48);writer.Write(39);writer.Write((byte)60);}
+                }
+                else
+                {
+                    writer.Write(false);writer.Write(terminal);writer.Write((byte)1);
+                    writer.Write(39);writer.Write((byte)60);writer.Write((byte)48);
+                    writer.Write(false);writer.Write((byte)1);writer.Write(true);writer.Write(false);writer.Write(enabled);
+                    foreach (int type in new[]{28,110,29,292}) {writer.Write((ushort)1);writer.Write(type);}
+                }
                 writer.Write(2);writer.Write(new byte[]{44,55});writer.Flush();
                 using(var sha=System.Security.Cryptography.SHA256.Create())writer.Write(sha.ComputeHash(stream.ToArray()));writer.Flush();File.WriteAllBytes(path,stream.ToArray());
             }
@@ -78,22 +90,35 @@ namespace JueMingR.ArchitectureTests
                 byte[] original = File.ReadAllBytes(path);
                 var old=archive.LoadOwner("legacy").Profiles.Single();
                 var behavior = old.Behavior;
-                Require(old.Id==id && old.OwnerId==owner && old.Revision==7 && old.DataEpoch==3 && old.PermanentlyDead==(version==2) &&
+                Require(old.Id==id && old.OwnerId==owner && old.Revision==7 && old.DataEpoch==3 && old.PermanentlyDead==terminal &&
                     old.NativeData.SequenceEqual(new byte[]{44,55}) && !behavior.Follow && behavior.AttackEnabled && behavior.AutoRespawn==(version<3),
                     "legacy archive preserves native bytes, ownership, terminal identity, and retained behavior fields");
-                Require(behavior.HealthRecoveryEnabled && behavior.HealthRecoveryMode==CompanionHealthRecoveryMode.Smart && behavior.ManaRecoveryEnabled &&
-                    behavior.AllowNurse && behavior.ConsumablesEnabled && behavior.ExcludedHealingTypes.Length==0 && behavior.ExcludedManaTypes.Length==0 &&
-                    behavior.AllowedGrowthTypes.Length==0 && behavior.AllowedBuffTypes.Length==0, "each legacy version receives the intended supply defaults");
-                Require(behavior.MainWeapons.Length==(version==3?1:0),"only v3 contains a legacy manual selection");
-                if(version==3) Require(behavior.MainWeapons[0].SlotHint==48&&behavior.MainWeapons[0].Type==39&&behavior.MainWeapons[0].Prefix==60,
-                    "v3 manual selection migrates to one actual-slot preference");
+                Require(behavior.BuffEnabled==enabled && behavior.GrowthEnabled==enabled && behavior.ManaRecoveryEnabled,
+                    "v1–v3 default both permissions on and v4 maps both values of its shared switch");
+                Require(behavior.HealthRecoveryEnabled==(version<4) && behavior.AllowNurse==(version<4) &&
+                    behavior.HealthRecoveryMode==(version<4?CompanionHealthRecoveryMode.Smart:CompanionHealthRecoveryMode.Fast) &&
+                    behavior.ExcludedHealingTypes.SequenceEqual(version<4?Array.Empty<int>():new[]{28}) &&
+                    behavior.ExcludedManaTypes.SequenceEqual(version<4?Array.Empty<int>():new[]{110}) &&
+                    behavior.AllowedGrowthTypes.SequenceEqual(version<4?Array.Empty<int>():new[]{29}) &&
+                    behavior.AllowedBuffTypes.SequenceEqual(version<4?Array.Empty<int>():new[]{292}),
+                    "older recovery defaults and v4's four source lists retain their real fields");
+                Require(behavior.MainWeapons.Length==(version>=3?1:0),"v3 and v4 preserve a manual selection");
+                if(version>=3) Require(behavior.MainWeapons[0].SlotHint==48&&behavior.MainWeapons[0].Type==39&&behavior.MainWeapons[0].Prefix==60,
+                    "the historical actual-slot preference is retained");
                 archive.Save(old);
                 Require(original.SequenceEqual(File.ReadAllBytes(path)),"loading and reaccepting an identical old revision leaves the original format untouched");
-                archive.Save(old.Revise(old.NativeData));
+                behavior.GrowthEnabled=!enabled;
+                archive.Save(old.Revise(old.NativeData,behavior));
             }
             using(var stream=File.OpenRead(path))using(var reader=new BinaryReader(stream))
-            { Require(reader.ReadString()=="JueMingR.Companion"&&reader.ReadInt32()==4,"the next complete revision writes one v4 record"); }
-            using(var archive=new FileCompanionArchive(game))Require(archive.LoadOwner("legacy").Profiles.Single().PermanentlyDead==(version==2),"normal next revision upgrades legacy without rewriting terminal semantics");
+            { Require(reader.ReadString()=="JueMingR.Companion"&&reader.ReadInt32()==5,"the next complete revision writes one v5 record"); }
+            using(var archive=new FileCompanionArchive(game))
+            {
+                var saved=archive.LoadOwner("legacy").Profiles.Single();
+                Require(saved.PermanentlyDead==terminal && saved.Behavior.BuffEnabled==enabled && saved.Behavior.GrowthEnabled!=enabled &&
+                    saved.NativeData.SequenceEqual(new byte[]{44,55}) && saved.Revision==8 && saved.DataEpoch==3,
+                    "one new setting saves v5 independently with the same terminal identity and native bytes");
+            }
             }
         }
         private static void PreferenceRoundTrip(string root)
@@ -102,7 +127,7 @@ namespace JueMingR.ArchitectureTests
             var behavior=new CompanionBehavior
             {
                 AutoRespawn=false,HealthRecoveryEnabled=false,HealthRecoveryMode=CompanionHealthRecoveryMode.Fast,
-                ManaRecoveryEnabled=false,AllowNurse=false,ConsumablesEnabled=false,
+                ManaRecoveryEnabled=false,AllowNurse=false,BuffEnabled=false,GrowthEnabled=true,
                 MainWeapons=new[]{new CompanionWeaponPreference(39,60,12),new CompanionWeaponPreference(3507,0,49)},
                 ExcludedHealingTypes=new[]{28},ExcludedManaTypes=new[]{110},AllowedGrowthTypes=new[]{29,109},AllowedBuffTypes=new[]{292}
             };
@@ -119,9 +144,9 @@ namespace JueMingR.ArchitectureTests
                 Require(profile.OwnerId==owner && profile.Id==id && profile.PermanentlyDead && profile.NativeData.SequenceEqual(new byte[]{7,9}) &&
                     !saved.Follow && !saved.AutoRespawn && saved.MainWeapons.Length==2 && saved.MainWeapons[0].Prefix==60 && saved.MainWeapons[1].SlotHint==49 &&
                     !saved.HealthRecoveryEnabled && saved.HealthRecoveryMode==CompanionHealthRecoveryMode.Fast && !saved.ManaRecoveryEnabled &&
-                    !saved.AllowNurse && !saved.ConsumablesEnabled && saved.ExcludedHealingTypes.SequenceEqual(new[]{28}) && saved.ExcludedManaTypes.SequenceEqual(new[]{110}) &&
+                    !saved.AllowNurse && !saved.BuffEnabled && saved.GrowthEnabled && saved.ExcludedHealingTypes.SequenceEqual(new[]{28}) && saved.ExcludedManaTypes.SequenceEqual(new[]{110}) &&
                     saved.AllowedGrowthTypes.SequenceEqual(new[]{29,109}) && saved.AllowedBuffTypes.SequenceEqual(new[]{292}),
-                    "one v4 record reopens the full settings with native, owner and terminal data intact");
+                    "one v5 record reopens the full settings with native, owner and terminal data intact");
                 saved.AutoRespawn=true;saved.MainWeapons[0]=default(CompanionWeaponPreference);saved.ExcludedHealingTypes[0]=1;
                 Require(!profile.Behavior.AutoRespawn&&profile.Behavior.MainWeapons[0].Type==39&&profile.Behavior.ExcludedHealingTypes[0]==28,
                     "caller's edits cannot mutate the stored profile or its arrays");

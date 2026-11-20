@@ -93,6 +93,7 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Until(()=>{Call(host,"Update",0UL);var published=((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().ToArray();return published.Any(p=>p.Name==prefix+"甲") && published.Any(p=>p.Name==prefix+"乙");});
                 first=((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Single(p=>p.Name==prefix+"甲").Id;
                 second=((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Single(p=>p.Name==prefix+"乙").Id;Saved(host,first);Saved(host,second);
+                if(journey==null)NativeCompanionUiChecks.ProfileHotkeys(context,first,second);
                 Require((bool)Call(host,"SetTeam",first,2),"offline team modifies latest native archive without joining");Saved(host,first);
                 Require((bool)Call(host,"Join",first) && (bool)Call(host,"Join",second),"both real actors join");
                 var a=(Player)Call(host,"GetBody",first);var b=(Player)Call(host,"GetBody",second);

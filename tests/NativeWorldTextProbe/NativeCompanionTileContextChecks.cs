@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using HarmonyLib;
 using JueMingR.Platform.Companions;
@@ -7,6 +10,7 @@ using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
 using Terraria.ID;
+using Terraria.Net.Sockets;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -43,8 +47,19 @@ namespace NativeWorldTextProbe
             var slot=body.selectedItemState;var item=body.inventory[0];var ammo=body.inventory[54];var visual=body.lastVisualizedSelectedItem;
             int mode=Main.netMode,my=Main.myPlayer,mx=Main.mouseX,myy=Main.mouseY,oldTx=Player.tileTargetX,oldTy=Player.tileTargetY;
             var sections=Main.sectionManager;
+            var mainNetworkBuffer = NetMessage.buffer[256];
+            var mainSocket = Netplay.Connection.Socket;
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            var primary = new TcpClient();
+            TcpClient peer = null;
+            var priorConnection = GetOptional(actor, "Connection");
+            var outputFrames = new List<byte[]>();
+            var connectionType = hooks.Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionConnection");
+            var testConnection = Activator.CreateInstance(connectionType, BindingFlags.Instance | BindingFlags.NonPublic,
+                null, new object[] { new Action<byte[]>(frame => outputFrames.Add(frame)), new Action(() => {}) }, null);
             int animation=body.itemAnimation,animationMax=body.itemAnimationMax,time=body.itemTime,timeMax=body.itemTimeMax,direction=body.direction;
             bool use=body.controlUseItem,channel=body.channel,release=body.releaseUseItem;
+            bool useAttempt=body.lastItemUseAttemptSuccess;
             bool noItems=body.noItems;
             int held=body.heldProj;float rotation=body.itemRotation;uint clock=Main.GameUpdateCount;
             var controls=new Dictionary<string,object>();foreach(string name in new[]{"controlLeft","controlRight","controlUp","controlDown","controlJump","controlUseTile","controlHook","controlThrow"})controls[name]=Get(body,name);
@@ -53,6 +68,14 @@ namespace NativeWorldTextProbe
             checkedBody=body;
             try
             {
+                // Setting netMode alone bypasses native client initialization.
+                // ItemCheck's actual SendData(13) locks this real serializer.
+                NetMessage.buffer[256] = new MessageBuffer { whoAmI = 256 };
+                listener.Start();
+                primary.Connect(IPAddress.Loopback, ((IPEndPoint)listener.LocalEndpoint).Port);
+                peer = listener.AcceptTcpClient();
+                Netplay.Connection.Socket = new TcpSocket(primary);
+                Set(actor, "Connection", testConnection);
                 Main.netMode=1;Set(actor,"Target",null);Set(actor,"Behavior",Activator.CreateInstance(actorState["Behavior"].GetType(),true));body.selectedItemState.Select(0);body.selectedItemState.Update();
                 Main.sectionManager=new WorldSections((Main.maxTilesX+199)/200,(Main.maxTilesY+149)/150);
                 Main.sectionManager.SetSectionLoaded(Netplay.GetSectionX(tx),Netplay.GetSectionY(ty));
@@ -102,9 +125,11 @@ namespace NativeWorldTextProbe
                 Main.tile[tx,ty]=null;Set(actor,"Aim",missing);
                 body.inventory[0]=new Item();body.inventory[0].SetDefaults(ItemID.WoodenBow);
                 body.inventory[54]=new Item();body.inventory[54].SetDefaults(ItemID.WoodenArrow);body.inventory[54].stack=2;
-                body.itemTime=body.itemAnimation=0;body.releaseUseItem=true;body.controlUseItem=true;
+                body.itemTime=body.itemAnimation=0;body.releaseUseItem=true;body.controlUseItem=true;body.lastItemUseAttemptSuccess=false;
                 using((IDisposable)Hook(hooks,"Enter",actor,missing,true))body.ItemCheck();
                 Require(body.inventory[54].stack==1 && body.itemAnimation>0,"real native bow fires/pays ammo while unrelated placement at unknown aim waits");
+                Require(outputFrames.Any(packet => packet[2] == 13 && packet[3] == body.whoAmI),
+                    "the real native use edge serializes its control frame to the actor byte outlet");
                 Require((Vector2)Get(actor,"Aim")==missing && Main.tile[tx,ty]==null,"firing does not redirect the action or invent terrain");
                 }
                 Set(actor,"Aim",missing);
@@ -143,11 +168,16 @@ namespace NativeWorldTextProbe
             finally
             {
                 patch.UnpatchAll(patch.Id);checkedBody=null;
+                NetMessage.buffer[256] = mainNetworkBuffer;
+                Netplay.Connection.Socket = mainSocket;
+                Set(actor, "Connection", priorConnection);
+                ((IDisposable)testConnection).Dispose();
+                peer?.Dispose(); primary.Dispose(); listener.Stop();
                 foreach(var pair in cells)Main.tile[pair.Key.X,pair.Key.Y]=pair.Value;
                 foreach(var pair in actorState)Set(actor,pair.Key,pair.Value);
                 body.selectedItemState=slot;body.inventory[0]=item;body.inventory[54]=ammo;body.lastVisualizedSelectedItem=visual;
                 body.itemAnimation=animation;body.itemAnimationMax=animationMax;body.itemTime=time;body.itemTimeMax=timeMax;body.direction=direction;
-                body.controlUseItem=use;body.channel=channel;body.releaseUseItem=release;body.position=position;body.velocity=velocity;
+                body.controlUseItem=use;body.channel=channel;body.releaseUseItem=release;body.lastItemUseAttemptSuccess=useAttempt;body.position=position;body.velocity=velocity;
                 body.noItems=noItems;foreach(var pair in controls)Set(body,pair.Key,pair.Value);
                 body.heldProj=held;body.itemRotation=rotation;AccessTools.Field(typeof(Main),"_gameUpdateCount").SetValue(null,clock);
                 for(int i=0;i<beforeProjectiles.Length;i++)if(!beforeProjectiles[i])Main.projectile[i].active=false;

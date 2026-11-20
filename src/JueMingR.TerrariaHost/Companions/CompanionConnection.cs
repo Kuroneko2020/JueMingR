@@ -17,7 +17,7 @@ namespace JueMingR.TerrariaHost.Companions
         private int incomingBytes,outgoingBytes; private volatile bool stopped,finished;
         private volatile string error; private TcpClient client;
         private readonly Action<byte[]> relay;private readonly Action closeRelay;
-        private int deathReplies;
+        private long sentPings, receivedPings, pendingDeathPing, deathClosePing;
         private long deathDeadline;
         private volatile bool deathConfirmed;
         internal bool Finished {get{return finished;}}
@@ -32,10 +32,33 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool TrySend(byte[] packet)
         {
             if(packet==null || packet.Length<3 || (packet[0]|packet[1]<<8)!=packet.Length)throw new InvalidDataException("Invalid companion frame");
-            if(relay!=null){if(stopped || finished || deathDeadline!=0)return false;relay((byte[])packet.Clone());return true;}
-            lock(gate){if(stopped || finished || deathDeadline!=0)return false;if(outgoingBytes+packet.Length>4*1024*1024)throw new IOException("队友发送队列已满。");outgoing.Enqueue((byte[])packet.Clone());outgoingBytes+=packet.Length;return true;}
+            lock(gate)
+            {
+                if(stopped || finished || deathDeadline!=0)return false;
+                if(relay!=null)relay((byte[])packet.Clone());
+                else
+                {
+                    if(outgoingBytes+packet.Length>4*1024*1024)throw new IOException("队友发送队列已满。");
+                    outgoing.Enqueue((byte[])packet.Clone());outgoingBytes+=packet.Length;
+                }
+                // The first native ping sent after the latest accepted death
+                // orders its settlement on this exact transport. Body and
+                // activation generations can change before that reply arrives.
+                if(packet[2]==118)pendingDeathPing=sentPings+1;
+                else if(packet[2]==154)sentPings++;
+                return true;
+            }
         }
-        internal byte[] Receive(){lock(gate){if(incoming.Count==0)return null;var p=incoming.Dequeue();incomingBytes-=p.Length;return p;}}
+        internal byte[] Receive()
+        {
+            lock(gate)
+            {
+                if(incoming.Count==0)return null;
+                var p=incoming.Dequeue();incomingBytes-=p.Length;
+                if(p[0]==154 && receivedPings<sentPings)receivedPings++;
+                return p;
+            }
+        }
         internal void ReceiveRelay(byte[] framed)
         {
             if(framed.Length<3 || (framed[0]|framed[1]<<8)!=framed.Length)throw new InvalidDataException("无效队友桥接数据。");
@@ -43,12 +66,16 @@ namespace JueMingR.TerrariaHost.Companions
             lock(gate){if(incomingBytes+p.Length>8*1024*1024)throw new IOException("队友接收队列已满。");incoming.Enqueue(p);incomingBytes+=p.Length;}
         }
         internal void Disconnect(string reason){error=reason;finished=true;}
-        internal bool CloseAfterDeath(int previousReplies)
+        internal bool HasUnconfirmedDeath
+        {
+            get { lock(gate) return pendingDeathPing>receivedPings; }
+        }
+        internal bool CloseAfterDeath()
         {
             lock (gate)
             {
                 if (!TrySend(Packet(154))) return false;
-                deathReplies = previousReplies + 1;
+                deathClosePing = sentPings;
                 deathDeadline = Stopwatch.GetTimestamp() + 5 * Stopwatch.Frequency;
                 return true;
             }
@@ -60,13 +87,12 @@ namespace JueMingR.TerrariaHost.Companions
                 if (deathDeadline == 0) return false;
                 // Nobody decodes gameplay on this detached flow. Older native
                 // 154 replies cannot acknowledge the final sequence on it.
-                for (int n = 0; n < 96 && deathReplies > 0 && incoming.Count != 0; n++)
+                for (int n = 0; n < 96 && receivedPings < deathClosePing && incoming.Count != 0; n++)
                 {
                     var packet = Receive();
-                    if (packet[0] == 154) deathReplies--;
                     if (packet[0] == 2) return true;
                 }
-                deathConfirmed = deathReplies == 0;
+                deathConfirmed = receivedPings >= deathClosePing;
                 return deathConfirmed || Stopwatch.GetTimestamp() >= deathDeadline;
             }
         }
