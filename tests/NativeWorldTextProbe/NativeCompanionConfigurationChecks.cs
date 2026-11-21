@@ -32,7 +32,7 @@ namespace NativeWorldTextProbe
         private static IEnumerable Controls(object window) {return (IEnumerable)Get(window,"controls");}
         private static object Control(object window,string prefix)
         {return Controls(window).Cast<object>().Single(c=>((string)Get(c,"Key")).StartsWith(prefix,StringComparison.Ordinal));}
-        private static CompanionProfile Profile(object host,Guid id)
+        internal static CompanionProfile Profile(object host,Guid id)
         {return ((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Single(p=>p.Id==id);}
         private static void Queue(string value)
         {Main.keyCount=value.Length;for(int i=0;i<value.Length;i++){Main.keyInt[i]=value[i];Main.keyString[i]=value[i].ToString();}}
@@ -68,7 +68,8 @@ namespace NativeWorldTextProbe
                 frame(point,false,neutral,0);frame(point,true,neutral,0);frame(point,false,neutral,0);
                 PlayerInput.Triggers.Current.CopyInto(owner);Require(!owner.controlUseItem&&!owner.controlUseTile&&!Main.mouseLeft,"configuration click has no native world-use pulse");
             };
-            Action<string> image=name=>{rest();graphics.Image(Path.Combine(output,name+".png"),()=>Call(window,"Draw"),matrix,(int)screen.X,(int)screen.Y);};
+            Action<string> capture=name=>graphics.Image(Path.Combine(output,name+".png"),()=>Call(window,"Draw"),matrix,(int)screen.X,(int)screen.Y);
+            Action<string> image=name=>{rest();capture(name);};
             Action<string> scrollTo=prefix=>{
                 int budget=40;
                 while(!Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith(prefix,StringComparison.Ordinal))) {
@@ -89,6 +90,7 @@ namespace NativeWorldTextProbe
                 imeField.SetValue(text,new PreviewIme(imeField.FieldType).GetTransparentProxy());owner.name="验证主人";
                 var otherBody=(Player)Call(host,"GetBody",other);
                 var itemTypes=owner.inventory.Concat(body.inventory).Concat(otherBody.inventory).Where(item=>item!=null&&!item.IsAir).Select(item=>item.type).Distinct().ToArray();
+                NativeCompanionSupplyMenuChecks.LoadIcons(graphics,host);
                 graphics.LoadItemTextures(itemTypes);Console.WriteLine("CONFIG-ASSETS actual inventory types="+String.Join(",",itemTypes));
                 Main.screenWidth=(int)screen.X;Main.screenHeight=(int)screen.Y;PlayerInput.CacheOriginalScreenDimensions();Main.UIScale=1;
                 CheckWorldNames(graphics, output, body);
@@ -101,6 +103,7 @@ namespace NativeWorldTextProbe
                     Require((float)Get(Get(Control(window,name+"/"),"Rect"),"Y")== (float)Get(toolbar,"Y") &&
                         (float)Get(Get(Control(window,name+"/"),"Rect"),"Height")== (float)Get(toolbar,"Height"),
                         "both sets of actual inventory buttons share one tool baseline");
+                NativeCompanionSlotVisualChecks.Run(context, window, host, id, graphics, output, matrix, screen);
                 image("companion-inventory-tools");
                 click("storage-Inventory/");
                 Require(Get(window,"panel").Equals(panel) &&
@@ -113,9 +116,9 @@ namespace NativeWorldTextProbe
                 click("once-cancel/");
                 click("configuration/");
                 Require(Get(window,"panel").Equals(panel) &&
-                    Controls(window).Cast<object>().Count(c=>GetOptional(c,"HotkeyId")!=null)==7 &&
+                    Controls(window).Cast<object>().Count(c=>GetOptional(c,"HotkeyId")!=null)==9 &&
                     !Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith("config-tab:",StringComparison.Ordinal)),
-                    "seven real shortcut entries share the fixed backpack envelope without second-level tabs");
+                    "nine real shortcut entries share the fixed backpack envelope without second-level tabs");
                 Require(!Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith("actor-state/",StringComparison.Ordinal)||((string)Get(c,"Key")).StartsWith("team:",StringComparison.Ordinal)),"team and membership actions stay on the backpack page");
                 image("companion-config-behavior");
                 int builds=(int)Get(window,"LayoutBuilds");for(int i=0;i<100;i++)prepare();Require((int)Get(window,"LayoutBuilds")==builds,"stable configuration prepares rebuild no controls");
@@ -125,38 +128,9 @@ namespace NativeWorldTextProbe
                 click("config-Attack/关闭/");Require(!Profile(host,id).Behavior.AttackEnabled&&Profile(host,id).Behavior.Follow,"one explicit switch edits its real field and preserves neighbors");
                 click("config-Follow/关闭/");Require(!Profile(host,id).Behavior.Follow,"real follow setting preserves stationary behavior");
                 click("config-Respawn/关闭/");Require(!Profile(host,id).Behavior.AutoRespawn,"real auto-respawn setting uses its existing owner");
-                click("config-Life/快速/");click("config-Life/配置/");click("nurse/");
-                Require(Profile(host,id).Behavior.HealthRecoveryMode==CompanionHealthRecoveryMode.Fast&&!Profile(host,id).Behavior.AllowNurse,
-                    "recovery mode and nurse are independent persisted settings");
-                image("companion-config-heal-modes");
-                scrollTo("supply:Life:"+ItemID.HealingPotion+":");click("supply:Life:"+ItemID.HealingPotion+":");
-                Require(Profile(host,id).Behavior.ExcludedHealingTypes.Contains(ItemID.HealingPotion),"unchecking a defined potion saves its explicit override while absent");
-                click("configuration/");click("config-Mana/关闭/");Require(!Profile(host,id).Behavior.ManaRecoveryEnabled,"mana has its own switch");
-                click("config-Growth/关闭/");Require(Profile(host,id).Behavior.BuffEnabled&&!Profile(host,id).Behavior.GrowthEnabled,"closing growth leaves buff strategies enabled");
-                click("config-Growth/配置/");scrollTo("supply:Growth:"+ItemID.LifeCrystal+":");
-                click("supply:Growth:"+ItemID.LifeCrystal+":");
-                Require(Profile(host,id).Behavior.AllowedGrowthTypes.SequenceEqual(new[]{(int)ItemID.LifeCrystal}) &&
-                    ((IEnumerable)Get(window,"labels")).Cast<object>().Any(label=>(string)Get(label,"Text")=="缺货"),"growth permission remains editable while its strategy is off");
-                body.statLifeMax=400;Call(host,"CaptureActorState",Call(host,"Owned",body),null);prepare();
-                var loanRows=((IEnumerable)Get(window,"labels")).Cast<object>().Select(label=>(string)Get(label,"Text")).ToArray();
-                Require(loanRows.Contains("已完成"),"complete status is independent of the lasting permission");body.statLifeMax=100;
-                Require(Get(window,"panel").Equals(panel),"opening a real supply list retains the outer bounds");
-                image("companion-config-growth");
-
-                var food=ContentSamples.ItemsByType.Values.First(i=>i.consumable&&i.buffType==BuffID.WellFed);
-                var partial=Profile(host,id).Behavior;
-                const int unknownType=90001;
-                partial.AllowedBuffTypes=new[]{food.type,unknownType};
-                Require((bool)Call(host,"SetBehavior",id,partial),"load a real partial group with an undisplayed historical type");
-                click("configuration/");click("config-Buff/配置/");scrollTo("effect:"+BuffID.WellFed+"/");
-                var mixed=Controls(window).Cast<object>().Single(c=>((string)Get(c,"Key")).StartsWith("supply:Buff:",StringComparison.Ordinal) &&
-                    ((string)Get(c,"Key")).Contains(":"+BuffID.WellFed+":部分允许/"));
-                string mixedKey=((string)Get(mixed,"Key")).Split('/')[0];
-                Require(Profile(host,id).Behavior.AllowedBuffTypes.SequenceEqual(new[]{food.type,unknownType}),"projecting the food group preserves its partial permissions");
-                click(mixedKey+"/");
-                Require(Profile(host,id).Behavior.AllowedBuffTypes.Length>2&&Profile(host,id).Behavior.AllowedBuffTypes.Contains(unknownType),
-                    "explicitly allowing a mixed food group changes only its concrete members");
-                click("configuration/");scrollTo("request-reset/");
+                var supplyMenus = new NativeCompanionSupplyMenuChecks(window, host, id, frame, click, prepare, capture);
+                supplyMenus.CheckWide(body);
+                scrollTo("request-reset/");
                 long beforeConfirmation=Profile(host,id).DataEpoch;click("request-reset/");scrollTo("cancel-reset/");
                 click("cancel-reset/");Require(Profile(host,id).DataEpoch==beforeConfirmation,"confirmation cancellation performs no archive reset");
                 long epoch=Profile(host,id).DataEpoch;
@@ -187,7 +161,7 @@ namespace NativeWorldTextProbe
                 Require(GetOptional(window,"weaponDraft")==null&&(Guid)Get(window,"selected")==other,"changing the selected character retires the whole draft");click("profile:"+id+"/");
                 click("configuration/");scrollTo("restore-behavior/");click("restore-behavior/");var restored=Profile(host,id).Behavior;
                 Require(restored.Follow&&restored.AttackEnabled&&restored.AutoRespawn&&restored.MainWeapons.Length==0&&restored.AllowedGrowthTypes.Length==0&&
-                    restored.HealthRecoveryMode==CompanionHealthRecoveryMode.Smart&&restored.ManaRecoveryEnabled&&restored.AllowNurse&&
+                    restored.HealthRecoveryMode==CompanionHealthRecoveryMode.Smart&&restored.ManaRecoveryEnabled&&restored.AllowNurse&&!restored.FurnitureEnabled&&
                     restored.BuffEnabled&&restored.GrowthEnabled&&restored.AllowedBuffTypes.Length==0&&Profile(host,id).DataEpoch==epoch,
                     "restore resets the full configuration while preserving character archive identity");
                 click("configuration/");
@@ -201,14 +175,9 @@ namespace NativeWorldTextProbe
                 frame(NativeToolsUiChecks.Point(nameRect),false,neutral,0);var nameHint=Get(window,"hint");Require((bool)Get(nameHint,"Visible")&&String.Concat(((IEnumerable)Get(nameHint,"Lines")).Cast<object>().Select(line=>(string)Get(line,"Text")))==profileName,"narrow name keeps its complete original through the existing hint path");
                 graphics.Image(Path.Combine(output,"companion-config-narrow-name.png"),()=>Call(window,"Draw"),matrix,(int)screen.X,(int)screen.Y);
                 scrollTo("config-Buff/配置/");click("config-Buff/配置/");prepare();
-                var narrowPanel=Get(window,"panel");var header=Get(window,"configurationNameRect");
-                int scrollBudget=150;
-                while((int)Get(window,"bodyOffset")<(int)Get(window,"bodyMaximum")&&--scrollBudget>0)
-                    frame(NativeToolsUiChecks.Point(Get(window,"configurationViewport")),false,neutral,-120);
-                Require((int)Get(window,"bodyOffset")>0&&Get(window,"configurationNameRect").Equals(header)&&Get(window,"panel").Equals(narrowPanel),
-                    "narrow scrolling leaves the name and outer rectangle fixed");
-                image("companion-config-narrow-buffs");
-                click("configuration/");scrollTo("request-reset/");click("request-reset/");scrollTo("cancel-reset/");
+                var narrowPanel=Get(window,"panel");
+                supplyMenus.CheckNarrow(screen, matrix);
+                scrollTo("request-reset/");click("request-reset/");scrollTo("cancel-reset/");
                 image("companion-config-narrow-reset");click("cancel-reset/");Require(Profile(host,id).DataEpoch==epoch&&!(bool)Get(window,"confirmingReset")&&
                     Get(window,"panel").Equals(narrowPanel)&&(int)Get(window,"bodyOffset")<=(int)Get(window,"bodyMaximum"),"confirmation cancellation clamps the body without resizing or resetting");
                 // Confirm through the actual button on the same real identity.
@@ -357,6 +326,15 @@ namespace NativeWorldTextProbe
             Require(!(bool)Get(popup,"Visible")&&(bool)Get(window,"Visible"),"Escape closes only the companion-owned recorder");
             rest();
 
+            string nurse = prefix + id.ToString("N") + ".nurse";
+            string furniture = prefix + id.ToString("N") + ".furniture";
+            Require(bindings.Get(nurse) == null && bindings.Get(furniture) == null, "new per-profile service actions have no default chord");
+            foreach (var action in new[] { (id: nurse, key: Keys.F16), (id: furniture, key: Keys.F17) })
+            {
+                Require(HotkeyChord.TryCreate((int)action.key, HotkeyModifiers.None, out var serviceChord, out _) &&
+                    bindings.TrySet(action.id, serviceChord, null, out _, out _), "save the selected profile's service chord " + action.key);
+                NativeQuickItemChecks.Until(() => { rest(); return !bindings.Busy; });
+            }
             click("profile:"+other+"/");
             Require(HotkeyChord.TryCreate((int)Keys.F15,HotkeyModifiers.None,out var chord,out _),"second profile fixture chord");
             Require(bindings.TrySet(otherAction,chord,null,out _,out _),"the distinct selected profile can save its real dynamic action");
@@ -374,6 +352,17 @@ namespace NativeWorldTextProbe
             rest();
             Require(Profile(host,id).Behavior.AttackEnabled,"gameplay's next physical edge toggles the original profile again");
 
+            NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.F16); rest();
+            NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.F17); rest();
+            var changed = Profile(host,id).Behavior;
+            var unchanged = Profile(host,other).Behavior;
+            Require(!changed.AllowNurse && changed.HealthRecoveryEnabled && changed.FurnitureEnabled &&
+                unchanged.AllowNurse && !unchanged.FurnitureEnabled,
+                "closed-window nurse and furniture chords apply solely to their bound character while potion recovery stays enabled");
+            NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.F16); rest();
+            NativeToolsUiChecks.UiFrame(context,Vector2.Zero,false,Keys.F17); rest();
+            Require(Profile(host,id).Behavior.AllowNurse && !Profile(host,id).Behavior.FurnitureEnabled,
+                "second physical edges restore this profile's independent service switches");
             Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));
             rest();click("profile:"+id+"/");rest();
         }

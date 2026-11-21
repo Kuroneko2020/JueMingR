@@ -3,6 +3,7 @@ using JueMingR.Platform.Companions;
 using JueMingR.TerrariaHost.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.UI;
 
 namespace JueMingR.TerrariaHost.F5
 {
@@ -188,9 +189,51 @@ namespace JueMingR.TerrariaHost.F5
             if(host.HasItemGesture) return host.ItemPreview(selected,owner,area,slot);
             var items=CompanionResources.Items(player,area);return items!=null&&slot>=0&&slot<items.Length?items[slot]:null;
         }
+
+        private static Item SharedSlot(Player body, CompanionInventoryArea area, int slot, out int? sharedFrom)
+        {
+            if (area == CompanionInventoryArea.Armor) return body.GetEffectiveArmor(slot, out sharedFrom);
+            if (area == CompanionInventoryArea.Dye) return body.GetEffectiveDye(slot, out sharedFrom);
+            sharedFrom = null; return null;
+        }
+
+        internal Item PrepareNativeSlotHover()
+        {
+            if (!Visible || !ready || page != 0 || PasswordPromptVisible || Captured || host.HasItemGesture ||
+                !Main.MouseDisplayItem.IsAir) return null;
+            foreach (var c in controls)
+            {
+                if (!c.IsSlot || c.ItemType <= 0 || !c.Rect.Contains(pointer.X, pointer.Y)) continue;
+                var body = c.Owner ? Main.LocalPlayer : host.GetBody(selected);
+                if (!CompanionItemRules.ValidSlot(body, c.Area, c.Slot)) return null;
+                var array = CompanionResources.Items(body, c.Area);
+                if (array[c.Slot]?.IsAir != false)
+                {
+                    if (c.LoadoutIcon < 313 || SharedSlot(body,c.Area,c.Slot,out int? shared)?.IsAir != false || !shared.HasValue) return null;
+                    var loadout=body.Loadouts[shared.Value];
+                    array=c.Area==CompanionInventoryArea.Armor?loadout.Armor:loadout.Dye;
+                }
+                // Only nonempty actual slots reach MouseHover. Its empty armor
+                // path would look up shared loadouts on the human LocalPlayer.
+                ItemSlot.MouseHover(array, CompanionItemRules.SlotContext(c.Area, c.Slot), c.Slot);
+                int x = Main.SettingsEnabled_OpaqueBoxBehindTooltips ? Main.mouseX + 6 : -1;
+                int y = Main.SettingsEnabled_OpaqueBoxBehindTooltips ? Main.mouseY + 6 : -1;
+                Main.instance.MouseTextNoOverride(Main.hoverItemName, 0, 0, x, y);
+                return Main.HoverItem;
+            }
+            return null;
+        }
         private bool ApplyItemPresentation(Control c,Player body,Item item)
         {
-            int type=item?.type??0,stack=item?.stack??0,prefix=item?.prefix??0;
+            var displayed=item;
+            int? sharedFrom=null;
+            if(item?.IsAir==true && !host.HasItemGesture)
+                displayed=SharedSlot(body,c.Area,c.Slot,out sharedFrom)??item;
+            int type=displayed?.type??0,stack=displayed?.stack??0,prefix=displayed?.prefix??0;
+            bool marked=item?.IsAir==false && item.favorited && CompanionItemRules.CanMark(c.Area);
+            bool shareArea=c.Area==CompanionInventoryArea.Armor||c.Area==CompanionInventoryArea.Dye;
+            int loadoutIcon=sharedFrom.HasValue?313+sharedFrom.Value:marked&&shareArea?310+body.CurrentLoadoutIndex:-1;
+            bool favorite=marked&&!shareArea;
             bool locked=(c.Area==CompanionInventoryArea.Armor||c.Area==CompanionInventoryArea.Dye)&&!body.IsItemSlotUnlockedAndUsable(c.Slot);
             bool aiWeaponSlot = !c.Owner && c.Area == CompanionInventoryArea.Inventory && c.Slot < CompanionBehavior.MainInventorySlots;
             bool candidate = aiWeaponSlot && weaponDraft != null && CompanionItemRules.WeaponEligible(item);
@@ -200,13 +243,15 @@ namespace JueMingR.TerrariaHost.F5
                 weaponDraft == null ? (c.Owner || selectedTransfer) && (!locked || item?.IsAir == false && !host.HasItemGesture) : candidate;
             bool chosen = aiWeaponSlot && (c.Slot == displayedWeaponSlots[0] || c.Slot == displayedWeaponSlots[1]);
             string unavailable=c.Owner?null:onceReason ?? selectedUnavailable;
-            if(c.Prefix==prefix&&c.ItemType==type&&c.Stack==stack&&c.Enabled==enabled&&c.Selected==chosen&&c.Availability==unavailable&&c.Locked==locked&&c.WeaponCandidate==candidate&&c.ActiveWeapon==active) return false;
+            if(c.Prefix==prefix&&c.ItemType==type&&c.Stack==stack&&c.Enabled==enabled&&c.Selected==chosen&&c.Availability==unavailable&&c.Locked==locked&&c.WeaponCandidate==candidate&&c.ActiveWeapon==active&&c.Favorited==favorite&&c.LoadoutIcon==loadoutIcon) return false;
             bool changedType=c.ItemType!=type;
             if(c.Stack!=stack||c.StackText==null)c.StackText=stack.ToString();c.ItemType=type;c.Stack=stack;c.Prefix=prefix;c.Enabled=enabled;c.Selected=chosen;
             c.Availability=unavailable;c.Locked=locked;c.WeaponCandidate=candidate;c.ActiveWeapon=active;
-            c.Hint=unavailable??(locked?item?.IsAir==false?"此槽尚未解锁，只可取回已有装备。":"此槽尚未解锁。":SlotHint(c.Area,item));
-            if (chosen) c.Hint += "\n主要武器";
-            if (active) c.Hint += "\n当前使用的武器";
+            c.Favorited=favorite;c.LoadoutIcon=loadoutIcon;
+            // A real item is described by Terraria's own hover renderer.
+            // Empty slots and operation failures still have a window hint.
+            c.Hint=type>0?null:unavailable??(locked?"此槽尚未解锁。":
+                c.Area==CompanionInventoryArea.Dye||c.Area==CompanionInventoryArea.MiscDye?"染料":"空格");
             c.EmptyIcon=-1;c.Placeholder=null;
             if(type==0)
             {
@@ -240,21 +285,15 @@ namespace JueMingR.TerrariaHost.F5
             if(types) {icons.BeginVisibleSet();foreach(var c in controls)icons.AddVisible(c.ItemType);icons.EndVisibleSet();}
             if(resources) icons.Prepare();
         }
-        private static string SlotHint(CompanionInventoryArea area,Item item)
-        {
-            if (item == null || item.IsAir)
-                return area == CompanionInventoryArea.Dye || area == CompanionInventoryArea.MiscDye ? "染料" : "空格";
-            string text = item.Name + " ×" + item.stack;
-            return CompanionResources.IsBank(area) ? text + "\n沿用原版按键，可快捷丢弃到你的垃圾桶" : text;
-        }
         private static bool ActorVisible(F5Rect rect,F5Rect view) { return rect.Y>=view.Y && rect.Bottom<=view.Bottom && rect.X>=view.X && rect.Right<=view.Right; }
         private void ActorText(string text,F5Rect rect,F5Rect view) { if(ActorVisible(rect,view)) Text(text,rect,.65f); }
         private void ProcessItemInput(Control hit, Microsoft.Xna.Framework.Input.KeyboardState keys, bool left,bool right,bool wasDragging,bool resources)
         {
             bool changed=false;
-            if(page!=0||editor!=null||wasDragging) { host.EndItemRepeat(); rightSlot=null; return; }
+            if(page!=0||editor!=null||wasDragging) { rightSlot=null; return; }
             if (weaponDraft != null || onceSelection != null)
             {
+                if (onceSelection != null && left && !previousLeft && hit == null) ShowUnavailableSlot();
                 if (left && !previousLeft && hit?.IsSlot == true)
                 {
                     armedKey = null;
@@ -270,7 +309,12 @@ namespace JueMingR.TerrariaHost.F5
                 }
                 return;
             }
-            if(hit==null||!hit.IsSlot) { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; return; }
+            if(hit==null||!hit.IsSlot)
+            {
+                rightSlot=null;
+                if ((left&&!previousLeft || right&&!previousRight) && hit==null) ShowUnavailableSlot();
+                return;
+            }
             if(left&&!previousLeft)
             {
                 armedKey=null;
@@ -278,7 +322,14 @@ namespace JueMingR.TerrariaHost.F5
                 bool shift=keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.LeftShift)||keys.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.RightShift);
                 // Until the next physical click the modifier chooses one
                 // intent. A rejected bank trash cannot fall through to pickup.
-                if((hit.Area == CompanionInventoryArea.Inventory || !hit.Owner && CompanionResources.IsBank(hit.Area)) &&
+                if(keys.IsKeyDown(Main.FavoriteKey) && !Main.drawingPlayerChat && hit.ItemType>0 &&
+                    hit.LoadoutIcon<313 && CompanionItemRules.CanMark(hit.Area))
+                {
+                    if(host.ItemGesture(selected,hit.Owner,hit.Area,hit.Slot,CompanionItemGesture.Mark))
+                        Terraria.Audio.SoundEngine.PlaySound(12);
+                    changed=true;
+                }
+                else if((hit.Area == CompanionInventoryArea.Inventory || !hit.Owner && CompanionResources.IsBank(hit.Area)) &&
                     HostCompanions.QuickTrashRequested(control,shift))
                 {host.QuickTrashGesture(selected,hit.Owner,hit.Area,hit.Slot);changed=true;}
                 else {
@@ -287,13 +338,38 @@ namespace JueMingR.TerrariaHost.F5
             if(right)
             {
                 bool fresh=!previousRight;
-                if(fresh) { host.EndItemRepeat(); rightSlot=hit.Key; rightRepeat=0; }
-                if(rightSlot!=null&&rightSlot!=hit.Key) { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; }
-                if(rightSlot==hit.Key && (fresh||++rightRepeat>=18 && (rightRepeat-18)%6==0))
-                { host.ItemGesture(selected,hit.Owner,hit.Area,hit.Slot,CompanionItemGesture.Right); changed=true; }
+                if(fresh) rightSlot=hit.Key;
+                if(rightSlot!=null)
+                {
+                    int count=RightPickupCount(fresh);
+                    if(fresh) {host.ItemGesture(selected,hit.Owner,hit.Area,hit.Slot,CompanionItemGesture.Right);changed=true;}
+                    else if(count>0) changed|=host.RepeatItemPickup(selected,hit.Owner,hit.Area,hit.Slot,count);
+                }
             }
-            else { host.EndItemRepeat(); rightSlot=null; rightRepeat=0; }
+            else rightSlot=null;
             if(changed) {RefreshItemPresentation(resources);RefreshNotice();}
+        }
+
+        private void ShowUnavailableSlot()
+        {
+            foreach (var c in controls)
+                if (c.IsSlot && !c.Enabled && c.Availability != null && c.Rect.Contains(pointer.X, pointer.Y))
+                { ShowNotice(c.Availability); return; }
+        }
+
+        // Terraria drives these counters from the physical inventory hold.
+        // The window owns its hold, so native world input/cooldowns stay free.
+        private int RightPickupCount(bool fresh)
+        {
+            if (fresh) { rightRepeat=30; splitDelay=7; splitCounter=splitSteps=0; return 1; }
+            if (++splitCounter >= Math.Max(5, (splitDelay-1)*5))
+            {
+                splitDelay=Math.Max(2, splitDelay-1); splitCounter=0;
+                if (splitSteps < short.MaxValue) splitSteps++;
+            }
+            if (--rightRepeat > 1) return 0;
+            rightRepeat=splitDelay;
+            return 1+Math.Max(0,splitSteps-10);
         }
         private void DrawHero(F5Rect view,F5Rect hero,F5Rect showcase,F5Rect displayPanel,CompanionPreview preview,Player source)
         {

@@ -6,13 +6,13 @@ using JueMingR.TerrariaHost.Companions;
 
 namespace JueMingR.TerrariaHost.Hotkeys
 {
-    internal enum CompanionSetting { Follow, Attack, Life, Mana, Buff, Growth, Respawn }
+    internal enum CompanionSetting { Follow, Attack, Life, Mana, Buff, Growth, Respawn, Nurse, Furniture }
 
     internal sealed class CompanionHotkeys
     {
         private const string Prefix = "companions.profile.";
-        private static readonly string[] Keys = { "follow", "attack", "life", "mana", "buff", "growth", "respawn" };
-        private static readonly string[] Names = { "跟随主人", "允许攻击", "主动回血", "主动回蓝", "使用增益物品", "使用成长物品", "自动复活" };
+        private static readonly string[] Keys = { "follow", "attack", "life", "mana", "buff", "growth", "respawn", "nurse", "furniture" };
+        private static readonly string[] Names = { "跟随主人", "允许攻击", "主动回血", "主动回蓝", "使用增益物品", "使用成长物品", "自动复活", "护士治疗", "家具增益" };
         private readonly DynamicHotkeyOwner owner;
         private IReadOnlyList<CompanionProfile> observedProfiles;
         private IReadOnlyList<KeyValuePair<string, string>> observedEntries;
@@ -22,7 +22,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
 
         internal CompanionHotkeys(HotkeyRegistry registry)
         {
-            // The profile roster is unbounded. Only persisted binds and the seven
+            // The profile roster is unbounded. Only persisted binds and the
             // controls currently offered by the window need registry entries.
             owner = registry.CreateDynamicOwner(Prefix, HotkeyDocument.MaximumEntries + Keys.Length);
         }

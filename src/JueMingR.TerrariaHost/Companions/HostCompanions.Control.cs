@@ -46,23 +46,23 @@ namespace JueMingR.TerrariaHost.Companions
             int manaCost=0;
             bool valid=behavior.AttackEnabled && CurrentAttack(a,chosen,out manaCost,out point);
             bool clearOpening=valid, waitingForMana=false;
-            int growth=CompanionGrowthSlot(a, includeAutomatic: !manualSupply);
-            bool buff=!manualSupply && growth<0 && CompanionBuffPending(a);
+            int heldSlot=CompanionHeldSlot(a, includeAutomatic: !manualSupply);
+            bool buff=!manualSupply && heldSlot<0 && CompanionBuffPending(a);
 
             // A pending exclusive maintenance action owns the release edge.
             // ItemCheck and live projectiles finish their normal animation and
             // channel; no other policy may reassert use during that interval.
-            if(growth>=0 || buff)
+            if(heldSlot>=0 || buff)
             {
                 combat.ResetHand();
                 SetAttackTarget(a,null);
                 if(FreeHand(p) && p.releaseUseItem)
                 {
-                    if(growth>=0)
+                    if(heldSlot>=0)
                     {
-                        p.selectedItemState.Select(growth);
+                        p.selectedItemState.Select(heldSlot);
                         p.controlUseItem=true;
-                        BeginCompanionGrowth(a,growth);
+                        BeginCompanionHeldItem(a,heldSlot);
                     }
                     else TryCompanionBuff(a);
                 }
@@ -90,7 +90,7 @@ namespace JueMingR.TerrariaHost.Companions
             if(!behavior.AttackEnabled || !valid)
             {
                 SetAttackTarget(a,null);
-                if(FreeHand(p))IdleAim(a);
+                if(FreeHand(p) && a.Supplies.HeldOnce == null)IdleAim(a);
             }
             var pursuit=combat.Pursuit;
             var movementTarget=TargetCurrent(a,pursuit.Target,pursuit.TargetGeneration)?pursuit.Target:null;
@@ -99,7 +99,7 @@ namespace JueMingR.TerrariaHost.Companions
             a.Status=frame.Status;
             if(frame.Status=="停留" && behavior.AttackEnabled && combat.NearbyCount>0)
             {
-                if(growth>=0 || buff)a.Status="准备使用补给";
+                if(heldSlot>=0 || buff)a.Status="准备使用物品";
                 else if(p.controlUseItem && combat.ActiveSlot>=0)a.Status="正在攻击";
                 else if(waitingForMana)a.Status="等待魔力恢复";
                 else if(!valid)a.Status=clearOpening?"等待武器可用":movementTarget!=null?"等待可攻击位置":"等待可用武器或弹药";
@@ -165,6 +165,9 @@ namespace JueMingR.TerrariaHost.Companions
         internal void PrepareUse(Actor a)
         {
             var p=a.Body;
+            // The manual item's captured actor-local aim also owns delayed
+            // native effects until the real hand returns its selected slot.
+            if(a.Supplies.HeldOnce!=null || a.Supplies.RestoreSelection>=0)return;
             var hand=a.Combat.Hand;
             if(p.controlUseItem && hand.Weapon!=null)
             {
@@ -245,6 +248,7 @@ namespace JueMingR.TerrariaHost.Companions
             // A completed live update has recomputed effective accessories.
             // Inventory changes must not use the previous accessory result.
             if(!a.Body.dead)a.TileReachPending=false;
+            UpdateCompanionFurniture(a);
             a.Behavior.ObserveCapabilities(a.Body);
             var hand=a.Combat.Hand;
             if(hand.Weapon!=null && DoesStaySummoned(hand.Weapon) && a.Body.ItemAnimationJustStarted && Main.GameUpdateCount>=a.Combat.NextSummon)

@@ -84,7 +84,7 @@ namespace NativeWorldTextProbe
             {var frame=Frame(stream);result.Add(frame);if(frame[2]==5)items++;if(frame[2]==45)teams++;}
             Require(items==itemFrames && teams==teamFrames,"actual TCP stream supplied all native item/team frames");return result;
         }
-        private static byte[] ReadKind(NetworkStream stream, byte kind)
+        internal static byte[] ReadKind(NetworkStream stream, byte kind)
         {
             for (int n = 0; n < 512; n++) { var frame = Frame(stream); if (frame[2] == kind) return frame; }
             throw new InvalidDataException("missing native wire frame " + kind);

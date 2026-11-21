@@ -49,7 +49,8 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Terraria.DataStructures.MinionRespawner),"CollectMinionsFor",nameof(CollectMinions));
             Patch(typeof(Player),"KillMe",nameof(DeathBefore),finalizer:nameof(DeathFinal));
             Patch(typeof(Player),"KillMeForGood",nameof(PermanentDeath));
-            Patch(typeof(Player),"Spawn",transpiler:nameof(SpawnLocals));
+            Patch(typeof(Player),"Spawn",nameof(ItemRecallBefore),transpiler:nameof(SpawnLocals));
+            Patch(typeof(Player),"Teleport",transpiler:nameof(TeleportPresentation));
             Patch(typeof(Player),"PickupItem",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Player),"GrabItems",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Player),"PurgeDD2EnergyCrystals",transpiler:nameof(TrackEnergyPurge));
@@ -80,6 +81,7 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player),"ApplyDamageToNPC",nameof(DirectPredictionBefore),finalizer:nameof(PredictionFinal),args:new[]{typeof(NPC),typeof(int),typeof(float),typeof(int),typeof(bool),typeof(PlayerNPCHitSource)});
             F5.CompanionCreationHooks.Install(Harmony);
             F5.CompanionPetPreviewHooks.Install(Harmony);
+            InstallFurnitureHooks();
             CompanionSupplyHooks.Install(value);
             installed=true;
         }
@@ -203,7 +205,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             // These native sky births reread raw mouse Y in Shoot. Keep that
             // point through the actual item consumer even in reverse gravity.
-            bool rawCursor=use && HostSkyAttack.RawCursor(a.Combat.Hand.Weapon?.type??0);
+            bool rawCursor=use && HostSkyAttack.RawCursor(a.Supplies.RestoreSelection >= 0 ? __instance.HeldItem.type : a.Combat.Hand.Weapon?.type??0);
             __state=new Scope(a,a.Aim,__originalMethod.Name=="PickupItem" || use &&
                 (__instance.controlUseItem || __instance.itemAnimation>0 || __instance.channel),
                 __originalMethod.Name=="GrabItems",rawCursor);
@@ -215,9 +217,12 @@ namespace JueMingR.TerrariaHost.Companions
         {
             // ItemCheck calls PlaceThing even while idle with a plain weapon;
             // Extractinator reads tile.active before checking the use action.
-            // Defer only placement at this unknown cell. Native ItemCheck,
-            // firing, timers, movement and other actors still run normally.
-            return current==null || !ReferenceEquals(current.Actor.Body,__instance) || current.TileInteractionReady;
+            // A manual use has no chosen world tile. Even a dual-purpose
+            // held item must not activate furniture under its aim or place
+            // wire. The independent shoot, self-use and timer paths stay native.
+            if(current==null || !ReferenceEquals(current.Actor.Body,__instance))return true;
+            var hand=current.Actor.Supplies;
+            return current.TileInteractionReady && hand.HeldOnce==null && hand.RestoreSelection<0;
         }
         private static bool PreviewBefore(Player __instance)
         {
@@ -430,6 +435,30 @@ namespace JueMingR.TerrariaHost.Companions
             p.GrappleMovement();
         }
         private static Player SpawnLocal(){return Spawning??Main.LocalPlayer;}
+        private static bool ItemRecallBefore(Player __instance,PlayerSpawnContext context)
+        {
+            var actor=current?.Actor;
+            if(context!=PlayerSpawnContext.RecallFromItem || actor==null || Spawning!=null ||
+                !ReferenceEquals(actor.Body,__instance))return true;
+            host.RecallFromItem(actor,current.HumanIndex);
+            return false;
+        }
+
+        private static int PresentationPlayer(){return current?.HumanIndex??Main.myPlayer;}
+        private static IEnumerable<CodeInstruction> TeleportPresentation(IEnumerable<CodeInstruction> instructions)
+        {
+            var code=instructions.ToList();
+            int camera=code.FindIndex(c=>c.Calls(AccessTools.Method(typeof(Main),nameof(Main.StartCameraTransitionForPlayerTeleport))));
+            var local=AccessTools.Field(typeof(Main),nameof(Main.myPlayer));
+            int check=camera<0?-1:code.FindLastIndex(camera,c=>c.LoadsField(local));
+            if(check<0 || code[check+1].opcode!=OpCodes.Bne_Un && code[check+1].opcode!=OpCodes.Bne_Un_S)
+                throw new InvalidOperationException("Companion teleport camera receiver changed.");
+            // Teleport checks local identity specifically for the camera,
+            // black fade and map redraw here. Physics, spectating, pressure
+            // plates and the decoder's ACK keep their native owning player.
+            code[check].opcode=OpCodes.Call;code[check].operand=AccessTools.Method(typeof(CompanionHooks),nameof(PresentationPlayer));
+            return code;
+        }
         private static IEnumerable<CodeInstruction> SpawnLocals(IEnumerable<CodeInstruction> input)
         {var getter=AccessTools.PropertyGetter(typeof(Main),"LocalPlayer");foreach(var c in input){if(c.Calls(getter))c.operand=AccessTools.Method(typeof(CompanionHooks),nameof(SpawnLocal));yield return c;}}
         internal static bool AllowItemPacket(HostCompanions.Actor a,byte[] packet){return host!=null && host.AcceptItemPacket(a,packet);}

@@ -172,7 +172,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var body = actor.Body;
             var payer = owner;
-            if (!SupplyActorReady(actor) || payer == null || !payer.active || ReferenceEquals(payer, body) ||
+            if (!actor.Preferences.AllowNurse || !SupplyActorReady(actor) || payer == null || !payer.active || ReferenceEquals(payer, body) ||
                 Main.netMode == 1 && (actor.Connection == null || actor.Connection.Finished ||
                     Netplay.Connection == null || !Netplay.Connection.IsConnected()) || !NurseNeedsService(body))
                 return CompanionNurseOutcome.NotRun;
@@ -329,7 +329,7 @@ namespace JueMingR.TerrariaHost.Companions
                     !ReferenceEquals(Main.LocalPlayer, patient) || !ReferenceEquals(CompanionHooks.CurrentActor, Actor) ||
                     !ReferenceEquals(Actor.Body, patient) || !host.SupplyActorReady(Actor) ||
                     Actor.Generation != activation || Actor.Profile.Id != ProfileId || Actor.Profile.DataEpoch != dataEpoch ||
-                    !ReferenceEquals(Actor.Preferences, preferences) || !preferences.HealthRecoveryEnabled || !preferences.AllowNurse ||
+                    !ReferenceEquals(Actor.Preferences, preferences) || !preferences.AllowNurse ||
                     host.session != session || !ReferenceEquals(host.world, world) || Main.netMode != mode ||
                     !ReferenceEquals(Payer, host.owner) || !Payer.active ||
                     !ReferenceEquals(Payer, Main.ActivePlayerFileData?.Player) ||

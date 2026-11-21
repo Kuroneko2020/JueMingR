@@ -29,7 +29,8 @@ namespace JueMingR.TerrariaHost.F5
             internal Player Portrait;
             internal F5Element Element;
             internal string Hint, Placeholder, StackText, Availability, StateText;
-            internal bool Locked;
+            internal bool Locked, Favorited;
+            internal int LoadoutIcon = -1;
             internal bool IsSlot, Owner;
             internal bool WeaponCandidate, ActiveWeapon;
             internal bool ActorOverlay,ActorState;
@@ -83,6 +84,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly Dictionary<Guid,CompanionPreview> railPreviews=new Dictionary<Guid,CompanionPreview>();
         private bool previousRight;
         private int rightRepeat;
+        private int splitDelay, splitCounter, splitSteps;
         private string rightSlot;
         private int ownerLifeMax, ownerManaMax;
         private string resourceStyle;
@@ -121,14 +123,13 @@ namespace JueMingR.TerrariaHost.F5
         internal Action<F5Rect> DrawKeyboard;
         internal Guid HotkeyProfile => Visible && page == 1 ? selected : Guid.Empty;
         internal int HotkeyGeneration => generation;
-        internal bool HasHotkeyAnchor(string id, F5Rect bounds) => Visible && ready && page == 1 && !PasswordPromptVisible &&
+        internal bool HasHotkeyAnchor(string id, F5Rect bounds) => Visible && ready && page == 1 && !PasswordPromptVisible && !SupplyPopupVisible &&
             (CurrentProfile()?.DataEpoch ?? 0) == viewDataEpoch &&
             controls.Exists(c => c.HotkeyId == id && c.Rect.Equals(bounds));
         internal void BlockForHotkeyPopup(Vector2 point, int wheel)
         {
             pointer = point; OwnsPointer = true; ConsumeWheel = wheel != 0;
             armedKey = null; rightSlot = null; rightRepeat = 0;
-            host.EndItemRepeat();
             previousLeft = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed;
             previousRight = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
             leftTail |= previousLeft; rightTail |= previousRight;
@@ -160,7 +161,7 @@ namespace JueMingR.TerrariaHost.F5
             previousRight = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed; rightRepeat=0; rightSlot=null;
             armedKey = null; generation++;
         }
-        internal bool Contains(float x, float y) { return Visible && ready && panel.Contains(x, y); }
+        internal bool Contains(float x, float y) => Visible && ready && (panel.Contains(x, y) || SupplyPopupVisible && supplyPanel.Contains(x, y));
         internal void BeforeInput(bool active)
         {
             if (!active && editor != null) Close();
@@ -180,17 +181,22 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (!Visible && !ready && editor == null) return;
             CancelDrag();
-            Visible = false; ready = false; armedKey = null; confirmingReset = false;expandedConfiguration=null;
+            Visible = false; ready = false; armedKey = null; confirmingReset = false; CloseSupplyPopup();
             CancelSelectionModes();
             SelectStorage(CompanionInventoryArea.Inventory, false);
             ResetPasswordPresentation();
-            host.CancelItemGesture(); host.EndItemRepeat(); rightSlot=null; rightRepeat=0; ownerPreview.Clear(); companionPreview.Clear(); railPreviews.Clear(); resourceDisplay.ClearNumbers(); CancelEdit(); icons.Clear(); renderer.Dispose(); controls.Clear(); labels.Clear(); generation++;
+            host.CancelItemGesture(); rightSlot=null; rightRepeat=0; ownerPreview.Clear(); companionPreview.Clear(); railPreviews.Clear(); resourceDisplay.ClearNumbers(); CancelEdit(); icons.Clear(); renderer.Dispose(); controls.Clear(); labels.Clear(); generation++;
             // Keep already owned physical tails until the shared trusted sample
             // observes release, including close, lost focus and world departure.
         }
         internal void PrepareLayout(Matrix transform, Vector2 physical) { PrepareCore(transform, physical, false); }
         internal void Prepare(Matrix transform, Vector2 physical) { PrepareCore(transform, physical, true); }
         private void PrepareCore(Matrix transform, Vector2 physical, bool resources)
+        {
+            PrepareWindow(transform, physical, resources);
+            if (SupplyPopupVisible) PrepareSupplyPopup(resources);
+        }
+        private void PrepareWindow(Matrix transform, Vector2 physical, bool resources)
         {
             RetireInvalidPasswordOwner();
             if (!Visible) return;
@@ -242,7 +248,7 @@ namespace JueMingR.TerrariaHost.F5
             // Only a structural projection/identity change retires an armed button.
             // Visible item values refresh in place on the fast path above.
             var pressed=armedKey==null?null:controls.Find(c=>c.Key==armedKey);
-            controls.Clear(); labels.Clear(); groups.Clear(); actorHeaders.Clear(); supplyRows.Clear(); configurationNameRect=default(F5Rect); configurationViewport=bodyView; selectedStatusLabel=respawnLabel=-1; icons.BeginVisibleSet();
+            controls.Clear(); labels.Clear(); groups.Clear(); actorHeaders.Clear(); supplyAnchor=null; configurationNameRect=default(F5Rect); configurationViewport=bodyView; selectedStatusLabel=respawnLabel=-1; icons.BeginVisibleSet();
             Text("AI 队友", new F5Rect(panel.X + 12, panel.Y + 4, width - 64, row));
             Button("close", "×", new F5Rect(panel.Right - 40, panel.Y + 4, 30, row), Close);
             BuildList(row);
@@ -261,7 +267,7 @@ namespace JueMingR.TerrariaHost.F5
                 // replace those cells now, before hit testing or caching its epoch.
                 controls.RemoveRange(bodyControlStart, controls.Count - bodyControlStart);
                 labels.RemoveRange(bodyLabelStart, labels.Count - bodyLabelStart);
-                icons.BeginVisibleSet(); groups.Clear(); actorHeaders.Clear(); supplyRows.Clear(); selectedStatusLabel=respawnLabel=-1; bodyOffsetClamped = false;
+                icons.BeginVisibleSet(); groups.Clear(); actorHeaders.Clear(); supplyAnchor=null; selectedStatusLabel=respawnLabel=-1; bodyOffsetClamped = false;
                 BuildSelected(row);
             }
             if (host.CanRetryArchive)
@@ -430,10 +436,16 @@ namespace JueMingR.TerrariaHost.F5
                 ProcessPasswordInput(point, left, right, wheel);
                 return;
             }
+            bool hadSupplyPopup = SupplyPopupVisible;
+            if (hadSupplyPopup)
+            {
+                PrepareCore(transform, physical, resources);
+                if (ProcessSupplyPopup(point, left, right, wheel, resources)) return;
+            }
             if (!wasEditing && editor == null && input.Hotkeys.IsNew((int)Keys.Escape)) { input.ConsumeCancellation((int)Keys.Escape); Close(); ReleaseTails(left, right, true); return; }
             host.ValidateItemGesture();
             if (!panel.Contains(point.X, point.Y)) host.CancelItemGesture();
-            PrepareCore(transform, physical, resources);
+            if (!hadSupplyPopup) PrepareCore(transform, physical, resources);
             bool wasDragging = dragging;
             if (dragging)
             {
@@ -513,6 +525,7 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void PrepareHint()
         {
+            if (SupplyPopupVisible && supplyPanel.Contains(pointer.X, pointer.Y)) { hint.Hide(); return; }
             string hintText = null; F5Rect target = default(F5Rect);
             if(Visible&&ready&&page==1&&editor==null&&!Captured&&configurationNameRect.Contains(pointer.X,pointer.Y)) {hintText=configurationName;target=configurationNameRect;}
             if (Visible && ready && editor == null && !Captured) foreach (var c in controls)
@@ -538,7 +551,11 @@ namespace JueMingR.TerrariaHost.F5
                     bool hover = c.Rect.Contains(pointer.X, pointer.Y);
                     if (c.HotkeyId != null) DrawKeyboard?.Invoke(c.Rect);
                     else if (c.Element != null) renderer.Button(c.Element, c.Selected, c.Enabled, c.Off, hover,hover&&armedKey==c.Key);
-                    else if (c.IsSlot) renderer.CompactItemButton(c.Rect, c.Enabled, hover);
+                    else if (c.IsSlot)
+                    {
+                        renderer.CompactItemButton(c.Rect, c.Enabled, hover);
+                        if (c.Favorited) DrawFavoriteBackground(c);
+                    }
                     else renderer.ItemButton(c.Rect, c.Enabled, hover);
                     if(c.IsSlot)DrawWeaponMarkers(c);
                     if (c.Portrait != null) {CompanionPreview head;if(!railPreviews.TryGetValue(c.ProfileId,out head))railPreviews[c.ProfileId]=head=new CompanionPreview();head.Prepare(c.Portrait);head.DrawHead(portraits,c.Rect,matrix,renderer.Generation);}
@@ -549,7 +566,12 @@ namespace JueMingR.TerrariaHost.F5
                 PointDraw(()=> {
                     foreach(var c in controls) {
                         if(c.EmptyIcon>=0) DrawEmptyIcon(c.EmptyIcon,c.Rect);
-                        if(c.ItemType>0) {renderer.PreparedItem(c.ItemType,icons.Get(c.ItemType),c.Rect);if(c.Stack>1)DrawStack(c.StackText,c.Rect);}
+                        if(c.ItemType>0)
+                        {
+                            renderer.PreparedItemTinted(c.ItemType,icons.Get(c.ItemType),c.Rect,c.LoadoutIcon>=313?Color.White*.6f:Color.White);
+                            if(c.LoadoutIcon>=0) DrawLoadoutMark(c);
+                            if(c.Stack>1)DrawStack(c.StackText,c.Rect);
+                        }
                     }
                 });
                 foreach (var e in labels)
@@ -579,6 +601,7 @@ namespace JueMingR.TerrariaHost.F5
                     renderer.Panel(rect);
                     renderer.Text(displayedNotice, new F5Rect(rect.X + 10, rect.Y, rect.Width - 20, rect.Height), Color.White, .65f);
                 });
+            if (SupplyPopupVisible) DrawSupplyPopup();
             if (hint.Visible && editor == null && !Captured) renderer.Pass(matrix, hint.Panel, () => { renderer.Panel(hint.Panel); foreach (var line in hint.Lines) renderer.Label(new F5Element(F5ElementKind.Text,line.Rect.Offset(hint.Panel.X+8,hint.Panel.Y+8),line.Text,line.TextSize,line.TextScale,F5Command.None)); });
         }
         private void DrawEditor()

@@ -45,7 +45,7 @@ namespace JueMingR.TerrariaHost.F5
             notice = null;
             CancelDrag();
             host.CancelItemGesture();
-            host.EndItemRepeat();
+            rightSlot = null;
             CancelSelectionModes();
             RetireConfigurationInput();
             Invalidate();

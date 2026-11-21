@@ -43,6 +43,8 @@ namespace JueMingR.TerrariaHost.Companions
                 case CompanionSetting.Mana: behavior.ManaRecoveryEnabled = !behavior.ManaRecoveryEnabled; break;
                 case CompanionSetting.Buff: behavior.BuffEnabled = !behavior.BuffEnabled; break;
                 case CompanionSetting.Growth: behavior.GrowthEnabled = !behavior.GrowthEnabled; break;
+                case CompanionSetting.Nurse: behavior.AllowNurse = !behavior.AllowNurse; break;
+                case CompanionSetting.Furniture: behavior.FurnitureEnabled = !behavior.FurnitureEnabled; break;
                 case CompanionSetting.Respawn: behavior.AutoRespawn = !behavior.AutoRespawn; break;
                 default: return;
             }

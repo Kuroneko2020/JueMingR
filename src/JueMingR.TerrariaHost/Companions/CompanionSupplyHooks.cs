@@ -168,21 +168,21 @@ namespace JueMingR.TerrariaHost.Companions
         private static void BeforeItemCheck(Player __instance)
         {
             var actor = CompanionHooks.SupplyActor(__instance);
-            if (actor != null) host.ValidateCompanionGrowth(actor);
+            if (actor != null) host.ValidateCompanionHeldItem(actor);
         }
 
         private static Exception AfterItemCheck(Player __instance, Exception __exception)
         {
             var actor = CompanionHooks.SupplyActor(__instance);
-            if (actor != null) host.EndCompanionGrowth(actor, __exception == null);
+            if (actor != null) host.EndCompanionHeldItem(actor, __exception == null);
             return __exception;
         }
 
         private static Exception AfterPlayerUpdate(Player __instance, Exception __exception)
         {
             var actor = CompanionHooks.SupplyActor(__instance);
-            if (actor != null && actor.Supplies.Growth.Found)
-                host.AbandonCompanionGrowth(actor, __exception);
+            if (actor != null && actor.Supplies.HeldSource.Found)
+                host.AbandonCompanionHeldItem(actor, __exception);
             return __exception;
         }
 

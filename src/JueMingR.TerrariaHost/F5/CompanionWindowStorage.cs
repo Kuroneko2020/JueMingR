@@ -148,7 +148,6 @@ namespace JueMingR.TerrariaHost.F5
         private void SelectStorage(CompanionInventoryArea area, bool open)
         {
             host.CancelItemGesture();
-            host.EndItemRepeat();
             rightSlot = null; rightRepeat = 0;
             CancelSelectionModes();
             notice = null;

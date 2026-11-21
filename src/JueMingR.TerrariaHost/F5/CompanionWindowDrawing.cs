@@ -24,7 +24,6 @@ namespace JueMingR.TerrariaHost.F5
             }
             UpdateLabel(selectedStatusLabel,host.Status(selected));
             UpdateLabel(respawnLabel,host.RespawnStatus(selected));
-            RefreshConfigurationPresentation(body);
         }
         private void DrawActorControl(Control c)
         {
@@ -76,6 +75,19 @@ namespace JueMingR.TerrariaHost.F5
             var frame=new Rectangle(icon%3*(texture.Width/3),icon/3*(texture.Height/7),texture.Width/3-2,texture.Height/7-2);
             float scale=Math.Min(1,Math.Min((rect.Width-7)/frame.Width,(rect.Height-7)/frame.Height));
             Main.spriteBatch.Draw(texture,new Vector2(rect.X+rect.Width/2,rect.Y+rect.Height/2),frame,Color.White*.4f,0,new Vector2(frame.Width/2f,frame.Height/2f),scale,SpriteEffects.None,0);
+        }
+        private static void DrawFavoriteBackground(Control c)
+        {
+            var resource=c.Area==JueMingR.Platform.Companions.CompanionInventoryArea.VoidVault?TextureAssets.InventoryBack19:TextureAssets.InventoryBack10;
+            var texture=resource?.Value;
+            if(texture!=null) Main.spriteBatch.Draw(texture,new Rectangle((int)c.Rect.X,(int)c.Rect.Y,(int)c.Rect.Width,(int)c.Rect.Height),Color.White);
+            else DrawFrame(c.Rect,Color.Gold);
+        }
+        private static void DrawLoadoutMark(Control c)
+        {
+            var texture=TextureAssets.Extra[c.LoadoutIcon]?.Value;
+            if(texture!=null) Main.spriteBatch.Draw(texture,new Vector2(c.Rect.X,c.Rect.Y),null,Color.White*.7f,0,Vector2.Zero,
+                c.Rect.Width/52f,SpriteEffects.None,0);
         }
         private void DrawStack(string text,F5Rect rect)
         {

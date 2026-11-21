@@ -17,14 +17,25 @@ namespace JueMingR.TerrariaHost.Companions
             ItemID.ArtisanLoaf, ItemID.AegisCrystal, ItemID.AegisFruit, ItemID.ArcaneCrystal,
             ItemID.GalaxyPearl, ItemID.GummyWorm, ItemID.Ambrosia, ItemID.TorchGodsFavor, ItemID.MinecartPowerup
         };
-        private static readonly IReadOnlyList<Item>[] Catalog = new IReadOnlyList<Item>[4];
-        private static IReadOnlyList<Item> groupedDefinitions;
-        private static IGrouping<int, Item>[] buffGroups;
+        internal sealed class Option
+        {
+            internal readonly Item Icon;
+            internal readonly int[] Types;
+            internal readonly int Effect;
+
+            internal Option(Item icon, int[] types, int effect = 0)
+            { Icon = icon; Types = types; Effect = effect; }
+
+            internal string Name => Effect == BuffID.WellFed ? "饱食" :
+                Effect > 0 ? Lang.GetBuffName(Effect) : Icon.Name;
+        }
+
+        private static readonly IReadOnlyList<Option>[] Catalog = new IReadOnlyList<Option>[4];
         private static int definitionCount;
 
         // Definitions come from the game's pinned catalog and stay available
         // when an actual player runs out or reaches their growth cap.
-        internal static IReadOnlyList<Item> Definitions(CompanionSupplyKind kind)
+        internal static IReadOnlyList<Option> Options(CompanionSupplyKind kind)
         {
             var definitions = ContentSamples.ItemsByType;
             if (definitionCount != definitions.Count)
@@ -38,20 +49,23 @@ namespace JueMingR.TerrariaHost.Companions
                 IEnumerable<Item> items = kind == CompanionSupplyKind.Growth
                     ? GrowthTypes.Where(type => definitions.ContainsKey(type)).Select(type => definitions[type])
                     : definitions.Values.Where(item => Candidate(kind, item)).OrderBy(item => item.type);
-                Catalog[index] = Array.AsReadOnly(items.ToArray());
+                Catalog[index] = kind == CompanionSupplyKind.Buff ? BuffOptions(items) :
+                    items.Select(item => new Option(item, new[] { item.type })).ToArray();
             }
             return Catalog[index];
         }
 
-        internal static IEnumerable<IGrouping<int, Item>> BuffGroups()
+        private static Option[] BuffOptions(IEnumerable<Item> items)
         {
-            var definitions = Definitions(CompanionSupplyKind.Buff);
-            if (!ReferenceEquals(definitions, groupedDefinitions))
-            {
-                groupedDefinitions = definitions;
-                buffGroups = definitions.GroupBy(item => item.buffType).OrderBy(group => group.Key).ToArray();
-            }
-            return buffGroups;
+            // All food shares one permission control. Luck potions share one
+            // native effect but expose distinct strengths. Saves and QuickBuff
+            // continue to authorize concrete item types in both cases.
+            var groups = items.GroupBy(item => BuffID.Sets.IsWellFed[item.buffType] ? BuffID.WellFed :
+                item.buffType == BuffID.Lucky ? -item.type : item.buffType);
+            return groups.OrderBy(group => group.Key == BuffID.WellFed ? 0 : group.Key < 0 ? 1 : 2)
+                .ThenBy(group => Math.Abs(group.Key))
+                .Select(group => new Option(group.First(), group.Select(item => item.type).ToArray(), Math.Max(0, group.Key)))
+                .ToArray();
         }
 
         internal static bool PotionAllowedByDefault(CompanionSupplyKind kind, int type)
@@ -76,24 +90,26 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
 
-        internal static int Count(Player body, CompanionSupplyKind kind, int[] types)
+        internal static void CountStock(Player body, CompanionSupplyKind kind, Dictionary<int, int> stock)
         {
-            if (body == null) return 0;
-            int count = Count(body.inventory, kind == CompanionSupplyKind.Growth ? 50 : 58, types);
+            stock.Clear();
+            if (body == null) return;
+            CountStock(body.inventory, kind == CompanionSupplyKind.Growth ? 50 : 58, stock);
             if (kind != CompanionSupplyKind.Growth && body.useVoidBag())
-                count += Count(body.bank4.item, body.bank4.maxItems, types);
-            return count;
+                CountStock(body.bank4.item, body.bank4.maxItems, stock);
         }
 
-        private static int Count(Item[] items, int slots, int[] types)
+        private static void CountStock(Item[] items, int slots, Dictionary<int, int> stock)
         {
-            int count = 0;
             for (int i = 0; i < slots; i++)
             {
                 var item = items[i];
-                if (item?.stack > 0 && Array.BinarySearch(types, item.type) >= 0) count += item.stack;
+                if (item?.stack > 0)
+                {
+                    stock.TryGetValue(item.type, out int count);
+                    stock[item.type] = count + item.stack;
+                }
             }
-            return count;
         }
 
         internal static bool GrowthEligible(Player body, int type)

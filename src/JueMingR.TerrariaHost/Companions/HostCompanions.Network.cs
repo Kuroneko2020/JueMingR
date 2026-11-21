@@ -229,7 +229,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if(!WorldPacket(a,packet))continue;
                     if(packet.Length>decoder.readBuffer.Length)throw new InvalidDataException("队友世界数据帧过大。");
                     Buffer.BlockCopy(packet,0,decoder.readBuffer,0,packet.Length);decoder.ResetReader();Decoding=a;
-                    try{int type;if(id==39)using(CompanionHooks.Enter(a,a.Aim))decoder.GetData(0,packet.Length,out type);else decoder.GetData(0,packet.Length,out type);}finally{Decoding=null;}
+                    try{int type;if(id==39 || id==65)using(CompanionHooks.Enter(a,a.Aim))decoder.GetData(0,packet.Length,out type);else decoder.GetData(0,packet.Length,out type);}finally{Decoding=null;}
                 }
             }
         }
@@ -253,12 +253,21 @@ namespace JueMingR.TerrariaHost.Companions
             // 21/22/151 are already broadcast to the primary connection even
             // in distant regions. 39 is directed to the reserved player only.
             if(id==39 && p.Length>=3){int slot=BitConverter.ToInt16(p,1);return slot>=0 && slot<Main.maxItems && Main.item[slot].playerIndexTheItemIsReservedFor==a.Body.whoAmI;}
+            if(id==65)return DirectedPlayerTeleport(p,0,p.Length)==a.Body.whoAmI && a.Ready && !a.Closing && a.Body.active && ReferenceEquals(Owned(a.Body),a);
             return false;
         }
+        // Server player-teleport (mode 0) carries its slot after the flags,
+        // unlike the team/control messages. Consume it once on its own FIFO
+        // so native GetData applies the position and replies with mode 3.
+        // The server protects that position against stale 13 until this ACK.
+        private static int DirectedPlayerTeleport(byte[] data,int start,int length)
+        {return length>=13 && (data[start+1]&3)==0 ? BitConverter.ToInt16(data,start+2) : -1;}
         internal bool AcceptPrimary(byte[] data,int start,int length)
         {
             if(ReadingObservation || Decoding!=null || length<1)return true;int id=data[start];if(id==49)CompleteNpcSnapshot(null);
             if(length<2)return true;int slot=data[start+1];var a=OwnedSlot(slot);
+            if(id==65 && OwnedSlot(DirectedPlayerTeleport(data,start,length)) is Actor receiver && receiver.Ready &&
+                !receiver.Closing && receiver.Body.active && receiver.Connection!=null)return false;
             if(id==14 && length>=3)return AcceptPrimarySlotChange(a,slot,data[start+2]==1);
             // Own team echoes arrive on the human stream, excluding the AI's
             // sender connection. They cannot overwrite a later local team intent.
@@ -358,6 +367,19 @@ namespace JueMingR.TerrariaHost.Companions
         {
             SpawnBody(a,context);
             RestoreMinions(a);
+        }
+        internal void RecallFromItem(Actor actor,int humanIndex)
+        {
+            // Native mirror use enters Spawn from inside the item's actor
+            // scope. Reuse the genuine body/bed spawn without local-human
+            // camera, UI or static minion ownership. Send the native recall
+            // on the item's connection after restoring its owner scope.
+            int previous=Main.myPlayer;
+            Main.myPlayer=humanIndex;
+            try { SpawnBody(actor,PlayerSpawnContext.RecallFromItem); }
+            finally { Main.myPlayer=previous; }
+            if(actor.Connection!=null)NetMessage.SendData(12,-1,-1,null,actor.Body.whoAmI,(byte)PlayerSpawnContext.RecallFromItem);
+            RestoreMinions(actor);
         }
         private void SpawnBody(Actor a,PlayerSpawnContext context)
         {

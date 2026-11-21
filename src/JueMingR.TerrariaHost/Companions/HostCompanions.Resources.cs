@@ -47,7 +47,6 @@ namespace JueMingR.TerrariaHost.Companions
             if (actor != null && itemDraft != null && itemDraft.UsesCompanion && itemDraft.Profile == actor.Profile.Id &&
                 itemDraft.Generation == actor.Generation && ReferenceEquals(itemDraft.Companion, actor.Body)) CancelItemGesture();
         }
-        internal void EndItemRepeat() { itemDraft?.EndRepeat(); }
 
         internal static bool QuickTrashRequested(bool control, bool shift)
         {
@@ -133,6 +132,12 @@ namespace JueMingR.TerrariaHost.Companions
         { return HasItemGesture ? itemDraft.Preview(fromOwner, area, slot) : null; }
 
         internal bool ItemGesture(Guid id, bool fromOwner, CompanionInventoryArea area, int slot, CompanionItemGesture gesture)
+        { return ApplyItemGesture(id, fromOwner, area, slot, gesture, 1); }
+
+        internal bool RepeatItemPickup(Guid id, bool fromOwner, CompanionInventoryArea area, int slot, int count)
+        { return ApplyItemGesture(id, fromOwner, area, slot, CompanionItemGesture.RightRepeat, count); }
+
+        private bool ApplyItemGesture(Guid id, bool fromOwner, CompanionInventoryArea area, int slot, CompanionItemGesture gesture, int take)
         {
             if (!ItemOwnerCurrent()) { CancelItemGesture(); return Result(false, "当前不能整理物品。"); }
             if (Main.mouseItem != null && !Main.mouseItem.IsAir) { CancelItemGesture(); return Result(false, "请先放回原版鼠标上的物品。"); }
@@ -145,6 +150,19 @@ namespace JueMingR.TerrariaHost.Companions
             var bankArea = !fromOwner ? area : gesture == CompanionItemGesture.Shift ? targetArea : CompanionInventoryArea.Inventory;
             if (CompanionResources.IsBank(bankArea) && !StorageAvailable(id, bankArea, out string reason)) return Result(false, reason);
             if (gesture == CompanionItemGesture.Shift && itemDraft != null) return Result(false, "请先放下手中的物品。");
+            if (gesture == CompanionItemGesture.Right || gesture == CompanionItemGesture.RightRepeat)
+            {
+                var body = fromOwner ? owner : actor.Body;
+                if (!CompanionItemRules.ValidSlot(body, area, slot) || body.itemAnimation > 0) return false;
+                var source = itemDraft == null ? CompanionResources.Items(body, area)[slot] : itemDraft.Preview(fromOwner, area, slot);
+                var action = CompanionSlotRightClick.Classify(area, slot, source, itemDraft?.Cursor ?? emptyItemCursor);
+                if (action != CompanionSlotRightClick.Kind.Pickup && CompanionItemRules.Available(body, area, slot))
+                {
+                    if (gesture == CompanionItemGesture.RightRepeat) return false;
+                    if (action != CompanionSlotRightClick.Kind.Mode)
+                        return RunNativeRightClick(actor, fromOwner, area, slot, action);
+                }
+            }
             if (itemDraft == null)
             {
                 var access = bankAccess;
@@ -163,7 +181,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (usesCompanion && (itemDraft.Generation != actor.Generation || !ReferenceEquals(itemDraft.Companion, actor.Body)))
             { CancelItemGesture(); return Result(false, "队友已变化，请重新拿取。"); }
             string message;
-            if (!itemDraft.Gesture(fromOwner, area, slot, gesture, out message))
+            if (!itemDraft.Gesture(fromOwner, area, slot, gesture, take, out message))
             {
                 if (itemDraft.Cursor.IsAir) CancelItemGesture();
                 if (message != null) Feedback = message;
@@ -207,7 +225,7 @@ namespace JueMingR.TerrariaHost.Companions
             return itemMaterialTypes.Contains(item.type);
         }
 
-        private bool FinishItemCommit(Actor actor, List<CompanionItemChange> changes, string message)
+        private bool FinishItemCommit(Actor actor, List<CompanionItemChange> changes, string message, bool nativeEquip = false)
         {
             bool companionChanged = false; string failure = null;
             foreach (var change in changes)
@@ -220,7 +238,8 @@ namespace JueMingR.TerrariaHost.Companions
                     try { OwnerItems?.NotifyManualItemReplacement(owner, change.Array, change.Slot, change.Before, change.After); }
                     catch (Exception) { failure = "物品已移动，物品状态通知失败。"; }
                     int context = CompanionItemRules.EquipmentContext(change.Area, change.Slot);
-                    if (context >= 0 && change.After?.IsAir == false)
+                    if (!nativeEquip && change.StoredLoadout < 0 && context >= 0 && change.After?.IsAir == false &&
+                        (change.Before == null || change.After.IsNotTheSameAs(change.Before)))
                     {
                         // Only a completed human equipment write reaches the
                         // achievement helper; projected slots and AI never do.
@@ -229,7 +248,8 @@ namespace JueMingR.TerrariaHost.Companions
                     }
                 }
                 if (Main.netMode == 1) QueueItemSync(change.Owner ? owner : actor.Body, change.Owner ? null : actor,
-                    change.OwnerTrash ? PlayerItemSlotID.TrashItem : NetworkSlot(change.Area, change.Slot));
+                    change.OwnerTrash ? PlayerItemSlotID.TrashItem : change.StoredLoadout >= 0 ?
+                    StoredLoadoutNetworkSlot(change.Area, change.StoredLoadout, change.Slot) : NetworkSlot(change.Area, change.Slot));
             }
             if (companionChanged && actor != null)
             {

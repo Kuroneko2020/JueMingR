@@ -7,7 +7,7 @@ using Terraria.UI;
 
 namespace JueMingR.TerrariaHost.Companions
 {
-    internal enum CompanionItemGesture { Left, Right, Shift }
+    internal enum CompanionItemGesture { Left, Right, Shift, RightRepeat, Mark }
 
     // Independent panel operations must name the target body. ItemSlot's
     // convenient movement entry points use LocalPlayer and mouseItem internally.
@@ -150,6 +150,18 @@ namespace JueMingR.TerrariaHost.Companions
             }
             return -1;
         }
+
+        internal static int SlotContext(CompanionInventoryArea area, int slot)
+        {
+            if (area == CompanionInventoryArea.Inventory)
+                return slot < 50 ? ItemSlot.Context.InventoryItem : slot < 54 ? ItemSlot.Context.InventoryCoin : ItemSlot.Context.InventoryAmmo;
+            if (CompanionResources.IsBank(area))
+                return area == CompanionInventoryArea.VoidVault ? ItemSlot.Context.VoidItem : ItemSlot.Context.BankItem;
+            return EquipmentContext(area, slot);
+        }
+
+        internal static bool CanMark(CompanionInventoryArea area) => area == CompanionInventoryArea.Inventory ||
+            area == CompanionInventoryArea.VoidVault || area == CompanionInventoryArea.Armor || area == CompanionInventoryArea.Dye;
 
         private static bool WireTool(Item item)
         { return item.type == 509 || item.type == 850 || item.type == 851 || item.type == 3612 || item.type == 3625 || item.shoot == 651; }

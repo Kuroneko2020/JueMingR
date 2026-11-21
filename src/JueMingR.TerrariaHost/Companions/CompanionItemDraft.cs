@@ -10,6 +10,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool Owner;
         internal CompanionInventoryArea Area;
         internal int Slot;
+        internal int StoredLoadout = -1;
         internal Item[] Array;
         internal Item Before, After;
         internal Player TrashOwner;
@@ -27,8 +28,9 @@ namespace JueMingR.TerrariaHost.Companions
             internal bool Owner;
             internal CompanionInventoryArea Area;
             internal int Slot;
+            internal int StoredLoadout = -1;
             internal Item[] Array;
-            internal Item Original, Baseline, Preview;
+            internal Item Original, Baseline, Preview, InPlaceModeItem;
             internal bool Written;
             internal bool OwnerTrash;
         }
@@ -38,8 +40,6 @@ namespace JueMingR.TerrariaHost.Companions
         internal readonly long Generation, Session;
         internal readonly object World;
         private readonly List<Cell> cells = new List<Cell>();
-        private Cell rightSource;
-        internal void EndRepeat() { rightSource = null; }
         internal Item Cursor { get; private set; } = new Item();
         internal int DependencyCount { get { return cells.Count; } }
         internal bool DependsOn(Item[] array, int slot)
@@ -69,7 +69,7 @@ namespace JueMingR.TerrariaHost.Companions
         private Player Body(bool owner) { return owner ? Owner : Companion; }
         private Cell Find(bool owner, CompanionInventoryArea area, int slot)
         {
-            foreach (var cell in cells) if (!cell.OwnerTrash && cell.Owner == owner && cell.Area == area && cell.Slot == slot) return cell;
+            foreach (var cell in cells) if (!cell.OwnerTrash && cell.StoredLoadout < 0 && cell.Owner == owner && cell.Area == area && cell.Slot == slot) return cell;
             return null;
         }
         private Cell Touch(bool owner, CompanionInventoryArea area, int slot)
@@ -109,6 +109,13 @@ namespace JueMingR.TerrariaHost.Companions
             CompanionInventoryArea checkedBank = CompanionInventoryArea.Inventory;
             foreach (var cell in cells)
             {
+                if (cell.StoredLoadout >= 0)
+                {
+                    var loadout = Body(cell.Owner).Loadouts[cell.StoredLoadout];
+                    if (!ReferenceEquals(cell.Array, cell.Area == CompanionInventoryArea.Armor ? loadout.Armor : loadout.Dye) ||
+                        !ReferenceEquals(cell.Array[cell.Slot], cell.Original) || !Same(cell.Original, cell.Baseline)) return false;
+                    continue;
+                }
                 if (cell.OwnerTrash)
                 {
                     if (discardBlocked?.Invoke() == true || !ReferenceEquals(Owner.trashItem, cell.Original) || !Same(Owner.trashItem, cell.Baseline)) return false;
@@ -164,16 +171,16 @@ namespace JueMingR.TerrariaHost.Companions
             return CompanionItemRules.Accepts(Body(owner), area, slot, item, (a, s) => Preview(owner, a, s));
         }
 
-        internal bool Gesture(bool owner, CompanionInventoryArea area, int slot, CompanionItemGesture gesture, out string message)
+        internal bool Gesture(bool owner, CompanionInventoryArea area, int slot, CompanionItemGesture gesture, int take, out string message)
         {
             int count = cells.Count;
-            bool accepted = GestureCore(owner, area, slot, gesture, out message);
+            bool accepted = GestureCore(owner, area, slot, gesture, take, out message);
             if (!accepted && cells.Count > count) cells.RemoveRange(count, cells.Count - count);
             UsesCompanion = false; foreach (var cell in cells) UsesCompanion |= !cell.Owner;
             return accepted;
         }
 
-        private bool GestureCore(bool owner, CompanionInventoryArea area, int slot, CompanionItemGesture gesture, out string message)
+        private bool GestureCore(bool owner, CompanionInventoryArea area, int slot, CompanionItemGesture gesture, int take, out string message)
         {
             message = null;
             if (!BankAvailable(owner, area) || !CompanionItemRules.ValidSlot(Body(owner), area, slot)) { message = "该槽位当前不可用。"; return false; }
@@ -185,28 +192,61 @@ namespace JueMingR.TerrariaHost.Companions
             if (Blocked(owner, area, slot)) { message = "该物品正在使用，请先结束相关操作。"; return false; }
             var cell = Touch(owner, area, slot);
             if (gesture == CompanionItemGesture.Shift) return QuickTransfer(owner, cell, locked, out message);
+            if (gesture == CompanionItemGesture.Mark)
+            {
+                if (locked || cell.Preview.IsAir || !CompanionItemRules.CanMark(area)) return false;
+                cell.Preview.favorited = !cell.Preview.favorited;
+                cell.Written = true;
+                if (cell.Preview.favorited && (area == CompanionInventoryArea.Armor || area == CompanionInventoryArea.Dye))
+                    ClearOtherLoadoutMarks(cell);
+                return true;
+            }
+            if (gesture == CompanionItemGesture.Right || gesture == CompanionItemGesture.RightRepeat)
+            {
+                var action = CompanionSlotRightClick.Classify(area, slot, cell.Preview, Cursor);
+                if (action == CompanionSlotRightClick.Kind.Mode && !locked)
+                {
+                    if (gesture == CompanionItemGesture.RightRepeat) return false;
+                    if (!cell.Preview.IsNotTheSameAs(cell.Baseline)) cell.InPlaceModeItem = cell.Preview;
+                    CompanionSlotRightClick.ChangeMode(cell.Preview);
+                    cell.Written = true;
+                    return true;
+                }
+                if (action != CompanionSlotRightClick.Kind.Pickup && !locked)
+                {
+                    if (gesture == CompanionItemGesture.Right) message = "请先放下手中的物品。";
+                    return false;
+                }
+                // ItemSlot.RightClick always takes from the pointed stack. A
+                // new press, another compatible stack or an empty cell never
+                // reverses direction. Left-click places the projected cursor.
+                if (cell.Preview.IsAir || !Cursor.IsAir && !Item.CanStack(Cursor, cell.Preview)) return false;
+                int capacity = Cursor.IsAir ? cell.Preview.maxStack : Cursor.maxStack - Cursor.stack;
+                int amount = Math.Min(cell.Preview.stack, Math.Min(capacity, locked ? cell.Preview.stack : take));
+                if (amount <= 0) return false;
+                if (Cursor.IsAir)
+                {
+                    Cursor = cell.Preview.Clone();
+                    Cursor.stack = 0;
+                    if (cell.Preview.stack != 1 || CompanionItemRules.EquipmentContext(area, slot) >= 0) Cursor.favorited = false;
+                }
+                Cursor.stack += amount;
+                cell.Preview = Remainder(cell.Preview, amount);
+                cell.Written = true;
+                return true;
+            }
             if (Cursor.IsAir)
             {
                 if (cell.Preview.IsAir) return false;
-                int count = gesture == CompanionItemGesture.Right && !locked ? 1 : cell.Preview.stack;
-                Cursor = cell.Preview.Clone(); Cursor.stack = count;
-                if (CompanionItemRules.EquipmentContext(area, slot) >= 0 || count < cell.Preview.stack) Cursor.favorited = false;
-                cell.Preview = Remainder(cell.Preview, count); cell.Written = true;
-                rightSource = gesture == CompanionItemGesture.Right ? cell : null;
+                Cursor = cell.Preview;
+                if (CompanionItemRules.EquipmentContext(area, slot) >= 0) Cursor.favorited = false;
+                cell.Preview = new Item(); cell.Written = true;
                 return true;
             }
-            if (gesture == CompanionItemGesture.Right && ReferenceEquals(rightSource, cell))
-            {
-                if (cell.Preview.IsAir || !Item.CanStack(Cursor, cell.Preview) || Cursor.stack >= Cursor.maxStack) return false;
-                var next = Cursor.Clone(); next.stack++;
-                Cursor = next; cell.Preview = Remainder(cell.Preview, 1); cell.Written = true;
-                return true;
-            }
-            rightSource = null;
             if (cell.Preview.IsAir || Item.CanStack(Cursor, cell.Preview))
             {
                 int capacity = Math.Max(0, CompanionItemRules.Capacity(area, Cursor) - (cell.Preview.IsAir ? 0 : cell.Preview.stack));
-                int count = Math.Min(Cursor.stack, gesture == CompanionItemGesture.Right ? Math.Min(1, capacity) : capacity);
+                int count = Math.Min(Cursor.stack, capacity);
                 if (count == 0) return false;
                 var next = cell.Preview.IsAir ? Cursor.Clone() : cell.Preview.Clone();
                 next.stack = (cell.Preview.IsAir ? 0 : cell.Preview.stack) + count;
@@ -215,7 +255,6 @@ namespace JueMingR.TerrariaHost.Companions
                 cell.Preview = next; Cursor = Remainder(Cursor, count); cell.Written = true;
                 return true;
             }
-            if (gesture == CompanionItemGesture.Right) return false;
             if (!Accepts(owner, area, slot, Cursor)) { message = "此物品不能放入该槽位。"; return false; }
             // Swaps can leave an unrelated item on this window's cursor. Do not
             // push it back into the first source (which could be a helmet slot).
@@ -224,6 +263,26 @@ namespace JueMingR.TerrariaHost.Companions
             // dye, that bit means shared loadout ownership, not a backpack mark.
             if (CompanionItemRules.EquipmentContext(area, slot) >= 0) cell.Preview.favorited = Cursor.favorited = false;
             return true;
+        }
+
+        // Vanilla uses the same bit for a backpack favorite and loadout
+        // sharing. Only enabling an equipped shared slot clears this person's
+        // stored counterpart in every loadout. Bind the actual arrays/items
+        // until the cursor closes; a cancelled draft changes none of them.
+        private void ClearOtherLoadoutMarks(Cell equipped)
+        {
+            var loadouts = Body(equipped.Owner).Loadouts;
+            for (int i = 0; i < loadouts.Length; i++)
+            {
+                var array = equipped.Area == CompanionInventoryArea.Armor ? loadouts[i].Armor : loadouts[i].Dye;
+                if (DependsOn(array, equipped.Slot)) continue;
+                var original = array[equipped.Slot];
+                var cell = new Cell { Owner = equipped.Owner, Area = equipped.Area, Slot = equipped.Slot, StoredLoadout = i,
+                    Array = array, Original = original, Preview = original?.Clone() ?? new Item(), Baseline = original?.Clone() ?? new Item(),
+                    Written = original?.favorited == true };
+                cell.Preview.favorited = false;
+                cells.Add(cell);
+            }
         }
 
         private bool QuickTransfer(bool fromOwner, Cell source, bool locked, out string message)
@@ -293,9 +352,12 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 var cell = cells[index];
                 if (!cell.Written || !cell.OwnerTrash && Same(cell.Preview, cell.Baseline)) continue;
-                if (!cell.OwnerTrash && !Accepts(cell.Owner, cell.Area, cell.Slot, cell.Preview)) return false;
+                // An in-place native mode change (e.g. a previously favorited
+                // bag in its own vault) has no new placement destination.
+                if (!cell.OwnerTrash && cell.StoredLoadout < 0 && !ReferenceEquals(cell.Preview, cell.InPlaceModeItem) && cell.Preview.IsNotTheSameAs(cell.Baseline) &&
+                    !Accepts(cell.Owner, cell.Area, cell.Slot, cell.Preview)) return false;
                 changes.Add(new CompanionItemChange { Owner = cell.Owner, Area = cell.Area, Slot = cell.Slot, Array = cell.Array,
-                    Before = cell.Original, After = cell.Preview.Clone(), TrashOwner = cell.OwnerTrash ? Owner : null });
+                    StoredLoadout = cell.StoredLoadout, Before = cell.Original, After = cell.Preview.Clone(), TrashOwner = cell.OwnerTrash ? Owner : null });
             }
             // Accepts can add read dependencies. Recheck those before exposing
             // any replacement; no disk/network/native callback belongs here.

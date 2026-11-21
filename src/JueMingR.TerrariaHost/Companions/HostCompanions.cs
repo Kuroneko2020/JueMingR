@@ -6,6 +6,7 @@ using JueMingR.Platform.Companions;
 using JueMingR.Platform.Runtime;
 using JueMingR.Infrastructure.Companions;
 using JueMingR.TerrariaHost.Combat;
+using JueMingR.TerrariaHost.Recovery;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
@@ -33,6 +34,8 @@ namespace JueMingR.TerrariaHost.Companions
             }
             internal readonly CompanionCombatState Combat = new CompanionCombatState();
             internal readonly CompanionSupplyState Supplies = new CompanionSupplyState();
+            internal FurnitureRecovery Furniture;
+            internal int DyeSwapCounter;
             internal CompanionConnection Connection;internal long Generation;
             internal PasswordAttempt PasswordAttempt;
             internal bool Ready,SpawnSent,Closing,CloseCaptured;internal string Status="加入中",TerminalFailure;

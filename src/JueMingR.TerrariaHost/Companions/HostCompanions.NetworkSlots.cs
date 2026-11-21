@@ -26,6 +26,14 @@ namespace JueMingR.TerrariaHost.Companions
                 default: throw new ArgumentOutOfRangeException(nameof(area));
             }
         }
+
+        private static int StoredLoadoutNetworkSlot(CompanionInventoryArea area, int loadout, int slot)
+        {
+            bool armor = area == CompanionInventoryArea.Armor;
+            if (loadout == 0) return slot + (armor ? PlayerItemSlotID.Loadout1_Armor_0 : PlayerItemSlotID.Loadout1_Dye_0);
+            if (loadout == 1) return slot + (armor ? PlayerItemSlotID.Loadout2_Armor_0 : PlayerItemSlotID.Loadout2_Dye_0);
+            return slot + (armor ? PlayerItemSlotID.Loadout3_Armor_0 : PlayerItemSlotID.Loadout3_Dye_0);
+        }
         private static int[] NetworkSlots(Player body)
         {
             // 1.4.5.8 reserves 200 protocol IDs for each bank, while native

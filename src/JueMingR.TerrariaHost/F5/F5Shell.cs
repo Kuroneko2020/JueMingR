@@ -392,6 +392,7 @@ namespace JueMingR.TerrariaHost.F5
         private static readonly Action<string> displayPreferenceFeedback = message => Main.NewText(message, 255, 180, 90);
         private Player leasedPlayer;
         private bool priorMouseInterface, hoverLease, priorMouseText;
+        private Item companionSlotHover;
         private Player nativeControlPlayer;
         private bool nativeControlPriorInterface;
         private bool failed, failureNotified, positionRestored, failureCleanupAttempted;
@@ -1205,17 +1206,20 @@ namespace JueMingR.TerrariaHost.F5
             try
             {
                 RestoreLeases();
+                companionSlotHover = null;
                 if (PresentationUnavailable) { CloseForUnavailablePresentation(); return true; }
                 if (OwnsPointer || blueprint?.Toolbar.HitCurrent() == true)
                 {
                     // AfterUpdate already cleared the old bubble before Emote.
                     // Keep this pointer's later NPC hover state clear as well.
                     Main.instance.currentNPCShowingChatBubble = -1;
-                    // Claim this pointer's pending text before lower mouse UI can
-                    // generate it. null is Terraria's supported no-text value;
-                    // DrawPendingMouseText still draws its normal cursor.
+                    // Reserve this pointer's native tooltip before lower UI
+                    // can claim the no-override cache. The game's last draw
+                    // still owns its font, rarity, full text and edge fitting.
                     Main.ClearHoverItem();
-                    Main.instance.MouseTextNoOverride(null);
+                    if (!companionHotkeyPopup && inputState.CanPrepareText)
+                        companionSlotHover = CompanionUi?.PrepareNativeSlotHover();
+                    if (companionSlotHover == null) Main.instance.MouseTextNoOverride(null);
                 }
             }
             catch { FailClosed(); }
@@ -1299,7 +1303,16 @@ namespace JueMingR.TerrariaHost.F5
             return true;
         }
 
-        internal bool EndPointerLayer() { RestoreLeases(); if (information != null && information.Adjustment.Active) information.Pointer.End(); return true; }
+        internal bool EndPointerLayer()
+        {
+            RestoreLeases();
+            // Vanilla Inventory can replace HoverItem even though the text
+            // cache is claimed. DrawPendingMouseText reads the clone *after*
+            // all interface layers, so restore this frame's actual hovered item.
+            if (companionSlotHover != null) { Main.HoverItem = companionSlotHover; companionSlotHover = null; }
+            if (information != null && information.Adjustment.Active) information.Pointer.End();
+            return true;
+        }
 
         private void LeaseMouseInterface()
         {

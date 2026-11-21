@@ -15,7 +15,11 @@ namespace JueMingR.TerrariaHost.Recovery
         private static readonly int[] Widths={2,2,3,3,5,2,4},Heights={2,2,3,2,4,2,4};
         private readonly HostRecovery host;
         private readonly WorldTileObservation tiles;
+        internal static readonly Action<Player,int,int> NativeUse = (Action<Player,int,int>)Delegate.CreateDelegate(
+            typeof(Action<Player,int,int>),typeof(Player).GetMethod("TileInteractionsUse",BindingFlags.Instance|BindingFlags.NonPublic));
+        private readonly Func<Player,bool> admit;
         private readonly Action<Player,int,int> use;
+        private readonly Action<string> report;
         private readonly Candidate[] failed=new Candidate[7];
         private readonly Candidate[] nearest=new Candidate[7];
         private Rectangle region;
@@ -27,14 +31,22 @@ namespace JueMingR.TerrariaHost.Recovery
 #endif
         private struct Candidate{internal Tile Tile;internal int X,Y,Left,Top,FrameX,FrameY;internal float Distance;}
         internal FurnitureRecovery(HostRecovery host,WorldTileObservation tiles)
-        {this.host=host;this.tiles=tiles;use=(Action<Player,int,int>)Delegate.CreateDelegate(typeof(Action<Player,int,int>),typeof(Player).GetMethod("TileInteractionsUse",BindingFlags.Instance|BindingFlags.NonPublic));}
+            : this(player => host.Admit(player) && host.Value(3) != 0, NativeUse, host.Report)
+        {this.host=host;this.tiles=tiles;}
+        internal FurnitureRecovery(Func<Player,bool> admit,Action<Player,int,int> use,Action<string> report)
+        {this.admit=admit;this.use=use;this.report=report;}
         internal void Reset(){Array.Clear(failed,0,7);nextScan=0;revision=-1;}
         internal void Update(Player p,ulong tick)
         {
-            if(tiles==null || !p.releaseUseTile || p.controlUseTile || p.tileInteractionHappened || WiresUI.Open || p.ownedProjectileCounts[651]>0 || Main.HasInteractableObjectThatIsNotATile)return;
+            if(tiles==null || WiresUI.Open || Main.HasInteractableObjectThatIsNotATile)return;
+            UpdateInRange(p,tick,host.Services.Revision,TileReachCheckSettings.Simple);
+        }
+        internal void UpdateInRange(Player p,ulong tick,long settingsRevision,TileReachCheckSettings reach)
+        {
+            if(!p.releaseUseTile || p.controlUseTile || p.tileInteractionHappened || p.ownedProjectileCounts[651]>0)return;
             bool need=false;for(int i=0;i<7;i++)if(BuffRecovery.Missing(p,Buffs[i])){need=true;break;}if(!need)return;
-            Rectangle current=TileReachCheckSettings.Simple.GetTileRegion(p);
-            if(region!=current || revision!=host.Services.Revision){region=current;revision=host.Services.Revision;nextScan=0;Array.Clear(failed,0,7);}
+            Rectangle current=reach.GetTileRegion(p);
+            if(region!=current || revision!=settingsRevision){region=current;revision=settingsRevision;nextScan=0;Array.Clear(failed,0,7);}
             if(tick<nextScan)return;nextScan=tick+30;Array.Clear(nearest,0,7);
             // Discovery is finite and shared. Every write below re-reads the
             // complete object, bypassing this observation cache.
@@ -44,14 +56,15 @@ namespace JueMingR.TerrariaHost.Recovery
 #if DEBUG
                 TileReads++;
 #endif
-                var observed=tiles.Read(x,y);if(!observed.Readable || !observed.Active || observed.Inactive)continue;
+                var observed=tiles!=null?tiles.Read(x,y):WorldTileObservation.ReadCurrent(x,y);
+                if(!observed.Readable || !observed.Active || observed.Inactive)continue;
                 int kind=Array.IndexOf(Types,(int)observed.Type);if(kind<0 || !BuffRecovery.Missing(p,Buffs[kind]))continue;
                 Candidate c;if(!Read(x,y,kind,out c))continue;c.Distance=Vector2.DistanceSquared(p.Center,new Vector2(x*16+8,y*16+8));
                 if(failed[kind].Tile!=null && Same(c,failed[kind]))continue;
                 if(nearest[kind].Tile==null || c.Distance<nearest[kind].Distance)nearest[kind]=c;
             }
             for(int kind=0;kind<7;kind++)if(nearest[kind].Tile!=null)
-            {Apply(p,kind,nearest[kind]);nextScan=tick+1;break;}
+            {if(Apply(p,kind,nearest[kind],reach))nextScan=tick+1;break;}
         }
         private static bool Same(Candidate a,Candidate b){return ReferenceEquals(a.Tile,b.Tile) && a.Left==b.Left && a.Top==b.Top && a.FrameX==b.FrameX && a.FrameY==b.FrameY;}
         private bool Read(int x,int y,int kind,out Candidate result)
@@ -79,9 +92,11 @@ namespace JueMingR.TerrariaHost.Recovery
 #endif
             return WorldTileObservation.ReadCurrent(x,y);
         }
-        private void Apply(Player p,int kind,Candidate candidate)
+        private bool Apply(Player p,int kind,Candidate candidate,TileReachCheckSettings reach)
         {
-            Candidate fresh;if(!host.Admit(p) || host.Value(3)==0 || !BuffRecovery.Missing(p,Buffs[kind]) || !p.IsInTileInteractionRange(candidate.X,candidate.Y,TileReachCheckSettings.Simple) || !Read(candidate.X,candidate.Y,kind,out fresh) || !Same(candidate,fresh))return;
+            // Discovery and the final native range check must use this same
+            // body's reach. A companion may have different range equipment.
+            Candidate fresh;if(!admit(p) || !BuffRecovery.Missing(p,Buffs[kind]) || !p.IsInTileInteractionRange(candidate.X,candidate.Y,reach) || !Read(candidate.X,candidate.Y,kind,out fresh) || !Same(candidate,fresh))return false;
             bool attempted=p.tileInteractAttempted,happened=p.tileInteractionHappened;Executing=true;
             try
             {
@@ -92,8 +107,9 @@ namespace JueMingR.TerrariaHost.Recovery
                 use(p,candidate.X,candidate.Y);
                 if(BuffRecovery.Missing(p,Buffs[kind]))failed[kind]=candidate;
             }
-            catch{failed[kind]=candidate;host.Report("家具交互未完成；已停止重复点击该对象。");}
+            catch{failed[kind]=candidate;report("家具交互未完成，已停止重复点击该对象。");}
             finally{Executing=false;p.tileInteractAttempted=attempted;p.tileInteractionHappened=happened;}
+            return true;
         }
     }
 }

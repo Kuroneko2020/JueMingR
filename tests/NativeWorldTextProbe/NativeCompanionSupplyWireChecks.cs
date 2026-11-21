@@ -10,6 +10,7 @@ using HarmonyLib;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.DataStructures;
 using Terraria.GameContent;
 using Terraria.ID;
 using Terraria.Net.Sockets;
@@ -40,6 +41,9 @@ namespace NativeWorldTextProbe
             var originalHumanPosition = human.position;
             var originalNursePosition = nurse.position;
             int originalTilesX = Main.maxTilesX, originalTilesY = Main.maxTilesY;
+            int originalSectionsX = Main.maxSectionsX, originalSectionsY = Main.maxSectionsY;
+            var activeTimes = AccessTools.Field(typeof(ActiveSections), "LastActiveTime");
+            object previousTimes = activeTimes.GetValue(null);
             int originalHomeX = nurse.homeTileX, originalHomeY = nurse.homeTileY;
             var originalNpcSlots = primaryNpcs.Take(4).ToArray();
             int mode = Main.netMode, local = Main.myPlayer;
@@ -89,6 +93,7 @@ namespace NativeWorldTextProbe
                 Netplay.Connection.Socket = new TcpSocket(humanClient);
                 Netplay.Connection.State = 10;
                 Main.maxTilesX = 400; Main.maxTilesY = 160;
+                Main.maxSectionsX = Main.maxSectionsY = 2;
                 Main.tile = new Tile[400, 160];
                 for (int x = 0; x < 400; x++)
                     for (int y = 0; y < 160; y++) Main.tile[x, y] = new Tile();
@@ -199,7 +204,9 @@ namespace NativeWorldTextProbe
                     humanSlot, false, human.inventory[ownerItemSlot]));
                 actorFrames.AddRange(Read(actorPeer.GetStream(), new HashSet<int> { PlayerItemSlotID.Bank4_0 + bankItemSlot },
                     actorSlot, false, body.bank4.item[bankItemSlot]));
+                actorFrames.Add(NativeCompanionFurnitureChecks.SendToServer(host, actor, actorPeer));
                 VerifyPrimaryRoomHandoff(host, actor, human, nurse);
+                var phoneRequest = UseShellphone(host, actor, body, actorPeer);
 
                 Main.netMode = 2;
                 Main.dedServ = true;
@@ -211,6 +218,9 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < 256; i++) Netplay.Clients[i] = new RemoteClient { Id = i, State = 10 };
                 foreach (var frame in humanFrames) Apply(frame, humanSlot);
                 foreach (var frame in actorFrames) Apply(frame, actorSlot);
+                Require(serverBody.FindBuffIndex(BuffID.Clairvoyance) >= 0 && serverHuman.FindBuffIndex(BuffID.Clairvoyance) < 0,
+                    "original server applies furniture buff 50 to its actor only");
+                Console.WriteLine("PASS loaded furniture grants the actor's real buff and its original server 50 leaves the human unchanged.");
 
                 Require(serverBody.statLife == body.statLife && serverBody.FindBuffIndex(BuffID.Poisoned) < 0 &&
                     serverHuman.statLife == human.statLife &&
@@ -224,6 +234,7 @@ namespace NativeWorldTextProbe
                     "original server consumes the real AI's Wood×7 packet5 into its last actual Bank4 slot");
                 Require(!serverHuman.bank4.item[bankItemSlot].IsNetStateDifferent(ownerBankBeforeTransfer),
                     "original server keeps the human's corresponding Bank4 cell at its post-nurse value");
+                VerifyShellphoneResponse(host, actor, primaryPlayers, body, human, serverBody, actorPeer, humanPeer, humanClient, phoneRequest);
                 Console.WriteLine("PASS split nurse actual owner and AI TCP send streams -> original server 5/16/35/50; no 66; pre-admitted links.");
                 Console.WriteLine("PASS panel void transfer uses separate original TCP player-slot 5 send and receive, with no chest 32.");
             }
@@ -234,6 +245,8 @@ namespace NativeWorldTextProbe
                 Main.npc = primaryNpcs;
                 Main.tile = originalTiles; Main.sectionManager = originalSections;
                 Main.maxTilesX = originalTilesX; Main.maxTilesY = originalTilesY;
+                Main.maxSectionsX = originalSectionsX; Main.maxSectionsY = originalSectionsY;
+                activeTimes.SetValue(null, previousTimes);
                 body.position = originalBodyPosition; nurse.position = originalNursePosition;
                 human.position = originalHumanPosition;
                 nurse.homeTileX = originalHomeX; nurse.homeTileY = originalHomeY;
@@ -253,6 +266,74 @@ namespace NativeWorldTextProbe
                 if (Harmony.GetPatchInfo(send)?.Prefixes.Any(patch => patch.owner == outlets.Id) != true)
                     outlets.Patch(send, prefix: new HarmonyMethod(typeof(NativeQuickItemChecks), "NoNetwork"));
             }
+        }
+
+        private static byte[] UseShellphone(object host, object actor, Player body, TcpClient peer)
+        {
+            const int slot = 35;
+            var originalItem = body.inventory[slot];
+            try
+            {
+                body.inventory[slot] = new Item(ItemID.ShellphoneSpawn);
+                var id = ((CompanionProfile)Get(actor, "Profile")).Id;
+                Require((bool)Call(host, "UseItemOnce", id, CompanionInventoryArea.Inventory, slot),
+                    "actual Shellphone accepts world-spawn mode in multiplayer: " + Get(host, "Feedback"));
+                for (int i = 0; i < 115; i++)
+                {
+                    NativeQuickItemChecks.BeginWorldStep();
+                    Call(host, "Control", actor);
+                    body.ItemCheck();
+                }
+                var request = NativeCompanionTeamChecks.ReadKind(peer.GetStream(), 73);
+                Require(request.Length == 4 && request[3] == 3 && body.inventory[slot].type == ItemID.ShellphoneSpawn,
+                    "the original current-mode phone requests only world spawn on the companion TCP connection");
+                return request;
+            }
+            finally { body.inventory[slot] = originalItem; }
+        }
+
+        private static void VerifyShellphoneResponse(object host, object actor, Player[] primaryPlayers, Player body, Player human,
+            Player serverBody, TcpClient actorPeer, TcpClient humanPeer, TcpClient humanClient, byte[] request)
+        {
+            int slot = body.whoAmI;
+            var serverPlayers = Main.player;
+            var serverClients = Netplay.Clients;
+            var before = body.position;
+            var humanBefore = human.position;
+            // This server represents two clients already present in a loaded
+            // region. Give its real section tracker the same finite world as
+            // its tile array before Shellphone_Spawn calls CheckSection.
+            var active = new uint[Main.maxSectionsX + 1, Main.maxSectionsY + 1];
+            for (int x = 0; x < active.GetLength(0); x++) for (int y = 0; y < active.GetLength(1); y++) active[x,y] = Main.GameUpdateCount;
+            AccessTools.Field(typeof(ActiveSections), "LastActiveTime").SetValue(null, active);
+            foreach (var pair in new[] { Tuple.Create(slot, actorPeer), Tuple.Create(human.whoAmI, humanPeer) })
+            {
+                var client = serverClients[pair.Item1];
+                client.Socket = new TcpSocket(pair.Item2);
+                NetMessage.buffer[pair.Item1].broadcast = true;
+                for (int x = 0; x < client.TileSections.GetLength(0); x++)
+                    for (int y = 0; y < client.TileSections.GetLength(1); y++)
+                    { client.TileSections[x, y] = true; client.TileSectionsCheckTime[x, y] = Main.GameUpdateCount; }
+            }
+            serverBody.position = before;
+            Apply(request, slot);
+            var destination = serverBody.position;
+            Require(destination != before && serverBody.unacknowledgedTeleports == 1,
+                "actual server executes 73 on the socket owner and starts its original teleport acknowledgment");
+            var primaryCopy = NativeCompanionTeamChecks.ReadKind(humanClient.GetStream(), 65);
+            Main.netMode = 1; Main.dedServ = false; Main.myPlayer = human.whoAmI; Main.player = primaryPlayers;
+            Apply(primaryCopy, 256);
+            Require(body.position == before, "the primary broadcast leaves the actor's own teleport consumer in charge");
+            NativeQuickItemChecks.Until(() => { Call(host, "PumpConnection", actor); return body.position == destination; });
+            var ack = NativeCompanionTeamChecks.ReadKind(actorPeer.GetStream(), 65);
+            Require((ack[3] & 3) == 3 && BitConverter.ToInt16(ack, 4) == slot &&
+                human.position == humanBefore && Main.myPlayer == human.whoAmI,
+                "the companion applies its one actual 65 and sends the native confirmation on its own TCP connection");
+            Main.netMode = 2; Main.dedServ = true; Main.myPlayer = 255; Main.player = serverPlayers;
+            Apply(ack, slot);
+            Require(serverBody.position == destination && serverBody.unacknowledgedTeleports == 0,
+                "the original server retires this actor's position lock after its mode-3 acknowledgment");
+            Console.WriteLine("PASS current-mode Shellphone actual TCP 73 -> original server teleport -> primary and companion 65 -> original actor ACK; server and actor agree.");
         }
 
         private static void StageVoidTransfer(object host, object actor, Player human, Player body,

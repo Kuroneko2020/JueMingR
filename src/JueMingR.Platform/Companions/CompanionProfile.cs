@@ -29,6 +29,7 @@ namespace JueMingR.Platform.Companions
         public CompanionHealthRecoveryMode HealthRecoveryMode { get; set; } = CompanionHealthRecoveryMode.Smart;
         public bool ManaRecoveryEnabled { get; set; } = true;
         public bool AllowNurse { get; set; } = true;
+        public bool FurnitureEnabled { get; set; }
         public bool BuffEnabled { get; set; } = true;
         public bool GrowthEnabled { get; set; } = true;
         // Empty override sets preserve potion defaults. Empty permission sets grant nothing.

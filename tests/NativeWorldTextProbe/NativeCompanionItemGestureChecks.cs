@@ -108,8 +108,10 @@ namespace NativeWorldTextProbe
                 Require(Gesture(host, id, true, CompanionInventoryArea.Inventory, 10, "Left"), "left takes full source into a projection");
                 Require(human.inventory[10].stack == 20 && ((Item)Get(host, "CursorItem")).stack == 20 && Preview(host, id, true, CompanionInventoryArea.Inventory, 10).IsAir,
                     "real source remains untouched while preview is carried");
-                Require(Gesture(host, id, false, CompanionInventoryArea.Inventory, 12, "Right"), "right projects one piece onto other body");
-                Require(human.inventory[10].stack == 20 && companion.inventory[12].stack == 3, "partial chain has not committed either endpoint");
+                Require(Gesture(host, id, false, CompanionInventoryArea.Inventory, 12, "Right") && ((Item)Get(host,"CursorItem")).stack == 21,
+                    "right takes a piece from another compatible stack even with a carried stack from the other body");
+                Require(human.inventory[10].stack == 20 && companion.inventory[12].stack == 3 &&
+                    Preview(host,id,false,CompanionInventoryArea.Inventory,12).stack == 2, "partial chain has not committed either endpoint");
                 Call(host, "CancelItemGesture");
                 Require(human.inventory[10].stack == 20 && companion.inventory[12].stack == 3 && !(bool)Get(host, "HasItemGesture"), "cancel has no inverse/old-snapshot writes");
                 Gesture(host, id, true, CompanionInventoryArea.Inventory, 10, "Left"); Gesture(host, id, false, CompanionInventoryArea.Inventory, 12, "Left");
@@ -120,14 +122,16 @@ namespace NativeWorldTextProbe
                 Require(reloaded.inventory[12].stack == 23, "actual native archive stores the committed resource state");
 
                 Put(human.inventory, 11, ItemID.Wood, 10);
-                for (int i = 0; i < 3; i++) Require(Gesture(host, id, true, CompanionInventoryArea.Inventory, 11, "Right"), "same held right chain keeps taking one");
+                for (int i = 0; i < 3; i++) Require(Gesture(host, id, true, CompanionInventoryArea.Inventory, 11, "Right"), "each new right press takes one");
                 Require(((Item)Get(host, "CursorItem")).stack == 3 && Preview(host, id, true, CompanionInventoryArea.Inventory, 11).stack == 7,
                     "right repeat direction does not alternate take and put");
-                Call(host, "EndItemRepeat");
-                Gesture(host, id, true, CompanionInventoryArea.Inventory, 11, "Right");
-                Require(((Item)Get(host, "CursorItem")).stack == 2, "a new physical right press can put one back at the source");
+                Require(!(bool)Call(host,"RepeatItemPickup",id,true,CompanionInventoryArea.Inventory,12,1) &&
+                    ((Item)Get(host, "CursorItem")).stack==3, "right over an empty cell never deposits a carried item");
+                Require((bool)Call(host,"RepeatItemPickup",id,true,CompanionInventoryArea.Inventory,11,2) &&
+                    ((Item)Get(host,"CursorItem")).stack==5, "native accelerated pickup takes the requested available quantity");
                 Gesture(host, id, true, CompanionInventoryArea.Inventory, 12, "Left");
-                Require(human.inventory[11].stack == 8 && human.inventory[12].stack == 2, "right split balances once without duplicating a stack");
+                Require(human.inventory[11].stack == 5 && human.inventory[12].stack == 5, "left places the accumulated split with both sides conserved");
+                NativeRightActions(host,id,human,companion);
                 Put(human.inventory, 13, ItemID.WoodenBow); human.inventory[13].Prefix(PrefixID.Demonic); Put(companion.inventory, 13, ItemID.WoodenBow);
                 Gesture(host, id, true, CompanionInventoryArea.Inventory, 13, "Left"); Gesture(host, id, false, CompanionInventoryArea.Inventory, 13, "Left");
                 Require((bool)Get(host, "HasItemGesture") && ((Item)Get(host, "CursorItem")).prefix == 0 && Preview(host, id, false, CompanionInventoryArea.Inventory, 13).prefix != 0,
@@ -240,7 +244,7 @@ namespace NativeWorldTextProbe
                 ArchiveIdentity(host,profiles,id,human);
                 Require(ReferenceEquals(Main.mouseItem, nativeCursor) && ReferenceEquals(human.inventory[58], native58) && native58.stack == 3,
                     "all panel operations preserve native mouse and legitimate slot58 identity/content");
-                Console.WriteLine("PASS companion items: bank providers and invalidation, five bulk commands, real bounded drafts, native slots, protected sources, and latest archive retry. No game/Steam/FPS claim.");
+                Console.WriteLine("PASS companion items: native repeated and held pickup, mode cycle, bag loot, equip and loadout sharing, exact slot-5 readback, bank providers and five bulk commands, draft isolation and archive retry.");
             }
             finally { Call(host, "CancelItemGesture"); Main.mouseItem = nativeCursor; companion.dead = false; Call(host, "Recall", id); }
         }
@@ -265,6 +269,8 @@ namespace NativeWorldTextProbe
             int x = 60, y = 51;
             var saved = new Tile[2, 2];
             Projectile provider = null;
+            Projectile voidPortal = null;
+            var previousVaultItem = companion.bank4.item[38];
             for (int column = 0; column < 2; column++)
                 for (int row = 0; row < 2; row++)
                 {
@@ -280,6 +286,10 @@ namespace NativeWorldTextProbe
                 Require(!Bank(host, id, safe), "human's nearby 2x2 safe does not grant an out-of-range companion access");
                 companion.Center = human.Center;
                 Require((bool)Call(host, "OpenStorage", id, safe), "actual safe frames in the companion's range grant access");
+                Put(companion.bank2.item,39,ItemID.Shellphone);
+                Require(Gesture(host,id,false,safe,39,"Right") && companion.bank2.item[39].type==ItemID.ShellphoneOcean &&
+                    human.bank2.item[39].IsAir && !(bool)Get(host,"HasItemGesture"), "native mode cycle in the actual bank's fortieth slot");
+                companion.bank2.item[39] = new Item();
                 Put(human.inventory, 19, ItemID.Wood, 5);
                 Require(Gesture(host, id, true, CompanionInventoryArea.Inventory, 19, "Shift") &&
                     human.inventory[19].IsAir && companion.bank2.item[0].stack == 5 &&
@@ -355,12 +365,26 @@ namespace NativeWorldTextProbe
                 Require((bool)Call(host, "OpenStorage", id, piggy), "another player's active native trough opens the companion's own bank");
                 provider.Center += new Vector2(500, 0);
                 Require(!Bank(host, id, piggy), "moving native provider outside the companion interaction region closes the bank");
+                var vault = CompanionInventoryArea.VoidVault;
+                int voidSlot = Projectile.NewProjectile(human.GetProjectileSource_Item(human.HeldItem),
+                    companion.Center, Vector2.Zero, ProjectileID.VoidLens, 0, 0, human.whoAmI);
+                voidPortal = Main.projectile[voidSlot];
+                Require((bool)Call(host, "OpenStorage", id, vault), "a reachable native portal grants this companion's void vault");
+                Put(companion.bank4.item, 38, ItemID.VoidLens);
+                companion.bank4.item[38].favorited = true;
+                Require(Gesture(host,id,false,vault,38,"Right") && companion.bank4.item[38].type==ItemID.ClosedVoidBag &&
+                    companion.bank4.item[38].favorited, "an existing favorited void bag can change its mode in its own vault");
+                Require(Gesture(host,id,false,vault,38,"Left") && !Gesture(host,id,false,vault,39,"Left") &&
+                    companion.bank4.item[39].IsAir, "changing mode grants no permission to place the favorited bag in another vault slot");
+                Call(host,"CancelItemGesture");
                 var bankSlot = (int)Call(host, "NetworkSlot", safe, 39);
                 Require(bankSlot == PlayerItemSlotID.Bank2_0 + 39, "bank slot maps to the original player item packet space");
             }
             finally
             {
                 if (provider != null) provider.Kill();
+                if (voidPortal != null) voidPortal.Kill();
+                companion.bank4.item[38] = previousVaultItem;
                 human.position = humanPosition;
                 companion.position = actorPosition;
                 for (int column = 0; column < 2; column++)
@@ -368,6 +392,61 @@ namespace NativeWorldTextProbe
                 for (int slot = 0; slot < 58; slot++) human.inventory[slot] = companion.inventory[slot] = new Item();
                 for (int slot = 0; slot < 40; slot++) companion.bank2.item[slot] = new Item();
                 Call(host, "SetItemStorage", id, CompanionInventoryArea.Inventory);
+            }
+        }
+
+        private static void NativeRightActions(object host, Guid id, Player human, Player companion)
+        {
+            var inv = CompanionInventoryArea.Inventory;
+            var mouse = Main.mouseItem;
+            var backpack = (Item[])companion.inventory.Clone();
+            var previousHuman = human.inventory[40];
+            var previousArmor = companion.armor[0];
+            var previousVanity = companion.armor[10];
+            var storedArmor = companion.Loadouts[1].Armor[0];
+            var humanStoredArmor = human.Loadouts[1].Armor[0];
+            try
+            {
+                Put(companion.inventory,40,ItemID.Shellphone);
+                companion.inventory[40].favorited = true;
+                foreach (int type in new[] { ItemID.ShellphoneOcean, ItemID.ShellphoneHell, ItemID.ShellphoneSpawn, ItemID.Shellphone })
+                {
+                    Require(Gesture(host,id,false,inv,40,"Right") && companion.inventory[40].type==type && companion.inventory[40].favorited &&
+                        companion.inventory[40].stack==1 && !(bool)Get(host,"HasItemGesture"), "shellphone follows its original single-click mode " + type);
+                    Require(!(bool)Call(host,"RepeatItemPickup",id,false,inv,40,1) && companion.inventory[40].type==type,
+                        "holding a mode item never advances it or picks it up");
+                }
+                Put(human.inventory,40,ItemID.VoidLens);
+                Require(Gesture(host,id,true,inv,40,"Right") && human.inventory[40].type==ItemID.ClosedVoidBag,
+                    "native swap table also handles the human void bag");
+                Put(companion.inventory,40,ItemID.IronHelmet);
+                var oldHelmet=human.armor[0];
+                Require(Gesture(host,id,false,inv,40,"Right") && companion.armor[0].type==ItemID.IronHelmet &&
+                    companion.inventory[40].IsAir && ReferenceEquals(human.armor[0],oldHelmet), "right equips the actual AI, leaving the human's helmet alone");
+                companion.Loadouts[1].Armor[0]=new Item(ItemID.CopperHelmet) { favorited=true };
+                human.Loadouts[1].Armor[0]=new Item(ItemID.CopperHelmet) { favorited=true };
+                Require(Gesture(host,id,false,CompanionInventoryArea.Armor,0,"Mark") && companion.armor[0].favorited &&
+                    !companion.Loadouts[1].Armor[0].favorited && human.Loadouts[1].Armor[0].favorited,
+                    "equipment marks clear only that character's corresponding stored loadout bit");
+                Require(Gesture(host,id,false,CompanionInventoryArea.Armor,0,"Mark") && !companion.armor[0].favorited,
+                    "a second mark removes sharing from the real equipped item");
+                Require(Gesture(host,id,false,CompanionInventoryArea.Armor,10,"Right") && companion.armor[0].IsAir &&
+                    companion.armor[10].type==ItemID.IronHelmet, "right on the empty vanity counterpart swaps the functional armor");
+                companion.armor[10]=new Item();
+                Put(companion.inventory,40,ItemID.LockBox,2);
+                Require(!Gesture(host,id,false,inv,40,"Right") && companion.inventory[40].stack==2 &&
+                    !(bool)Get(host,"HasItemGesture"), "missing native key neither opens nor picks up the lock box");
+                Put(companion.inventory,40,ItemID.HerbBag,2);
+                int countBefore=companion.inventory.Sum(i=>i.stack);
+                Require(Gesture(host,id,false,inv,40,"Right") && companion.inventory[40].stack==1 &&
+                    companion.inventory.Sum(i=>i.stack)>countBefore && ReferenceEquals(mouse,Main.mouseItem) && mouse.IsAir,
+                    "one real herb bag grants native loot to its own inventory without touching the human cursor: "+Get(host,"Feedback"));
+            }
+            finally
+            {
+                Array.Copy(backpack,companion.inventory,backpack.Length);
+                human.inventory[40]=previousHuman; companion.armor[0]=previousArmor; companion.armor[10]=previousVanity;
+                companion.Loadouts[1].Armor[0]=storedArmor;human.Loadouts[1].Armor[0]=humanStoredArmor;
             }
         }
 
@@ -605,6 +684,17 @@ namespace NativeWorldTextProbe
                     Require(primaryPackets.Any(p => p[2] == 5 && p[3] == human.whoAmI && BitConverter.ToInt16(p, 4) == slot), "human native region uses correct inventory packet slot " + slot);
                 Require(frames.Any(p => p[2] == 5 && p[3] == companion.whoAmI && BitConverter.ToInt16(p, 4) == PlayerItemSlotID.Armor0) &&
                     primaryPackets.All(p => p[2] != 5 || p[3] == human.whoAmI), "AI changes use independent connection identity without impersonating human");
+                Put(companion.inventory,40,ItemID.Shellphone);primaryPackets.Clear();frames.Clear();
+                Require(Gesture(host,id,false,CompanionInventoryArea.Inventory,40,"Right") && frames.Any(p=>p[2]==5 &&
+                    p[3]==companion.whoAmI && BitConverter.ToInt16(p,4)==PlayerItemSlotID.Inventory0+40 &&
+                    BitConverter.ToInt16(p,9)==ItemID.ShellphoneOcean) && !primaryPackets.Any(p=>p[2]==5),
+                    "mode changes publish the actual transformed item on the companion's own player-slot stream");
+                Put(companion.armor,0,ItemID.IronHelmet);Put(companion.Loadouts[1].Armor,0,ItemID.CopperHelmet);
+                companion.Loadouts[1].Armor[0].favorited=true;primaryPackets.Clear();frames.Clear();
+                Require(Gesture(host,id,false,CompanionInventoryArea.Armor,0,"Mark") && new[]{PlayerItemSlotID.Armor0, PlayerItemSlotID.Loadout2_Armor_0}.All(
+                    s=>frames.Any(p=>p[2]==5 && p[3]==companion.whoAmI && BitConverter.ToInt16(p,4)==s)) &&
+                    primaryPackets.All(p=>p[2]!=5) && companion.armor[0].favorited && !companion.Loadouts[1].Armor[0].favorited,
+                    "active sharing and displaced stored share publish their distinct actual inventory slots through the AI connection");
                 Put(companion.inventory,42,ItemID.DirtBlock,5);primaryPackets.Clear();frames.Clear();failSend=true;
                 Require(Trash(host,id,false,42) && companion.inventory[42].IsAir && human.trashItem.stack==5,"AI trash debit commits despite owner publication failure");
                 Require(frames.Any(p=>p[2]==5 && p[3]==companion.whoAmI && BitConverter.ToInt16(p,4)==PlayerItemSlotID.Inventory0+42),"source inventory publication uses actual AI connection");

@@ -128,11 +128,14 @@ namespace JueMingR.TerrariaHost.Items
             PreparedItem(type, texture, rect);
         }
         internal void PreparedItem(int type, Texture2D texture, F5Rect rect)
+        { PreparedItemTinted(type, texture, rect, Color.White); }
+
+        internal void PreparedItemTinted(int type, Texture2D texture, F5Rect rect, Color tint)
         {
             if (texture == null || texture.IsDisposed) return;
             Rectangle frame = Main.itemAnimations[type] == null ? texture.Bounds : Main.itemAnimations[type].GetFrame(texture);
             float scale = Math.Min(1, Math.Min((rect.Width - 4) / frame.Width, (rect.Height - 4) / frame.Height));
-            batch.Draw(texture, new Vector2(rect.X + rect.Width / 2, rect.Y + rect.Height / 2), frame, Color.White, 0,
+            batch.Draw(texture, new Vector2(rect.X + rect.Width / 2, rect.Y + rect.Height / 2), frame, tint, 0,
                 new Vector2(frame.Width / 2f, frame.Height / 2f), scale, SpriteEffects.None, 0);
         }
         internal void Selection(F5Rect r)

@@ -63,6 +63,10 @@ namespace NativeWorldTextProbe
                 CheckShortcuts(host, first, second, human);
                 CheckLongTerm(host, first);
                 CheckPortableVoid(host, first);
+                Configure(host, first, new CompanionBehavior { HealthRecoveryEnabled = false, ManaRecoveryEnabled = false,
+                    GrowthEnabled = false, BuffEnabled = false });
+                NativeCompanionItemOnceChecks.Run(host, first, human, () => Step(host, (Player)Get(first, "Body"), first));
+                NativeCompanionFurnitureChecks.Run(host, first, second);
                 CheckNurse(host, first, second, human, harness);
             }
             finally
@@ -142,7 +146,7 @@ namespace NativeWorldTextProbe
                     Call(host, "TryCompanionLife", actor);
                     Call(host, "TryCompanionMana", actor, spell);
                     Call(host, "TryCompanionBuff", actor);
-                    Require((int)Call(host, "CompanionGrowthSlot", actor, true) == -1, "empty long-term permits never activate growth");
+                    Require((int)Call(host, "CompanionHeldSlot", actor, true) == -1, "empty long-term permits never activate growth");
                 }
             }
             foreach (var actor in tested)
@@ -468,6 +472,7 @@ namespace NativeWorldTextProbe
                 NativeRecoveryServiceChecks.Total(body) == 12 && NativeRecoveryServiceChecks.Total(human) == original &&
                 body.statLife == bodyLife - 120, "owner bank refusal leaves also the patient's first share unspent");
             ownerOperations.EndRecovery(ownerOperations.Session, locked, token, false);
+            Configure(host, first, new CompanionBehavior { HealthRecoveryEnabled = false, AllowNurse = true });
             AdvanceClock();
             Call(host, "TryCompanionLife", first);
             Require(quote > 12 && body.statLife == bodyLife && NativeRecoveryServiceChecks.Total(body) == 0 &&
@@ -487,11 +492,30 @@ namespace NativeWorldTextProbe
 
             other.statLife = other.statLifeMax2;
             other.AddBuff(BuffID.Poisoned, 600);
+            Configure(host, second, new CompanionBehavior { HealthRecoveryEnabled = false, AllowNurse = true });
             original = NativeRecoveryServiceChecks.Total(human);
             quote = Quote(host, second, nurse);
             Call(host, "TryCompanionLife", second);
             Require(NativeRecoveryServiceChecks.Total(human) == original - quote && other.FindBuffIndex(BuffID.Poisoned) < 0,
-                "second AI observes current owner wallet, with zero own coins and full-life debuff treatment");
+                "full-life debuff treatment uses the separate nurse switch with automatic potions off");
+
+            // With a nearby affordable nurse, only the enabled potion policy
+            // may act. The complementary full-life debuff case above exercises
+            // real payment with the potion policy disabled.
+            Configure(host, first, new CompanionBehavior { HealthRecoveryEnabled = true, AllowNurse = false });
+            body.statLife = bodyLife - 120;
+            body.potionDelay = 0;
+            var independentPotion = new Item(ItemID.HealingPotion) { stack = 2 };
+            body.inventory[35] = independentPotion;
+            original = NativeRecoveryServiceChecks.Total(human);
+            AdvanceClock();
+            Require(Call(host, "TryCompanionNurse", first).ToString() == "NotRun", "disabled independent nurse cannot reach payment");
+            Call(host, "TryCompanionLife", first);
+            Require(independentPotion.stack == 1 && NativeRecoveryServiceChecks.Total(human) == original &&
+                body.statLife > bodyLife - 120, "potions work while an affordable disabled nurse spends no money");
+            body.inventory[35] = source;
+            body.ClearBuff(BuffID.PotionSickness);
+            Configure(host, first, new CompanionBehavior());
 
             ClearCoins(human);
             body.statLife = bodyLife - 120;

@@ -135,6 +135,7 @@ foreach($helper in @('','Behavior','Continuous','Lifecycle','Persistence','Predi
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs') -join '|') -ceq 'native-CompanionFontVisual|native-CompanionConfigVisual|native-CompanionCreationInputVisual|native-CompanionShowcaseVisual|native-CompanionVisual|native-CompanionNetworkCpu|native-CompanionPasswordCpu|native-CompanionSuppliesCpu|native-CompanionObservationCombatCpu|native-CompanionSessionCpu|native-CompanionNavigationCpu|native-CompanionCpu|native-CompanionCreationCpu|native-CompanionItemsCpu') 'native companion preparation retains each actual CPU caller'
 foreach($pair in @(@('Team','Network'),@('Navigation','Navigation'),@('Session','Session'))){
     $expected=@('native-Companion'+$pair[1]+'Cpu');if($pair[0] -ceq 'Session'){$expected+='native-CompanionVisual'}
+    if($pair[0] -ceq 'Team'){$expected+='native-CompanionSuppliesCpu'} # Native TCP frame reader shared with the phone round trip.
     Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanion'+$pair[0]+'Checks.cs')) -join '|') -ceq ($expected -join '|')) ('continuation helper has all actual consumers '+$pair[0])
 }
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionUiV3Checks.cs') -join '|') -ceq 'native-CompanionVisual') 'V3 graphics helper selects the actual Draw consumer'
@@ -146,6 +147,10 @@ Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompan
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionFontChecks.cs') -join '|') -ceq 'native-CompanionFontVisual') 'font fixture owns its actual narrow graphics leaf'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionPasswordChecks.cs') -join '|') -ceq 'native-CompanionPasswordCpu|native-CompanionConfigVisual|native-CompanionFontVisual') 'password capture is shared by its protocol and real drawing consumers'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionSupplyWireChecks.cs') -join '|') -ceq 'native-CompanionSuppliesCpu') 'split-wallet wire witness belongs to the actual supply scope'
+foreach($leaf in @('ItemOnce','Furniture','SlotVisual','SupplyMenu')){
+    $consumer=if($leaf -cin @('ItemOnce','Furniture')){'native-CompanionSuppliesCpu'}else{'native-CompanionConfigVisual'}
+    Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanion'+$leaf+'Checks.cs')) -join '|') -ceq $consumer) ('native companion direct consumer '+$leaf)
+}
 Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeQuickItemChecks.cs') -ccontains 'native-CompanionFontVisual') 'font fixture binds its actual shared startup/wait helper'
 foreach($provider in @('ItemsRenderer','PreparedItemIcons')){
     $route=Get-WorkloadRoute @('src/JueMingR.TerrariaHost/Items/'+$provider+'.cs')
