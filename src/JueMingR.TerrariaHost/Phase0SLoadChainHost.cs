@@ -495,6 +495,7 @@ namespace JueMingR.TerrariaHost
             if (Volatile.Read(ref hookCommitted) == 1 && context != null)
             {
                 context.Input.AfterKeyboardRefresh();
+                context.ProcessNativeCompanionCreationInput();
                 // Trusted sampling and native postfix/finalizer returns survive
                 // a common failure. These callbacks are new business admission.
                 if (!context.RuntimeFailed)
@@ -875,6 +876,7 @@ namespace JueMingR.TerrariaHost
             internal Movement.MovementSession Movement { get; private set; }
             internal Combat.HostCombat Combat {get;private set;}
             internal AfkMode.HostAfkMode Afk {get;private set;}
+            internal Companions.HostCompanions Companions {get;private set;}
             internal Combat.HostCombatObservation CombatObservation {get;private set;}
             internal Combat.HostCombatExperiments CombatExperiments {get;private set;}
             internal Feedback.LocalShortFeedback ShortFeedback { get; private set; }
@@ -974,6 +976,7 @@ namespace JueMingR.TerrariaHost
                     Combat=new Combat.HostCombat(gameDirectory,Tools);runtime.SharedRuntime.AddFeature(Combat);
                     Combat.Handoff.Attach(Processing,QuickItems);
                     Afk=new AfkMode.HostAfkMode(gameDirectory,Tools);Afk.Attach(QuickItems,Processing);runtime.SharedRuntime.AddFeature(Afk);
+                    Companions=new Companions.HostCompanions(gameDirectory){OwnerOperations=items.Ownership,OwnerItems=items};runtime.SharedRuntime.AddFeature(Companions);
                     CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory),PackageId,exactPredictionComparison,hiddenAccess){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
                     Combat.Attack=CombatObservation.Attack=new Combat.HostAttackAim(Combat,CombatObservation);
                     CombatExperiments=new Combat.HostCombatExperiments(gameDirectory,Combat,CombatObservation,hiddenAccess);
@@ -1010,13 +1013,14 @@ namespace JueMingR.TerrariaHost
                     runtime.SharedRuntime.AddFeature(View);
                 }
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
-                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action<HotkeyChord>)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action<HotkeyChord>)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation, Journey, hiddenAccess, () => Shell?.ToggleJourneyFromHotkey(), Movement, Blueprint, View, CombatExperiments, Afk) : null;
+                    informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action<HotkeyChord>)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action<HotkeyChord>)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation, Journey, hiddenAccess, () => Shell?.ToggleJourneyFromHotkey(), Movement, Blueprint, View, CombatExperiments, Afk, Companions == null ? (Func<bool>)null : () => Shell != null && Shell.CanToggleCompanionsFromHotkey, Companions == null ? (Action<HotkeyChord>)null : chord => Shell?.ToggleCompanionsFromHotkey(chord)) : null;
                 hotkeyFeedback = hotkeys?.Feedback;
                 Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements, hiddenAccess) { LayersReady = f5LayersReady };
                 if (Blueprint != null) { Blueprint.Shell = Shell; Shell.AttachBlueprint(Blueprint); }
                 if (Journey != null) Shell.AttachJourney(Journey);
                 if (View != null) Shell.AttachView(View);
                 if (Afk != null) Shell.AttachAfk(Afk);
+                Shell.Companions=Companions;
                 if (Movement != null) { Shell.AttachMovement(Movement); Movement.CanMovementInput = () => Shell.CanMovementInput; Movement.CanTeleportPointer = () => Shell.CanMovementInput && !Shell.OwnsPointer && !Terraria.Main.LocalPlayer.mouseInterface; }
                 Browser?.Attach(Shell, hotkeys);
                 if(Tools!=null){Shell.AttachTools(Tools);Tools.CanInterface=()=>Shell.CanAutomaticProcessingInput;Tools.CanInventoryPreparationInterface=()=>Shell.CanInventoryPreparationInput;Tools.CanMouseInterface=()=>Shell.CanAutomaticMouseInterface;Tools.Feedback=ShortFeedback;}
@@ -1130,6 +1134,14 @@ namespace JueMingR.TerrariaHost
             {
                 try { cleanup(); }
                 catch (Exception exception) { if (RuntimeCleanupFailure == null) RuntimeCleanupFailure = exception; }
+            }
+
+            internal void ProcessNativeCompanionCreationInput()
+            {
+                // Main.UpdateUIStates precedes DoUpdate_HandleInput in .8.
+                // Only our exact native creator defers that early dispatch;
+                // flush it once after final sampling, before any world action.
+                if (!RuntimeFailed) F5.CompanionCreationSession.FlushNativeUpdate(Companions);
             }
 
             internal void UpdateShell()

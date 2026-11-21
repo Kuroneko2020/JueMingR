@@ -14,6 +14,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         private readonly HostInputState input;
         internal readonly HotkeyPopupLayout Layout = new HotkeyPopupLayout();
         internal string Target { get; private set; }
+        internal string TrackingTarget => Target ?? lastClick;
         internal bool Visible { get { return Target != null; } }
         internal bool Capturing { get; private set; }
         internal HotkeyFeedback Feedback { get; private set; } = new HotkeyFeedback(HotkeyFeedbackKind.Ready);
@@ -179,12 +180,13 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal void Prepare(float width, float height, object font, Func<string, float, F5Size> measure, int skin = 0)
         {
             if (!Visible) return;
-            if (registry.Find(Target) == null || !registry.Find(Target).CanConfigure) { Close(); return; }
+            var action = registry.Find(Target);
+            if (action == null || !action.CanConfigure) { Close(); return; }
             var chord = bindings.Get(Target); bool editable = bindings.Loaded && !bindings.Busy && !bindings.Protected;
             bool known = bindings.Loaded && (chord != null || !bindings.Protected);
-            if (view == null || !Equals(view.Effective, chord) || !Equals(view.Candidate, candidate) || view.Modifiers != shownModifiers ||
+            if (view == null || view.Title != action.Name || !Equals(view.Effective, chord) || !Equals(view.Candidate, candidate) || view.Modifiers != shownModifiers ||
                 !ReferenceEquals(view.Feedback, Feedback) || view.Editable != editable || view.Capturing != Capturing || view.Known != known || view.DetailsExpanded != DetailsExpanded)
-                view = new HotkeyPopupView(registry.Find(Target).Name, chord, candidate, shownModifiers, Feedback, editable, Capturing, known, DetailsExpanded);
+                view = new HotkeyPopupView(action.Name, chord, candidate, shownModifiers, Feedback, editable, Capturing, known, DetailsExpanded);
             Layout.Build(width, height, font, anchor, view, measure, skin);
             ScrollDetails(0);
             if (HelpVisible) Layout.PrepareHelp(measure);

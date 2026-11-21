@@ -134,17 +134,20 @@ namespace NativeWorldTextProbe
             try
             {
                 foreach(int item in new[]{3859,281,986,3007,3008})foreach(int oldDirection in new[]{1,-1})foreach(bool reverse in new[]{true,false})
+                foreach(bool differentHeld in item==3859 && oldDirection==1 && reverse ? new[]{false,true} : new[]{false})
                 {
                     var p=Scene(context,item);p.direction=oldDirection;p.inventory[54].SetDefaults(item==3859?ItemID.WoodenArrow:3009);p.inventory[54].stack=999;
-                    int intended=reverse?-oldDirection:oldDirection;var n=Target(p.MountedCenter+new Vector2(intended*220,-12));var path=Path(n);var ammo=Static(ammoType,"Capture",p,p.HeldItem);Require(ammo!=null,"real weapon and ammo resolve");
-                    var terrain=Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);Call(terrain,"Reset");var origin=(Vector2)models.GetMethods(Flags).Single(m=>m.Name=="LaunchOrigin" && m.GetParameters().Length==2).Invoke(null,new object[]{p,p.HeldItem});
+                    Item weapon=p.HeldItem;
+                    if(differentHeld)p.inventory[p.selectedItem]=new Item(ItemID.Blowpipe);
+                    int intended=reverse?-oldDirection:oldDirection;var n=Target(p.MountedCenter+new Vector2(intended*220,-12));var path=Path(n);var ammo=Static(ammoType,"Capture",p,weapon);Require(ammo!=null,"real weapon and ammo resolve");
+                    var terrain=Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);Call(terrain,"Reset");var origin=(Vector2)models.GetMethods(Flags).Single(m=>m.Name=="LaunchOrigin" && m.GetParameters().Length==2).Invoke(null,new object[]{p,weapon});
                     var clock=Activator.CreateInstance(host.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true),Flags,null,new object[]{path,Enum.Parse(host.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"BeforeNpc"),0},null);
                     Vector2 aim;births.Clear();capturing=true;
                     using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))
                     {
                         if(item==3859)
                         {
-                            var solution=representative.GetMethods(Flags).Single(m=>m.Name=="Prepare" && m.GetParameters().Length==6).Invoke(null,new object[]{p,ammo,path,origin,clock,terrain});
+                            var solution=representative.GetMethods(Flags).Single(m=>m.Name=="Prepare" && m.GetParameters().Length==7 && m.GetParameters()[1].ParameterType==typeof(Item)).Invoke(null,new object[]{p,weapon,ammo,path,origin,clock,terrain});
                             Require((bool)Get(solution,"HasPoint"),"Phoenix has a legal representative candidate");aim=(Vector2)Get(solution,"Point");
                         }
                         else
@@ -155,6 +158,12 @@ namespace NativeWorldTextProbe
                         }
                     }
                     capturing=false;Require(p.direction==oldDirection,"prediction never changes the live player's facing");var predicted=births.Last(b=>b.Aim==aim);
+                    if(differentHeld)
+                    {
+                        Require(p.HeldItem.type==ItemID.Blowpipe && predicted.Center==origin,
+                            "candidate bow birth stays at its own origin although the still-held Blowpipe would displace the reversed muzzle");
+                        p.inventory[p.selectedItem]=weapon;
+                    }
                     Main.mouseX=(int)(aim.X-Main.screenPosition.X);Main.mouseY=(int)(aim.Y-Main.screenPosition.Y);
                     typeof(Player).GetMethod("ItemCheck_Shoot",Flags).Invoke(p,new object[]{p.whoAmI,p.HeldItem,p.GetWeaponDamage(p.HeldItem),false});
                     var shots=Main.projectile.Where(q=>q.active && q.owner==p.whoAmI).OrderBy(q=>q.whoAmI).ToArray();Require(shots.Length==(item==3859?6:1),"native weapon has its real fan/birth count");
@@ -162,7 +171,8 @@ namespace NativeWorldTextProbe
                     Require(Vector2.DistanceSquared(actual.Center,predicted.Center)<.0001f && Vector2.DistanceSquared(actual.velocity,predicted.Velocity)<.0001f,"B10-F02: candidate uses original ChangeDir-before-muzzle/fan order item="+item+" reverse="+reverse+" native="+actual.Center+"/"+actual.velocity+" predicted="+predicted.Center+"/"+predicted.Velocity);
                     cases++;
                 }
-                Console.WriteLine("PASS original Shoot candidate birth order cases="+cases);
+                Require(cases==21,"all native cases and the differently held weapon case reached original Shoot");
+                Console.WriteLine("PASS original Shoot candidate birth order cases="+cases+" including a different held item");
             }
             finally{capturing=false;births.Clear();patch.UnpatchAll(patch.Id);}
         }

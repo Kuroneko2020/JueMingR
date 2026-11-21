@@ -194,6 +194,8 @@ selector	JUEMINGR_VIEW_CACHE_BASELINE
 selector	JUEMINGR_VIEW_CACHE_FOCUS
 selector	JUEMINGR_VIEW_CACHE_PROFILE
 override	JUEMINGR_VIEW_NETWORK_CANDIDATE
+override	JUEMINGR_FONT_BASELINE_HOST
+override	JUEMINGR_FONT_BASELINE_FILTER_ONLY
 selector	JUEMINGR_VIEW_NETWORK_ONLY
 selector	JUEMINGR_VIEW_REPAIR_FOCUS
 selector	JUEMINGR_YOYO_MOVE_ONLY
@@ -403,9 +405,24 @@ leaf	AfkModeCpu	afk-mode
 leaf	AfkModeVisual	afk-ui
 leaf	AfkModeCompletionCpu	afk-completion
 leaf	AfkModeBorrowCpu	afk-borrow
+leaf	CompanionCpu	companions-cpu
+leaf	CompanionVisual	companions-ui
 leaf	AfkModeBackgroundCpu	afk-background
 leaf	CoinContinuationCpu	coin-continuation
 leaf	InventoryStackingCpu	inventory-stacking
 leaf	FishingBackgroundRecoveryCpu	fishing-background-recovery
 leaf	AfkOuterBackground	afk-outer-background
 leaf	CoinConsumersCpu	coin-consumers
+leaf	CompanionCreationCpu	companions-creation
+leaf	CompanionItemsCpu	companions-items
+leaf	CompanionNavigationCpu	companions-navigation
+leaf	CompanionSessionCpu	companions-session
+leaf	CompanionNetworkCpu	companions-network
+leaf	CompanionPasswordCpu	companions-password
+leaf	CompanionSuppliesCpu	companions-supplies
+leaf	CompanionObservationCombatCpu	companions-observation-combat
+leaf	CompanionShowcaseVisual	companions-showcase
+leaf	CompanionResourceBarsVisual	companions-resource-bars
+leaf	CompanionCreationInputVisual	companions-creation-input
+leaf	CompanionConfigVisual	companions-config
+leaf	CompanionFontVisual	companions-font

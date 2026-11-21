@@ -58,6 +58,14 @@ namespace JueMingR.TerrariaHost.Items
                     current.active && ReferenceEquals(current, sessionPlayer) && current.inventory != null && current.inventory.Length >= 58 ? current : null;
             }
         }
+        // A companion's native consumer temporarily owns Main.myPlayer.
+        // A split payment still names the registered human session body.
+        internal bool OwnsSessionPlayer(Player player)
+        {
+            return player != null && ReferenceEquals(player, sessionPlayer) &&
+                ReferenceEquals(player, Main.ActivePlayerFileData?.Player) && player.active && !Main.gameMenu &&
+                !Main.dedServ && (Main.netMode == 0 || Main.netMode == 1);
+        }
         internal void BeginSession()
         { sessionPlayer = Main.LocalPlayer; previous = null; cached = null; previousShop = null; previousNpc = null; ClearManual(); Array.Clear(references, 0, references.Length); }
         internal void EndSession() { sessionPlayer = null; cached = null; previous = null; ClearManual(); CausalDepth = 0; }
@@ -182,18 +190,23 @@ namespace JueMingR.TerrariaHost.Items
         private Player player;
         private object world, socket, token;
         private int mode;
+        // Active file publication is the human identity. Main.LocalPlayer may
+        // temporarily be an AI while a native hurt/item consumer borrows its slot.
+        internal Player OwnerPlayer { get { return Main.ActivePlayerFileData?.Player; } }
         public bool IsSessionActive
-        { get { Player current = Main.LocalPlayer; return !Main.gameMenu && !Main.dedServ && (Main.netMode == 0 || Main.netMode == 1) &&
+        { get { Player current = OwnerPlayer; return !Main.gameMenu && !Main.dedServ && (Main.netMode == 0 || Main.netMode == 1 && Netplay.Connection != null) &&
                     current != null && current.active && Main.ActiveWorldFileData != null; } }
         public object SessionIdentity
         {
             get
             {
+                if (!IsSessionActive) return null;
+                Player current = OwnerPlayer;
                 object currentWorld = Main.ActiveWorldFileData;
                 object currentSocket = Main.netMode == 1 ? Netplay.Connection.Socket : null;
-                if (token == null || !ReferenceEquals(player, Main.LocalPlayer) || !ReferenceEquals(world, currentWorld) ||
+                if (token == null || !ReferenceEquals(player, current) || !ReferenceEquals(world, currentWorld) ||
                     !ReferenceEquals(socket, currentSocket) || mode != Main.netMode)
-                { player = Main.LocalPlayer; world = currentWorld; socket = currentSocket; mode = Main.netMode; token = new object(); }
+                { player = current; world = currentWorld; socket = currentSocket; mode = Main.netMode; token = new object(); }
                 return token;
             }
         }

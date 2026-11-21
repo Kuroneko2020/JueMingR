@@ -113,11 +113,54 @@ foreach($privateHelper in @('tests/NativeWorldTextProbe/NativeBlueprintSettledPa
     foreach($consumer in $expectedPrivate){Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore $consumer) -cne (Get-WorkloadCheckFingerprint $privateAfter $consumer)) ('private admission bytes invalidate actual consumer '+$consumer)}
     Assert-Route ((Get-WorkloadCheckFingerprint $privateBefore 'native-BlueprintSupplyContinuationCpu') -ceq (Get-WorkloadCheckFingerprint $privateAfter 'native-BlueprintSupplyContinuationCpu')) ('private admission helper preserves unrelated SupplyRepair '+$privateHelper)
 }
-foreach($scope in @('AfkModeCompletionCpu','AfkModeBorrowCpu','BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
+foreach($name in @('JUEMINGR_FONT_BASELINE_HOST','JUEMINGR_FONT_BASELINE_FILTER_ONLY')){
+    $dispatch=Read-WorkloadNativeDispatch
+    Assert-Route ($dispatch.selectors.Contains($name) -and $dispatch.overrides.Contains($name)) ('explicit historical font axis is registered and cleared by formal native admission '+$name)
+}
+foreach($scope in @('CompanionFontVisual','CompanionConfigVisual','CompanionCreationInputVisual','CompanionResourceBarsVisual','CompanionShowcaseVisual','CompanionNetworkCpu','CompanionPasswordCpu','CompanionSuppliesCpu','CompanionObservationCombatCpu','CompanionSessionCpu','CompanionNavigationCpu','CompanionCreationCpu','CompanionItemsCpu','CompanionCpu','AfkModeCompletionCpu','AfkModeBorrowCpu','BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
     $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-'+$scope))
     Assert-Route ($plan.Count -eq 1 -and $plan[0].name -ceq ('native-'+$scope) -and $plan[0].arguments[-1] -ceq $scope) ('exact new native scope '+$scope)
     Assert-Route ($null -ne (Get-WorkloadExpectedNativeLeaf ('native-'+$scope))) ('new scope completion registered '+$scope)
 }
+foreach($helper in @('','Behavior','Continuous','Lifecycle','Persistence','Prediction','Transport','Ui')){
+    $companionLeaf='tests/NativeWorldTextProbe/NativeCompanion'+$helper+'Checks.cs'
+    $expectedCompanionLeaf=switch -CaseSensitive ($helper) {
+        'Ui' { 'native-CompanionCpu|native-CompanionSessionCpu|native-CompanionVisual|native-CompanionCreationInputVisual|native-CompanionPasswordCpu' }
+        'Transport' { 'native-CompanionCpu|native-CompanionNetworkCpu' }
+        '' { 'native-CompanionCpu|native-CompanionObservationCombatCpu' }
+        default { 'native-CompanionCpu' }
+    }
+    Assert-Route ((@(Get-WorkloadPathChecks $companionLeaf)-join '|') -ceq $expectedCompanionLeaf) ('companion private leaf retains its real callers '+$companionLeaf)
+}
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs') -join '|') -ceq 'native-CompanionFontVisual|native-CompanionConfigVisual|native-CompanionCreationInputVisual|native-CompanionShowcaseVisual|native-CompanionVisual|native-CompanionNetworkCpu|native-CompanionPasswordCpu|native-CompanionSuppliesCpu|native-CompanionObservationCombatCpu|native-CompanionSessionCpu|native-CompanionNavigationCpu|native-CompanionCpu|native-CompanionCreationCpu|native-CompanionItemsCpu') 'native companion preparation retains each actual CPU caller'
+foreach($pair in @(@('Team','Network'),@('Navigation','Navigation'),@('Session','Session'))){
+    $expected=@('native-Companion'+$pair[1]+'Cpu');if($pair[0] -ceq 'Session'){$expected+='native-CompanionVisual'}
+    if($pair[0] -ceq 'Team'){$expected+='native-CompanionSuppliesCpu'} # Native TCP frame reader shared with the phone round trip.
+    Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanion'+$pair[0]+'Checks.cs')) -join '|') -ceq ($expected -join '|')) ('continuation helper has all actual consumers '+$pair[0])
+}
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionUiV3Checks.cs') -join '|') -ceq 'native-CompanionVisual') 'V3 graphics helper selects the actual Draw consumer'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionPetPreviewChecks.cs') -join '|') -ceq 'native-CompanionVisual|native-CompanionShowcaseVisual') 'native pet dummy graphics helper selects its actual consumer'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionResourceBarChecks.cs') -join '|') -ceq 'native-CompanionResourceBarsVisual') 'native resource delegate oracle selects its exact graphical consumer'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionFancyResourceChecks.cs') -join '|') -ceq 'native-CompanionResourceBarsVisual') 'Fancy resource oracle shares only the direct resource graphical leaf'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionFeedbackChecks.cs') -join '|') -ceq 'native-CompanionCreationInputVisual') 'joining progress component check belongs to the actual joining input fixture'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionConfigurationChecks.cs') -join '|') -ceq 'native-CompanionConfigVisual') 'configuration fixture owns its exact natural graphics leaf'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionFontChecks.cs') -join '|') -ceq 'native-CompanionFontVisual') 'font fixture owns its actual narrow graphics leaf'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionPasswordChecks.cs') -join '|') -ceq 'native-CompanionPasswordCpu|native-CompanionConfigVisual|native-CompanionFontVisual') 'password capture is shared by its protocol and real drawing consumers'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionSupplyWireChecks.cs') -join '|') -ceq 'native-CompanionSuppliesCpu') 'split-wallet wire witness belongs to the actual supply scope'
+foreach($leaf in @('ItemOnce','Furniture','SlotVisual','SupplyMenu','HotkeyFeedback','VoidPickup','VanityShop')){
+    $consumer=if($leaf -cin @('ItemOnce','Furniture')){'native-CompanionSuppliesCpu'}
+        elseif($leaf -cin @('VoidPickup','VanityShop')){'native-CompanionItemsCpu'}else{'native-CompanionConfigVisual'}
+    Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanion'+$leaf+'Checks.cs')) -join '|') -ceq $consumer) ('native companion direct consumer '+$leaf)
+}
+Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeQuickItemChecks.cs') -ccontains 'native-CompanionFontVisual') 'font fixture binds its actual shared startup/wait helper'
+foreach($provider in @('ItemsRenderer','PreparedItemIcons')){
+    $route=Get-WorkloadRoute @('src/JueMingR.TerrariaHost/Items/'+$provider+'.cs')
+    Assert-Route ($route.groups -ccontains 'companion-host' -and $route.groups -ccontains 'storage-host' -and $route.groups -ccontains 'browser-host' -and $route.groups -ccontains 'blueprint-host') ('shared companion image/text provider retains all actual consumers '+$provider)
+}
+Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeQuickItemChecks.cs') -ccontains 'native-CompanionConfigVisual') 'configuration binds its actual shared startup and asynchronous archive wait helper'
+Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs') -ccontains 'native-CompanionCreationInputVisual') 'live creator binds its actual native body initialization provider'
+$nativeUiHelper=Get-WorkloadRoute @('tests/NativeWorldTextProbe/NativeToolsUiChecks.cs')
+Assert-Route ($nativeUiHelper.groups -ccontains 'companion-host' -and $nativeUiHelper.groups -ccontains 'tools-host' -and $nativeUiHelper.groups -ccontains 'items') 'new native UI helper consumer retains the old grouped UI consumers'
 $supply='native-BlueprintSupplyContinuationCpu'
 Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeBlueprintConstructionDoorChecks.cs') -notcontains $supply) 'Door private body does not select SupplyRepair'
 foreach($helper in @('SupplyConversion','SupplyHandoff','SupplyReady','PostProcessingContinuity','Build','Construction','WorldMatch','ConstructionAppearance')){
@@ -368,7 +411,7 @@ try {
     }
     foreach ($name in @('PreparedItemIcons','ItemsRenderer')) {
         $path = 'src/JueMingR.TerrariaHost/Items/' + $name + '.cs'
-        $cases[$path] = 'storage-host'; $exactGroups[$path] = $exactGroups['src/JueMingR.Platform/Persistence/DocumentWorker.cs']
+        $cases[$path] = 'storage-host'; $exactGroups[$path] = @($exactGroups['src/JueMingR.Platform/Persistence/DocumentWorker.cs'] + 'companion-host')
     }
     foreach ($name in @('HostBlueprint','BlueprintHooks')) {
         $path = 'src/JueMingR.TerrariaHost/Blueprint/' + $name + '.cs'

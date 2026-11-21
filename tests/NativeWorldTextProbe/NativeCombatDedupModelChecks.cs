@@ -47,8 +47,8 @@ namespace NativeWorldTextProbe
                         // current ordinary route has a separate direction fact;
                         // neither result is used as the other's input permit.
                         var cells=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);var phase=Enum.Parse(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackPhase",true),"BeforeNpc");var clock=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackClock",true),Flags,null,new object[]{timeline,phase},null);
-                        var prepare=assembly.GetType("JueMingR.TerrariaHost.Combat.HostRepresentativeAttack",true).GetMethods(Flags).Single(m=>m.Name=="Prepare" && m.GetParameters().Length==6);object value;
-                        using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))value=prepare.Invoke(null,new object[]{p,ammo,timeline,origin,clock,cells});
+                        var prepare=assembly.GetType("JueMingR.TerrariaHost.Combat.HostRepresentativeAttack",true).GetMethods(Flags).Single(m=>m.Name=="Prepare" && m.GetParameters().Length==7 && m.GetParameters()[1].ParameterType==typeof(Item));object value;
+                        using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))value=prepare.Invoke(null,new object[]{p,p.HeldItem,ammo,timeline,origin,clock,cells});
                         bool has=(bool)Get(value,"HasPoint");var point=(Vector2)Get(value,"Point");int receive=(int)Get(value,"ReceiveTick");
                         Require(!has || ReferenceEquals(GetOptional(value,"Timeline"),timeline) && !float.IsNaN(point.X) && !float.IsNaN(point.Y) && !float.IsInfinity(point.X) && !float.IsInfinity(point.Y),"ordinary model owns its actual prefix and a finite representative point");
                         Require(Convert.ToString(Get(value,"Reachability"))!="Reachable" || has && receive>=1 && receive<timeline.Count,"representative positive uses its own legal BeforeNpc receive clock");

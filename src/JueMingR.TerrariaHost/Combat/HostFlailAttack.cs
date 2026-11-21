@@ -11,13 +11,23 @@ namespace JueMingR.TerrariaHost.Combat
         private static readonly System.Reflection.MethodInfo copy=typeof(object).GetMethod("MemberwiseClone",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);
         internal static bool Handles(int type){return type==25 || type==26 || type==35 || type==63 || type==154 || type==247 || type==757 || type==947 || type==948 || type==1058;}
         internal static bool Weapon(Item item){return item!=null && Handles(item.shoot);}
+        private static void ThrowMotion(int type,out float speed,out int outbound,out float returnSpeed,out float fastSpeed)
+        {
+            speed=24;outbound=10;returnSpeed=16;fastSpeed=48;
+            switch(type){case 25:speed=14;outbound=15;returnSpeed=10;fastSpeed=15;break;case 154:speed=15;outbound=15;returnSpeed=11;fastSpeed=16;break;case 26:speed=16;outbound=15;returnSpeed=13;fastSpeed=17;break;case 35:speed=17;outbound=15;returnSpeed=14;fastSpeed=18;break;case 63:speed=21;outbound=13;returnSpeed=20;fastSpeed=24;break;case 757:speed=22;outbound=13;returnSpeed=22;fastSpeed=26;break;case 247:speed=23;outbound=13;break;case 947:case 948:speed=12;outbound=13;returnSpeed=8;fastSpeed=13;break;case 1058:speed=23;outbound=16;break;}
+        }
+        internal static float ThrowRange(Player player,Item item)
+        {
+            ThrowMotion(item.shoot,out float speed,out int outbound,out _,out _);
+            return outbound*speed/Math.Max(.1f,player.meleeSpeed);
+        }
         internal static AttackContact Solve(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out Vector2 aim)
         {return SolvePrepared(player,shot,timeline,clock,terrain,out aim,HostAttackPlayerFrame.Capture(player,timeline));}
         internal static AttackContact SolvePrepared(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,out Vector2 aim,HostAttackPlayerFrame frame)
         {
             int age=clock.Age;aim=HostHeldAttack.DirectionPoint(player,timeline,clock.FirstTick);
-            float speed=24,returnSpeed=16,returnAcceleration=3,fastSpeed=48,fastAcceleration=6;int outbound=10;
-            switch(shot.type){case 25:speed=14;outbound=15;returnSpeed=10;fastSpeed=15;break;case 154:speed=15;outbound=15;returnSpeed=11;fastSpeed=16;break;case 26:speed=16;outbound=15;returnSpeed=13;fastSpeed=17;break;case 35:speed=17;outbound=15;returnSpeed=14;fastSpeed=18;break;case 63:speed=21;outbound=13;returnSpeed=20;fastSpeed=24;break;case 757:speed=22;outbound=13;returnSpeed=22;fastSpeed=26;break;case 247:speed=23;outbound=13;break;case 947:case 948:speed=12;outbound=13;returnSpeed=8;fastSpeed=13;break;case 1058:speed=23;outbound=16;break;}
+            float returnAcceleration=3,fastAcceleration=6;
+            ThrowMotion(shot.type,out float speed,out int outbound,out float returnSpeed,out float fastSpeed);
             speed/=player.meleeSpeed;returnSpeed/=player.meleeSpeed;returnAcceleration/=player.meleeSpeed;fastSpeed/=player.meleeSpeed;fastAcceleration/=player.meleeSpeed;
             int state=(int)shot.ai[0];if(state!=0 && state!=1 && state!=2 && state!=4)return null;
             bool release=state==0 && !player.channel;Vector2 center=shot.Center,velocity=shot.velocity;float throwClock=shot.ai[1];

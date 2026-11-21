@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.Items
         private SpriteBatch batch;
         private Matrix passMatrix;
         internal float RowHeight { get; set; }
+        internal bool ScaledTextOutline { get; set; }
         internal int Generation { get; private set; }
         internal bool ResourcesCurrent { get { return font != null && pixel != null && !pixel.IsDisposed && ReferenceEquals(font, FontAssets.MouseText?.Value) &&
             ReferenceEquals(pixel, TextureAssets.MagicPixel?.Value) && ReferenceEquals(surface, TextureAssets.InventoryBack?.Value); } }
@@ -67,16 +68,37 @@ namespace JueMingR.TerrariaHost.Items
             }
         }
         internal void Panel(F5Rect rect) { F5ControlRenderer.Panel(batch, pixel, surface, rect); }
+        internal void PointImages(Action draw)
+        {
+            // This nested pass belongs to Pass above. Deferred Begin does not
+            // install device states immediately, so reading SamplerStates before
+            // End cannot recover its requested LinearClamp continuation.
+            batch.End();
+            try
+            {
+                batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, clipped, null, passMatrix);
+                draw();
+            }
+            finally
+            {
+                batch.End();
+                batch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.None, clipped, null, passMatrix);
+            }
+        }
         internal void Divider(F5Rect rect) { Fill(rect, Color.White * .35f); }
-        internal void Label(F5Element element) { F5ControlRenderer.Text(batch, font, element, Color.White); }
-        internal void Label(F5Element element, Color ink) { F5ControlRenderer.Text(batch, font, element, ink); }
+        internal void Label(F5Element element) { F5ControlRenderer.Text(batch, font, element, Color.White, ScaledTextOutline); }
+        internal void Label(F5Element element, Color ink) { F5ControlRenderer.Text(batch, font, element, ink, ScaledTextOutline); }
         internal void Button(F5Element element, bool selected, bool enabled, bool off, bool hovered, bool pressed = false)
-        { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null, subduedWhenDisabled: true, pressed: pressed, transform: passMatrix); }
+        { F5ControlRenderer.Button(batch, pixel, surface, font, element, hovered, enabled, selected ? (Color?)(off ? Color.IndianRed : Color.LightGreen) : null, subduedWhenDisabled: true, pressed: pressed, transform: passMatrix, scaledOutline: ScaledTextOutline); }
         internal void ItemButton(F5Rect rect, bool enabled, bool hovered)
+        { DrawItemButton(rect, enabled, hovered, 2); }
+        internal void CompactItemButton(F5Rect rect, bool enabled, bool hovered)
+        { DrawItemButton(rect, enabled, hovered, 1); }
+        private void DrawItemButton(F5Rect rect, bool enabled, bool hovered, float inset)
         {
             // Inset only the borrowed skin. Icon fitting and input still use
             // the full card, so tighter frames never shrink or clip the item.
-            var frame = new F5Rect(rect.X + 2, rect.Y + 2, rect.Width - 4, rect.Height - 4);
+            var frame = new F5Rect(rect.X + inset, rect.Y + inset, rect.Width - 2 * inset, rect.Height - 2 * inset);
             UiSurface.Panel(batch, pixel, frame, surface,
                 enabled && hovered ? Color.White : !enabled ? new Color(165, 165, 165) : new Color(220, 220, 220), fractionalSurface: true);
         }
@@ -84,16 +106,19 @@ namespace JueMingR.TerrariaHost.Items
         {
             if (string.IsNullOrEmpty(text)) return;
             F5Size size = Measure(text);
+            float border = ScaledTextOutline ? scale : 2;
             // Clip labels by measured glyphs, retaining the established readable
             // scale. Never shrink a resource-pack font to hide a geometry bug.
-            if (size.Width * scale > rect.Width - 4)
+            if (size.Width * scale > rect.Width - 2 * border)
             {
                 int low = 0, high = text.Length;
-                while (low < high) { int mid = (low + high + 1) / 2; if (Measure(text.Substring(0, mid) + "…").Width * scale <= rect.Width - 4) low = mid; else high = mid - 1; }
+                while (low < high) { int mid = (low + high + 1) / 2; if (Measure(text.Substring(0, mid) + "…").Width * scale <= rect.Width - 2 * border) low = mid; else high = mid - 1; }
                 text = text.Substring(0, low) + "…"; size = Measure(text);
             }
-            Utils.DrawBorderStringFourWay(batch, font, text, rect.X + 2 - size.OffsetX * scale,
-                rect.Y + (rect.Height - size.Height * scale) / 2 - size.OffsetY * scale, color, Color.Black, Vector2.Zero, scale);
+            var origin = new Vector2(rect.X + border - size.OffsetX * scale,
+                rect.Y + (rect.Height - size.Height * scale) / 2 - size.OffsetY * scale);
+            if (ScaledTextOutline) F5ControlRenderer.DrawScaledOutline(batch, font, text, origin, color, scale);
+            else Utils.DrawBorderStringFourWay(batch, font, text, origin.X, origin.Y, color, Color.Black, Vector2.Zero, scale);
         }
         internal void Item(int type, F5Rect rect)
         {
@@ -103,11 +128,14 @@ namespace JueMingR.TerrariaHost.Items
             PreparedItem(type, texture, rect);
         }
         internal void PreparedItem(int type, Texture2D texture, F5Rect rect)
+        { PreparedItemTinted(type, texture, rect, Color.White); }
+
+        internal void PreparedItemTinted(int type, Texture2D texture, F5Rect rect, Color tint)
         {
             if (texture == null || texture.IsDisposed) return;
             Rectangle frame = Main.itemAnimations[type] == null ? texture.Bounds : Main.itemAnimations[type].GetFrame(texture);
             float scale = Math.Min(1, Math.Min((rect.Width - 4) / frame.Width, (rect.Height - 4) / frame.Height));
-            batch.Draw(texture, new Vector2(rect.X + rect.Width / 2, rect.Y + rect.Height / 2), frame, Color.White, 0,
+            batch.Draw(texture, new Vector2(rect.X + rect.Width / 2, rect.Y + rect.Height / 2), frame, tint, 0,
                 new Vector2(frame.Width / 2f, frame.Height / 2f), scale, SpriteEffects.None, 0);
         }
         internal void Selection(F5Rect r)

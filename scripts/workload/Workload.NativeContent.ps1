@@ -1,12 +1,58 @@
 # These ordinary mixed scopes really construct ProbeGraphics. Keep resource
 # admission in this separately bound owner, not in a pure plan projection.
 function Get-WorkloadNativeContentScopes {
-    return @('BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
+    return @('CompanionFontVisual','CompanionConfigVisual','CompanionResourceBarsVisual','CompanionCreationInputVisual','CompanionShowcaseVisual','CompanionVisual','BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
 }
 function Get-WorkloadNativeContentFiles {
     param([string]$Scope)
     if($Scope -cnotin @(Get-WorkloadNativeContentScopes)){return @()}
     $files=@('Fonts/Mouse_Text.xnb','Fonts/Item_Stack.xnb','Fonts/Combat_Text.xnb','Fonts/Combat_Crit.xnb','Images/Item_8.xnb','Images/Inventory_Back.xnb','Images/MagicPixel.xnb')
+    if($Scope -ceq 'CompanionResourceBarsVisual'){
+        foreach($name in @('HP_Fill','HP_Fill_Honey','MP_Fill','Panel_Left','HP_Panel_Middle','HP_Panel_Right','MP_Panel_Middle','MP_Panel_Right')){$files+='Images/UI/PlayerResourceSets/HorizontalBars/'+$name+'.xnb'}
+        foreach($name in @('Heart_Left','Heart_Middle','Heart_Right','Heart_Right_Fancy','Heart_Fill','Heart_Fill_B','Heart_Single_Fancy','Star_A','Star_B','Star_C','Star_Single','Star_Fill')){$files+='Images/UI/PlayerResourceSets/FancyClassic/'+$name+'.xnb'}
+        return $files
+    }
+    if($Scope -cin @('CompanionVisual','CompanionShowcaseVisual','CompanionCreationInputVisual','CompanionConfigVisual','CompanionFontVisual')){
+        # Bind resources actually requested by the original player initializer,
+        # six resource sets and the finite native creation/profile fixture.
+        $files+=@('PixelShader.xnb','Images/Heart.xnb','Images/Heart2.xnb','Images/Mana.xnb')
+        $files+=@(0,3507,3509,3506 | ForEach-Object {'Images/Item_'+$_+'.xnb'})
+        $files+='Images/Item_271.xnb'
+        if($Scope -ceq 'CompanionConfigVisual'){
+            $files+=@(2,39,1007,1553,3508,5358,5360 | ForEach-Object {'Images/Item_'+$_+'.xnb'})
+            $files+='Images/Inventory_Back10.xnb','Images/Inventory_Back13.xnb','Images/UI/Cursor_0.xnb'
+            $files+=@(310..315 | ForEach-Object {'Images/Extra_'+$_+'.xnb'})
+            # Actual .8 catalog icons observed by the compact supply popup.
+            $supplyIcons=@(5,28,29,109,110,126,188,189,227,288,289,290,291,292,293,294,295,296,297,298,299,300,301,302,303,304,305,357,499,500,1134,1291,1340,1353,1354,1355,1356,1357,1358,1359,1912,2209,2314,2322,2323,2324,2325,2326,2327,2328,2329,2344,2345,2346,2347,2348,2349,2354,2355,2356,2359,3001,3335,3544,4477,4478,4479,5043,5211,5289,5326,5337,5338,5339,5340,5341,5342,5496,5573)
+            $files+=@($supplyIcons | ForEach-Object {'Images/Item_'+$_+'.xnb'})
+        }
+        if($Scope -ceq 'CompanionVisual'){$files+=@('Images/Item_90.xnb','Images/Item_1007.xnb','Images/Armor_Head_2.xnb')}
+        $files+=@('Images/Item_603.xnb','Images/Item_2420.xnb','Images/Projectile_111.xnb','Images/Projectile_380.xnb')
+        $files+=@('Images/Extra_54.xnb','Fonts/Death_Text.xnb','Images/ColorBar.xnb','Images/ColorBlip.xnb','Images/ColorSlider.xnb','Images/UI/Slider_Highlight.xnb')
+        if($Scope -ceq 'CompanionVisual'){$files+=@('Images/Armor_Head_3.xnb','Images/Armor/Armor_3.xnb','Images/Armor_Legs_3.xnb')}
+        $files+=@(5660,91,239,237 | ForEach-Object {'Images/Item_'+$_+'.xnb'})
+        foreach($name in @('CategoryPanel','CategoryPanelHighlight','CategoryPanelBorder','SmallPanel','SmallPanelBorder','PanelGrayscale','Copy','Paste','Randomize','Voice','ColorHair','ColorEye','ColorEyeBack','ColorSkin','ColorShirt','ColorUndershirt','ColorPants','ColorShoes','ColorCharacter','HairStyle_Hair','HairStyle_Arrow','ClothStyleMale','ClothStyleFemale','CharInfo')){$files+='Images/UI/CharCreation/'+$name+'.xnb'}
+        foreach($name in @('PanelBorder','PanelBackground','Scrollbar','ScrollbarInner','PlayerBackground','TexturePackButtons','TexturePackButtonsOutline','VK_Shift','VK_Backspace')){$files+='Images/UI/'+$name+'.xnb'}
+        $files+=@('Images/UI/PVP_1.xnb','Images/UI/PVP_2.xnb')
+        # The same isolated graphics initialization opens the real human Journey
+        # menu before the public-runtime AI death scenario. No full Journey UI
+        # matrix or installed-game claim is acquired by this finite consumer.
+        if($Scope -ceq 'CompanionVisual'){
+            foreach($back in 2..25){$files+='Images/Inventory_Back'+$back+'.xnb'}
+            foreach($coin in 0..3){$files+='Images/Coin_'+$coin+'.xnb'}
+            foreach($name in @('Journey_Toggle','Journey_Toggle_MouseOver','Infinite_Powers','Infinite_Tabs_B','Infinite_Tabs_B_2','Research_Spark','Research_Slots','Research_FramedPistons','Research_GearA','Research_GearB','Research_GearC')){$files+='Images/UI/Creative/'+$name+'.xnb'}
+            foreach($name in @('Master','Expert','Normal','Creative')){$files+='Images/UI/WorldCreation/IconDifficulty'+$name+'.xnb'}
+        }
+        foreach($hair in 1..228){$files+=@(('Images/Player_Hair_'+$hair+'.xnb'),('Images/Player_HairAlt_'+$hair+'.xnb'))}
+        $variants=@{
+            0=@(0..13)+@(15);1=@(4,6,8,11,12,13);2=@(4,6,8,11,12,13);3=@(4,6,8,11,12,13,14);
+            4=@(3..13);5=@(4,6,8,11,12,13);6=@(4,6,8,11,12,13);7=@(4,6,8,11,12,13,14);
+            8=@(4,6,8,11,12,13,14);9=@(4,6,8,11,12,13);10=@(0,2,3,5,7,9,10);11=@(3,5,7,9,10)
+        }
+        foreach($variant in $variants.Keys){foreach($piece in $variants[$variant]){$files+='Images/Player_'+$variant+'_'+$piece+'.xnb'}}
+        foreach($name in @('Heart_Left','Heart_Middle','Heart_Right','Heart_Right_Fancy','Heart_Fill','Heart_Fill_B','Heart_Single_Fancy','Star_A','Star_B','Star_C','Star_Single','Star_Fill')){$files+='Images/UI/PlayerResourceSets/FancyClassic/'+$name+'.xnb'}
+        foreach($name in @('HP_Fill','HP_Fill_Honey','MP_Fill','Panel_Left','HP_Panel_Middle','HP_Panel_Right','MP_Panel_Middle','MP_Panel_Right')){$files+='Images/UI/PlayerResourceSets/HorizontalBars/'+$name+'.xnb'}
+    }
     if($Scope -ceq 'NpcReviewedParticle'){$files+=@('Images/Projectile_228.xnb','Images/NPC_48.xnb')}
     if($Scope -ceq 'BlueprintInput'){
         # Host70 selects the first seventy distinct consumable wall identities

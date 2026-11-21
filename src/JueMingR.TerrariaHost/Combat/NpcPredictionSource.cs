@@ -11,6 +11,9 @@ namespace JueMingR.TerrariaHost.Combat
         internal readonly NpcPredictionCache Cache=new NpcPredictionCache();
         internal readonly PredictionTerrain Terrain=new PredictionTerrain();
         internal readonly Prediction.NativePredictionSession Native;
+        // Explicit native Player.Update boundary for non-human consumers.
+        // Null preserves the accepted human ItemCheck ordering.
+        internal int? CompletedPlayerBoundary {get;set;}
         private readonly Prediction.SegmentedNpcPrediction segmented=new Prediction.SegmentedNpcPrediction();
         private bool usingSegmented;
         private readonly RollingNpcPrediction rolling=new RollingNpcPrediction();
@@ -781,7 +784,7 @@ namespace JueMingR.TerrariaHost.Combat
             // Main updates players by slot before NPCs. At local ItemCheck,
             // later numbered players have not naturally moved yet.
             var playerMotion=!playerAlive?default(PredictionPlayerMotion):ReadPlayer(player);
-            bool playerAdvanced=firstPlayerStepCompleted && target<=Main.myPlayer;
+            bool playerAdvanced=firstPlayerStepCompleted && target<=(CompletedPlayerBoundary??Main.myPlayer);
             if(candidateOnly && candidateReuseMiss && ReuseCandidateInputs(identity,firstPlayerStepCompleted,playerAdvanced,count,selected,advanceTo,env,playerMotion))
             {
                 // This is the caller's still-valid no-contact verdict, not a

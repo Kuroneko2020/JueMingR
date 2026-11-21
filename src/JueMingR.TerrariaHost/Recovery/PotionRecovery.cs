@@ -25,6 +25,14 @@ namespace JueMingR.TerrariaHost.Recovery
         internal PotionRecovery(HostRecovery host){this.host=host;}
         internal void Reset(){Array.Clear(rejected,0,rejected.Length);ManaFrame=LifeFrame=-1;}
         internal static int Healing(Item item){return item.type==3001?95:item.healLife;}
+        internal static int ManaCost(Player player, Item item)
+        {
+            if (item == null || item.IsAir) return 0;
+            // Held weapons that pay later still use CheckMana's cost for
+            // their initial readiness check. Only its explicit skip is free.
+            details(player, item, out bool skip, out int raw, out _);
+            return skip ? 0 : (int)(raw * player.manaCost);
+        }
         internal void Heal(Player p)
         {
             int d=p.statLifeMax2-p.statLife;
@@ -37,13 +45,12 @@ namespace JueMingR.TerrariaHost.Recovery
             if(p.manaPotionDelay>0 || ManaFrame==host.Input.Frame || p.statMana>=p.statManaMax2)return;
             Item held=p.HeldItem;
             if(held==null || held.IsAir || held.mana<=0 || held.createTile>=0 || held.createWall>=0 || held.pick>0 || held.axe>0 || held.hammer>0 || held.fishingPole>0 || held.ammo>0 && held.useStyle==0 || held.shoot<=0 && held.damage<=0)return;
-            bool skip,free;int raw;details(p,held,out skip,out raw,out free);
             // .8 ships ManaV2=true: PredictWithoutUse returns true even when
             // the payment is short (vanilla allows a slowed cast). It therefore
             // is NOT the replenishment predicate. Use the exact cost expression
             // from CheckMana, without executing its slowMagicUse/mana writes.
-            int cost=(int)(raw*p.manaCost);
-            if(skip || cost<=0 || p.statMana>=cost)return;
+            int cost=ManaCost(p,held);
+            if(cost<=0 || p.statMana>=cost)return;
             // A potion cannot make an impossible next payment affordable. Do
             // not empty a bag repeatedly while holding that weapon.
             if(cost>p.statManaMax2)return;

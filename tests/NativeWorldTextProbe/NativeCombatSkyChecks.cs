@@ -90,7 +90,7 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("SKY-STAR prior-owner-immunity side="+side+" value="+n.immune[p.whoAmI]);Array.Clear(n.immune,0,n.immune.Length);
                 NativeToolExecutionChecks.Sample(context,Get(context,"Input"),n.Center,true);Call(combat,"Sample");NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,50,false,true));NativeCombatAimChecks.PrepareMechanismFixture(host,Get(combat,"Attack"),n,0,phaseName:"BeforeNpc");
                 var plan=NativeCombatAimChecks.RequireSolution(Get(combat,"Attack"),p,"both legal Starfury birth sides retain a representative Contact");
-                var args=new object[]{p,65,p.MountedCenter,plan.Point,p.HeldItem.shootSpeed,null,null};sky.GetMethod("Launch",Flags).Invoke(null,args);var birth=(Vector2)args[5];var velocity=(Vector2)args[6];
+                var args=new object[]{p,p.HeldItem,p.MountedCenter,plan.Point,p.HeldItem.shootSpeed,null,null};sky.GetMethod("Launch",Flags).Invoke(null,args);var birth=(Vector2)args[5];var velocity=(Vector2)args[6];
                 Require((plan.Point.X<p.Left.X)==(side<0),"native Starfury side-selection gate is retained");
                 int slot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),birth,velocity,9,50,0,p.whoAmI,0,plan.Point.Y);var shot=Main.projectile[slot];int first=0;
                 for(int t=1;t<=120 && shot.active;t++){NativeQuickItemChecks.BeginWorldStep();shot.Update(slot);if(n.life<10000){first=t;break;}}

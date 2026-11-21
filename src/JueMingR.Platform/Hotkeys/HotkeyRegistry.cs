@@ -54,11 +54,11 @@ namespace JueMingR.Platform.Hotkeys
         }
         // Created only at composition time. The capability reserves a namespace;
         // it never permits reopening, replacing or deleting the frozen core.
-        public DynamicHotkeyOwner CreateDynamicOwner(string prefix)
+        public DynamicHotkeyOwner CreateDynamicOwner(string prefix, int reservedCapacity = 0)
         {
-            if (frozen || !HotkeyAction.ValidId(prefix) || !prefix.EndsWith(".", StringComparison.Ordinal) || prefix.Length > 64)
+            if (frozen || !HotkeyAction.ValidId(prefix) || !prefix.EndsWith(".", StringComparison.Ordinal) || prefix.Length > 64 || reservedCapacity < 0)
                 throw new InvalidOperationException("Invalid or late dynamic owner.");
-            return Reserve(prefix, false);
+            return Reserve(prefix, false, reservedCapacity);
         }
         // A hidden action may share its namespace with ordinary core actions.
         // Reserve its exact ID without granting ownership of any sibling/child ID.
@@ -68,9 +68,9 @@ namespace JueMingR.Platform.Hotkeys
                 throw new InvalidOperationException("Invalid or late dynamic action owner.");
             return Reserve(id, true);
         }
-        private DynamicHotkeyOwner Reserve(string scope, bool exact)
+        private DynamicHotkeyOwner Reserve(string scope, bool exact, int reservedCapacity = 0)
         {
-            var result = new DynamicHotkeyOwner(this, scope, exact);
+            var result = new DynamicHotkeyOwner(this, scope, exact, reservedCapacity);
             foreach (var owner in owners)
                 if (owner.Overlaps(result)) throw new InvalidOperationException("Overlapping dynamic owners.");
             foreach (var action in core) if (result.Owns(action.Id)) throw new InvalidOperationException("Core namespace already used.");
@@ -79,10 +79,16 @@ namespace JueMingR.Platform.Hotkeys
         internal bool Replace(DynamicHotkeyOwner owner, IEnumerable<HotkeyAction> values, out string reason)
         {
             reason = null; var copy = new List<HotkeyAction>(); var ids = new HashSet<string>(StringComparer.Ordinal);
-            int otherCount = core.Count; foreach (var other in owners) if (other != owner) otherCount += other.Current.Count;
+            int limit = owner.ReservedCapacity;
+            if (limit == 0)
+            {
+                limit = 256 - core.Count;
+                foreach (var other in owners)
+                    if (other != owner && other.ReservedCapacity == 0) limit -= other.Current.Count;
+            }
             foreach (var action in values)
             {
-                if (action == null || !owner.Owns(action.Id) || !ids.Add(action.Id) || copy.Count + otherCount >= 256)
+                if (action == null || !owner.Owns(action.Id) || !ids.Add(action.Id) || copy.Count >= limit)
                 { reason = "快捷动作无效、重复或已达到数量上限。"; return false; }
                 copy.Add(action);
             }
@@ -109,8 +115,10 @@ namespace JueMingR.Platform.Hotkeys
         internal readonly HotkeyRegistry Registry;
         private readonly string scope;
         private readonly bool exact;
+        internal readonly int ReservedCapacity;
         internal IReadOnlyList<HotkeyAction> Current = new HotkeyAction[0];
-        internal DynamicHotkeyOwner(HotkeyRegistry registry, string scope, bool exact) { Registry = registry; this.scope = scope; this.exact = exact; }
+        internal DynamicHotkeyOwner(HotkeyRegistry registry, string scope, bool exact, int reservedCapacity)
+        { Registry = registry; this.scope = scope; this.exact = exact; ReservedCapacity = reservedCapacity; }
         public bool Owns(string id)
         { return exact ? String.Equals(id, scope, StringComparison.Ordinal) : id != null && id.Length > scope.Length && id.StartsWith(scope, StringComparison.Ordinal); }
         internal bool Overlaps(DynamicHotkeyOwner other)

@@ -378,7 +378,7 @@ namespace NativeWorldTextProbe
             Require(births.Count==3 && births[0].type==503,"native Star Wrath retains its three original members");tracked=births[0];
             Require(Math.Abs(tracked.Center.X-(owner.Center.X-200*owner.direction))<.001f && Math.Abs(tracked.Center.Y-(owner.Center.Y-600))<.001f,"seeded native ordinal0 is the exact representative birth from the future Center");
             Require(Math.Abs(tracked.ai[1]-Math.Min(point.Y,owner.Center.Y-200))<1.01f,"native ai1 independently uses future Center and raw integral cursor");
-            var modelBirth=new object[]{poseForReplay,3065,suppliedOrigin,point,owner.HeldItem.shootSpeed/owner.meleeSpeed,null,null};sky.GetMethod("Launch",F).Invoke(null,modelBirth);
+            var modelBirth=new object[]{poseForReplay,owner.HeldItem,suppliedOrigin,point,owner.HeldItem.shootSpeed/owner.meleeSpeed,null,null};sky.GetMethod("Launch",F).Invoke(null,modelBirth);
             var modelOrigin=(Vector2)modelBirth[5];var modelVelocity=(Vector2)modelBirth[6];
             Require(Vector2.DistanceSquared(modelOrigin,tracked.Center)<.001f && Vector2.DistanceSquared(modelVelocity,tracked.velocity)<.001f,"native seeded ordinal0 exactly matches the independent model replay's birth and velocity");
             var path=(NpcTrajectory)Get(next,"Timeline");var sample=ContentSamples.ProjectilesByType[503];var modelTerrain=Activator.CreateInstance(assembly.GetType("JueMingR.TerrariaHost.Combat.PredictionTerrain",true),true);Call(modelTerrain,"Reset");

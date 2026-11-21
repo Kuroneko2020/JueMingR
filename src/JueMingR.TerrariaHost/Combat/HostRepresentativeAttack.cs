@@ -27,11 +27,11 @@ namespace JueMingR.TerrariaHost.Combat
             if(type==485 && weapon==3019)motion=new AttackMotion(speed,0,0,motion.Updates,motion.Width,motion.Height,motion.Lifetime,AttackConfidence.Representative,componentBirthLimit:true,gravityClockUsesLaunchX:true,firstUpdates:motion.FirstUpdates);
             return true;
         }
-        internal static HostAttackSolution Prepare(Player player,AttackAmmoSnapshot ammo,NpcTrajectory path,Vector2 origin,HostAttackClock clock,PredictionTerrain terrain)
+        internal static HostAttackSolution Prepare(Player player,Item weapon,AttackAmmoSnapshot ammo,NpcTrajectory path,Vector2 origin,HostAttackClock clock,PredictionTerrain terrain)
         {
             Func<Vector2,Projectile> birth=aim=>
             {
-                int facing;var muzzle=HostAttackModels.NativeLaunchOrigin(player,player.HeldItem,origin,aim,out facing);
+                int facing;var muzzle=HostAttackModels.NativeLaunchOrigin(player,weapon,origin,aim,out facing);
                 var p=HostNoteAttack.Copy(ContentSamples.ProjectilesByType[ammo.Projectile]);p.active=true;p.owner=player.whoAmI;p.Center=muzzle;
                 p.velocity=HostAttackModels.NativeLaunchVelocity(player,muzzle,aim,ammo.Speed,facing);p.velocity=HostSpecialArrowAttack.BirthVelocity(ammo,p.velocity,facing);p.damage=ammo.Damage;p.knockBack=ammo.NativeKnockBack;
                 if(ammo.WeaponType==3019){p.ai[0]=p.velocity.X;p.ai[1]=p.velocity.Y;}
@@ -43,10 +43,10 @@ namespace JueMingR.TerrariaHost.Combat
             // other branch only after the first lacked a reachable result;
             // every replay still computes and checks the actual candidate's
             // native facing, never a forced live direction or extra offset.
-            bool muzzleDirection;HostAttackModels.LaunchOrigin(player,player.HeldItem,out muzzleDirection);
+            bool muzzleDirection;HostAttackModels.LaunchOrigin(player,weapon,out muzzleDirection);
             if(muzzleDirection && solution.Reachability!=HostAttackReachability.Reachable)
             {
-                var shifted=HostAttackModels.OtherMuzzleOrigin(player,player.HeldItem,origin);
+                var shifted=HostAttackModels.OtherMuzzleOrigin(player,weapon,origin);
                 var other=Prepare(player,ammo,path,shifted,clock,terrain,birth);
                 if(other.HasPoint && (other.Reachability==HostAttackReachability.Reachable || !solution.HasPoint))solution=other;
             }
@@ -55,8 +55,8 @@ namespace JueMingR.TerrariaHost.Combat
             // branches, not a weapon whitelist at the input consumer. Recheck
             // the selected input (which need not be the final replay attempted).
             bool originDirection,velocityDirection,fanDirection;
-            HostAttackModels.LaunchOrigin(player,player.HeldItem,out originDirection);
-            int shotFacing;var selectedOrigin=HostAttackModels.NativeLaunchOrigin(player,player.HeldItem,origin,solution.Point,out shotFacing);
+            HostAttackModels.LaunchOrigin(player,weapon,out originDirection);
+            int shotFacing;var selectedOrigin=HostAttackModels.NativeLaunchOrigin(player,weapon,origin,solution.Point,out shotFacing);
             var raw=HostThornAttack.BirthVelocity(player,selectedOrigin,solution.Point,ammo.Speed,out velocityDirection);
             HostSpecialArrowAttack.BirthVelocity(ammo,raw,shotFacing,out fanDirection);
             return new HostAttackSolution(solution.Timeline,solution.Point,solution.HasPoint,solution.Reachability,solution.ReceiveTick,solution.Contact,!originDirection && !velocityDirection && !fanDirection,AttackPointSemantics.Direction);

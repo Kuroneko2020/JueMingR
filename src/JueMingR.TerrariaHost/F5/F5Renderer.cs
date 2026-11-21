@@ -586,6 +586,8 @@ namespace JueMingR.TerrariaHost.F5
         internal void Keyboard(SpriteBatch batch, F5Rect slot)
         {
             // One shell-owned atlas serves real entries and inert placeholders.
+            // Independent windows can draw a key without drawing the main F5.
+            icons.Ensure(batch.GraphicsDevice);
             icons.Draw(batch, F5IconAtlas.KeyboardIndex, new F5Rect(slot.X + (slot.Width - 14) / 2,
                 slot.Y + (slot.Height - 14) / 2, 14, 14), Color.White);
         }

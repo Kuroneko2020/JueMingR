@@ -18,7 +18,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(captured!=null && HostSkyAttack.Handles(item.type) && item.type!=3029)
                 return Math.Min(NpcPredictionCache.Horizon,HostSkyAttack.PreferredRange(player,item,captured,target)+handDelay);
             if(captured!=null && HostNativeArrowBirthAttack.Weapon(item.type))
-                return Math.Min(NpcPredictionCache.Horizon,HostNativeArrowBirthAttack.PreferredRange(player,captured,target)+handDelay);
+                return Math.Min(NpcPredictionCache.Horizon,HostNativeArrowBirthAttack.PreferredRange(player,item,captured,target)+handDelay);
             if(captured!=null && (HostNorthPoleAttack.Handles(captured.Projectile) || HostSpearShardAttack.Handles(captured.Projectile)))
             {
                 // The old spear hint only covered three older child types and
@@ -71,7 +71,7 @@ namespace JueMingR.TerrariaHost.Combat
         private static HostAttackSolution SolveBalancedHand(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,HostAttackClock clock,PredictionTerrain cells,out HostAttackObstacles root,bool advanced=false)
         {
             root=null;
-            if(HostNativeArrowBirthAttack.Weapon(item.type))return HostNativeArrowBirthAttack.Prepare(player,captured,timeline,start,clock,cells,null,advanced);
+            if(HostNativeArrowBirthAttack.Weapon(item.type))return HostNativeArrowBirthAttack.Prepare(player,item,captured,timeline,start,clock,cells,null,advanced);
             if(HostSkyAttack.Handles(item.type))
             {
                 root=new HostAttackObstacles(player,ContentSamples.ProjectilesByType[captured.Projectile],timeline,clock.LaunchDelay,clock.BeforeNpc,clock.NextWorld);
@@ -79,7 +79,7 @@ namespace JueMingR.TerrariaHost.Combat
             }
             if(HostNorthPoleAttack.Handles(captured.Projectile))return HostNorthPoleAttack.Prepare(player,item,captured,timeline,clock,cells,HostAttackPlayerFrame.Capture(player,timeline));
             if(HostSpearShardAttack.Handles(captured.Projectile))return HostSpearShardAttack.Prepare(player,item,captured,timeline,clock,cells,HostAttackPlayerFrame.Capture(player,timeline));
-            return HostRepresentativeAttack.Prepare(player,captured,timeline,start,clock,cells);
+            return HostRepresentativeAttack.Prepare(player,item,captured,timeline,start,clock,cells);
         }
         private static HostAttackSolution SolveNextBalancedSky(Player poseBody,Player liveOwner,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,HostAttackClock clock,PredictionTerrain cells,out HostAttackObstacles root)
         {

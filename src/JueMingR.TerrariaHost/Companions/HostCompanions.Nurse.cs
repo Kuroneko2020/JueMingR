@@ -1,0 +1,386 @@
+using System;
+using System.Collections.Generic;
+using JueMingR.Platform.Companions;
+using JueMingR.Platform.Items;
+using JueMingR.TerrariaHost.Recovery;
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.DataStructures;
+using Terraria.GameContent;
+using Terraria.ID;
+using Terraria.WorldBuilding;
+
+namespace JueMingR.TerrariaHost.Companions
+{
+    internal enum CompanionNurseOutcome { NotRun, Unpaid, Treated, Unconfirmed }
+
+    internal sealed partial class HostCompanions
+    {
+        private ShopHelper companionNurseShop;
+        private SceneMetrics nurseScene;
+        private Player nurseShoppingPerspective;
+        private NPC[] nurseResidentView;
+        private Point? nurseTerrainRequest;
+        private int nurseTerrainTeam;
+        private long nurseTerrainSession;
+        private readonly Dictionary<Guid, long> pendingNurse = new Dictionary<Guid, long>();
+        private long nurseSession = -1;
+
+        private static bool NurseNeedsService(Player body)
+        {
+            if (body.statLife < body.statLifeMax2) return true;
+            for (int i = 0; i < Player.maxBuffs; i++)
+                if (body.buffTime[i] > 60 && NurseRemovable(body.buffType[i])) return true;
+            return false;
+        }
+
+        private static bool NurseRemovable(int type)
+        {
+            return type > 0 && type < BuffID.Count && Main.debuff[type] &&
+                !BuffID.Sets.NurseCannotRemoveDebuff[type];
+        }
+
+        private bool NurseCurrent(Player body, NPC npc, int slot, byte generation)
+        {
+            return slot >= 0 && slot < Main.maxNPCs && ReferenceEquals(Main.npc[slot], npc) &&
+                npc.generation == generation && ActorTileReachReady(body) &&
+                NearbyServiceTarget.Eligible(body, npc, NPCID.Nurse, ActorTileReach(body));
+        }
+
+        private NPC FindNurse(Actor actor)
+        {
+            if (!ActorTileReachReady(actor.Body)) return null;
+            var state = actor.Supplies;
+            if (state.Nurse != null && NurseCurrent(actor.Body, state.Nurse, state.NurseSlot, state.NurseGeneration))
+                return state.Nurse;
+            var reach = ActorTileReach(actor.Body);
+            var region = reach.GetWorldRegion(actor.Body);
+            if (Main.GameUpdateCount < state.NurseScan && region == state.NurseRegion) return null;
+            state.Nurse = null;
+            state.NurseSlot = -1;
+            state.NurseScan = Main.GameUpdateCount + 60;
+            state.NurseRegion = region;
+            float distance = float.MaxValue;
+            for (int slot = 0; slot < Main.maxNPCs; slot++)
+            {
+#if DEBUG
+                state.NurseReads++;
+#endif
+                NPC candidate = Main.npc[slot];
+                if (!NearbyServiceTarget.Eligible(actor.Body, candidate, NPCID.Nurse, reach)) continue;
+                float candidateDistance = Vector2.DistanceSquared(actor.Body.Center, candidate.Center + candidate.netOffset);
+                if (candidateDistance >= distance) continue;
+                distance = candidateDistance;
+                state.Nurse = candidate;
+                state.NurseSlot = slot;
+                state.NurseGeneration = candidate.generation;
+            }
+            return state.Nurse;
+        }
+
+        [Flags]
+        internal enum NurseBiome
+        {
+            Dungeon = 1, Corrupt = 2, Crimson = 4, Hallow = 8, Jungle = 16,
+            Snow = 32, Desert = 64, Glowshroom = 128, Beach = 256
+        }
+
+        private bool NurseBiomeTerrainKnown(Player body, bool request)
+        {
+            Point center = body.Center.ToTileCoordinates();
+            if (Main.tile == null || !WorldGen.InWorld(center.X, center.Y, 1)) return false;
+            bool known = Main.tile[center.X, center.Y] != null;
+            if (Main.netMode != 1) return known;
+            if (Main.sectionManager == null) return false;
+            var scan = WorldUtils.ClampToWorld(Utils.CenteredRectangle(center, SceneMetrics.ZoneScanSize));
+            int bottom = scan.Bottom - 1;
+            if (Main.dualDungeonsSeed) bottom = Math.Max(bottom, Math.Min(center.Y + 299, Main.maxTilesY - 1));
+            for (int x = Netplay.GetSectionX(scan.Left); x <= Netplay.GetSectionX(scan.Right - 1); x++)
+                for (int y = Netplay.GetSectionY(scan.Top); y <= Netplay.GetSectionY(bottom); y++)
+                {
+                    if (Main.sectionManager.SectionLoaded(x, y)) continue;
+                    known = false;
+                    if (!request || nurseTerrainRequest.HasValue && nurseTerrainSession == session ||
+                        terrainRequested.Contains(TerrainKey(x, y))) continue;
+                    // The outer world update publishes one ordinary primary
+                    // tile request, sharing the movement loader's budget.
+                    nurseTerrainRequest = new Point(Math.Min(x * Main.sectionWidth + Main.sectionWidth / 2, Main.maxTilesX - 11),
+                        Math.Min(y * Main.sectionHeight + Main.sectionHeight / 2, Main.maxTilesY - 11));
+                    nurseTerrainSession = session;
+                    nurseTerrainTeam = body.team;
+                }
+            return known;
+        }
+
+        private ShoppingSettings NurseShoppingSettings(Actor actor, NPC nurse)
+        {
+            var patient = actor.Body;
+            var state = actor.Supplies;
+            Point center = patient.Center.ToTileCoordinates();
+            if (state.NurseBiomeCenter != center || state.NurseBiomeGeneration != actor.Generation ||
+                Main.GameUpdateCount >= state.NextNurseBiomeScan)
+            {
+                if (nurseScene == null) nurseScene = new SceneMetrics();
+                // Use the native scan around the patient's current tile only
+                // when an actual quote needs it. The human SceneMetrics and
+                // the AI's live movement/network zone flags stay untouched.
+                nurseScene.Scan(new SceneMetricsScanSettings { BiomeScanCenterPositionInWorld = patient.Center });
+                state.NurseBiomeCenter = center;
+                state.NurseBiomeGeneration = actor.Generation;
+                state.NextNurseBiomeScan = Main.GameUpdateCount + 60;
+                state.NurseBiomes = (nurseScene.ZoneDungeon ? NurseBiome.Dungeon : 0) |
+                    (nurseScene.ZoneCorrupt ? NurseBiome.Corrupt : 0) | (nurseScene.ZoneCrimson ? NurseBiome.Crimson : 0) |
+                    (nurseScene.ZoneHallow ? NurseBiome.Hallow : 0) | (nurseScene.ZoneJungle ? NurseBiome.Jungle : 0) |
+                    (nurseScene.ZoneSnow ? NurseBiome.Snow : 0) | (nurseScene.ZoneDesert ? NurseBiome.Desert : 0) |
+                    (nurseScene.ZoneGlowshroom ? NurseBiome.Glowshroom : 0) | (nurseScene.ZoneBeach ? NurseBiome.Beach : 0);
+            }
+            if (companionNurseShop == null) companionNurseShop = new ShopHelper();
+            if (nurseShoppingPerspective == null) nurseShoppingPerspective = new Player();
+            // ShopHelper reads the supplied player's shopping zones (including
+            // the native forest/depth predicates), while the native treatment
+            // price still reads the real patient's life, buffs and discounts.
+            var perspective = nurseShoppingPerspective;
+            var biomes = state.NurseBiomes;
+            perspective.Center = patient.Center;
+            perspective.ZoneDungeon = (biomes & NurseBiome.Dungeon) != 0;
+            perspective.ZoneCorrupt = (biomes & NurseBiome.Corrupt) != 0;
+            perspective.ZoneCrimson = (biomes & NurseBiome.Crimson) != 0;
+            perspective.ZoneHallow = (biomes & NurseBiome.Hallow) != 0;
+            perspective.ZoneJungle = (biomes & NurseBiome.Jungle) != 0;
+            perspective.ZoneSnow = (biomes & NurseBiome.Snow) != 0;
+            perspective.ZoneDesert = (biomes & NurseBiome.Desert) != 0;
+            perspective.ZoneGlowshroom = (biomes & NurseBiome.Glowshroom) != 0;
+            perspective.ZoneBeach = (biomes & NurseBiome.Beach) != 0;
+            var observed = Main.npc;
+            var primary = primaryNpcsBeforeObservation;
+            if (primary == null || ReferenceEquals(primary, observed))
+                return companionNurseShop.GetShoppingSettings(perspective, nurse);
+
+            // Native mood checks every active town resident's HOME. A
+            // resident wandering beyond the actor's simulation radius can
+            // still be a neighbour, as observed on the ordinary primary
+            // town stream. Keep the one best available NPC in each slot.
+            if (nurseResidentView == null) nurseResidentView = new NPC[Main.maxNPCs];
+            for (int i = 0; i < nurseResidentView.Length; i++)
+                nurseResidentView[i] = observed[i].active ? observed[i] : primary[i];
+            Main.npc = nurseResidentView;
+            try { return companionNurseShop.GetShoppingSettings(perspective, nurse); }
+            finally { Main.npc = observed; }
+        }
+
+        private CompanionNurseOutcome TryCompanionNurse(Actor actor)
+        {
+            var body = actor.Body;
+            var payer = owner;
+            if (!actor.Preferences.AllowNurse || !SupplyActorReady(actor) || payer == null || !payer.active || ReferenceEquals(payer, body) ||
+                Main.netMode == 1 && (actor.Connection == null || actor.Connection.Finished ||
+                    Netplay.Connection == null || !Netplay.Connection.IsConnected()) || !NurseNeedsService(body))
+                return CompanionNurseOutcome.NotRun;
+            if (nurseSession != session)
+            {
+                nurseSession = session;
+                pendingNurse.Clear();
+            }
+            if (pendingNurse.TryGetValue(actor.Profile.Id, out long epoch) && epoch == actor.Profile.DataEpoch)
+                return CompanionNurseOutcome.NotRun;
+
+            NPC nurse = FindNurse(actor);
+            if (nurse == null || Main.GameUpdateCount < actor.Supplies.NextNurseAttempt ||
+                !NurseHousingKnown(nurse) || !NurseBiomeTerrainKnown(body, request: true))
+                return CompanionNurseOutcome.NotRun;
+            actor.Supplies.NextNurseAttempt = Main.GameUpdateCount + 30;
+
+            ShoppingSettings before = body.currentShoppingSettings;
+            ShoppingSettings terms = default(ShoppingSettings);
+            bool shoppingApplied = false;
+            var preferences = actor.Preferences;
+            var quote = 0;
+            NursePaymentAttempt attempt = null;
+            try
+            {
+                using (CompanionHooks.Enter(actor, actor.Aim))
+                {
+                    // Both native consumers read the temporary scoped player. A
+                    // shopping quote needs no talkNPC, so neither player opens or
+                    // closes a chat and there is no talk packet to publish.
+                    if (!CompanionNurseWallet.TryBalance(body, out long patientBalance) ||
+                        !CompanionNurseWallet.TryBalance(payer, out long ownerBalance) ||
+                        patientBalance + ownerBalance == 0) return CompanionNurseOutcome.Unpaid;
+                    terms = NurseShoppingSettings(actor, nurse);
+                    body.currentShoppingSettings = terms;
+                    shoppingApplied = true;
+                    quote = Main.GetNurseHealCost();
+                    if (quote <= 0) return CompanionNurseOutcome.Unpaid;
+                    if (patientBalance + ownerBalance < quote) return CompanionNurseOutcome.Unpaid;
+                    long firstShare = Math.Min(patientBalance, quote);
+#if DEBUG
+                    actor.Supplies.WalletPlans++;
+#endif
+                    var first = CompanionNurseWallet.Prepare(body, patientBalance, firstShare);
+                    var second = CompanionNurseWallet.Prepare(payer, ownerBalance, quote - firstShare);
+                    if (first == null || second == null) return CompanionNurseOutcome.Unpaid;
+                    attempt = new NursePaymentAttempt(this, actor, payer, nurse, quote, first, second, preferences, terms);
+                    CompanionSupplyHooks.RunNurse(attempt);
+                }
+                if (!attempt.Committed) return CompanionNurseOutcome.Unpaid;
+
+                bool treated = attempt.Paid && body.statLife == body.statLifeMax2;
+                for (int i = 0; i < Player.maxBuffs && treated; i++)
+                    if (body.buffTime[i] > 0 && NurseRemovable(body.buffType[i])) treated = false;
+                if (!treated) return CompanionNurseOutcome.Unconfirmed;
+                pendingNurse.Remove(actor.Profile.Id);
+                actor.Supplies.LifeFrame = Main.GameUpdateCount;
+                return CompanionNurseOutcome.Treated;
+            }
+            catch (Exception)
+            {
+                return attempt?.Committed == true ? CompanionNurseOutcome.Unconfirmed : CompanionNurseOutcome.Unpaid;
+            }
+            finally
+            {
+                if (shoppingApplied && body.currentShoppingSettings.Equals(terms)) body.currentShoppingSettings = before;
+                if (attempt?.Committed == true) RecordNursePayment(attempt);
+            }
+        }
+
+        private void RecordNursePayment(NursePaymentAttempt attempt)
+        {
+            // All the writes are already real. Queue actual owner and AI slot
+            // values after the transaction so network and saves can retry
+            // independently of payment. HealEffect supplies the visual 35.
+            attempt.Actor.Dirty = true;
+            if (Main.netMode == 1)
+            {
+                foreach (var write in attempt.PatientWallet.Writes)
+                    QueueItemSync(attempt.Actor.Body, attempt.Actor, SupplyNetworkBases[write.Account] + write.Slot);
+                foreach (var write in attempt.PayerWallet.Writes)
+                    QueueItemSync(attempt.Payer, null, SupplyNetworkBases[write.Account] + write.Slot);
+            }
+            foreach (var write in attempt.PayerWallet.Writes)
+            {
+                try { OwnerItems?.NotifyManualItemReplacement(attempt.Payer, write.Items, write.Slot, write.Before, write.After); }
+                catch (Exception) { Feedback = "护士已扣款，物品状态通知失败。"; }
+            }
+            if (pendingNurse.ContainsKey(attempt.ProfileId))
+                Feedback = "护士扣款已提交，治疗结果未确认。";
+        }
+
+        internal sealed class NursePaymentAttempt
+        {
+            private readonly HostCompanions host;
+            private readonly Player patient;
+            private readonly NPC nurse;
+            private readonly int slot;
+            private readonly byte generation;
+            private readonly long activation, dataEpoch, session;
+            private readonly long ownerSession;
+            private readonly int mode;
+            private readonly ItemOperationOwnership ownerOperations;
+            private readonly object world, connection, socket;
+            private readonly CompanionConnection actorConnection;
+            private readonly CompanionBehavior preferences;
+            private readonly ShoppingSettings terms;
+            internal readonly Guid ProfileId;
+            internal readonly CompanionNurseWallet PatientWallet, PayerWallet;
+            internal readonly Actor Actor;
+            internal readonly Player Payer;
+            internal readonly int Quote;
+            internal bool Committed { get; private set; }
+            internal bool Paid { get; private set; }
+            private bool entered;
+
+            internal NursePaymentAttempt(HostCompanions host, Actor actor, Player payer, NPC nurse,
+                int quote, CompanionNurseWallet patientWallet, CompanionNurseWallet payerWallet,
+                CompanionBehavior preferences, ShoppingSettings terms)
+            {
+                this.host = host;
+                this.nurse = nurse;
+                this.preferences = preferences;
+                this.terms = terms;
+                Actor = actor;
+                Payer = payer;
+                patient = actor.Body;
+                slot = actor.Supplies.NurseSlot;
+                generation = actor.Supplies.NurseGeneration;
+                activation = actor.Generation;
+                ProfileId = actor.Profile.Id;
+                dataEpoch = actor.Profile.DataEpoch;
+                world = host.world;
+                session = host.session;
+                ownerOperations = host.OwnerOperations;
+                ownerSession = ownerOperations?.Session ?? 0;
+                mode = Main.netMode;
+                if (mode == 1)
+                {
+                    connection = Netplay.Connection;
+                    socket = Netplay.Connection?.Socket;
+                    actorConnection = actor.Connection;
+                }
+                Quote = quote;
+                PatientWallet = patientWallet;
+                PayerWallet = payerWallet;
+            }
+
+            internal bool Commit(Player buyer, long price, int currency)
+            {
+                if (entered) return false;
+                entered = true;
+                if (currency != -1 || price != Quote || !ReferenceEquals(buyer, patient) ||
+                    !ReferenceEquals(Main.LocalPlayer, patient) || !ReferenceEquals(CompanionHooks.CurrentActor, Actor) ||
+                    !ReferenceEquals(Actor.Body, patient) || !host.SupplyActorReady(Actor) ||
+                    Actor.Generation != activation || Actor.Profile.Id != ProfileId || Actor.Profile.DataEpoch != dataEpoch ||
+                    !ReferenceEquals(Actor.Preferences, preferences) || !preferences.AllowNurse ||
+                    host.session != session || !ReferenceEquals(host.world, world) || Main.netMode != mode ||
+                    !ReferenceEquals(Payer, host.owner) || !Payer.active ||
+                    !ReferenceEquals(Payer, Main.ActivePlayerFileData?.Player) ||
+                    Main.netMode == 1 && (!ReferenceEquals(connection, Netplay.Connection) ||
+                        !ReferenceEquals(socket, Netplay.Connection?.Socket) || !ReferenceEquals(actorConnection, Actor.Connection)) ||
+                    !host.NurseCurrent(patient, nurse, slot, generation) || !host.NurseHousingKnown(nurse) ||
+                    !host.NurseBiomeTerrainKnown(patient, request: false) || !NurseNeedsService(patient) ||
+                    !patient.currentShoppingSettings.Equals(terms) ||
+                    host.NurseShoppingSettings(Actor, nurse).PriceAdjustment != terms.PriceAdjustment ||
+                    Main.GetNurseHealCost() != Quote || !PatientWallet.Current() || !PayerWallet.Current())
+                    return false;
+
+                foreach (var write in PatientWallet.Writes)
+                    if (!host.SupplyAdmitted(Actor, write.Items, write.Account, write.Slot)) return false;
+                ItemOperationOwnership lease = ownerOperations;
+                long token = 0;
+                if (PayerWallet.Share > 0)
+                {
+                    if (lease == null || !ReferenceEquals(host.OwnerOperations, lease) || lease.Session != ownerSession) return false;
+                    foreach (var write in PayerWallet.Writes)
+                        if (host.itemDraft?.DependsOn(write.Items, write.Slot) == true ||
+                            ReferenceEquals(write.Before, Main.mouseItem) ||
+                            write.Account == 0 && CompanionItemRules.Blocked(Payer, CompanionInventoryArea.Inventory, write.Slot, lease) ||
+                            host.OwnerItems?.CompanionPaymentSlotProtected(Payer, write.Items, write.Slot) == true)
+                            return false;
+                    token = lease.NewUseToken();
+                    if (!lease.TryBeginRecovery(ownerSession, PayerWallet.Slots, token)) return false;
+                }
+
+                var held = Actor.Supplies.PaymentSlots;
+                Array.Copy(PatientWallet.Slots, held, held.Length);
+                try
+                {
+                    // Register uncertainty before publication. No external
+                    // calls, scheduler or I/O between these array assignments.
+                    host.pendingNurse[ProfileId] = dataEpoch;
+                    Committed = true;
+                    PatientWallet.Apply();
+                    PayerWallet.Apply();
+                    Paid = PatientWallet.Debited() && PayerWallet.Debited();
+                    return Paid;
+                }
+                finally
+                {
+                    if (Committed && !Paid)
+                        for (int account = 0; account < held.Length; account++)
+                            Actor.Supplies.Unconfirmed[account] |= held[account];
+                    Array.Clear(held, 0, held.Length);
+                    if (token != 0) lease.EndRecovery(ownerSession, PayerWallet.Slots, token, Committed && !Paid);
+                }
+            }
+        }
+    }
+}

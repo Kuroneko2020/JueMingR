@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Input
     internal sealed class HostInputState
     {
         private readonly Func<IntPtr> gameWindow, foregroundWindow;
-        private bool observed, rearming, quarantine, mapped, finalized, nativePermission;
+        private bool observed, rearming, quarantine, mapped, finalized, nativePermission, nativeUiOwnsFrame;
         internal enum ExternalModalPhase { None, ModalOwned, AwaitFocusedNeutral }
         private Guid externalModalRequest;
         internal ExternalModalPhase ExternalModalState { get; private set; }
@@ -114,7 +114,7 @@ namespace JueMingR.TerrariaHost.Input
         internal bool IsFocused { get; private set; }
         internal bool SampleFocused { get { return mapped && IsFocused && nativePermission; } }
         internal bool CanUseInput { get { return SampleFocused && finalized && !quarantine && !ExternalModalBusy; } }
-        internal bool CanStartActions { get { return CanUseInput; } }
+        internal bool CanStartActions { get { return CanUseInput && !nativeUiOwnsFrame; } }
         // UpdateViewZoomKeys runs after mapping but before keyboard finalization.
         // Its only source is the already-filtered native triggers; this grants
         // no permission to later action consumers or to reread physical keys.
@@ -126,7 +126,7 @@ namespace JueMingR.TerrariaHost.Input
         // Input runs before native pause/step checks, so sampling alone is not
         // proof. This gates new consumers, never receipts or retained ownership.
         // Equality also handles the native uint counter wrapping naturally.
-        internal bool CanRunAutomaticActions { get { return !ExternalModalBusy && CanRunOwnedContinuation; } }
+        internal bool CanRunAutomaticActions { get { return !ExternalModalBusy && !nativeUiOwnsFrame && CanRunOwnedContinuation; } }
         // Only an existing exact owner may use this outlet for finite cleanup.
         // It preserves the original gameplay-step gate while a native modal
         // blocks all NEW targets. It is not a general automation permission.
@@ -175,6 +175,7 @@ namespace JueMingR.TerrariaHost.Input
             worldAtBegin = Main.GameUpdateCount;
             UseGesture.BeginUpdate();
             mapped = finalized = nativePermission = false;
+            nativeUiOwnsFrame = false;
             NativeUiTransitionRequest = false;
             RefreshFocus();
             quarantine = !IsFocused || rearming || ExternalModalBusy;
@@ -305,6 +306,30 @@ namespace JueMingR.TerrariaHost.Input
         {
             ConsumeHotkeyActions();
             PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 0;
+        }
+        // The owned native creator is dispatched after this epoch's final
+        // sample. Its text/IME Draw still needs the trusted keyboard, but no
+        // trigger from that dispatch may reach world CopyInto or another action.
+        // This also owns a callback's closing frame after its UI state is gone.
+        internal void ConsumeNativeUiActions()
+        {
+            nativeUiOwnsFrame = true;
+            var pack = PlayerInput.Triggers;
+            var currentKeys = pack.Current.KeyStatus;
+            if (!ReferenceEquals(mappedKeys, currentKeys) || keys.Length != currentKeys.Count)
+            { mappedKeys = currentKeys; keys = new string[currentKeys.Count]; currentKeys.Keys.CopyTo(keys, 0); }
+            Clear(pack.Current); Clear(pack.Old); Clear(pack.JustPressed); Clear(pack.JustReleased);
+            Main.mouseLeft = Main.mouseRight = false;
+            PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = 0;
+            for (int key = 1; key < HotkeyChord.KeyCount; key++) Hotkeys.ConsumePress(key);
+        }
+        internal void RetainNativeUiTail()
+        {
+            // Only the normal game-thread modal retirement uses this outlet.
+            // Held keyboard/mouse keys stay suppressed through physical release;
+            // CLR shutdown must never inspect native UI or physical input.
+            Hotkeys.SuppressHeld();
+            ConsumeNativeUiActions();
         }
         internal void ConsumeCancellation(int key)
         {

@@ -75,8 +75,11 @@ namespace NativeWorldTextProbe
             var shell=Get(context,"Shell");var misc=Get(shell,"MiscUi");var host=Get(context,"Tools");
             var setting=((JueMingR.Features.Tools.ToolSettings[])Get(host,"Settings"))[0];
             var controls=NativeToolsUiChecks.Controls(misc);
+            var expectedBindings=new System.Collections.Generic.List<string>{"tools.capture","tools.herbs","items.coin-deposit.toggle"};
+            if(GetOptional(misc,"AfkRow")!=null)expectedBindings.Add("afk.toggle");
+            if(GetOptional(shell,"Companions")!=null)expectedBindings.Add("companions.manage");
             Require(controls.Where(c=>Get(c,"Command").ToString()=="Hotkey").Select(c=>(string)Get(Get(c,"Element"),"HotkeyTarget"))
-                .OrderBy(x=>x).SequenceEqual(new[]{"tools.capture","tools.herbs","items.coin-deposit.toggle"}.OrderBy(x=>x)),"migrated bindings retain exact original identities");
+                .OrderBy(x=>x).SequenceEqual(expectedBindings.OrderBy(x=>x)),"migrated bindings retain exact original identities and the attached AFK action");
             var on=controls.Single(c=>Get(c,"Command").ToString()=="Tools" && (int)Get(c,"Argument")==1);
             var rect=Get(on,"Rect");var point=new Microsoft.Xna.Framework.Vector2((float)Get(rect,"X")+2,(float)Get(rect,"Y")+2);
             Action<bool,bool,bool> input=(left,current,focused)=>{NativeToolsUiChecks.Mouse(point,left);Call(misc,"ProcessInput",true,new Microsoft.Xna.Framework.Input.KeyboardState(),point,current,focused,false);};
@@ -120,7 +123,11 @@ namespace NativeWorldTextProbe
                 .Concat(((IEnumerable)Get(Get(shell,"ReforgeUi"),"Parts")).Cast<object>().Select(p=>Get(p,"Element")))
                 .Where(e=>GetOptional(e,"Description")!=null).OrderBy(e=>(float)Get(Get(e,"Rect"),"Y"))
                 .Select(e=>(string)Get(e,"Text")).ToArray();
-            Require(labels.SequenceEqual(new[]{"自动重铸","自动挖矿","自动捕捉","自动收获","自动存钱","自动收税"}),
+            var expected=new System.Collections.Generic.List<string>{"自动重铸","自动挖矿","自动捕捉","自动收获","自动存钱"};
+            if(GetOptional(Get(shell,"MiscUi"),"AfkRow")!=null)expected.Add("挂机模式");
+            if(GetOptional(shell,"Companions")!=null)expected.Add("AI 队友");
+            expected.Add("自动收税");
+            Require(labels.SequenceEqual(expected),
                 "actual Misc feature order: "+string.Join(" > ",labels));
             var state=Get(shell,"State");var layout=Get(state,"Layout");
             var merchants=((IEnumerable)Get(layout,"Elements")).Cast<object>().Where(e=>(string)GetOptional(e,"Text")=="游商测试").ToArray();

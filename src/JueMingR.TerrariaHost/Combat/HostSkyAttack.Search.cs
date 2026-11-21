@@ -15,9 +15,10 @@ namespace JueMingR.TerrariaHost.Combat
         private readonly struct LaunchFacts
         {
             internal readonly float A,B,Y;
-            internal LaunchFacts(Player p,int type,Vector2 mounted,bool left)
+            internal LaunchFacts(Player p,Item item,Vector2 mounted,bool left)
             {
-                var delta=mounted-HostAttackModels.LaunchOrigin(p,p.HeldItem);
+                int type=item.type;
+                var delta=mounted-HostAttackModels.LaunchOrigin(p,item);
                 if(type==3065)
                 {
                     // Star Wrath reads Center, whereas the caller's origin is
@@ -34,7 +35,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             Projectile sample;if(ammo==null || !ContentSamples.ProjectilesByType.TryGetValue(ammo.Projectile,out sample))return 16;
             float speed=ammo.Speed*(item.type==2750?.75f:item.type==3570?.5f:1);
-            Vector2 birth,velocity;Launch(player,item.type,HostAttackModels.LaunchOrigin(player,item),npc.Center,speed,out birth,out velocity);
+            Vector2 birth,velocity;Launch(player,item,HostAttackModels.LaunchOrigin(player,item),npc.Center,speed,out birth,out velocity);
             var motion=new AttackMotion(speed,0,0,sample.extraUpdates+1,sample.width,sample.height,sample.timeLeft,componentBirthLimit:sample.aiStyle==1);
             float vx=velocity.X,vy=velocity.Y;motion.Launch(ref vx,ref vy);
             float closing=Math.Max(1,new Vector2(vx,vy).Length()*motion.Updates-npc.velocity.Length());
@@ -102,7 +103,7 @@ namespace JueMingR.TerrariaHost.Combat
                             if(seed>=0){float edge=(seed&1)==0?-1:1;if(seed<2)tx+=edge*(b.Width+motion.Width-2.1f)*.5f;else ty+=edge*(b.Height+motion.Height-2.1f)*.5f;}
                             for(int branch=0;branch<(item.type==65?2:1);branch++)
                             {
-                                var facts=new LaunchFacts(player,item.type,mounted,branch==1);
+                                var facts=new LaunchFacts(player,item,mounted,branch==1);
                                 float q=item.type==4381?.675f:1,denominator=q+(1-q)*facts.A;
                                 float vy=VerticalVelocity(motion,ty-facts.Y,k,speed);
                                 if(float.IsNaN(vy) || Math.Abs(vy)>speed || denominator==0 || item.type!=65 && vy<=0)continue;
@@ -112,7 +113,7 @@ namespace JueMingR.TerrariaHost.Combat
                                 var aim=Quantize(player,item.type,new Vector2((tx-(1-q)*facts.B)/denominator,facts.Y+k*vy));
                                 if(float.IsNaN(aim.X) || float.IsNaN(aim.Y))continue;
                                 if(item.type==65 && (aim.X<player.Left.X+mounted.X-HostAttackModels.LaunchOrigin(player,item).X)!=(branch==1) || item.type!=65 && aim.Y-facts.Y<20)continue;
-                                Vector2 birth,velocity;Launch(player,item.type,mounted,aim,motion.Speed,out birth,out velocity);
+                                Vector2 birth,velocity;Launch(player,item,mounted,aim,motion.Speed,out birth,out velocity);
                                 float actualX=velocity.X,actualY=velocity.Y;motion.Launch(ref actualX,ref actualY);
                                 if(Math.Abs(new Vector2(actualX/q,actualY).Length()-speed)>.003f)continue;
                                 float x=birth.X+k*actualX,y=birth.Y+Vertical(motion,actualY,k);

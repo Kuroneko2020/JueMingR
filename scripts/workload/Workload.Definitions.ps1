@@ -15,11 +15,65 @@ function Get-WorkloadLeafChecks {
     # This asset initializer is also called by the narrow combat fixture.
     # Preserve its worker consumers when adding the explicit combat leaf;
     # the combat scope itself must not inherit the legacy-worker group.
-    $workerAssetConsumers=@('native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
+    $workerAssetConsumers=@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCreationCpu','native-CompanionItemsCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
     foreach($scope in (Get-WorkloadNativeScopes).GetEnumerator()){
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
     $leaves = @{
+        # These leaves are called only by the companion CPU dispatcher. Shared
+        # NativeChecks/Program/fixture inputs retain their existing propagation.
+        'tests/Companions/CompanionCoreChecks.cs'=@('CompanionCoreChecks')
+        'tests/NativeWorldTextProbe/NativeCompanionItemGestureChecks.cs'=@('native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVoidPickupChecks.cs'=@('native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVanityShopChecks.cs'=@('native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionHotkeyFeedbackChecks.cs'=@('native-CompanionConfigVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionCreationChecks.cs'=@('native-CompanionCreationCpu','native-CompanionVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionTeamChecks.cs'=@('native-CompanionNetworkCpu','native-CompanionSuppliesCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionPasswordChecks.cs'=@('native-CompanionPasswordCpu','native-CompanionConfigVisual','native-CompanionFontVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionSupplyChecks.cs'=@('native-CompanionSuppliesCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionItemOnceChecks.cs'=@('native-CompanionSuppliesCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionFurnitureChecks.cs'=@('native-CompanionSuppliesCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionSlotVisualChecks.cs'=@('native-CompanionConfigVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionSupplyMenuChecks.cs'=@('native-CompanionConfigVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionSupplyWireChecks.cs'=@('native-CompanionSuppliesCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNavigationChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNativeCreationChecks.cs'=@('native-CompanionVisual','native-CompanionCreationInputVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionFeedbackChecks.cs'=@('native-CompanionCreationInputVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionFontChecks.cs'=@('native-CompanionFontVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionConfigurationChecks.cs'=@('native-CompanionConfigVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionResourceBarChecks.cs'=@('native-CompanionResourceBarsVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionFancyResourceChecks.cs'=@('native-CompanionResourceBarsVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionPetPreviewChecks.cs'=@('native-CompanionVisual','native-CompanionShowcaseVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionSessionChecks.cs'=@('native-CompanionSessionCpu','native-CompanionVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionChecks.cs'=@('native-CompanionCpu','native-CompanionObservationCombatCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionTileContextChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCoreNetworkChecks.cs'=@('native-CompanionCpu','native-CompanionObservationCombatCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcPhysicsChecks.cs'=@('native-CompanionCpu','native-CompanionObservationCombatCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcStateChecks.cs'=@('native-CompanionCpu','native-CompanionObservationCombatCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcInterestChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcGeometryChecks.cs'=@('native-CompanionCpu','native-CompanionObservationCombatCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcRootChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcBattleChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcShapeChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcMimicChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcArmedChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcBattlePhaseChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcConditionalChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcExplosionChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcHitStateChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcClientChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionNpcLocalStateChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCoreWeaponChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCorePersonalChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionBehaviorChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionContinuousChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionLifecycleChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionPersistenceChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionPredictionChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionTransportChecks.cs'=@('native-CompanionCpu','native-CompanionNetworkCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionUiChecks.cs'=@('native-CompanionCpu','native-CompanionSessionCpu','native-CompanionVisual','native-CompanionCreationInputVisual','native-CompanionPasswordCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionUiV3Checks.cs'=@('native-CompanionVisual')
         'tests/JueMingR.ArchitectureTests/BlueprintHoikSceneChecks.cs'=@('BlueprintHoikSceneChecks')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikChecks.cs'=@('native-BlueprintHoikCpu','native-BlueprintConstructionCpu','native-BlueprintAppearanceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikMixedChecks.cs'=@('native-BlueprintHoikCpu')
@@ -149,7 +203,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintReachAdmissionChecks.cs'=@('native-BlueprintNearQueueCpu')
         # This owner authenticates only actual Content consumers; CPU fixtures
         # keep their original argument and proof projection.
-        'scripts/workload/Workload.NativeContent.ps1'=@('native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','native-NpcReviewedParticle','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
+        'scripts/workload/Workload.NativeContent.ps1'=@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionResourceBarsVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-BlueprintInput','native-NpcInvasionFlight','native-NpcInvasionFlightLoss','native-NpcBetsy','native-NpcDarkMage','native-NpcBloodNautilus','native-NpcTreeBoss','native-NpcReviewedParticle','workload-Evidence','workload-Routing','workload-DevelopmentCandidate','workload-PackageVerification')
         'tests/Workload/Invoke-WorkloadContentChecks.ps1'=@('workload-Evidence')
         'tests/NativeWorldTextProbe/NativeMovementJumpChecks.cs'=@('native-MovementJumpCpu')
         'tests/NativeWorldTextProbe/NativeMovementJumpHandoffChecks.cs'=@('native-MovementJumpCpu')
@@ -170,7 +224,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeJourneyChecks.cs'=@('native-JourneyCpu','native-Journey','native-JourneyCloseCpu','native-RuntimeFailureCpu','native-RuntimeFailureActiveCpu','native-RuntimeFailureToolsCpu','native-RuntimeFailureQuickCpu','native-RuntimeFailureLoansCpu','native-RuntimeFailureWorldCpu','native-JourneySinglePlayerExit')
         'tests/NativeWorldTextProbe/NativeJourneySinglePlayerExitChecks.cs'=@('native-JourneySinglePlayerExit')
         'tests/NativeWorldTextProbe/NativeRenameMapChecks.cs'=@('native-FishingAnglerContinuousCpu','native-FishingCpu','native-JourneySinglePlayerExit')
-        'tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs'=@('native-Journey','native-JourneySinglePlayerExit')
+        'tests/NativeWorldTextProbe/NativeJourneyUiChecks.cs'=@('native-CompanionVisual','native-Journey','native-JourneySinglePlayerExit')
         'tests/NativeWorldTextProbe/NativeJourneyPredictionChecks.cs'=@('native-JourneyPredictionCpu')
         'src/JueMingR.TerrariaHost/Combat/HostAttackControl.cs'=$attackConsumers
         'src/JueMingR.TerrariaHost/Combat/HostAttackWindow.cs'=$attackConsumers
@@ -583,8 +637,9 @@ function Get-WorkloadLeafChecks {
         $leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu','native-AfkModeBackgroundCpu')
     }
     foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-FishingBackgroundRecoveryCpu','native-InventoryStackingCpu','native-AfkOuterBackground')}
-    $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CoinContinuationCpu','native-CoinConsumersCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CoinContinuationCpu','native-CoinConsumersCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
     $leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs'])+@('native-InventoryStackingCpu')
+    foreach($path in @("tests/NativeWorldTextProbe/NativeCombatAimFixture.cs")){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')}
     return $leaves
 }
 function Get-WorkloadNativeScopes {
@@ -593,6 +648,21 @@ function Get-WorkloadNativeScopes {
     # in test-world-object-text. Impact/AimUi/Visual need matching real Content
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
+        'CompanionNetworkCpu'=@('companion-host','shared-host');
+        'CompanionPasswordCpu'=@('companion-host','shared-host');
+        'CompanionSuppliesCpu'=@('companion-host','recovery-host','items','shared-host');
+        'CompanionObservationCombatCpu'=@('companion-host','combat-host','shared-host');
+        'CompanionSessionCpu'=@('companion-host','shared-host','journey-host');
+        'CompanionNavigationCpu'=@('companion-host','shared-host');
+        'CompanionResourceBarsVisual'=@('companion-host','shared-host');
+        'CompanionCreationInputVisual'=@('companion-host','shared-host');
+        'CompanionConfigVisual'=@('companion-host','shared-host');
+        'CompanionFontVisual'=@('companion-host','shared-host');
+        'CompanionShowcaseVisual'=@('companion-host','shared-host');
+        'CompanionVisual'=@('companion-host','shared-host');
+        'CompanionItemsCpu'=@('companion-host','items','shared-host');
+        'CompanionCreationCpu'=@('companion-host','shared-host');
+        'CompanionCpu'=@('companion-host','combat-host','shared-host');
         'AfkModeBackgroundCpu'=@('afk-host','combat-host','tools-host','fishing-host','shared-host');
         'InventoryStackingCpu'=@('items','tools-host','fishing-host','shared-host');
         'CoinContinuationCpu'=@('coin-deposit-host');

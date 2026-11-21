@@ -8,6 +8,7 @@ namespace JueMingR.Platform.Hotkeys
 {
     public sealed class HotkeyDocument
     {
+        public const int MaximumEntries = 256;
         public IReadOnlyList<KeyValuePair<string, string>> Entries { get; }
         public static readonly HotkeyDocument Empty = new HotkeyDocument(new KeyValuePair<string, string>[0]);
         public HotkeyDocument(IEnumerable<KeyValuePair<string, string>> entries)
@@ -15,7 +16,7 @@ namespace JueMingR.Platform.Hotkeys
             var copy = new List<KeyValuePair<string, string>>();
             foreach (var entry in entries)
             {
-                if (!HotkeyAction.ValidId(entry.Key) || entry.Value == null || entry.Value.Length > 128 || copy.Count >= 256) throw PreferenceJson.Invalid();
+                if (!HotkeyAction.ValidId(entry.Key) || entry.Value == null || entry.Value.Length > 128 || copy.Count >= MaximumEntries) throw PreferenceJson.Invalid();
                 copy.Add(entry);
             }
             Entries = copy.AsReadOnly();

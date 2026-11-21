@@ -106,6 +106,40 @@ namespace JueMingR.TerrariaHost.Items
         }
         internal bool Change(ItemAutomationSettings value) { return !stopping && preferences.Set(value); }
         internal bool ControlsEnabled { get { return !stopping && Available && !Feature.HasFailed && Preferences.IsLoaded && Runtime.IsSessionActive && World.Player != null; } }
+        internal bool CompanionSlotProtected(Player player, Item[] array, int slot)
+        {
+            if (!ReferenceEquals(player, World.SessionPlayer) || slot < 0 || slot >= array.Length) return false;
+            if (!ReferenceEquals(array, player.inventory)) return false;
+            return CompanionMainSlotProtected(player, array, slot);
+        }
+
+        internal bool CompanionPaymentSlotProtected(Player player, Item[] array, int slot)
+        {
+            return !World.OwnsSessionPlayer(player) || ReferenceEquals(array, player.inventory) &&
+                (slot == World.ManualSlot || CompanionMainSlotProtected(player, array, slot));
+        }
+
+        private bool CompanionMainSlotProtected(Player player, Item[] array, int slot)
+        {
+            var item = array[slot];
+            // Manual organization does not inherit automation's favorite or
+            // idle-selected-slot exclusions. Real pending/material owners do.
+            return player.inventoryChestStack[slot] || (ConstructionPendingProtected?.Invoke(item) ?? false) ||
+                (World.ProcessingProtection?.Invoke(item) ?? false) || (World.AdditionalProtection?.Invoke(item) ?? false);
+        }
+
+        internal void NotifyManualItemReplacement(Player player, Item[] array, int slot, Item before, Item after)
+        {
+            if (Thread.CurrentThread.ManagedThreadId != ThreadId || !ReferenceEquals(player, World.SessionPlayer) ||
+                slot < 0 || slot >= array.Length || !ReferenceEquals(array[slot], after)) return;
+            // This is the real post-commit event from the independent panel,
+            // never a pickup receipt. Retire only that slot's reception history
+            // and material return duty; no Store/Use/Recovery lease is cleared.
+            Storage.RetireReception(array, slot);
+            World.BeforeManualFallSlot?.Invoke(array, slot);
+            ItemMaterialPreparation.Current?.AfterManualReplacement(before, after, ReferenceEquals(array, player.inventory) && slot < 50);
+            World.InvalidateObservation();
+        }
         internal int[] PickerTypes(ItemListKind list, out bool hasInventoryTypes)
         {
             // Membership and presentation order are separate. One opening reads

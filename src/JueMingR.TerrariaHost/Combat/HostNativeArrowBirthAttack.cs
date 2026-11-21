@@ -13,8 +13,13 @@ namespace JueMingR.TerrariaHost.Combat
     internal static class HostNativeArrowBirthAttack
     {
         internal static bool Weapon(int type){return type==1229 || type==2624 || type==3029 || type==4953;}
-        internal static int EventideStage(Player player,int delay)
-        {int duration=player.itemAnimationMax>0?player.itemAnimationMax:HostMeleeAttack.AnimationDuration(player,player.HeldItem);int animation=player.itemAnimation-delay;return player.itemAnimation<=0 || animation<=0?0:(duration-animation)/2;}
+        private static int EventideStage(Player player,Item weapon,int delay)
+        {
+            if (!ReferenceEquals(player.HeldItem, weapon) || player.itemAnimation <= 0) return 0;
+            int duration=player.itemAnimationMax>0?player.itemAnimationMax:HostMeleeAttack.AnimationDuration(player,weapon);
+            int animation=player.itemAnimation-delay;
+            return animation<=0?0:(duration-animation)/2;
+        }
         private static Vector2 Cursor(Player player,int weapon,Vector2 point)
         {
             // Match the existing actual input exit: sky3029 borrows RAW
@@ -72,7 +77,7 @@ namespace JueMingR.TerrariaHost.Combat
                 else if(p.aiStyle==1)while(p.velocity.X>=16 || p.velocity.X<=-16 || p.velocity.Y>=16 || p.velocity.Y< -16)p.velocity*=.97f;
                 return p;
         }
-        internal static int PreferredRange(Player player,AttackAmmoSnapshot ammo,NPC selected)
+        internal static int PreferredRange(Player player,Item weapon,AttackAmmoSnapshot ammo,NPC selected)
         {
             // The hand's mounted point is not Daedalus's native sky birth.
             // A 16-action source cannot reach an ordinary receiver from -600px;
@@ -80,7 +85,7 @@ namespace JueMingR.TerrariaHost.Combat
             // before the owner could request the next prefix. Schedule useful
             // NPC coverage first, without proving a hit or removing expansion.
             var sample=ContentSamples.ProjectilesByType[ammo.Projectile];
-            var origin=HostAttackModels.LaunchOrigin(player,player.HeldItem);
+            var origin=HostAttackModels.LaunchOrigin(player,weapon);
             if(ammo.WeaponType==3029)
             {
                 // The native sky X is cursor-relative too. Keeping hand X
@@ -92,24 +97,24 @@ namespace JueMingR.TerrariaHost.Combat
                 float x=cursor.X+player.width*.5f-100*Facing(player,origin,cursor,true);
                 origin=new Vector2((x*10+player.Center.X)/11,player.MountedCenter.Y-600);
             }
-            float speed=ammo.Speed;if(ammo.WeaponType==4953 && (ammo.Projectile==932 || EventideStage(player,0)==2))speed*=2;
+            float speed=ammo.Speed;if(ammo.WeaponType==4953 && (ammo.Projectile==932 || EventideStage(player,weapon,0)==2))speed*=2;
             if(sample.aiStyle==1)while(speed>=16)speed*=.97f;
             int updates=sample.extraUpdates+1;if(ammo.ExtraArrowUpdates && sample.arrow)updates=Math.Max(2,updates);
             float closing=Math.Max(1,speed*updates-selected.velocity.Length());
             return Math.Min(NpcPredictionCache.Horizon,Math.Max(16,(int)Math.Ceiling(Vector2.Distance(origin,selected.Center+selected.netOffset)/closing)+8));
         }
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory path,Vector2 origin,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles root,bool launchOriginAdvanced=false)
-        {return Prepare(player,ammo,path,origin,clock,terrain,root,launchOriginAdvanced).Contact;}
-        internal static HostAttackSolution Prepare(Player player,AttackAmmoSnapshot ammo,NpcTrajectory path,Vector2 origin,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles root,bool launchOriginAdvanced=false)
+        {return Prepare(player,player.HeldItem,ammo,path,origin,clock,terrain,root,launchOriginAdvanced).Contact;}
+        internal static HostAttackSolution Prepare(Player player,Item weapon,AttackAmmoSnapshot ammo,NpcTrajectory path,Vector2 origin,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles root,bool launchOriginAdvanced=false)
         {
             if(ammo==null || !Weapon(ammo.WeaponType) || clock.FirstTick<0 || clock.FirstTick>=path.Count)return default(HostAttackSolution);
-            int stage=EventideStage(player,clock.LaunchDelay+(clock.NextWorld?1:0));
+            int stage=EventideStage(player,weapon,clock.LaunchDelay+(clock.NextWorld?1:0));
             var owners=new HostAttackPlayerPrefix(HostAttackPlayerFrame.Capture(Main.player[player.whoAmI],path),terrain,clock.LaunchDelay+2);
             PredictionPlayerMotion motion;if(!owners.TryRead(clock.LaunchDelay+(clock.NextWorld?1:0),out motion))return default(HostAttackSolution);
             var launch=HostMeleeAttack.PlayerCopy(player);HostAttackPlayerFrame.ApplyPose(launch,motion);
             // Preview and the explicit next-hand branch already supply a future
             // origin. Their scene prefix still advances, but not that origin twice.
-            var launchOrigin=launchOriginAdvanced?origin:HostAttackModels.LaunchOrigin(launch,launch.HeldItem)+(origin-HostAttackModels.LaunchOrigin(player,player.HeldItem));
+            var launchOrigin=launchOriginAdvanced?origin:HostAttackModels.LaunchOrigin(launch,weapon)+(origin-HostAttackModels.LaunchOrigin(player,weapon));
             if(ammo.WeaponType==3029)return Sky(launch,ammo,path,launchOrigin,clock,terrain,stage);
             int ordinal=ammo.WeaponType==2624?2:0;
             var result=HostRepresentativeAttack.Prepare(launch,ammo,path,launchOrigin,clock,terrain,aim=>Birth(launch,ammo,launchOrigin,aim,stage,terrain,ordinal));

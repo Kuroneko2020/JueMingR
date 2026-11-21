@@ -33,6 +33,7 @@ namespace JueMingR.Platform.Hotkeys
         public bool CompletionSucceeded { get; private set; }
         public bool CommitUnconfirmed { get; private set; }
         public string LoadError { get; private set; }
+        public IReadOnlyList<KeyValuePair<string, string>> StoredEntries => document.Entries;
         public HotkeyBindings(HotkeyRegistry registry, IPreferenceStorage storage, IDictionary<string, HotkeyChord> missingDefaults = null)
         {
             defaults = missingDefaults == null ? new Dictionary<string, HotkeyChord>(StringComparer.Ordinal) : new Dictionary<string, HotkeyChord>(missingDefaults, StringComparer.Ordinal);
@@ -88,7 +89,7 @@ namespace JueMingR.Platform.Hotkeys
             command = 0; reason = Validate(id, chord); if (reason != null) return false;
             if (Busy) { reason = "上一项还在保存，请稍候。"; return false; }
             bool existing = false; foreach (var entry in document.Entries) if (entry.Key == id) { existing = true; break; }
-            if (!existing && document.Entries.Count >= 256) { reason = "已达到快捷键数量上限，无法新增。"; return false; }
+            if (!existing && document.Entries.Count >= HotkeyDocument.MaximumEntries) { reason = "已达到快捷键数量上限，无法新增。"; return false; }
             // Native overlaps are advisory, including an unavailable profile.
             // Read only for an eligible edit; never during load or dispatch.
             // The warning belongs to this command, not the file or popup lifetime.

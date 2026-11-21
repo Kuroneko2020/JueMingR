@@ -14,6 +14,77 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if(scope=="CompanionFontVisual")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionFontChecks.Run(context,graphics,output);NativeScopeDispatch.Enter("companions-font");},processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_FONT_BASELINE_HOST"));return 0;
+            }
+            if(scope=="CompanionConfigVisual")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionConfigurationChecks.Run(context,graphics,output);NativeScopeDispatch.Enter("companions-config");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionCreationInputVisual")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionNativeCreationChecks.LiveInput(context,graphics,output);NativeScopeDispatch.Enter("companions-creation-input");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionResourceBarsVisual")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionResourceBarChecks.Run(context,graphics,output);NativeScopeDispatch.Enter("companions-resource-bars");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionShowcaseVisual")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionPetPreviewChecks.Showcase(context,graphics,output);NativeScopeDispatch.Enter("companions-showcase");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionNetworkCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCompanionTeamChecks.Run(context);NativeScopeDispatch.Enter("companions-network");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionPasswordCpu" || scope=="CompanionSuppliesCpu" || scope=="CompanionObservationCombatCpu")
+            {
+                Directory.CreateDirectory(output);
+                Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user-"+Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{
+                    if(scope=="CompanionPasswordCpu"){NativeCompanionPasswordChecks.Run(context);NativeScopeDispatch.Enter("companions-password");}
+                    else if(scope=="CompanionSuppliesCpu"){NativeCompanionSupplyChecks.Run(context);NativeScopeDispatch.Enter("companions-supplies");}
+                    else {NativeCompanionChecks.RunObservationCombat(context);NativeScopeDispatch.Enter("companions-observation-combat");}
+                },processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionSessionCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCompanionSessionChecks.Run(context);NativeScopeDispatch.Enter("companions-session");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionNavigationCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCompanionNavigationChecks.Run(context);NativeScopeDispatch.Enter("companions-navigation");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionItemsCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCompanionItemGestureChecks.Run(context);NativeScopeDispatch.Enter("companions-items");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionCreationCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCompanionCreationChecks.Run(context,output);NativeScopeDispatch.Enter("companions-creation");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionVisual")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCompanionCreationChecks.VoicePreview(NativeInformationChecks.Get(context,"Companions"));NativeCompanionCreationChecks.StoredMaxima(NativeInformationChecks.Get(context,"Companions"),output);using(var graphics=new ProbeGraphics(content)){NativeCompanionUiChecks.FullInput(context,graphics,output);NativeCompanionSessionChecks.Journey(context,graphics);}NativeScopeDispatch.Enter("companions-ui");},processing:true,shortFeedback:true);return 0;
+            }
+            if(scope=="CompanionCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context=>{NativeCompanionChecks.Run(context);NativeScopeDispatch.Enter("companions-cpu");},processing:true,shortFeedback:true);return 0;
+            }
             if(scope=="AfkOuterBackground")
             {int result=NativeAfkOuterBackgroundChecks.Run(content,output);if(result==0)NativeScopeDispatch.Enter("afk-outer-background");return result;}
             if(scope=="FishingBackgroundRecoveryCpu")

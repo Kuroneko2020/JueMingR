@@ -68,6 +68,10 @@ function Get-WorkloadRoute {
     foreach ($path in $Paths) {
         $path=$path.Replace('\','/')
         if (Test-WorkloadNonExecutableInput $path) { continue }
+        # The companion's real-order native creator also uses Mouse/Point from
+        # this grouped helper. Add that consumer without replacing its existing
+        # UI/tool routes or the conservative explicit-graphics fallback.
+        if($path -ceq 'tests/NativeWorldTextProbe/NativeToolsUiChecks.cs'){[void]$groups.Add('companion-host')}
         $leaves=@(Get-WorkloadPathChecks $path)
         if ($leaves.Count) {
             # Its explicit combat leaf must retain the existing worker plan,
@@ -78,6 +82,7 @@ function Get-WorkloadRoute {
             continue
         }
         switch -Regex ($path) {
+            '^src/[^/]+/Companions/|^src/JueMingR.TerrariaHost/F5/Companion|^tests/Companions/|^tests/NativeWorldTextProbe/NativeCompanion' { [void]$groups.Add('companion-host'); continue }
             # Deployment changes select package/tool consumers, not every game
             # feature. The production CLR/Setup mechanisms have explicit fixture
             # evidence; Host/Worker edits retain their own routes below. The
@@ -92,7 +97,7 @@ function Get-WorkloadRoute {
             # Material identity shares the one browser catalog. Icon values
             # are now consumed by the browser and both blueprint view modes.
             '^src/JueMingR.TerrariaHost/ItemBrowser/(NativeItemCatalog|NativeMaterialPlacement|NativePlacementNames|HostItemKnowledge)\.cs$' { [void]$groups.Add('browser-host'); [void]$groups.Add('blueprint-host'); continue }
-            '^src/JueMingR.TerrariaHost/Items/(PreparedItemIcons|ItemsRenderer)\.cs$' { [void]$groups.Add('storage-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('blueprint-host'); continue }
+            '^src/JueMingR.TerrariaHost/Items/(PreparedItemIcons|ItemsRenderer)\.cs$' { [void]$groups.Add('storage-host'); [void]$groups.Add('browser-host'); [void]$groups.Add('blueprint-host'); [void]$groups.Add('companion-host'); continue }
             '^tests/Workload/BusinessAssertionProtocol\.cs$' { [void]$groups.Add('shared-host'); continue }
             # Shared graphics/asset fixture is consumed by the native host
             # scopes; its changes do not confer graphical execution evidence.

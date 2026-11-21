@@ -11,6 +11,24 @@ function Assert-Content([bool]$Pass,[string]$Reason){if(!$Pass){throw ('Native C
 function Reject-Content([scriptblock]$Action,[string]$Reason){$rejected=$false;try{& $Action|Out-Null}catch{$rejected=$true};Assert-Content $rejected $Reason}
 function Put-ContentFixture([string]$Relative,[string]$Value){$p=Join-Path $fixture $Relative;[IO.Directory]::CreateDirectory((Split-Path -Parent $p))|Out-Null;[IO.File]::WriteAllText($p,$Value)}
 try{
+    $showcaseAssets=@(Get-WorkloadNativeContentFiles 'CompanionShowcaseVisual')
+    Assert-Content ($showcaseAssets -ccontains 'Images/Projectile_111.xnb' -and $showcaseAssets -ccontains 'Images/Projectile_380.xnb') 'bounded showcase binds both actual native pet textures'
+    Assert-Content ($showcaseAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb' -and $showcaseAssets -cnotcontains 'Images/Armor_Head_3.xnb') 'showcase does not acquire unrelated Journey or original armor-trial consumers'
+    $barAssets=@(Get-WorkloadNativeContentFiles 'CompanionResourceBarsVisual')
+    $inputAssets=@(Get-WorkloadNativeContentFiles 'CompanionCreationInputVisual')
+    $fontAssets=@(Get-WorkloadNativeContentFiles 'CompanionFontVisual')
+    Assert-Content ($fontAssets -ccontains 'Fonts/Mouse_Text.xnb' -and $fontAssets -ccontains 'Images/Inventory_Back.xnb') 'font native window consumer binds original font and skin'
+    Assert-Content ($fontAssets -cnotcontains 'Images/Item_1553.xnb' -and $fontAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb') 'font fixture needs neither SDMG nor unrelated Journey assets'
+    $configAssets=@(Get-WorkloadNativeContentFiles 'CompanionConfigVisual')
+    Assert-Content ($configAssets -ccontains 'Images/Inventory_Back.xnb' -and $configAssets -ccontains 'Fonts/Mouse_Text.xnb') 'native companion configuration binds its actual common skin/font initialization'
+    Assert-Content ($configAssets -ccontains 'Images/Item_1553.xnb') 'configuration fixture actual backpack entrance binds the SDMG sample icon'
+    Assert-Content ($configAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb' -and $configAssets -cnotcontains 'Images/Armor_Head_3.xnb') 'configuration consumer does not acquire Journey or silver trial assets'
+    Assert-Content ($inputAssets -ccontains 'Images/UI/VK_Backspace.xnb' -and $inputAssets -ccontains 'Images/UI/CharCreation/Voice.xnb') 'real-order creation input consumer binds native keyboard and voice control assets'
+    Assert-Content ($inputAssets -ccontains 'Images/UI/PVP_1.xnb' -and $inputAssets -ccontains 'Images/UI/PVP_2.xnb') 'native AI team buttons bind the actual PVP sprite frames and selection border'
+    Assert-Content ($inputAssets -cnotcontains 'Images/UI/Creative/Journey_Toggle.xnb' -and $inputAssets -cnotcontains 'Images/Armor_Head_3.xnb') 'input-only creation does not acquire Journey or silver trial assets'
+    Assert-Content ($barAssets -ccontains 'Images/UI/PlayerResourceSets/FancyClassic/Heart_Right_Fancy.xnb' -and $barAssets -ccontains 'Images/UI/PlayerResourceSets/FancyClassic/Star_C.xnb') 'Fancy native delegates bind their original heart ornament and star assets'
+    Assert-Content ($barAssets -ccontains 'Images/UI/PlayerResourceSets/HorizontalBars/HP_Panel_Right.xnb' -and $barAssets -ccontains 'Images/UI/PlayerResourceSets/HorizontalBars/MP_Fill.xnb') 'bounded resource bars bind the actual original panel and fill textures'
+    Assert-Content ($barAssets -cnotcontains 'Images/Projectile_111.xnb' -and $barAssets -cnotcontains 'Images/Player_Hair_1.xnb') 'resource-only oracle does not acquire character or pet graphics preparation'
     Put-ContentFixture 'external/TerrariaRefs/Terraria.exe' 'identity fixture only; never executed'
     Put-ContentFixture 'original/Terraria.exe' 'identity fixture only; never executed'
     $gameHash=(Get-FileHash (Join-Path $fixture 'original/Terraria.exe')).Hash

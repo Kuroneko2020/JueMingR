@@ -33,9 +33,10 @@ namespace JueMingR.TerrariaHost.Recovery
         internal static bool Missing(Player p,int buff)
         {
             if(buff<=0 || buff>=p.buffImmune.Length || p.buffImmune[buff] || p.CountBuffs()>=Player.maxBuffs)return false;
-            for(int i=0;i<Player.maxBuffs;i++)if(p.buffTime[i]>0 && SameEffect(buff,p.buffType[i]))return false;
-            return true;
+            return !HasEffect(p,buff);
         }
+        internal static bool HasEffect(Player p,int buff)
+        {for(int i=0;i<Player.maxBuffs;i++)if(p.buffTime[i]>0 && SameEffect(buff,p.buffType[i]))return true;return false;}
         internal void Update(Player p,ulong tick)
         {
             var settings=host.Buffs;

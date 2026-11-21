@@ -148,7 +148,7 @@ namespace JueMingR.TerrariaHost.Combat
             {
                 if(HostBetsyFlameAttack.Handles(captured.Projectile))return HostBetsyFlameAttack.PreferredRange(player,captured,Main.npc[target.Slot]);
                 if(HostBottleAttack.Handles(captured.Projectile))return HostBottleAttack.PreferredRange(player,captured,Main.npc[target.Slot]);
-                if(HostNativeArrowBirthAttack.Weapon(item.type))return HostNativeArrowBirthAttack.PreferredRange(player,captured,Main.npc[target.Slot]);
+                if(HostNativeArrowBirthAttack.Weapon(item.type))return HostNativeArrowBirthAttack.PreferredRange(player,item,captured,Main.npc[target.Slot]);
                 if(HostYoyoNavigation.Weapon(item) && combat.Use.ManagedAttackIntent(player))return Math.Min(120,Math.Max(16,(int)Math.Ceiling(Vector2.Distance(player.MountedCenter,Main.npc[target.Slot].Center)/Math.Max(1,captured.Speed))+16));
                 // A registered finite held gun now prepares only at the real
                 // post-NPC pass. Its old generic 16-point action prefix could
@@ -420,7 +420,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             environment=null;obstacles=null;
             if(HostNativeArrowBirthAttack.Weapon(item.type))
-            {return HostNativeArrowBirthAttack.Prepare(player,captured,timeline,start,new HostAttackClock(timeline,beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld,delay),terrain,null,launchOriginAdvanced || preparedPlayer.HasValue).Contact;}
+            {return HostNativeArrowBirthAttack.Prepare(player,item,captured,timeline,start,new HostAttackClock(timeline,beforeNpc?HostAttackPhase.BeforeNpc:HostAttackPhase.CompletedWorld,delay),terrain,null,launchOriginAdvanced || preparedPlayer.HasValue).Contact;}
             if(HostSkyAttack.Handles(item.type))
             {var sky=ContentSamples.ProjectilesByType[captured.Projectile];obstacles=new HostAttackObstacles(player,sky,timeline,delay,beforeNpc,!beforeNpc);return HostSkyAttack.Solve(player,item,captured,timeline,start,age,terrain,beforeNpc,obstacles,delay);}
             if(HostAttachedShotAttack.Handles(captured.Projectile))
