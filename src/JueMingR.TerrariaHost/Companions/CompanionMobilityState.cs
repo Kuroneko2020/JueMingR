@@ -12,11 +12,11 @@ namespace JueMingR.TerrariaHost.Companions
 
     internal struct CompanionMobilitySnapshot
     {
-        internal bool Ready, ReleaseJump, Sliding, DashReady, UnlimitedWings, WingHover, RocketReady, RocketAvailable,
-            Carpet, CarpetReady, MountFly, MountHover, MountUseWings, MountCart, Track, CanChangeGravity,
+        internal bool Ready, ReleaseJump, Sliding, DashReady, DashActive, UnlimitedWings, WingHover, RocketReady, RocketAvailable,
+            Carpet, CarpetAvailable, CarpetReady, MountFly, MountHover, MountUseWings, MountCart, Track, CanChangeGravity,
             Pulley, GrappleAttached, GrappleInFlight, Wet, Lava, Honey, Shimmer, CanSwim, MountSwim, BreathProtected, LavaImmune,
             Controlled, HandBusy, CanUseRod, CanUseCart, DefaultMountFly, DefaultMountHover, CanDismount, UnlimitedMountHover;
-        internal int Width, Height, JumpHeight, JumpTime, ExtraJumps, WallSide, WallGrip, DashType, DashDelay,
+        internal int Width, Height, JumpHeight, JumpTime, ExtraJumps, WallSide, WallGrip, DashType, DashDelay, DashKind,
             Wings, WingTimeMax, RocketBoots, RocketTime, RocketDelay, CarpetTime, MountType, MountFlightTime,
             HookType, Breath, BreathMax, DefaultMountType, DefaultMountSlot, FlightMountType, FlightMountSlot,
             WaterMountType, WaterMountSlot, NarrowMountType, NarrowMountSlot, NarrowMountWidth, NarrowMountHeight, RodSlot, LavaTime;
@@ -42,7 +42,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal uint Started, NextSourceScan;
         internal long SourceGestureRevision;
         internal bool SourceChaos;
-        internal bool DoorNeedsClose, Prepared, HandPressed;
+        internal bool DoorNeedsClose, Prepared, HandPressed, ShapeHandExit;
         internal Item Source;
         internal Item[] SourceItems;
         internal int SourceSlot = -1, PreviousSelection = -1, SourceType, SourceStack;
@@ -113,7 +113,7 @@ namespace JueMingR.TerrariaHost.Companions
             Source = null;
             SourceItems = null;
             SourceSlot = PreviousSelection = -1;
-            DoorNeedsClose = Prepared = HandPressed = false;
+            DoorNeedsClose = Prepared = HandPressed = ShapeHandExit = false;
             Hook = null;
             hooks?.Clear();
         }
@@ -150,6 +150,8 @@ namespace JueMingR.TerrariaHost.Companions
             Observed.DashType = type >= 0 && MountID.Sets.CanDash[type] ? 6 : body.dashType;
             Observed.DashDelay = body.dashDelay;
             Observed.DashReady = Observed.DashType > 0 && body.dashDelay == 0 && !body.controlDash;
+            Observed.DashKind = body.dash;
+            Observed.DashActive = body.dashDelay < 0 || body.dash == 2 && body.eocDash > 0;
             Observed.Wings = body.wingsLogic;
             Observed.WingTime = body.wingTime;
             Observed.WingTimeMax = body.wingTimeMax;
@@ -169,9 +171,15 @@ namespace JueMingR.TerrariaHost.Companions
             Observed.RocketAvailable = body.rocketBoots > 0 && body.CanUseBootFlyingAbilities &&
                 (body.rocketDelay > 0 || body.rocketTime > 0 || body.empressBrooch);
             Observed.RocketReady = Observed.RocketAvailable && (body.rocketDelay > 0 || body.canRocket && body.rocketRelease);
+            ObserveGrapple(body);
             Observed.Carpet = body.carpet;
+            Observed.CarpetAvailable = body.carpet && body.canCarpet;
             Observed.CarpetTime = body.carpetTime;
-            Observed.CarpetReady = body.carpet && (body.gravDir > 0 && body.canCarpet || body.carpetTime > 0);
+            // Grounded readiness only promises a future start. Consumption
+            // also waits for earlier native jump and flight phases to finish.
+            Observed.CarpetReady = body.carpet && !mount.Active && !Observed.GrappleAttached &&
+                Observed.ExtraJumps == 0 && body.jump == 0 && body.velocity.Y != 0f && body.rocketTime == 0 &&
+                body.wingTime == 0f && (Observed.CarpetAvailable || body.carpetTime > 0);
             Observed.MountType = type;
             Observed.MountFly = mount.CanFly(body);
             Observed.MountHover = mount.CanHover();
@@ -184,7 +192,6 @@ namespace JueMingR.TerrariaHost.Companions
             Observed.Track = body.onTrack;
             Observed.CanChangeGravity = !mount.Active && body.forcedGravity == 0 && (body.gravControl || body.gravControl2);
             Observed.Pulley = body.pulley;
-            ObserveGrapple(body);
             Observed.Wet = body.wet;
             Observed.Lava = body.lavaWet;
             Observed.Honey = body.honeyWet;

@@ -123,7 +123,32 @@ namespace JueMingR.TerrariaHost.Companions
             action == CompanionMovementActivation.Hook || action == CompanionMovementActivation.QuickMount ||
             action == CompanionMovementActivation.Dismount || action == CompanionMovementActivation.QuickCart;
 
-        private bool StageMobility(Actor actor, CompanionMobilityFrame frame, bool maintenance)
+        private static bool HandlessMount(int type) => type == MountID.Rat || type == MountID.Bat || type == MountID.Pixie;
+
+        private static bool HandlessShape(Player body) => body.mount.Active && HandlessMount(body.mount.Type);
+
+        private static bool CanLeaveHandlessShape(Player body)
+        {
+            if (!HandlessShape(body) || body.cursed || body.CCed || body.tongued || body.shimmering || body.isLockedToATile ||
+                body.gravDir < 0 || body.stairFall || body.velocity.Y < -.001f || body.velocity.Y > 1f ||
+                body.wet && !body.gills && body.breath < body.breathMax / 3 || !DismountKnown(body)) return false;
+
+            // Native hover uses -.001 Y even when Bat or Pixie is stationary.
+            // Only actual support for the expanded body admits the exit.
+            using (CompanionNavigation.Scratch.Save())
+            {
+                if (!Collision.TryChangingSizeFromBottomCenter(body.Hitbox, 20, 42, out var normal)) return false;
+                var pose = new Vector2(normal.X, normal.Y);
+                var next = pose + new Vector2(body.velocity.X, 0f);
+                var down = new Vector2(0f, 2f);
+                return CompanionMobilityGeometry.ClearBody(pose, normal.Width, normal.Height, 16) &&
+                    CompanionMobilityGeometry.ClearBody(next, normal.Width, normal.Height, 16) &&
+                    Collision.TileCollision(pose, down, normal.Width, normal.Height).Y < down.Y &&
+                    Collision.TileCollision(next, down, normal.Width, normal.Height).Y < down.Y;
+            }
+        }
+
+        private bool StageMobility(Actor actor, CompanionMobilityFrame frame, bool maintenance, bool handNeedsShapeExit, bool attackReady)
         {
             var p = actor.Body;
             var state = actor.Mobility;
@@ -149,18 +174,33 @@ namespace JueMingR.TerrariaHost.Companions
                     p.controlLeft = p.controlRight = p.controlUp = p.controlDown = p.controlJump = false;
                 return false;
             }
+            bool shapeExit = handNeedsShapeExit && !frame.EmergencyHand && !frame.Jump && !frame.Drop && frame.Dash == 0 &&
+                (frame.Activation == CompanionMovementActivation.None || frame.Activation == CompanionMovementActivation.Dismount) &&
+                CanLeaveHandlessShape(p);
+            if (state.ShapeHandExit && state.Result == CompanionMobilityResult.Rejected)
+            {
+                if (shapeExit && state.Target == p.position) return false;
+                if (!shapeExit) state.Result = CompanionMobilityResult.Idle;
+            }
+            if (shapeExit) frame.Activation = CompanionMovementActivation.Dismount;
             if (frame.Activation == CompanionMovementActivation.None) return false;
-            if (state.Sequence == frame.Sequence && state.Action == frame.Activation &&
+            // A hand-driven exit is admitted by the live handless mount.
+            // A previous completed exit could not have left that mount active.
+            // Keep the planner's command deduplication for route actions.
+            if (!shapeExit && !state.ShapeHandExit && state.Sequence == frame.Sequence && state.Action == frame.Activation &&
                 (state.Result == CompanionMobilityResult.Completed || state.Result == CompanionMobilityResult.Rejected)) return false;
 
             state.Sequence = frame.Sequence;
             state.Action = frame.Activation;
-            state.Target = new Vector2(frame.WorldX, frame.WorldY);
+            state.ShapeHandExit = shapeExit;
+            state.Target = shapeExit ? p.position : new Vector2(frame.WorldX, frame.WorldY);
             state.Result = CompanionMobilityResult.Deferred;
             if (!SupplyActorReady(actor) || Main.netMode == 1 && actor.Connection?.Finished != false || p.ghost || p.spectating >= 0 ||
                 p.CCed || p.tongued || p.shimmering || p.isLockedToATile) return false;
             bool hand = IsMobilityHand(state.Action);
-            if (hand && maintenance) return false;
+            // The queued manual use remains the hand owner, including the
+            // native dismount it needs. Other movement actions still defer.
+            if (hand && maintenance && !shapeExit) return false;
             if (hand && (!FreeHand(p) || !p.releaseUseItem))
                 return true; // Take a real release step without cancelling the native animation.
 
@@ -177,11 +217,12 @@ namespace JueMingR.TerrariaHost.Companions
                 case CompanionMovementActivation.QuickMount:
                     if (p.mount.Active || p.gravDir < 0 || p.noItems || p.cursed) return RejectMobility(state);
                     var mount = frame.ItemSlot >= 0 && frame.ItemSlot < CompanionBehavior.MainInventorySlots ? p.inventory[frame.ItemSlot] : p.QuickMount_GetItemToUse();
+                    if (attackReady && mount != null && HandlessMount(mount.mountType)) return false;
                     if (!ValidMountItem(mount) || frame.MountTypePlusOne != 0 && frame.MountTypePlusOne != mount.mountType + 1 ||
                         !KnownMountSpace(p, mount.mountType) || !BindMobilitySource(actor, mount, frame.ItemSlot)) return RejectMobility(state);
                     break;
                 case CompanionMovementActivation.Dismount:
-                    if (!p.mount.Active || !DismountKnown(p) || !p.mount.CanDismount(p)) return RejectMobility(state);
+                    if (!shapeExit && !CanDismountKnown(p)) return RejectMobility(state);
                     break;
                 case CompanionMovementActivation.Rod:
                     int slot = frame.ItemSlot;
@@ -304,6 +345,8 @@ namespace JueMingR.TerrariaHost.Companions
                     using (CompanionHooks.Enter(actor, body.Center)) CompanionHooks.MobilityQuickMount(body);
                     break;
                 case CompanionMovementActivation.Dismount:
+                    if (state.ShapeHandExit ? !CanLeaveHandlessShape(body) : !DismountKnown(body))
+                    { RejectMobility(state); break; }
                     using (CompanionHooks.Enter(actor, body.Center))
                         if (body.mount.TryDismountWithResult(body) != Mount.DismountCheckResult.Succeeded) RejectMobility(state);
                     break;
@@ -414,7 +457,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             state.ObserveBody(body, !FreeHand(body) || ManualHandBusy(actor));
             state.Observed.CanUseCart = !body.mount.Active && body.gravDir > 0 && !state.Observed.Controlled;
-            state.Observed.CanDismount = body.mount.Active && DismountKnown(body) && body.mount.CanDismount(body);
+            state.Observed.CanDismount = CanDismountKnown(body);
             if (state.Result != CompanionMobilityResult.Started) return;
 
             bool done;
@@ -438,12 +481,27 @@ namespace JueMingR.TerrariaHost.Companions
                 case CompanionMovementActivation.Rod: done = false; allowance = 2; break;
                 default: return;
             }
-            if (done) state.Result = CompanionMobilityResult.Completed;
+            if (done)
+            {
+                if (state.ShapeHandExit) state.PositionRevision++;
+                state.Result = CompanionMobilityResult.Completed;
+            }
             else if (Main.GameUpdateCount - state.Started >= allowance) RejectMobility(state);
         }
 
-        private static bool DismountKnown(Player body) => CompanionMobilityGeometry.KnownBox(
-            Vector2.Min(body.TopLeft, body.Bottom - new Vector2(10f, 42f)) - new Vector2(16f), body.BottomRight + new Vector2(16f));
+        private static bool CanDismountKnown(Player body)
+        {
+            if (!body.mount.Active || !DismountKnown(body)) return false;
+            using (CompanionNavigation.Scratch.Save()) return body.mount.CanDismount(body);
+        }
+
+        private static bool DismountKnown(Player body)
+        {
+            // Terraria tests the whole size increase in both directions
+            // before choosing how much of the extra body fits on each side.
+            var margin = new Vector2(16 + Math.Max(0, 20 - body.width), 16 + Math.Max(0, 42 - body.height));
+            return CompanionMobilityGeometry.KnownBox(body.TopLeft - margin, body.BottomRight + margin);
+        }
 
         private static bool KnownMountSpace(Player body, int type)
         {

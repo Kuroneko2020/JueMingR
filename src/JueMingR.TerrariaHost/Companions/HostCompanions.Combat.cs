@@ -157,10 +157,10 @@ namespace JueMingR.TerrariaHost.Companions
             return state.TurretCount<body.maxTurrets;
         }
 
-        private bool LegalResources(Actor a,int slot,Item item,out int manaCost)
+        private bool LegalResources(Actor a,int slot,Item item,out int manaCost,bool afterShapeExit=false)
         {
             manaCost = 0;
-            if (!CompanionItemRules.WeaponEligible(item) || a.Body.noItems || a.Body.CCed ||
+            if (!CompanionItemRules.WeaponEligible(item) || !afterShapeExit && a.Body.noItems || a.Body.CCed ||
                 a.Body.silence && item.mana > 0 || !AttackSourceAvailable(a,slot)) return false;
             var rejected=a.Combat.Rejections[slot];
             if(ReferenceEquals(rejected.Weapon,item) && rejected.Type==item.type && rejected.Prefix==item.prefix && Main.GameUpdateCount<rejected.Until)return false;
@@ -314,11 +314,11 @@ namespace JueMingR.TerrariaHost.Companions
             return result;
         }
 
-        private bool CurrentAttack(Actor a, CompanionAttackChoice choice, out int manaCost, out Vector2 point)
+        private bool CurrentAttack(Actor a, CompanionAttackChoice choice, out int manaCost, out Vector2 point, bool afterShapeExit = false)
         {
             manaCost = 0; point = a.Body.Center;
             return choice.SameWeapon(a.Body) && TargetCurrent(a, choice.Target, choice.TargetGeneration) &&
-                LegalResources(a,choice.Slot,choice.Weapon,out manaCost) &&
+                LegalResources(a,choice.Slot,choice.Weapon,out manaCost,afterShapeExit) &&
                 AttackLine(a, choice, new CompanionShotGeometry(a.Body, choice.Weapon), out point);
         }
 
@@ -358,7 +358,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
 
-        private void ChooseAttacks(Actor a, CompanionBehavior preferences)
+        private void ChooseAttacks(Actor a, CompanionBehavior preferences, bool afterShapeExit)
         {
             var state = a.Combat;
             NearbyTargets(a);
@@ -372,7 +372,7 @@ namespace JueMingR.TerrariaHost.Companions
             int[] main = state.Preferences;
             MapWeaponSlots(a.Body, preferences.MainWeapons, main);
             for (int i = 0; i < preferences.MainWeapons.Length; i++)
-                EvaluateWeapon(a, main[i], ref desired, ref ready, ref probeOrder);
+                EvaluateWeapon(a, main[i], afterShapeExit, ref desired, ref ready, ref probeOrder);
             var preferred = desired;
 
             // Even when the preferred plan needs mana, have a legal fallback
@@ -381,7 +381,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 int retain = state.ReadyChoice.Weapon != null ? state.ReadyChoice.Slot : state.Choice.Weapon != null ? state.Choice.Slot : -1;
                 if (retain >= 0 && Array.IndexOf(main, retain, 0, preferences.MainWeapons.Length) < 0)
-                    EvaluateWeapon(a, retain, ref desired, ref ready, ref probeOrder);
+                    EvaluateWeapon(a, retain, afterShapeExit, ref desired, ref ready, ref probeOrder);
                 int eligible = 0;
                 for (int checkedSlots = 0; checkedSlots < CompanionBehavior.MainInventorySlots && eligible < FallbackWeaponsPerSweep; checkedSlots++)
                 {
@@ -390,7 +390,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if (slot == retain || Array.IndexOf(main, slot, 0, preferences.MainWeapons.Length) >= 0 ||
                         !CompanionItemRules.WeaponEligible(a.Body.inventory[slot])) continue;
                     eligible++;
-                    EvaluateWeapon(a, slot, ref desired, ref ready, ref probeOrder);
+                    EvaluateWeapon(a, slot, afterShapeExit, ref desired, ref ready, ref probeOrder);
                 }
             }
 
@@ -402,7 +402,7 @@ namespace JueMingR.TerrariaHost.Companions
                 var probe = state.Probe;
                 bool mainProbe = Array.IndexOf(main, probe.Slot, 0, preferences.MainWeapons.Length) >= 0;
                 int manaCost;
-                if (LegalResources(a,probe.Slot,probe.Weapon,out manaCost))
+                if (LegalResources(a,probe.Slot,probe.Weapon,out manaCost,afterShapeExit))
                 {
                     if (mainProbe) Prefer(ref preferred, probe);
                     Prefer(ref desired, probe);
@@ -413,12 +413,12 @@ namespace JueMingR.TerrariaHost.Companions
             state.ReadyChoice = ready;
         }
 
-        private void EvaluateWeapon(Actor a, int slot, ref CompanionAttackChoice desired, ref CompanionAttackChoice ready, ref int probeOrder)
+        private void EvaluateWeapon(Actor a, int slot, bool afterShapeExit, ref CompanionAttackChoice desired, ref CompanionAttackChoice ready, ref int probeOrder)
         {
             if (slot < 0) return;
             var weapon = a.Body.inventory[slot];
             int manaCost;
-            if (!LegalResources(a,slot,weapon,out manaCost)) return;
+            if (!LegalResources(a,slot,weapon,out manaCost,afterShapeExit)) return;
             bool missingMana = manaCost > a.Body.statMana;
             var state = a.Combat;
             var geometry = new CompanionShotGeometry(a.Body, weapon);

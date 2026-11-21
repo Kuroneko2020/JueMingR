@@ -56,7 +56,17 @@ namespace NativeWorldTextProbe
                 for(int x=0;x<160;x++)for(int y=0;y<160;y++)Main.tile[x,y]=new Tile();
                 Main.worldSurface=40;Main.bottomWorld=160*16;Main.rightWorld=160*16;
                 CommonMotionSample(host, body, human);
-                if (comparison) return;
+                if (comparison)
+                {
+                    NativeCompanionPlannedMovementChecks.SampleFastMotion(host, actor, body, human);
+                    return;
+                }
+                Exception newScenarioFailure = null;
+                try { NativeCompanionPlannedMovementChecks.Run(host, actor, body, human); }
+                catch (Exception failure) { Console.Error.WriteLine(failure); newScenarioFailure = failure; }
+                try { NativeCompanionShapeHandChecks.Run(host, actor, body, human); }
+                catch (Exception failure) { Console.Error.WriteLine(failure); if (newScenarioFailure == null) newScenarioFailure = failure; }
+                if (newScenarioFailure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(newScenarioFailure).Throw();
                 var probe=new Player{width=20,height=42,active=true,position=new Vector2(1608,1118),gravity=.4f,gravDir=1,maxRunSpeed=3,runAcceleration=.08f,runSlowdown=.2f,maxFallSpeed=10};
                 TileAt(100,72,TileID.Platforms,1);
                 var references=new List<Tuple<int,int,Tile>>();for(int x=94;x<108;x++)for(int y=66;y<77;y++)references.Add(Tuple.Create(x,y,Main.tile[x,y]));

@@ -30,6 +30,13 @@ namespace JueMingR.TerrariaHost.Companions
             return Math.Min(120, flight + jumps * 12 + (mobility.Sliding ? 10 : 0));
         }
 
+        private static int GlideBudget(CompanionMobilitySnapshot mobility)
+        {
+            // CarpetMovement supplies 300 ticks on first use. The local graph
+            // reserves a smaller window, without changing the actual counter.
+            return mobility.CarpetAvailable ? 120 : Math.Min(120, mobility.CarpetTime);
+        }
+
         private static int WorkForCandidate(RouteMotion motion, int candidate)
         {
             switch (candidate)
@@ -42,6 +49,7 @@ namespace JueMingR.TerrariaHost.Companions
                 case 14: case 15: return 16;
                 case 16: case 17: case 18: case 19: case 27: return 9;
                 case 20: case 22: case 23: case 24: case 26: return 32;
+                case 29: case 30: return 152;
                 default: return 4;
             }
         }
@@ -70,10 +78,12 @@ namespace JueMingR.TerrariaHost.Companions
                     case 2: case 3: case 4:
                         if (motion != RouteMotion.Ground && motion != RouteMotion.Rope) return false;
                         if (candidate == 4) step.Direction = 0;
-                        if (motion == RouteMotion.Ground && (step.Direction == 0 && target.Y >= from.Y - 36 ||
-                            step.Direction != 0 && target.Y >= from.Y - 24 &&
+                        float targetHeight = (target.Y - from.Y) * gravity;
+                        if (motion == RouteMotion.Ground && (step.Direction == 0 && targetHeight >= -36 ||
+                            step.Direction != 0 && targetHeight >= -24 &&
                             TryWalkEdge(body, from, step.Direction, search.Terrain, out _))) return false;
-                        if (!TryJumpEdge(body, mobility, from, step.Direction, node.Previous < 0, search.Terrain, out step.To, out step.Duration)) return false;
+                        if (!TryJumpEdge(body, mobility, from, step.Direction, node.Previous < 0, 0, search.Terrain,
+                            out step.To, out step.Duration, out _)) return false;
                         step.Kind = motion == RouteMotion.Rope ? RouteKind.RopeExit : RouteKind.Jump;
                         step.Cost = 32 + Vector2.Distance(step.To, from) * 1.05f;
                         motion = RouteMotion.Ground;
@@ -131,6 +141,15 @@ namespace JueMingR.TerrariaHost.Companions
                             !TryHookRelease(body, from, target, candidate == 28 ? 0 : facing, search.Terrain, ref step)) return false;
                         observe = true;
                         break;
+                    case 29: case 30:
+                        step.Direction = candidate == 29 ? facing : -facing;
+                        if (TryWalkEdge(body, from, step.Direction, search.Terrain, out _) ||
+                            !TryJumpEdge(body, mobility, from, step.Direction, node.Previous < 0, glideFuel, search.Terrain,
+                                out step.To, out step.Duration, out int glideSpend) || glideSpend == 0) return false;
+                        step.Kind = RouteKind.GlideJump;
+                        step.Cost = 58 + Vector2.Distance(step.To, from) + glideSpend * .3f;
+                        glideFuel -= glideSpend;
+                        break;
                 }
             }
             next = new RouteNode { Position = step.To, Motion = motion, Fuel = fuel, GlideFuel = glideFuel, Step = step, Observe = observe };
@@ -183,29 +202,115 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         private bool TryJumpEdge(Player body, CompanionMobilitySnapshot mobility, Vector2 from, int direction, bool root,
-            ReadSet terrain, out Vector2 to, out int hold)
+            int glideFuel, ReadSet terrain, out Vector2 to, out int hold, out int glideSpend)
         {
             to = from;
+            glideSpend = 0;
             hold = mobility.JumpHeight > 0 ? mobility.JumpHeight : jumpHold;
-            if (body.gravDir != 1 || mobility.Wet || mobility.MountCart) return false;
+            if (mobility.MountCart || mobility.Shimmer || mobility.Lava && !mobility.LavaImmune) return false;
+            int gravity = body.gravDir < 0 ? -1 : 1;
             float speed = mobility.JumpSpeed > 0 ? mobility.JumpSpeed : jumpSpeed;
-            var velocity = new Vector2(root ? body.velocity.X : 0, -speed);
+            var velocity = new Vector2(root ? body.velocity.X : 0, -speed * gravity);
             bool holding = true;
+            bool wet = root ? mobility.Wet : WetAt(body, from);
+            if (glideFuel > 0 && wet) return false;
             for (int tick = 0; tick < 90; tick++)
             {
                 if (direction != 0)
                     velocity.X = MathHelper.Clamp(velocity.X + direction * Math.Max(.01f, body.runAcceleration),
                         -Math.Max(1, body.maxRunSpeed), Math.Max(1, body.maxRunSpeed));
                 else velocity.X *= Math.Max(0, 1 - body.runSlowdown);
-                velocity.Y = holding && tick < hold ? -speed : Math.Min(body.maxFallSpeed, velocity.Y + Math.Max(.05f, body.gravity));
-                if (!Move(body, to, velocity, true, true, out var step, terrain)) return false;
-                if (velocity.Y < 0 && step.Velocity.Y >= 0) holding = false;
-                if (step.Wall && step.Velocity.Y >= 0) return false;
+                float stepGravity = mobility.Wet && !wet ? Math.Max(body.gravity, Player.defaultGravity) : body.gravity;
+                float launchSpeed = mobility.Wet && !wet ? Math.Min(speed, 5.01f) : speed;
+                velocity.Y = (holding && tick < hold ? -launchSpeed :
+                    Math.Min(body.maxFallSpeed, velocity.Y * gravity + Math.Max(.05f, stepGravity))) * gravity;
+                if (glideFuel > 0 && tick >= hold && velocity.Y >= 0)
+                    return TryGlideLanding(body, from, to, direction, glideFuel, terrain, out to, out glideSpend);
+                if (!MoveJump(body, to, velocity, wet, out var step, terrain)) return false;
+                if (velocity.Y * gravity < 0 && step.Velocity.Y * gravity >= 0) holding = false;
+                if (step.Wall && step.Velocity.Y * gravity >= 0) return false;
                 to = step.Position; velocity = step.Velocity;
                 if (step.Ground && tick > 0)
-                    return to.Y <= from.Y + 48 && (direction == 0 ? to.Y < from.Y - 12 : direction * (to.X - from.X) >= 24);
+                    return (to.Y - from.Y) * gravity <= 48 &&
+                        (direction == 0 ? (to.Y - from.Y) * gravity < -12 : direction * (to.X - from.X) >= 24);
+                if (wet || mobility.Wet) wet = WetAt(body, to);
             }
             return false;
+        }
+
+        private static bool TryGlideLanding(Player body, Vector2 launch, Vector2 from, int direction, int fuel,
+            ReadSet terrain, out Vector2 to, out int spent)
+        {
+            to = from;
+            spent = 0;
+            // A dry carpet cancels descent, but adds no ascent. Require an open descent to
+            // loaded ground before the search can choose the takeoff.
+            Vector2 across = new Vector2(direction * 12, 0);
+            float down = Math.Min(150, launch.Y - from.Y + 48);
+            float planningSpeed = Math.Max(.1f, body.maxRunSpeed * .75f);
+            int landingSteps = 30;
+            for (int i = 1; i <= 18; i++)
+            {
+                int updates = 8 + (int)Math.Ceiling(i * 12 / planningSpeed);
+                if (updates > fuel || !Swept(body, from, across, terrain)) return false;
+                from += across;
+                if (i < 3 || !TryGlideDescent(body, from, down, terrain, ref landingSteps, out Vector2 contact)) continue;
+                if (!Swept(body, contact, across, terrain) || !Surface(body, contact + across, terrain)) continue;
+                to = contact;
+                spent = updates;
+                return true;
+            }
+            return false;
+        }
+
+        private static bool TryGlideDescent(Player body, Vector2 from, float depth, ReadSet terrain, ref int steps, out Vector2 to)
+        {
+            to = from;
+            bool support = false;
+            int left = (int)from.X / 16, right = (int)(from.X + body.width - .01f) / 16;
+            int top = (int)(from.Y + body.height) / 16, bottom = (int)(from.Y + body.height + depth) / 16;
+            for (int y = top; !support && y <= bottom; y++) for (int x = left; x <= right; x++)
+            {
+                if (!terrain.Record(x, y)) return false;
+                Tile tile = Main.tile[x, y];
+                if (tile.active() && !tile.inActive() && (Main.tileSolid[tile.type] || Main.tileSolidTop[tile.type])) support = true;
+            }
+            if (!support) return false;
+            // TileCollision only enumerates neighbors of the starting body.
+            // A single long vector cannot see a ledge well below the apex.
+            while (depth > 0 && steps > 0)
+            {
+                steps--;
+                Vector2 delta = new Vector2(0, Math.Min(12, depth));
+                if (!Footprint(body, to, delta, terrain)) return false;
+                Vector2 actual = Collision.TileCollision(to, delta, body.width, body.height);
+                to += actual;
+                if (actual.Y < delta.Y) return SolidForBody(body, to, terrain) && Surface(body, to, terrain) && !WetAt(body, to);
+                depth -= actual.Y;
+            }
+            return false;
+        }
+
+        private static bool WetAt(Player body, Vector2 position)
+        { return Collision.WetCollision(position, body.width, body.height); }
+
+        private static bool MoveJump(Player body, Vector2 from, Vector2 velocity, bool wet, out Step step, ReadSet terrain)
+        {
+            if (!wet && body.gravDir > 0) return Move(body, from, velocity, true, true, out step, terrain);
+            step = default(Step);
+            if (!Footprint(body, from, velocity, terrain)) return false;
+            int gravity = body.gravDir < 0 ? -1 : 1;
+            Vector2 actual = Collision.TileCollision(from, velocity, body.width, body.height, gravity < 0, gravity < 0, gravity);
+            // WetCollision scales unobstructed displacement, while collision
+            // still receives the unscaled velocity and owns contact velocity.
+            float scale = !wet || body.ignoreWater || body.merman || body.trident ? 1 : body.honeyWet ? .25f : .5f;
+            var displacement = new Vector2(actual.X == velocity.X ? actual.X * scale : actual.X,
+                actual.Y == velocity.Y ? actual.Y * scale : actual.Y);
+            step.Position = from + displacement;
+            step.Velocity = actual;
+            step.Wall = Math.Abs(actual.X - velocity.X) > .1f;
+            step.Ground = velocity.Y * gravity > 0 && (velocity.Y - actual.Y) * gravity > 0;
+            return SolidForBody(body, step.Position, terrain);
         }
 
         private static bool TryDropEdge(Player body, Vector2 from, int direction, ReadSet terrain, out Vector2 to)
@@ -241,7 +346,7 @@ namespace JueMingR.TerrariaHost.Companions
                 ascent ? node.Previous < 0 && mobility.Sliding ? -Math.Sign(mobility.WallSide) : 0 : facing;
             step.Vertical = ascent ? -gravity : descent ? gravity : 0;
             step.Duration = mobility.Honey ? 24 : wet ? 16 : 9;
-            bool glide = advance && !wet && !hold && mobility.CarpetReady && glideFuel >= step.Duration;
+            bool glide = advance && !wet && !hold && (mobility.CarpetReady || mobility.CarpetAvailable) && glideFuel >= step.Duration;
             // Budget is a conservative reachability filter. Native consumers
             // check again and observe the actual burn/edge every update.
             if (wet && ascent && !mobility.CanSwim && !mobility.MountSwim) return false;
@@ -471,7 +576,7 @@ namespace JueMingR.TerrariaHost.Companions
                 bool narrow = motion == RouteMotion.Ground && mobility.NarrowMountType >= 0 && direction != 0 &&
                     !TryWalkEdge(body, body.position, direction, null, out _) && NarrowLane(body, mobility, direction);
                 bool running = mobility.DefaultMountType >= 0 && motion == RouteMotion.Ground &&
-                    Math.Abs(target.X - body.position.X) >= 270 && DashLane(body, direction);
+                    Math.Abs(target.X - body.position.X) >= 270 && SupportedLane(body, direction, 80, steps: false, out _);
                 if (mobility.HandBusy || (!flight || motion != RouteMotion.Ground) && !running && !water && !narrow ||
                     unchecked(Main.GameUpdateCount - postureChangedAt) < 90 && postureChangedAt != 0) return false;
                 step.Kind = RouteKind.Mount;

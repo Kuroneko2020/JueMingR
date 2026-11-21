@@ -9,12 +9,12 @@ namespace JueMingR.TerrariaHost.Companions
     {
         private const int SliceLimit = 160;
         private const int LocalNodes = 768;
-        private const int RouteCandidates = 29;
+        private const int RouteCandidates = 31;
         private enum RouteMotion : byte { Ground, Air, Rope, Track, Liquid, Hooked }
         private enum RouteKind : byte
         {
             Walk, Jump, Drop, Descend, Ascend, AirAcross, Rope, RopeExit, Track, Swim,
-            Hook, ReleaseHook, Mount, Dismount, Cart, Door, Rod, Pylon, Portal, FlipGravity, Teleporter
+            Hook, ReleaseHook, Mount, Dismount, Cart, Door, Rod, Pylon, Portal, FlipGravity, Teleporter, GlideJump
         }
 
         private struct RouteStep
@@ -137,7 +137,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (!search.Active || changed || moved || targetMoved)
             {
                 int window = search.Exhausted && !moved && !targetMoved && !changed ? Math.Min(1024, search.Window * 2) : 256;
-                search.Begin(body.position, target, root, FlightBudget(mobility), mobility.CarpetReady ? Math.Min(120, mobility.CarpetTime) : 0, window, capabilities);
+                search.Begin(body.position, target, root, FlightBudget(mobility), GlideBudget(mobility), window, capabilities);
 #if DEBUG
                 RouteSearchStarts++;
 #endif
@@ -197,6 +197,13 @@ namespace JueMingR.TerrariaHost.Companions
                 if (!search.Add(next)) continue;
                 int index = search.Nodes.Count - 1;
                 if (Estimate(next.Position, target) + 12 < Estimate(search.Nodes[search.Closest].Position, target)) search.Closest = index;
+                if (next.Step.Kind == RouteKind.GlideJump && Estimate(search.Origin, target) - Estimate(next.Position, target) >= 96)
+                {
+                    // The far-bank landing is proved by this edge. Start the
+                    // crossing without also requiring the owner's final path.
+                    FinishSearch(index, target, confirmedPrefix: true);
+                    return;
+                }
                 if (!observe && next.Motion == RouteMotion.Ground &&
                     Math.Abs(search.Origin.Y - target.Y) - Math.Abs(next.Position.Y - target.Y) >= 48 &&
                     Estimate(search.Origin, target) - Estimate(next.Position, target) >= 32)
@@ -233,6 +240,7 @@ namespace JueMingR.TerrariaHost.Companions
                 result = result * 31 + mobility.FlightMountType; result = result * 31 + mobility.WaterMountType;
                 result = result * 31 + mobility.Wings; result = result * 31 + mobility.HookType;
                 result = result * 31 + mobility.RocketBoots; result = result * 31 + mobility.Carpet.GetHashCode();
+                result = result * 31 + mobility.CarpetAvailable.GetHashCode();
                 return result * 31 + mobility.CanUseRod.GetHashCode();
             }
         }
@@ -253,6 +261,9 @@ namespace JueMingR.TerrariaHost.Companions
                 case 22: case 23: case 26: return node.Previous < 0;
                 case 24: return node.Previous < 0 && mobility.CanUseRod;
                 case 25: case 28: return node.Previous < 0 && node.Motion == RouteMotion.Hooked;
+                case 29: case 30: return node.Motion == RouteMotion.Ground && node.GlideFuel > 0 && mobility.CarpetAvailable &&
+                    !mobility.Wet && mobility.GravityDirection > 0 && mobility.MountType < 0 &&
+                    mobility.ExtraJumps == 0 && mobility.WingTime == 0 && !mobility.RocketAvailable;
                 default: return true;
             }
         }

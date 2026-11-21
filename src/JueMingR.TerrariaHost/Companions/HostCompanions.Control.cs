@@ -41,24 +41,36 @@ namespace JueMingR.TerrariaHost.Companions
             if(a.Mobility.Generation!=a.Generation)a.Mobility.Reset(a.Generation);
             a.Mobility.ObserveGrapple(p);
             if(planning || !a.Mobility.Observed.Ready)RefreshMobilitySources(a);
+            bool handless = HandlessShape(p);
             bool manualSupply = mobilityHand || RunCompanionItemOnce(a);
-            if (!manualSupply) TryCompanionLife(a);
-            if(behavior.AttackEnabled && planning && !p.noItems && !p.CCed)ChooseAttacks(a,behavior);
+            var manualCommand = a.Supplies.Once;
+            if (!manualSupply || handless && manualCommand != null && manualCommand.Kind != CompanionSupplyKind.Life)
+                TryCompanionLife(a);
+            bool afterShapeExit = handless && !p.cursed && !p.CCed;
+            if(behavior.AttackEnabled && planning && (!p.noItems || afterShapeExit) && !p.CCed)
+                ChooseAttacks(a,behavior,afterShapeExit);
             if(!behavior.AttackEnabled)combat.Reset();
             var chosen=combat.Choice;
             Vector2 point=Vector2.Zero;
             int manaCost=0;
-            bool valid=behavior.AttackEnabled && CurrentAttack(a,chosen,out manaCost,out point);
-            bool clearOpening=valid, waitingForMana=false;
-            int heldSlot=CompanionHeldSlot(a, includeAutomatic: !manualSupply);
+            bool valid=behavior.AttackEnabled && !handless && CurrentAttack(a,chosen,out manaCost,out point);
+            // Prospective equipment and aim can ask for a shape change.
+            // Only the later ordinary hand check can stage the attack itself.
+            bool attackAfterExit = afterShapeExit && behavior.AttackEnabled &&
+                (CurrentAttack(a,chosen,out int futureCost,out _,afterShapeExit: true) &&
+                    (futureCost <= p.statMana || behavior.ManaRecoveryEnabled || CanNativeMana(a)) ||
+                 CurrentAttack(a,combat.ReadyChoice,out futureCost,out _,afterShapeExit: true) && futureCost <= p.statMana);
+            bool clearOpening=valid || attackAfterExit, waitingForMana=false;
+            int heldSlot=handless || p.noItems || p.CCed || p.cursed ? -1 : CompanionHeldSlot(a, includeAutomatic: !manualSupply);
             bool buff=!manualSupply && heldSlot<0 && CompanionBuffPending(a);
             var pursuit=combat.Pursuit;
             var movementTarget=TargetCurrent(a,pursuit.Target,pursuit.TargetGeneration)?pursuit.Target:null;
-            var frame=a.Behavior.DecideMobility(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening || valid,pursuit.Weapon,a.Mobility);
+            var frame=a.Behavior.DecideMobility(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening,pursuit.Weapon,a.Mobility);
             // Urgent movement may use the next legal hand edge before queued
             // automatic buffs or growth. The manual command keeps its own turn,
             // and StageMobility still waits for any actual native hand tail.
-            mobilityHand=StageMobility(a,frame,manualSupply || !frame.EmergencyHand && (heldSlot>=0 || buff)) || mobilityHand;
+            mobilityHand=StageMobility(a,frame,manualSupply || !frame.EmergencyHand && (heldSlot>=0 || buff),
+                handless && (manualCommand != null || attackAfterExit), valid && !manualSupply) || mobilityHand;
 
             // A pending exclusive maintenance action owns the release edge.
             // ItemCheck and live projectiles finish their normal animation and

@@ -91,7 +91,7 @@ namespace JueMingR.TerrariaHost.Companions
             { Valid=false;body=current;world=Main.ActiveWorldFileData;position=current.position;velocity=current.velocity;capabilities=cap;Reads.Clear(); }
         }
         private struct Step { internal Vector2 Position, Velocity; internal bool Ground, Wall, Known; }
-        private struct Scratch : IDisposable
+        internal struct Scratch : IDisposable
         {
             private bool up, down, stair, fall, slope, honey, shimmer, mine;
             internal static Scratch Save() { return new Scratch { up=Collision.up, down=Collision.down, stair=Collision.stair, fall=Collision.stairFall,

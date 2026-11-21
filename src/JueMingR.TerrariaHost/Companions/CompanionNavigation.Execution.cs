@@ -2,6 +2,7 @@ using System;
 using JueMingR.TerrariaHost.Movement;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Companions
 {
@@ -36,6 +37,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 if (motion == RouteMotion.Ground && !lava)
                 {
+                    if (body.dashDelay < 0) return new CompanionMobilityFrame { Status = status };
                     int move = direction;
                     if (move == 0 || !QuickWalk(body, move, out _))
                         move = direction != 0 && QuickWalk(body, -direction, out _) ? -direction : 0;
@@ -203,6 +205,14 @@ namespace JueMingR.TerrariaHost.Companions
             }
 
             int threshold = advancing ? stopDistance : resumeDistance;
+            if (motion == RouteMotion.Ground && mobility.DashActive && body.dashDelay < 0)
+            {
+                using (Scratch.Save())
+                {
+                    advancing = true;
+                    return ContinueDash(body, mobility.DashKind, goal, threshold);
+                }
+            }
             if (routeIndex < route.Count && (Math.Abs(goal.X - routeGoal.X) > 120 || Math.Abs(goal.Y - routeGoal.Y) > 72))
             {
                 // Keep an accepted jump/traction until a real safe transition.
@@ -244,10 +254,10 @@ namespace JueMingR.TerrariaHost.Companions
                     QuickWalk(body, direction, out bool wall))
                 {
                     advancing = true;
-                    // A wide, supported run lane permits the real dash. Short
-                    // approaches and dynamic obstacles continue using native braking.
+                    // The launch update itself uses vanilla's full impulse.
+                    // The remaining lane must permit braking with neutral input.
                     if (!wall && Math.Abs(goal.X - body.position.X) > 240 && allowPlanning && mobility.DashReady &&
-                        DashLane(body, direction))
+                        CanStartDash(body, mobility.DashType, direction))
                         return new CompanionMobilityFrame { Move = direction, Dash = direction, Status = "冲刺中" };
                     return new CompanionMobilityFrame { Move = direction, Status = "移动中" };
                 }
@@ -290,24 +300,71 @@ namespace JueMingR.TerrariaHost.Companions
         {
             wall = false;
             if (direction == 0) return false;
-            float along = Math.Max(0, body.velocity.X * direction);
-            float braking = Math.Min(28, along * along / Math.Max(.14f, 2 * body.runSlowdown));
-            int checks = (int)(braking / 6) + 1;
+            float along = body.velocity.X * direction;
+            float ahead = 0;
+            float nextSpeed = Math.Max(0, along + body.runAcceleration);
+            if (along > 0 && !TryStopDistance(body, nextSpeed, 0, out ahead)) return false;
+            if (along < 0 && (!TryStopDistance(body, -along, 0, out float behind) ||
+                !SupportedLane(body, -direction, behind, steps: true, out _, proveBrakingSurface: behind >= 24))) return false;
+            return SupportedLane(body, direction, ahead + Math.Max(6, nextSpeed), steps: true, out wall, proveBrakingSurface: ahead >= 24);
+        }
+
+        private static bool SupportedLane(Player body, int direction, float distance, bool steps, out bool wall, bool proveBrakingSurface = false)
+        {
+            wall = false;
+            if (distance <= 0) return true;
             Vector2 position = body.position;
-            if (!InPlayableBounds(body, position + new Vector2(direction * Math.Max(6, braking), 0))) return false;
-            for (int i = 0; i < checks; i++)
+            if (!InPlayableBounds(body, position + new Vector2(direction * distance, 0))) return false;
+            if (distance >= 16 && TryFlatLane(body, direction * distance, proveBrakingSurface)) return true;
+            int stride = steps ? 6 : 8;
+            while (distance > 0)
             {
-                if (body.gravDir < 0)
+                float advance = Math.Min(stride, distance);
+                distance -= advance;
+                if (body.gravDir < 0 || !steps)
                 {
-                    Vector2 delta = new Vector2(direction * 6, 0);
+                    Vector2 delta = new Vector2(direction * advance, 0);
                     if (!Swept(body, position, delta, null) || !Surface(body, position + delta, null)) return false;
                     position += delta;
+                    if (proveBrakingSurface && !SteadyBrakingSurface(body, position)) return false;
                     continue;
                 }
-                if (!Move(body, position, new Vector2(direction * 6, Math.Max(.1f, body.gravity)), true, true, out var step)) return false;
+                if (!Move(body, position, new Vector2(direction * advance, Math.Max(.1f, body.gravity)), true, true, out var step)) return false;
                 if (step.Wall) { wall = true; return false; }
                 position = step.Position;
                 if (!step.Ground && !Surface(body, position, null)) return false;
+                if (proveBrakingSurface && !SteadyBrakingSurface(body, position)) return false;
+            }
+            return true;
+        }
+
+        private static bool TryFlatLane(Player body, float delta, bool proveBrakingSurface)
+        {
+            bool upright = body.gravDir > 0;
+            float supportY = body.position.Y + (upright ? body.height : 0);
+            int edge = (int)Math.Round(supportY / 16);
+            if (Math.Abs(edge * 16 - supportY) > .001f || body.wet) return false;
+            int floor = upright ? edge : edge - 1;
+            int top = upright ? (int)Math.Floor(body.position.Y / 16) : edge;
+            int bottom = upright ? edge - 1 : (int)Math.Floor((body.position.Y + body.height - .01f) / 16);
+            int left = (int)Math.Floor((body.position.X + Math.Min(0, delta)) / 16);
+            int right = (int)Math.Floor((body.position.X + Math.Max(0, delta) + body.width - .01f) / 16);
+            // On an aligned, unbroken slab the swept box and its support can
+            // be proved from one tile rectangle. Slopes, ledges and moving
+            // surfaces stay on the native per-step geometry path below.
+            for (int x = left; x <= right; x++)
+            {
+                if (!Loaded(x, floor)) return false;
+                Tile support = Main.tile[x, floor];
+                if (!support.active() || support.inActive() || support.slope() != 0 || support.halfBrick() ||
+                    !Main.tileSolid[support.type] || Main.tileSolidTop[support.type] || ChangesGroundSpeed(body, support.type) && proveBrakingSurface)
+                    return false;
+                for (int y = top; y <= bottom; y++)
+                {
+                    if (!Loaded(x, y)) return false;
+                    Tile cell = Main.tile[x, y];
+                    if (cell.liquid > 0 || cell.active() && !cell.inActive() && (Main.tileSolid[cell.type] || Main.tileSolidTop[cell.type])) return false;
+                }
             }
             return true;
         }
@@ -319,16 +376,81 @@ namespace JueMingR.TerrariaHost.Companions
                 position.Y >= Main.topWorld + 640 && position.Y <= Main.bottomWorld - 640;
         }
 
-        private static bool DashLane(Player body, int direction)
+        private static bool CanStartDash(Player body, int dash, int direction)
         {
-            Vector2 from = body.position;
-            for (int i = 1; i <= 5; i++)
+            float impulse;
+            switch (dash)
             {
-                var next = body.position + new Vector2(direction * 16 * i, 0);
-                if (!Swept(body, from, next - from, null) || !Surface(body, next, null)) return false;
-                from = next;
+                case 1: case 5: impulse = 16.9f; break;
+                case 2: impulse = 14.5f; break;
+                case 3: impulse = 21.9f; break;
+                // The mount dash also launches the body upwards. Its track
+                // and mounted movement stay in their native route handlers.
+                default: return false;
+            }
+            if (body.wet || body.velocity.Y != 0 || body.windPushed || body.trackBoost != 0) return false;
+            return TryStopDistance(body, impulse, dash, out float braking) &&
+                SupportedLane(body, direction, impulse + braking + 6, steps: false, out _, proveBrakingSurface: true);
+        }
+
+        private static CompanionMobilityFrame ContinueDash(Player body, int dash, Vector2 goal, int stopDistance)
+        {
+            int direction = Math.Sign(body.velocity.X);
+            float speed = Math.Abs(body.velocity.X);
+            // Keep one more held update and its neutral stop inside known
+            // ground. A shield hit can change speed, so use the latest body.
+            if (direction != 0 && (goal.X - body.position.X) * direction > stopDistance + speed &&
+                TryStopDistance(body, speed, dash, out float braking) &&
+                SupportedLane(body, direction, speed + braking + 6, steps: false, out _, proveBrakingSurface: true))
+                return new CompanionMobilityFrame { Move = direction, Status = "冲刺中" };
+            return new CompanionMobilityFrame { Status = "减速中" };
+        }
+
+        private static bool SteadyBrakingSurface(Player body, Vector2 position)
+        {
+            int y = (int)((position.Y + (body.gravDir > 0 ? body.height + 1 : -1)) / 16);
+            int left = (int)(position.X / 16), right = (int)((position.X + body.width - .01f) / 16);
+            // FloorVisuals changes native acceleration/friction for these
+            // surfaces. The rest of a dash cannot assume today's coefficients.
+            for (int x = left; x <= right; x++)
+            {
+                var tile = Main.tile[x, y];
+                if (tile.active() && !tile.inActive() && ChangesGroundSpeed(body, tile.type))
+                    return false;
             }
             return true;
+        }
+
+        private static bool ChangesGroundSpeed(Player body, int type)
+        {
+            return TileID.Sets.IceSkateSlippery[type] || type == 197 || type == 198 || type == 229 ||
+                type == TileID.MinecartTrack || TileID.Sets.ConveyorDirection[type] != 0 ||
+                body.desertBoots && (TileID.Sets.Conversion.Sand[type] || TileID.Sets.Conversion.Sandstone[type]);
+        }
+
+        private static bool TryStopDistance(Player body, float speed, int dash, out float distance)
+        {
+            distance = 0;
+            float slowdown = body.runSlowdown;
+            if (!(slowdown > 0) || body.windPushed || body.trackBoost != 0 || float.IsInfinity(speed) || float.IsNaN(speed)) return false;
+            float runSpeed = Math.Max(body.accRunSpeed, body.maxRunSpeed);
+            bool strongerDecay = dash == 2 || dash == 3;
+            float fastThreshold = dash == 3 ? 14 : 12;
+            // HorizontalMovement applies the neutral ground friction before
+            // DashMovement damps overspeed or snaps back to ordinary running.
+            // Failure to prove a stop inside this window never admits a dash.
+            for (int tick = 0; speed > 0 && tick < 96; tick++)
+            {
+                speed = Math.Max(0, speed - slowdown);
+                if (dash > 0 && speed > 0)
+                {
+                    if (speed > fastThreshold) speed *= strongerDecay ? .985f : .992f;
+                    else if (speed > runSpeed) speed *= strongerDecay ? .94f : .96f;
+                    else { speed = runSpeed; dash = 0; }
+                }
+                distance += speed;
+            }
+            return speed == 0;
         }
 
         private bool ExecuteStep(Player body, CompanionMobilityState state, CompanionMobilitySnapshot mobility,
@@ -341,7 +463,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (Vector2.DistanceSquared(progressPosition, body.position) > 4)
             { progressPosition = body.position; noProgress = 0; }
             else noProgress++;
-            if (age > 150 || noProgress > 24 && !actionStarted && !jumpAccepted) return false;
+            if (age > (step.Kind == RouteKind.GlideJump ? 190 : 150) || noProgress > 24 && !actionStarted && !jumpAccepted) return false;
 
             using (Scratch.Save())
             {
@@ -356,12 +478,16 @@ namespace JueMingR.TerrariaHost.Companions
                         if (motion != RouteMotion.Ground || !QuickWalk(body, direction, out _)) return false;
                         frame.Move = direction;
                         return true;
-                    case RouteKind.Jump: case RouteKind.RopeExit:
+                    case RouteKind.Jump: case RouteKind.RopeExit: case RouteKind.GlideJump:
+                        bool glide = step.Kind == RouteKind.GlideJump;
+                        if (glide && !jumpStarted && (!mobility.CarpetAvailable || mobility.Wet)) return false;
                         if (!jumpStarted)
                         {
                             if (motion != RouteMotion.Ground && motion != RouteMotion.Rope) return false;
                             frame.Status = "跨越障碍";
+                            if (motion == RouteMotion.Ground && body.velocity.Y != 0 && !mobility.Sliding) return true;
                             if (!mobility.ReleaseJump && !body.autoJump && motion != RouteMotion.Rope) return true;
+                            if (!NextClear(body, 0, -(int)body.gravDir)) return false;
                             jumpStarted = frame.Jump = true; frame.Move = direction;
                             actionOrigin = body.position;
                             return true;
@@ -372,10 +498,20 @@ namespace JueMingR.TerrariaHost.Companions
                             if (!jumpAccepted) return false;
                         }
                         if (motion == RouteMotion.Ground)
-                        { finished = Math.Abs(vertical) <= 24 && (direction == 0 || along <= 32); return false; }
+                        { finished = (!glide || actionStarted) && Math.Abs(vertical) <= 24 && (direction == 0 || along <= 32); return false; }
                         frame.Move = along > 4 && NextClear(body, direction, 0) ? direction : 0;
-                        frame.Jump = mobility.JumpTime > 0 && body.velocity.Y * body.gravDir < 0 && NextClear(body, 0, -1);
+                        frame.Jump = mobility.JumpTime > 0 && body.velocity.Y * body.gravDir < 0 && NextClear(body, 0, -(int)body.gravDir);
                         frame.Status = "跳跃中";
+                        if (glide && !frame.Jump && mobility.JumpTime == 0)
+                        {
+                            if (!actionStarted && body.carpetFrame >= 0 && mobility.CarpetTime > 0) actionStarted = true;
+                            if (frame.Move != 0 && (actionStarted || body.velocity.Y >= -mobility.Gravity) && mobility.CarpetReady)
+                            {
+                                frame.Jump = true;
+                                frame.Status = "滑翔中";
+                            }
+                            else if (!actionStarted && along > 4 && body.velocity.Y > 2 * mobility.Gravity) return false;
+                        }
                         return true;
                     case RouteKind.Drop: case RouteKind.Descend:
                         if (motion == RouteMotion.Ground && age > 1 && vertical < 6) { finished = true; return false; }

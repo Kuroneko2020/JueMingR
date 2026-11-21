@@ -69,7 +69,9 @@ namespace JueMingR.TerrariaHost.Companions
             var body = actor.Body;
             kind = null;
             reason = null;
-            if (!SupplyActorReady(actor) || body.ghost || body.spectating >= 0 || body.noItems || body.CCed || body.cursed)
+            bool canWaitForShapeExit = !portable && HandlessShape(body);
+            if (!SupplyActorReady(actor) || body.ghost || body.spectating >= 0 || body.cursed ||
+                !canWaitForShapeExit && (body.noItems || body.CCed))
             { reason = "队友当前无法使用物品。"; return false; }
             if (slot < 0 || slot >= 50 || body.inventory[slot]?.IsAir != false)
             { reason = "请选择队友主背包中的物品。"; return false; }
@@ -254,6 +256,10 @@ namespace JueMingR.TerrariaHost.Companions
                 Feedback = reason ?? "物品或队友状态已变化，本次使用已取消。";
                 return false;
             }
+            // Keep the exact source until the movement scheduler makes room.
+            // Even QuickHeal's native item check can refuse while a handless
+            // shape cannot dismount, so the manual command is still pending.
+            if (HandlessShape(actor.Body)) return true;
             if (!admittedKind.HasValue || admittedKind == CompanionSupplyKind.Growth) return true;
             state.Once = null;
             UseQuick(actor, admittedKind.Value, command.Source, manual: true);
