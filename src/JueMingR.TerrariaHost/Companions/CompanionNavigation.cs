@@ -236,10 +236,12 @@ namespace JueMingR.TerrariaHost.Companions
                 return WalkOutcome.Clear;
             }
         }
+        // Combat must see the same imminent wall that stops normal walking.
+        private const int WalkProbeDistance = 6;
         internal static bool Wall(Player body,int direction)
         {
             if(direction==0 || !Ordinary(body))return false;
-            using(Scratch.Save()) { Step step; return Move(body,body.position,new Vector2(direction*4,body.gravity),!body.controlDown && !body.stairFall,true,out step) && step.Wall; }
+            using(Scratch.Save()) { Step step; return Move(body,body.position,new Vector2(direction*WalkProbeDistance,body.gravity),!body.controlDown && !body.stairFall,true,out step) && step.Wall; }
         }
         private int Capabilities(Player body)
         {

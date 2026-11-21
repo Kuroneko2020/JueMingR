@@ -82,9 +82,13 @@ namespace NativeWorldTextProbe
 
                 PlaceShape(host, actor, body, human, MountID.Pixie, 84);
                 Require(Queue(host, id, ThrowSlot) && !Queue(host, id, ThrowSlot), "menu's manual item entry takes one exact source while transformed");
+                object acceptedManual = Get(Get(actor, "Supplies"), "Once");
+                body.AddBuff(BuffID.Cursed, 60);
                 for (int i = 0; i < 12; i++) Step(host, body);
-                Require(body.mount.Active && body.noItems && body.inventory[ThrowSlot].stack == 4,
-                    "queued item and held animation wait while normal size is obstructed");
+                Require(body.cursed && body.mount.Active && body.noItems && body.inventory[ThrowSlot].stack == 4 &&
+                    ReferenceEquals(acceptedManual, GetOptional(Get(actor, "Supplies"), "Once")),
+                    "same admitted use waits through real curse and obstructed normal body size");
+                body.ClearBuff(BuffID.Cursed);
                 var throwSlots = CurrentShots(body, ProjectileID.Shuriken);
                 human.Center = new Vector2(108 * 16f, Floor * 16f - 21);
                 for (int i = 0; i < 130 && body.inventory[ThrowSlot].stack == 4; i++) Step(host, body);
@@ -133,7 +137,7 @@ namespace NativeWorldTextProbe
                 human.position = humanPosition;
                 Call(host, "SetBehavior", id, preferences);
             }
-            Console.WriteLine("PASS native companion handless forms: Rat crossed a low tunnel before firing, Pixie kept one manual use until clear, Bat waited for crowd control to clear, open-space QuickHeal used its original native path.");
+            Console.WriteLine("PASS native companion handless forms: Rat crossed a low tunnel before firing, Pixie kept one manual use through curse until clear, Bat waited for crowd control to clear, open-space QuickHeal used its original native path.");
         }
 
         private static void PlaceShape(object host, object actor, Player body, Player human, int type, int x)

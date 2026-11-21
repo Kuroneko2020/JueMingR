@@ -306,7 +306,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (along > 0 && !TryStopDistance(body, nextSpeed, 0, out ahead)) return false;
             if (along < 0 && (!TryStopDistance(body, -along, 0, out float behind) ||
                 !SupportedLane(body, -direction, behind, steps: true, out _, proveBrakingSurface: behind >= 24))) return false;
-            return SupportedLane(body, direction, ahead + Math.Max(6, nextSpeed), steps: true, out wall, proveBrakingSurface: ahead >= 24);
+            return SupportedLane(body, direction, ahead + Math.Max(WalkProbeDistance, nextSpeed), steps: true, out wall, proveBrakingSurface: ahead >= 24);
         }
 
         private static bool SupportedLane(Player body, int direction, float distance, bool steps, out bool wall, bool proveBrakingSurface = false)
@@ -316,7 +316,7 @@ namespace JueMingR.TerrariaHost.Companions
             Vector2 position = body.position;
             if (!InPlayableBounds(body, position + new Vector2(direction * distance, 0))) return false;
             if (distance >= 16 && TryFlatLane(body, direction * distance, proveBrakingSurface)) return true;
-            int stride = steps ? 6 : 8;
+            int stride = steps ? WalkProbeDistance : 8;
             while (distance > 0)
             {
                 float advance = Math.Min(stride, distance);
@@ -425,7 +425,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             return TileID.Sets.IceSkateSlippery[type] || type == 197 || type == 198 || type == 229 ||
                 type == TileID.MinecartTrack || TileID.Sets.ConveyorDirection[type] != 0 ||
-                body.desertBoots && (TileID.Sets.Conversion.Sand[type] || TileID.Sets.Conversion.Sandstone[type]);
+                body.desertBoots && (TileID.Sets.Conversion.Sand[type] || TileID.Sets.Conversion.Sandstone[type] ||
+                    TileID.Sets.Conversion.HardenedSand[type]);
         }
 
         private static bool TryStopDistance(Player body, float speed, int dash, out float distance)
@@ -488,6 +489,9 @@ namespace JueMingR.TerrariaHost.Companions
                             if (motion == RouteMotion.Ground && body.velocity.Y != 0 && !mobility.Sliding) return true;
                             if (!mobility.ReleaseJump && !body.autoJump && motion != RouteMotion.Rope) return true;
                             if (!NextClear(body, 0, -(int)body.gravDir)) return false;
+                            // A walk prefix may outlive its far bank. Check
+                            // the landing again at the actual takeoff input.
+                            if (glide && !GlideLandingClear(body, step.To, new Vector2(direction * 12, 0), null)) return false;
                             jumpStarted = frame.Jump = true; frame.Move = direction;
                             actionOrigin = body.position;
                             return true;

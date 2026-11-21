@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ID;
@@ -10,6 +11,9 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCompanionPlannedMovementChecks
     {
+        private const int RemovableBank = 84, BankFloor = 78;
+        private static Player bankProbeBody;
+        private static int bankRemovalTick;
         internal static void SampleFastMotion(object host, object actor, Player body, Player human)
         {
             var armor = (Item[])body.armor.Clone();
@@ -66,6 +70,7 @@ namespace NativeWorldTextProbe
                 SupportedWaterTakeoff(host, actor, body, human, previousTiles.Keys);
                 InvertedTakeoff(host, actor, body, human, previousTiles.Keys);
                 CarpetLanding(host, actor, body, human, previousTiles.Keys);
+                CarpetLosesBank(host, actor, body, human, previousTiles.Keys);
             }
             finally
             {
@@ -131,11 +136,32 @@ namespace NativeWorldTextProbe
                 { firstBrake = i; brakingSpeed = priorSpeed; }
                 if (i < 30) dashTrace.Add($"{i}:{body.position.X:F1}/{body.velocity.X:F1}/{body.dashDelay}/{(body.controlRight ? 'R' : '-')}");
             }
-            Console.WriteLine($"NAV DASH RUNWAY firstDash={firstDash} peak={peak:F2} firstBrake={firstBrake} brakingSpeed={brakingSpeed:F2} farthest={furthestOnRunway:F2} lip={runwayLip}");
+            Console.WriteLine($"NAV DASH RUNWAY firstDash={firstDash} peak={peak:F2} firstBrake={firstBrake} brakingSpeed={brakingSpeed:F2} farthest={furthestOnRunway:F2} newLip={runwayLip - 16}");
             if (firstDash < 0 || firstBrake < 0) Console.WriteLine(string.Join(" ", dashTrace));
             Require(firstDash >= 0 && peak >= 14 && firstBrake == 4 && brakingSpeed > 12 &&
                 furthestOnRunway > 58 * 16 + 160 && furthestOnRunway < runwayLip - 16 && body.position.Y <= 76 * 16 - body.height + 3,
                 "a long supported runway permits a native dash and releases it while fast enough to require real braking room before its cliff");
+
+            Setup(host, actor, body, human, area, 58, 76, ItemID.EoCShield);
+            body.armor[4] = new Item(ItemID.SandBoots);
+            Fill(50, 70, 76);
+            for (int x = 50; x <= 62; x++) Main.tile[x, 76].type = TileID.HardenedSand;
+            Fill(95, 113, 76);
+            Warm(host, body);
+            float sandSlowdown = body.runSlowdown;
+            Require(body.desertBoots && body.runningOnSand && sandSlowdown > .3f,
+                "actual Dunerider movement raises braking friction on hardened sand");
+            human.position = AtGround(human, 100, 76);
+            bool stone = false, launchedAcross = false;
+            for (int i = 0; i < 135; i++)
+            {
+                Step(host, body);
+                stone |= body.position.X >= 63 * 16 && !body.runningOnSand && body.runSlowdown < sandSlowdown;
+                launchedAcross |= body.dashDelay < 0;
+            }
+            Console.WriteLine($"NAV DASH SAND slowdown={sandSlowdown:F2}/{body.runSlowdown:F2} crossed={stone} dash={launchedAcross} final={body.position}");
+            Require(stone && !launchedAcross && body.position.X < 71 * 16 && body.position.Y <= 76 * 16 - body.height + 3,
+                "hardened sand friction cannot justify a dash that must stop on lower-friction stone before the gap");
         }
 
         private static void SupportedWaterTakeoff(object host, object actor, Player body, Player human, IEnumerable<Point> area)
@@ -236,6 +262,48 @@ namespace NativeWorldTextProbe
             Console.WriteLine($"NAV CARPET GAP ordinaryMax={ordinaryMax:F2} width={(destination - lip) * 16} jump={jump} glide={glide} spent={spent} landed={landed} body={body.position}");
             Require(jump >= 0 && glide > jump && spent >= 12 && landed > glide,
                 "production chooses a normal jump, starts and consumes the actual carpet, then lands on the far shore");
+        }
+
+        private static void CarpetLosesBank(object host, object actor, Player body, Player human, IEnumerable<Point> area)
+        {
+            const int lip = 70;
+            Setup(host, actor, body, human, area, 66, BankFloor, ItemID.FlyingCarpet);
+            Fill(54, lip - 1, BankFloor);
+            Fill(RemovableBank, 109, BankFloor);
+            Fill(lip, RemovableBank - 1, 110);
+            Warm(host, body);
+            human.position = AtGround(human, 93, BankFloor);
+            object movement = Get(Get(actor, "Behavior"), "navigation");
+            var observer = new Harmony("JueMingR.Tests.PlannedCarpetBank");
+            var execute = AccessTools.Method(movement.GetType(), "ExecuteStep");
+            bankProbeBody = body;
+            bankRemovalTick = -1;
+            bool jumped = false;
+            float furthest = body.position.X;
+            int origin = (int)Main.GameUpdateCount;
+            observer.Patch(execute, prefix: new HarmonyMethod(typeof(NativeCompanionPlannedMovementChecks), nameof(RemoveBankBeforeGlide)));
+            try
+            {
+                for (int tick = 0; tick < 260; tick++)
+                {
+                    Step(host, body);
+                    jumped |= body.controlJump && body.velocity.Y < 0;
+                    furthest = Math.Max(furthest, body.position.X);
+                }
+            }
+            finally { observer.Unpatch(execute, HarmonyPatchType.Prefix, observer.Id); bankProbeBody = null; }
+            Console.WriteLine($"NAV CARPET BANK removedBeforeTakeoff={bankRemovalTick - origin} airborneJump={jumped} farthest={furthest:F2} lip={lip * 16}");
+            Require(bankRemovalTick >= origin && !jumped && furthest < lip * 16 && body.carpetTime == 0,
+                "the production action rechecks the missing far shore before sending the carpet takeoff input");
+        }
+
+        private static void RemoveBankBeforeGlide(object[] __args)
+        {
+            if (bankRemovalTick >= 0 || !ReferenceEquals(__args[0], bankProbeBody) || Get(__args[4], "Kind").ToString() != "GlideJump") return;
+            // Change actual terrain after production has picked a glide edge,
+            // while leaving the plan, inputs and real Player.Update in charge.
+            for (int x = RemovableBank; x <= 109; x++) Main.tile[x, BankFloor] = new Tile();
+            bankRemovalTick = (int)Main.GameUpdateCount;
         }
 
         private static void Setup(object host, object actor, Player body, Player human, IEnumerable<Point> area, int x, int y, int accessory = 0)

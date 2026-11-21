@@ -255,12 +255,18 @@ namespace JueMingR.TerrariaHost.Companions
                 if (updates > fuel || !Swept(body, from, across, terrain)) return false;
                 from += across;
                 if (i < 3 || !TryGlideDescent(body, from, down, terrain, ref landingSteps, out Vector2 contact)) continue;
-                if (!Swept(body, contact, across, terrain) || !Surface(body, contact + across, terrain)) continue;
+                if (!GlideLandingClear(body, contact, across, terrain)) continue;
                 to = contact;
                 spent = updates;
                 return true;
             }
             return false;
+        }
+
+        private static bool GlideLandingClear(Player body, Vector2 contact, Vector2 across, ReadSet terrain)
+        {
+            return SolidForBody(body, contact, terrain) && Surface(body, contact, terrain) && !WetAt(body, contact) &&
+                Swept(body, contact, across, terrain) && Surface(body, contact + across, terrain);
         }
 
         private static bool TryGlideDescent(Player body, Vector2 from, float depth, ReadSet terrain, ref int steps, out Vector2 to)
@@ -285,7 +291,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if (!Footprint(body, to, delta, terrain)) return false;
                 Vector2 actual = Collision.TileCollision(to, delta, body.width, body.height);
                 to += actual;
-                if (actual.Y < delta.Y) return SolidForBody(body, to, terrain) && Surface(body, to, terrain) && !WetAt(body, to);
+                if (actual.Y < delta.Y) return true;
                 depth -= actual.Y;
             }
             return false;

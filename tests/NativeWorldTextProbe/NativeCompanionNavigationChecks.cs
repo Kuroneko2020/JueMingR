@@ -61,12 +61,6 @@ namespace NativeWorldTextProbe
                     NativeCompanionPlannedMovementChecks.SampleFastMotion(host, actor, body, human);
                     return;
                 }
-                Exception newScenarioFailure = null;
-                try { NativeCompanionPlannedMovementChecks.Run(host, actor, body, human); }
-                catch (Exception failure) { Console.Error.WriteLine(failure); newScenarioFailure = failure; }
-                try { NativeCompanionShapeHandChecks.Run(host, actor, body, human); }
-                catch (Exception failure) { Console.Error.WriteLine(failure); if (newScenarioFailure == null) newScenarioFailure = failure; }
-                if (newScenarioFailure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(newScenarioFailure).Throw();
                 var probe=new Player{width=20,height=42,active=true,position=new Vector2(1608,1118),gravity=.4f,gravDir=1,maxRunSpeed=3,runAcceleration=.08f,runSlowdown=.2f,maxFallSpeed=10};
                 TileAt(100,72,TileID.Platforms,1);
                 var references=new List<Tuple<int,int,Tile>>();for(int x=94;x<108;x++)for(int y=66;y<77;y++)references.Add(Tuple.Create(x,y,Main.tile[x,y]));
@@ -119,6 +113,10 @@ namespace NativeWorldTextProbe
                 NativeAttackChoice(host,actor,body,human);
                 NativeAirEscape(host,actor,body,human,id);
                 NativePetAndEventItems(host,body);
+                // Keep the real arrows and thrown items from the shape checks
+                // out of the preceding native combat simulation.
+                NativeCompanionPlannedMovementChecks.Run(host, actor, body, human);
+                NativeCompanionShapeHandChecks.Run(host, actor, body, human);
                 NativePaladinShare(host,body,human);
                 Console.WriteLine("PASS companion navigation: native slope/halfbrick/platform contact, continuous uphill, cliff/drop, scratch/tile identity, bounded dependency cache and actual update landing-direction retirement. No historical exact terrain/Steam/FPS claim.");
             }
