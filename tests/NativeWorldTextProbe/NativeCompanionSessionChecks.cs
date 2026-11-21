@@ -143,10 +143,24 @@ namespace NativeWorldTextProbe
                 var beforeHuman=Get(borrowedProbe,"SessionIdentity");human.immune=false;human.immuneTime=0;Array.Clear(human.hurtCooldowns,0,human.hurtCooldowns.Length);
                 human.Hurt(PlayerDeathReason.ByCustomReason("isolated actual human death"),99999,0);Call(context,"UpdateRuntime");
                 Require(human.dead && ReferenceEquals(beforeHuman,Get(borrowedProbe,"SessionIdentity")) && Equals(generation,Get(runtime,"Generation")),"actual classic human death alone is not a new character session");
+                CheckCommandsDuringOwnerDeath(context,host,first,a,b,human);
+                long oldActivation=(long)Call(host,"ActivationGeneration",first),oldSession=(long)Get(host,"CreationSessionToken");
+                long epoch=Profile(host,first).DataEpoch;
                 Main.ActiveWorldFileData=new WorldFileData(System.IO.Path.Combine(Terraria.Program.SavePath,"real-world-change.wld"),false){UniqueId=Guid.NewGuid(),WorldId=8221,CreationTime=DateTime.UtcNow};
                 Call(context,"UpdateRuntime");
                 Require(!ReferenceEquals(beforeHuman,Get(borrowedProbe,"SessionIdentity")) && !Equals(generation,Get(runtime,"Generation")) && Call(host,"Owned",b)==null,"actual world identity edge still ends old actors and creates a new generation");
                 if(journey!=null)Require(!(bool)Get(journey,"IsActive"),"true world change still ends old Journey ownership");
+                NativeQuickItemChecks.Until(()=>
+                {
+                    Call(context,"UpdateRuntime");
+                    return !(bool)Call(host,"IsJoined",first) && (bool)Call(profiles,"IsSaved",first);
+                });
+                Require((bool)Call(host,"Join",first),"normal world retirement saves deployed actor and allows a fresh join without manual recall");
+                var returned=(Player)Call(host,"GetBody",first);
+                Require(!ReferenceEquals(a,returned) && oldActivation!=(long)Call(host,"ActivationGeneration",first) &&
+                    !(bool)Call(host,"WeaponSelectionCurrent",first,oldSession,oldActivation,epoch,a) &&
+                    Profile(host,first).Behavior.MainWeapons.Single().SlotHint==24 && returned.inventory[23].stack==1,
+                    "current activation keeps the saved item result and preference while rejecting the previous world's draft");
                 Console.WriteLine("PASS native Hurt/KillMe -> public UpdateRuntime -> respawn, human identity/world counterexamples, auto-off/countdown/re-enable and saved weapon preference/native team; JourneyActive="+(journey!=null)+" nativeFrames="+frames+"; human disk writer intentionally excluded, no installed-game/Steam/FPS claim.");
             }
             finally
@@ -154,6 +168,27 @@ namespace NativeWorldTextProbe
                 borrowedProbe=null;dying=null;Main.ActiveWorldFileData=world;
                 Call(host,"OnSessionEnded");isolation.UnpatchAll(isolation.Id);
             }
+        }
+
+        private static void CheckCommandsDuringOwnerDeath(object context,object host,Guid id,Player body,Player other,Player human)
+        {
+            var settings=Profile(host,id).Behavior;
+            settings.HealthRecoveryEnabled=false;settings.AllowNurse=false;
+            Require((bool)Call(host,"SetBehavior",id,settings),"owner death still allows teammate behavior configuration");
+            body.inventory[23].SetDefaults(ItemID.HealingPotion);body.inventory[23].stack=2;
+            body.inventory[24].SetDefaults(ItemID.CopperShortsword);
+            body.statLife=40;body.potionDelay=0;
+            var gesture=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionItemGesture",true);
+            Require(!(bool)Call(host,"ItemGesture",id,false,CompanionInventoryArea.Inventory,23,Enum.Parse(gesture,"Left")),
+                "dead human cannot drag the teammate's real inventory into a transfer");
+            Require((bool)Call(host,"UseItemOnce",id,CompanionInventoryArea.Inventory,23),"dead human can request a living teammate's eligible potion");
+            for(int i=0;i<4;i++)Step(context,body,other);
+            Require(human.dead && body.statLife>40 && body.inventory[23].stack==1 &&
+                human.inventory.All(item=>item?.type!=ItemID.HealingPotion),"actual teammate QuickHeal consumes exactly one owned potion while human remains dead");
+            int held=body.selectedItem;
+            Require((bool)Call(host,"TrySetMainWeapons",id,(long)Get(host,"CreationSessionToken"),(long)Call(host,"ActivationGeneration",id),
+                Profile(host,id).DataEpoch,body,new[]{new CompanionWeaponPreference(ItemID.CopperShortsword,body.inventory[24].prefix,24)}) && body.selectedItem==held,
+                "dead human can save the teammate's main weapon preference without changing what either holds");
         }
     }
 }

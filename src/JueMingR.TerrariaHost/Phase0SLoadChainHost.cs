@@ -511,7 +511,7 @@ namespace JueMingR.TerrariaHost
             PostfixContext context = postfixContext;
             F5Shell shell = context == null ? null : context.Shell;
             try { return Volatile.Read(ref hookCommitted) != 1 || context == null || context.RuntimeFailed || shell == null || shell.AllowNpcHover(); }
-            catch { if (shell != null) shell.FailClosed(); return true; }
+            catch (Exception exception) { if (shell != null) shell.FailClosed("npc-hover",exception); return true; }
         }
 
         private static void Postfix(List<GameInterfaceLayer> ____gameInterfaceLayers)
@@ -654,10 +654,10 @@ namespace JueMingR.TerrariaHost
                 f5LayersReady = true;
                 if (postfixContext != null && postfixContext.Shell != null) postfixContext.Shell.LayersReady = true;
             }
-            catch
+            catch (Exception exception)
             {
                 f5LayersReady = false;
-                if (postfixContext != null && postfixContext.Shell != null) postfixContext.Shell.FailClosed();
+                if (postfixContext != null && postfixContext.Shell != null) postfixContext.Shell.FailClosed("install-layers",exception);
             }
         }
 
@@ -1015,7 +1015,8 @@ namespace JueMingR.TerrariaHost
                 var hotkeys = hotkeyPackage ? new Hotkeys.HostHotkeys(gameDirectory, runtime, preferences, items, Labels, WorldTargets, WorldObjects,
                     informationPackage ? Information : null, () => Shell != null && Shell.CanAdjustInformation, () => Shell?.RequestInformationAdjustment(), Guidance, DeathRecords, MapFeatures, Footprints, Browser == null ? (Func<bool>)null : Browser.CanAnnounce, Browser == null ? (Action<HotkeyChord>)null : Browser.Announce, Browser == null ? (Func<bool>)null : Browser.CanQuery, Browser == null ? (Action<HotkeyChord>)null : Browser.Query, Browser?.Announcements, QuickItems, CoinDeposit, Recovery, Processing, ShortFeedback, Tools, Fishing, Combat, CombatObservation, Journey, hiddenAccess, () => Shell?.ToggleJourneyFromHotkey(), Movement, Blueprint, View, CombatExperiments, Afk, Companions == null ? (Func<bool>)null : () => Shell != null && Shell.CanToggleCompanionsFromHotkey, Companions == null ? (Action<HotkeyChord>)null : chord => Shell?.ToggleCompanionsFromHotkey(chord)) : null;
                 hotkeyFeedback = hotkeys?.Feedback;
-                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements, hiddenAccess) { LayersReady = f5LayersReady };
+                Shell = new F5Shell(runtime, preferences, notes, items, Input, hotkeys, Labels, WorldTargets, WorldObjects, Information, Guidance, DeathRecords, MapFeatures, Footprints, Browser?.Announcements, hiddenAccess)
+                { LayersReady = f5LayersReady, FailureReport = new F5FailureReport(gameDirectory) };
                 if (Blueprint != null) { Blueprint.Shell = Shell; Shell.AttachBlueprint(Blueprint); }
                 if (Journey != null) Shell.AttachJourney(Journey);
                 if (View != null) Shell.AttachView(View);
@@ -1141,7 +1142,7 @@ namespace JueMingR.TerrariaHost
                 // Main.UpdateUIStates precedes DoUpdate_HandleInput in .8.
                 // Only our exact native creator defers that early dispatch;
                 // flush it once after final sampling, before any world action.
-                if (!RuntimeFailed) F5.CompanionCreationSession.FlushNativeUpdate(Companions);
+                if (!RuntimeFailed) F5.CompanionCreationSession.FlushNativeUpdate(Shell);
             }
 
             internal void UpdateShell()

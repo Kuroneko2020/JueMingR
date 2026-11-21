@@ -249,7 +249,7 @@ namespace JueMingR.TerrariaHost.F5
             set
             {
                 CompanionUi?.Close();companions=value;
-                CompanionUi=value==null?null:new CompanionWindow(value,inputState,State.Layout.DynamicTextSize);
+                CompanionUi=value==null?null:new CompanionWindow(value,inputState,State.Layout.DynamicTextSize) { CreationShell=this };
                 if (CompanionUi != null && hotkeys?.CompanionSettings != null)
                 {
                     CompanionUi.HotkeyClicked = OpenCompanionHotkey;
@@ -397,6 +397,8 @@ namespace JueMingR.TerrariaHost.F5
         private bool nativeControlPriorInterface;
         private bool failed, failureNotified, positionRestored, failureCleanupAttempted;
         internal Exception CleanupFailure { get; private set; }
+        internal F5FailureReport FailureReport { get; set; }
+        internal bool OwnsCompanionCreation => !failed && !biome.SharedRuntime.HasFailed && biome.SharedRuntime.IsSessionActive;
         private bool adjustmentPending;
         private long adjustmentRequest;
         private Matrix matrix;
@@ -775,7 +777,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void BeforeInput()
-        { if (biome.SharedRuntime.HasFailed) { FailClosed(); return; } try { CompanionUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); hotkeys?.PollHiddenRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && BlueprintMaterialsUi?.Visible != true); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MiscUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && !SecondaryModalVisible); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
+        { if (biome.SharedRuntime.HasFailed) { FailClosed(); return; } try { CompanionUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); hotkeys?.PollHiddenRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && BlueprintMaterialsUi?.Visible != true); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MiscUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && !SecondaryModalVisible); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch (Exception exception) { FailClosed("before-input",exception); } }
 
         internal void ProcessInput()
         {
@@ -1057,7 +1059,7 @@ namespace JueMingR.TerrariaHost.F5
                     gameplay, admit: admitHotkey);
                 QuickItems?.AfterDispatch(gameplay);
             }
-            catch { FailClosed(); ConsumeSample(); }
+            catch (Exception exception) { FailClosed("input",exception); ConsumeSample(); }
         }
 
         // The world editor remains suspended while F5 is visible. Only an
@@ -1198,7 +1200,7 @@ namespace JueMingR.TerrariaHost.F5
                 CompanionUi?.Prepare(matrix,PlayerInput.OriginalScreenSize);
                 Browser?.Prepare(CanPresentNow && LayersReady, matrix);
             }
-            catch { FailClosed(); }
+            catch (Exception exception) { FailClosed("prepare",exception); }
         }
 
         internal bool BeginPointerLayer()
@@ -1222,7 +1224,7 @@ namespace JueMingR.TerrariaHost.F5
                     if (companionSlotHover == null) Main.instance.MouseTextNoOverride(null);
                 }
             }
-            catch { FailClosed(); }
+            catch (Exception exception) { FailClosed("pointer-layer",exception); }
             return true;
         }
 
@@ -1240,7 +1242,7 @@ namespace JueMingR.TerrariaHost.F5
                 hoverLease = true;
                 Main.mouseText = true;
             }
-            catch { FailClosed(); }
+            catch (Exception exception) { FailClosed("hover-layer",exception); }
             return true;
         }
 
@@ -1299,7 +1301,7 @@ namespace JueMingR.TerrariaHost.F5
                     if (companionHotkeyPopup) renderer.DrawPopup(HotkeyPopup);
                 }
             }
-            catch { FailClosed(); }
+            catch (Exception exception) { FailClosed("draw",exception); }
             return true;
         }
 
@@ -1491,8 +1493,12 @@ namespace JueMingR.TerrariaHost.F5
             notes.Suspend(true); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); RestoreLeases();
         }
 
-        internal void FailClosed()
+        internal void ReportCreationFailure(string phase,Exception primary,Exception cleanup,string state)
+        { FailureReport?.Record(true,phase,primary,cleanup,$"shellFailed={failed};managerVisible={CompanionUi?.Visible==true};{state}"); }
+
+        internal void FailClosed(string phase=null,Exception primary=null)
         {
+            string snapshot=primary==null?null:$"shellFailed={failed};managerVisible={CompanionUi?.Visible==true};"+CompanionCreationSession.DescribeFor(this);
             failed = true; State.Ready = false;
             if (failureCleanupAttempted) return;
             failureCleanupAttempted = true;
@@ -1508,6 +1514,11 @@ namespace JueMingR.TerrariaHost.F5
             AttemptFailureCleanup(() => BlueprintUi?.Suspend());
             AttemptFailureCleanup(() => MiscUi?.Suspend());
             AttemptFailureCleanup(() => FishingUi?.Suspend());
+            AttemptFailureCleanup(() =>
+            {
+                Exception creationCleanup=CompanionCreationSession.DisposeFor(this);
+                if(CleanupFailure==null)CleanupFailure=creationCleanup;
+            });
             AttemptFailureCleanup(() => CompanionUi?.Close());
             AttemptFailureCleanup(() => CaptureUi?.Close());
             AttemptFailureCleanup(() => MiningUi?.Suspend());
@@ -1527,6 +1538,7 @@ namespace JueMingR.TerrariaHost.F5
             AttemptFailureCleanup(RestoreLeases);
             AttemptFailureCleanup(notes.FailClosed);
             AttemptFailureCleanup(renderer.Dispose);
+            FailureReport?.Record(false,phase,primary,CleanupFailure,snapshot);
         }
         private void AttemptFailureCleanup(Action cleanup)
         {

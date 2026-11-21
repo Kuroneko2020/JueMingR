@@ -61,7 +61,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly List<Player> visibleBodies = new List<Player>();
         private int preparedGeneration = -1, previousProfileCount = -1, maximumLife, maximumMana;
         private long profileRevision;
-        private bool editing,memberJoined,selectedTransfer,saveFailed;
+        private bool editing,memberJoined,memberRetiring,selectedTransfer,saveFailed;
         private long memberActivation;
         private string selectedUnavailable;
         private string displayedNotice;
@@ -366,7 +366,9 @@ namespace JueMingR.TerrariaHost.F5
                     !ReferenceEquals(host.GetBody(profiles[index].Id), visibleBodies[i])) return true;
             }
             var profile = CurrentProfile(); var body = host.GetBody(selected);
-            if ((profile?.DataEpoch??0)!=viewDataEpoch || page!=0 && ((profile?.Revision ?? 0) != profileRevision || host.SaveFailed(selected)!=saveFailed) ||
+            bool retiring=host.RecallPending(selected);
+            if ((profile?.DataEpoch??0)!=viewDataEpoch || page!=0 && (profile?.Revision ?? 0) != profileRevision ||
+                (page!=0||retiring) && host.SaveFailed(selected)!=saveFailed || retiring!=memberRetiring ||
                 !ReferenceEquals(body, selectedBody) || host.IsJoined(selected)!=memberJoined ||
                 host.ActivationGeneration(selected)!=memberActivation || selectedTransfer != host.CanTransfer(selected)) return true;
             if (resourceStyle != (Main.ResourceSetsManager?.ActiveSetKeyName??"Default") || ownerLifeMax != (Main.LocalPlayer?.statLifeMax2??0) || ownerManaMax != (Main.LocalPlayer?.statManaMax2??0) || body != null && (maximumLife != body.statLifeMax2 || maximumMana != body.statManaMax2)) return true;
@@ -397,7 +399,8 @@ namespace JueMingR.TerrariaHost.F5
             int count = Math.Max(1, (int)(listView.Height / AvatarStep));
             for (int i = listOffset; i < Math.Min(profiles.Count, listOffset + count); i++)
             { var p = profiles[i]; visibleIds.Add(p.Id); visibleNames.Add(p.Name); visibleStatuses.Add(host.Status(p.Id)); visibleBodies.Add(host.GetBody(p.Id)); }
-            profileRevision = CurrentProfile()?.Revision ?? 0; selectedBody = host.GetBody(selected); memberJoined=host.IsJoined(selected);memberActivation=host.ActivationGeneration(selected);saveFailed=host.SaveFailed(selected);
+            profileRevision = CurrentProfile()?.Revision ?? 0; selectedBody = host.GetBody(selected); memberJoined=host.IsJoined(selected);
+            memberRetiring=host.RecallPending(selected);memberActivation=host.ActivationGeneration(selected);saveFailed=host.SaveFailed(selected);
             if (selectedBody != null) { maximumLife = selectedBody.statLifeMax2; maximumMana = selectedBody.statManaMax2; }
         }
         private Control Button(string key, string text, F5Rect rect, Action action, bool enabled = true, bool selectedValue = false, bool off = false)

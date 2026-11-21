@@ -93,13 +93,14 @@ namespace JueMingR.TerrariaHost.F5
             if (owner)ownerHero=hero;else companionHero=hero;
             if(!owner&&CurrentProfile()!=null) {
                 bool joined=host.IsJoined(selected);Guid target=selected;
-                string action = joined ? "点击收回" : "点击加入";
+                bool retiring=host.RecallPending(target), failed=retiring&&host.SaveFailed(target);
+                string action = retiring ? (failed ? "保存失败" : "正在收回") : joined ? "点击收回" : "点击加入";
                 float buttonWidth = ConfigurationWidth(action);
                 var stateRect = new F5Rect(displayPanel.X-buttonWidth-6, displayPanel.Bottom-row, buttonWidth, row);
                 // A press owns this operation and actual activation. Natural
                 // detach/rejoin/respawn must retire it, rather than choosing
                 // the opposite operation on release. Timers/text keep the key.
-                string stateKey="actor-state/"+(joined?"recall":"join")+"/"+host.ActivationGeneration(target);
+                string stateKey="actor-state/"+(retiring?"saving":joined?"recall":"join")+"/"+host.ActivationGeneration(target);
                 if(ActorVisible(stateRect,view))
                 {
                     bool canAct = host.CanChangeCompanionPresence(target, joined, out string reason);
@@ -299,9 +300,16 @@ namespace JueMingR.TerrariaHost.F5
                     armedKey = null;
                     if (onceSelection != null)
                     {
-                        if (SelectionCurrent(onceSelection.Value) && host.UseItemOnce(selected, hit.Area, hit.Slot))
+                        if (!SelectionCurrent(onceSelection.Value))
+                        {
                             CancelSelectionModes();
-                        ShowNotice(host.Feedback);
+                            ShowNotice("队友状态已变化，请重新选择物品。");
+                        }
+                        else
+                        {
+                            if (host.UseItemOnce(selected, hit.Area, hit.Slot)) CancelSelectionModes();
+                            ShowNotice(host.Feedback);
+                        }
                     }
                     else ToggleWeapon(hit);
                     RefreshItemPresentation(resources);

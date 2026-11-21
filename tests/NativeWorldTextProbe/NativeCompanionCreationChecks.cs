@@ -86,6 +86,14 @@ namespace NativeWorldTextProbe
                 draft.shirtColor=new Color(100,110,120);draft.underShirtColor=new Color(130,140,150);draft.pantsColor=new Color(160,170,180);draft.shoeColor=new Color(190,200,210);
                 Require((bool)Call(host,"CreateDraft",draft),"full native draft submits once: "+Get(host,"Feedback"));
                 Require(!(bool)Call(host,"CreateDraft",draft),"duplicate confirmation cannot create a second character");
+                if(difficulty==0)
+                {
+                    Guid first=(Guid)Get(host,"LastCreatedId");
+                    var different=(Player)Call(host,"NewCreationDraft");different.name=" "+draft.name+" ";
+                    Require(!(bool)Call(host,"CreateDraft",different)&&((string)Get(host,"Feedback")).Contains("另一名队友")&&
+                        (Guid)Get(host,"LastCreatedId")==first&&different.inventory.All(i=>i.IsAir),
+                        "a different trimmed-name draft cannot replace an accepted archive even before its save is published");
+                }
                 NativeQuickItemChecks.Until(()=>{Call(host,"Update",0UL);return ((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Any(p=>p.Name==draft.name);});
                 ids[difficulty]=((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Single(p=>p.Name==draft.name).Id;Saved(host,ids[difficulty]);
                 Require((string)Get(host,"Feedback")!="正在保存新人物。","completed creation retires only its pending progress message");

@@ -30,6 +30,7 @@ namespace JueMingR.TerrariaHost.F5
         internal static bool WasManaged(UICharacterCreation creator) {object marker;return managedCreators.TryGetValue(creator,out marker);}
         internal static bool WasManaged(UIVirtualKeyboard keyboard) {object marker;return managedKeyboards.TryGetValue(keyboard,out marker);}
         internal readonly HostCompanions Host;
+        private readonly F5Shell shell;
         private readonly HostInputState input;
         internal bool InputAllowed {get{return input.CanUseInput;}}
         internal readonly Player Draft;
@@ -42,14 +43,16 @@ namespace JueMingR.TerrariaHost.F5
         private readonly Player owner;
         private readonly object world;
         private readonly long token;
-        private readonly Action<string> returnToManager;
+        private readonly Action<string, bool> returnToManager;
         private readonly UnifiedRandom previewRandom = new UnifiedRandom(17513);
         private readonly Dictionary<UIElement,float> keyboardTops = new Dictionary<UIElement,float>();
-        private readonly object previousKeyboard;
-        private readonly int previousOffset;
-        private readonly bool previousHidden;
-        private readonly UIText error = new UIText("", .8f);
+        private object previousKeyboard;
+        private int previousOffset;
+        private bool previousHidden;
+        private readonly UIText error = new UIText("", .8f) { IgnoresMouseInteraction = true };
         private bool live = true, dirty, submitting;
+        private bool openingNativePage, accepted;
+        private string operation;
         private GameTime queuedTime;
         private long queuedFrame=-1,flushedFrame=-1,intentFrame=-1;
         private bool dispatching,drawLeft,drawRight,backIntent,keyboardSubmitIntent,inventoryHeld;
@@ -65,21 +68,24 @@ namespace JueMingR.TerrariaHost.F5
         private static readonly FieldInfo SelectedPicker=AccessTools.Field(typeof(UICharacterCreation),"_selectedPicker");
         private static readonly MethodInfo CharacterInfo=AccessTools.Method(typeof(UICharacterCreation),"Click_CharInfo");
         private static readonly FieldInfo NameButton = AccessTools.Field(typeof(UICharacterCreation), "_charName");
+        private static readonly FieldInfo CurrentState = AccessTools.Field(typeof(UserInterface), "_currentState");
+        private static readonly FieldInfo Hover = AccessTools.Field(typeof(UserInterface), "_lastElementHover");
 
-        private CompanionCreationSession(HostCompanions host,HostInputState input, Action<string> restore)
+        private CompanionCreationSession(F5Shell shell, HostCompanions host,HostInputState input, Action<string, bool> restore)
         {
-            Host=host;this.input=input; owner=Main.ActivePlayerFileData?.Player; world=Main.ActiveWorldFileData;
+            this.shell=shell;Host=host;this.input=input; owner=Main.ActivePlayerFileData?.Player; world=Main.ActiveWorldFileData;
             token=host.CreationSessionToken; returnToManager=restore; Draft=host.NewCreationDraft(); Draft.whoAmI=255;
             Hairstyles.AvailableHairstyles.AddRange(host.GetCreationHairstyles());
-            previousKeyboard=KeyboardInstance.GetValue(null); previousOffset=UIVirtualKeyboard.OffsetDown; previousHidden=UIVirtualKeyboard.ShouldHideText;
         }
-        internal static void Open(HostCompanions host,HostInputState input,Action<string> restore)
+        internal static void Open(F5Shell shell, HostCompanions host, HostInputState input, Action<string, bool> restore)
         {
-            DisposeFor(host);
-            var session=new CompanionCreationSession(host,input,restore); Active=session;
-            session.inventoryHeld=PlayerInput.Triggers.Current.Inventory;
+            if (!shell.OwnsCompanionCreation || Main.inFancyUI) return;
+            DisposeFor(shell);
+            CompanionCreationSession session=null;
             try
             {
+                session=new CompanionCreationSession(shell,host,input,restore); Active=session;
+                session.inventoryHeld=PlayerInput.Triggers.Current.Inventory;
                 byte difficulty=session.Draft.difficulty;
                 using(session.Enter(false))
                 {
@@ -92,28 +98,47 @@ namespace JueMingR.TerrariaHost.F5
                     session.dirty=false; Dirty.SetValue(null,false);
                     session.error.Top.Set(348,0); session.error.HAlign=.5f;
                     session.Creator.Children.First().Append(session.error);
+                    session.openingNativePage=true;
                     IngameFancyUI.OpenUIState(session.Creator);
+                    session.openingNativePage=false;
                     session.Adapt();
                     input.ConsumeNativeUiActions();
                 }
             }
-            catch { session.End(false,null); throw; }
+            catch (Exception exception)
+            {
+                if (session != null) session.Recover("open",exception);
+                else
+                {
+                    Exception cleanup=null;
+                    Attempt(input.RetainNativeUiTail,ref cleanup);
+                    Attempt(() => restore(null,true),ref cleanup);
+                    shell.ReportCreationFailure("open",exception,cleanup,"creator=unconstructed");
+                }
+            }
         }
         internal bool Owns(UIState state) { return live && state!=null && (ReferenceEquals(state,Creator)||ReferenceEquals(state,Keyboard)); }
         internal bool Dispatching {get{return dispatching;}}
         internal void QueueNativeUpdate(GameTime time)
         {if(flushedFrame!=input.Frame){queuedTime=time;queuedFrame=input.Frame;}}
         internal void RequestBack()
-        {if(InputAllowed)Back();else{intentFrame=input.Frame;backIntent=true;}}
-        internal void RequestCategory(int direction)
-        {if(InputAllowed){if(ReferenceEquals(Main.InGameUI.CurrentState,Creator))Creator.TryMovingCategory(direction);}else{intentFrame=input.Frame;categoryIntent=direction;}}
-        internal void RequestKeyboardSubmit() {intentFrame=input.Frame;keyboardSubmitIntent=true;}
-        internal static void FlushNativeUpdate(HostCompanions host)
         {
-            var s=Active;if(s==null||!ReferenceEquals(s.Host,host))return;
-            if(!s.Valid||!s.Owns(Main.InGameUI.CurrentState)){s.End(false,null);return;}
+            if(!InputAllowed){intentFrame=input.Frame;backIntent=true;return;}
+            try { Back(); } catch(Exception exception) { Recover("back",exception); }
+        }
+        internal void RequestCategory(int direction)
+        {
+            if(!InputAllowed){intentFrame=input.Frame;categoryIntent=direction;return;}
+            try { if(ReferenceEquals(Main.InGameUI.CurrentState,Creator))Creator.TryMovingCategory(direction); }
+            catch(Exception exception) { Recover("category",exception); }
+        }
+        internal void RequestKeyboardSubmit() {intentFrame=input.Frame;keyboardSubmitIntent=true;}
+        internal static void FlushNativeUpdate(F5Shell shell)
+        {
+            var s=Active;if(s==null||!ReferenceEquals(s.shell,shell))return;
             try
             {
+                if(!s.Valid||!s.Owns(Main.InGameUI.CurrentState)){s.End(false,null);return;}
                 // Vanilla updates InGameUI before this frame's mouse/keyboard
                 // mapping. Only this exact owned page is deferred until the
                 // existing host InputPostfix has finalized its trusted sample.
@@ -139,16 +164,27 @@ namespace JueMingR.TerrariaHost.F5
                     s.dispatching=true;try{Main.InGameUI.Update(time);}finally{s.dispatching=false;}
                 }
             }
+            catch(Exception exception) {s.Recover("native-update",exception);}
             finally {s.input.ConsumeNativeUiActions();}
         }
-        internal bool Valid { get { return live&&Host.ArchiveIdentityCurrent()&&ReferenceEquals(owner,Main.ActivePlayerFileData?.Player)&&ReferenceEquals(world,Main.ActiveWorldFileData)&&Host.CreationSessionToken==token; } }
+        internal bool Valid { get { return live&&shell.OwnsCompanionCreation&&Host.ArchiveIdentityCurrent()&&ReferenceEquals(owner,Main.ActivePlayerFileData?.Player)&&ReferenceEquals(world,Main.ActiveWorldFileData)&&Host.CreationSessionToken==token; } }
         internal static void Validate(HostCompanions host)
         {
             var s=Active;if(s==null||!ReferenceEquals(s.Host,host))return;
-            if(!s.Valid||!Main.inFancyUI||!s.Owns(Main.InGameUI.CurrentState))s.End(false,null);
+            try {if(!s.Valid||!Main.inFancyUI||!s.Owns(Main.InGameUI.CurrentState))s.End(false,null);}
+            catch(Exception exception) {s.End(false,null,exception,"validate");}
         }
         internal static void DisposeFor(HostCompanions host)
         { var s=Active;if(s!=null&&ReferenceEquals(s.Host,host))s.End(false,null); }
+        internal static Exception DisposeFor(F5Shell shell)
+        { var s=Active;return s!=null&&ReferenceEquals(s.shell,shell)?s.End(false,null, report:false):null; }
+        internal static string DescribeFor(F5Shell shell)
+        {
+            var s=Active;
+            if(s==null||!ReferenceEquals(s.shell,shell))return "creator=none";
+            try {return s.FailureState(Main.InGameUI.CurrentState,s.Valid);}
+            catch(Exception) {return "creator=owned;stateUnavailable=true";}
+        }
         internal IDisposable Enter(bool draw) { return new DispatchScope(this,draw); }
         private sealed class DispatchScope : IDisposable
         {
@@ -164,7 +200,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 s.Adapt();
                 session=s;draw=drawing;hair=Main.Hairstyles;dirty=(bool)Dirty.GetValue(null);
-                Main.Hairstyles=s.Hairstyles;Dirty.SetValue(null,s.dirty);
+                Dirty.SetValue(null,s.dirty);Main.Hairstyles=s.Hairstyles;
                 if(draw){pointer=new PointerScope(s);triggers=PlayerInput.Triggers.Current;triggerLeft=triggers.MouseLeft;triggerRight=triggers.MouseRight;
                     // Native colored/pitch sliders read Current.MouseLeft in
                     // DrawSelf as well as Main.mouseLeft. Borrow only these two
@@ -175,8 +211,12 @@ namespace JueMingR.TerrariaHost.F5
             }
             public void Dispose()
             {
-                session.dirty=(bool)Dirty.GetValue(null);Dirty.SetValue(null,dirty);Main.Hairstyles=hair;
-                if(draw){session.DrawDepth--;Main.rand=random;Mount.currentShader=shader;triggers.MouseLeft=triggerLeft;triggers.MouseRight=triggerRight;pointer.Dispose();}
+                try {session.dirty=(bool)Dirty.GetValue(null);Dirty.SetValue(null,dirty);}
+                finally
+                {
+                    Main.Hairstyles=hair;
+                    if(draw){session.DrawDepth--;Main.rand=random;Mount.currentShader=shader;triggers.MouseLeft=triggerLeft;triggers.MouseRight=triggerRight;pointer.Dispose();}
+                }
             }
         }
         private sealed class PointerScope : IDisposable
@@ -198,20 +238,47 @@ namespace JueMingR.TerrariaHost.F5
             if(create&&!String.IsNullOrWhiteSpace(Draft.name)){Submit();return;}
             Main.clrInput();
             var weak=new WeakReference(this);
-            Keyboard=new UIVirtualKeyboard(Lang.menu[45].Value,Draft.name??"",name=> {
-                var session=weak.Target as CompanionCreationSession;
-                if(session==null||!session.Valid||!session.InputAllowed||!ReferenceEquals(Main.InGameUI.CurrentState,session.Keyboard))return;
-                session.Draft.name=(name??"").Trim();session.ReturnFromName();
-                if(create)session.Submit();
-            },()=> {var session=weak.Target as CompanionCreationSession;if(session!=null&&session.Valid&&session.InputAllowed&&ReferenceEquals(Main.InGameUI.CurrentState,session.Keyboard))session.ReturnFromName();},0,true,UICharacterCreation.MAX_NAME_LENGTH);
-            managedKeyboards.Add(Keyboard,managed);
+            // Native history can keep an older keyboard from this same draft.
+            // Its delegates must still compare against that exact instance.
+            UIVirtualKeyboard keyboard=null;
+            previousKeyboard=KeyboardInstance.GetValue(null);
+            previousOffset=UIVirtualKeyboard.OffsetDown;previousHidden=UIVirtualKeyboard.ShouldHideText;
+            try
+            {
+                keyboard=new UIVirtualKeyboard(Lang.menu[45].Value,Draft.name??"",
+                    name=>(weak.Target as CompanionCreationSession)?.CompleteName(keyboard,name,create,false),
+                    ()=>(weak.Target as CompanionCreationSession)?.CompleteName(keyboard,null,false,true),
+                    0,true,UICharacterCreation.MAX_NAME_LENGTH);
+                Keyboard=keyboard;managedKeyboards.Add(keyboard,managed);
+            }
+            catch
+            {
+                // The vanilla constructor publishes its static instance before
+                // building its controls. An incomplete owned keyboard still
+                // needs its previous static state returned on retirement.
+                if (keyboard==null && KeyboardInstance.GetValue(null) is UIVirtualKeyboard incomplete && !ReferenceEquals(incomplete,previousKeyboard))
+                    Keyboard=incomplete;
+                throw;
+            }
             keyboardTops.Clear();foreach(var child in Keyboard.Children)keyboardTops[child]=child.Top.Pixels;
             foreach(var name in new[]{"outerLayer1","outerLayer2"}) {var child=(UIElement)AccessTools.Field(typeof(UIVirtualKeyboard),name).GetValue(Keyboard);keyboardTops[child]=child.Top.Pixels;}
             adaptedHeight=-1;Main.InGameUI.SetState(Keyboard);Adapt();
         }
+        private void CompleteName(UIVirtualKeyboard keyboard,string name,bool create,bool cancelled)
+        {
+            if(keyboard==null||!Valid||!InputAllowed||!ReferenceEquals(keyboard,Keyboard)||!ReferenceEquals(Main.InGameUI.CurrentState,keyboard))return;
+            try
+            {
+                if(!cancelled)Draft.name=(name??"").Trim();
+                ReturnFromName();
+                if(create)Submit();
+            }
+            catch(Exception exception) {Recover("return-from-naming",exception);}
+        }
         private void ReturnFromName()
         {
             Main.InGameUI.SetState(Creator);RestoreKeyboard();
+            Keyboard=null;keyboardTops.Clear();
             ((UICharacterNameButton)NameButton.GetValue(Creator)).SetContents(Draft.name);
             adaptedHeight=-1;Adapt();
         }
@@ -219,13 +286,20 @@ namespace JueMingR.TerrariaHost.F5
         {
             if(!Valid||submitting)return;
             submitting=true;
+            int hair=Draft.hair;
             try
             {
+                operation="accept-draft";
                 AssignHair.Invoke(Creator,null);
-                if(Host.CreateDraft(Draft)){End(true,Draft.name);return;}
+                if(Host.CreateDraft(Draft)){accepted=true;End(true,Draft.name);return;}
+                // Vanilla chooses a default hair on confirmation. A business
+                // refusal keeps this draft's appearance available for retry.
+                Draft.hair=hair;
+                operation="show-draft-rejection";
                 error.SetText(Host.Feedback??"无法创建人物。");
             }
-            finally{submitting=false;}
+            catch(Exception exception) {Recover("submit",exception);}
+            finally{submitting=false;operation=null;}
         }
         internal void Back()
         {
@@ -237,27 +311,82 @@ namespace JueMingR.TerrariaHost.F5
         internal void Cancel() { End(true,null); }
         private void RestoreKeyboard()
         {
-            if(ReferenceEquals(KeyboardInstance.GetValue(null),Keyboard))
+            if(Keyboard!=null&&ReferenceEquals(KeyboardInstance.GetValue(null),Keyboard))
             {KeyboardInstance.SetValue(null,previousKeyboard);UIVirtualKeyboard.OffsetDown=previousOffset;UIVirtualKeyboard.ShouldHideText=previousHidden;}
         }
-        private void End(bool restore,string name)
+        internal void Recover(string phase, Exception primary, Exception scopeCleanup=null)
+        { End(true,accepted?Draft.name:null,primary,operation??phase,scopeCleanup); }
+
+        private Exception End(bool restore,string name,Exception primary=null,string phase="retire",Exception cleanup=null,bool report=true)
         {
-            if(!live)return;bool valid=Valid;bool owns=Owns(Main.InGameUI.CurrentState);live=false;
-            queuedTime=null;backIntent=keyboardSubmitIntent=false;categoryIntent=0;input.RetainNativeUiTail();
+            if(!live)
+            {
+                if(report&&primary!=null)shell.ReportCreationFailure(phase,primary,cleanup,"creator=retired;accepted="+accepted);
+                return cleanup;
+            }
+            var ui=Main.InGameUI;
+            var state=ui.CurrentState;
+            bool owns=Owns(state),valid=false;
+            if(restore)Attempt(() => valid=Valid,ref cleanup);
+            string snapshot=primary==null?null:FailureState(state,valid);
+            live=false;
+            if(ReferenceEquals(Active,this))Active=null;
+            queuedTime=null;backIntent=keyboardSubmitIntent=false;categoryIntent=0;
+            Attempt(input.RetainNativeUiTail,ref cleanup);
             // Native history can retain old states. Leave it only UI/draft
             // objects, not a delegate chain back to the retired Host/world.
-            if(Creator!=null)Creator.OnScrollWheel-=ScrollOuter;
-            if(ReferenceEquals(Active,this))Active=null;
-            if(owns)
+            if(Creator!=null)Attempt(() => Creator.OnScrollWheel-=ScrollOuter,ref cleanup);
+            if(owns)Attempt(() => RemoveNativePage(ui,state),ref cleanup);
+            // OpenUIState raises the global bit before assigning the page.
+            // The constructor is only admitted with no other fancy UI open.
+            if((owns||openingNativePage) && ui.CurrentState==null)
             {
-                Main.InGameUI.SetState(null);Main.inFancyUI=false;Main.playerInventory=false;
+                Main.inFancyUI=false;Main.playerInventory=false;
                 if(owner!=null)owner.releaseInventory=false;
                 UILinkPointNavigator.Shortcuts.FANCYUI_SPECIAL_INSTRUCTIONS=0;
                 UILinkPointNavigator.Shortcuts.BackButtonCommand=0;
             }
-            RestoreKeyboard();
-            if(restore&&valid&&owns)returnToManager(name);
+            Attempt(RestoreKeyboard,ref cleanup);
+            if(owns&&state==Keyboard&&ui.CurrentState==null&&PlayerInput.WritingText &&
+                Main.CurrentInputTextTakerOverride==null&&!Main.drawingPlayerChat&&!Main.editSign&&!Main.editChest)
+            {
+                // Native Deactivate normally returns IME ownership. A broken
+                // MouseOut can stop SetState before it reaches that callback.
+                PlayerInput.WritingText=false;
+                Attempt(() => Main.instance?.HandleIME(),ref cleanup);
+            }
+            if(valid&&ui.CurrentState==null && (owns||primary!=null))
+                Attempt(() => returnToManager(name,primary!=null||cleanup!=null),ref cleanup);
+            if(report)
+            {
+                if(primary!=null)shell.ReportCreationFailure(phase,primary,cleanup,snapshot);
+                else if(cleanup!=null)shell.ReportCreationFailure(phase,cleanup,null,FailureState(state,valid));
+            }
+            return cleanup;
         }
+
+        private static void Attempt(Action action,ref Exception first)
+        { try { action(); } catch(Exception exception) { if(first==null)first=exception; } }
+
+        private static void RemoveNativePage(UserInterface ui,UIState owned)
+        {
+            try { ui.SetState(null); }
+            finally
+            {
+                // SetState invokes MouseOut and Deactivate before unmounting.
+                // If either failed, retire only the exact still-owned page.
+                if(ReferenceEquals(ui.CurrentState,owned))
+                {
+                    CurrentState.SetValue(ui,null);Hover.SetValue(ui,null);ui.ClearPointers();ui.IsVisible=false;
+                }
+            }
+        }
+
+        private string FailureState(UIState state,bool valid) =>
+            $"creator={(state==null?"none":state==Creator?"creation":state==Keyboard?"naming":"other")};valid={valid};accepted={accepted};savePending={accepted&&Host.CreationSavePending};" +
+            $"tokenMatches={Host.CreationSessionToken==token};worldMatches={ReferenceEquals(world,Main.ActiveWorldFileData)};" +
+            $"ownerMatches={ReferenceEquals(owner,Main.ActivePlayerFileData?.Player)};inputAllowed={InputAllowed};" +
+            $"queued={queuedFrame==input.Frame};flushed={flushedFrame==input.Frame};left={drawLeft};right={drawRight};writingText={PlayerInput.WritingText}";
         private void ScrollOuter(UIScrollWheelEvent evt,UIElement listening)
         {
             if(!ReferenceEquals(Main.InGameUI.CurrentState,Creator)||outerMaximum<=0)return;

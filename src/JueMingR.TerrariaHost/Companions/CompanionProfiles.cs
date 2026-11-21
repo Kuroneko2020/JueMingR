@@ -74,19 +74,23 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool OwnsActivation(Guid id, long generation) { return manager.OwnsActivation(id, generation); }
 
         internal CompanionProfile Create(string name, bool journey)
-        { return CreateDraft(CompanionCreation.Draft(name, (byte)(journey ? 3 : 0))); }
-
-        internal CompanionProfile CreateDraft(Player draft)
         {
-            CompanionCreation.Validate(draft);
+            if (TryCreateDraft(CompanionCreation.Draft(name, (byte)(journey ? 3 : 0)), out var profile, out var rejection)) return profile;
+            throw new InvalidOperationException(rejection);
+        }
+
+        internal bool TryCreateDraft(Player draft, out CompanionProfile profile, out string rejection)
+        {
+            profile=null;
+            rejection=CompanionCreation.DraftRejection(draft);
+            if (rejection!=null) return false;
             string name = draft.name.Trim();
-            if (!CanCreate) throw new InvalidOperationException(LoadError ?? "队友档案尚未就绪。");
-            var existing = manager.FindName(name);
-            if (existing != null) throw new InvalidOperationException("已有此人物，请在左侧选择。");
+            if (!CanCreate) { rejection=LoadError??"队友档案尚未就绪。"; return false; }
+            if (manager.FindName(name)!=null) { rejection="该名字已被你的另一名队友使用，请修改名字。"; return false; }
             Player body = NewCharacter(name, draft.difficulty);
             CompanionCreation.CopyAppearance(draft, body);
-            var profile = new CompanionProfile(Guid.NewGuid(), OwnerId, name, 1, 1, new CompanionBehavior(), Capture(body));
-            manager.Add(profile); return profile;
+            profile = new CompanionProfile(Guid.NewGuid(), OwnerId, name, 1, 1, new CompanionBehavior(), Capture(body));
+            manager.Add(profile); return true;
         }
 
         internal Player LoadBody(CompanionProfile profile)
