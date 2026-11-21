@@ -1,7 +1,7 @@
 # These ordinary mixed scopes really construct ProbeGraphics. Keep resource
 # admission in this separately bound owner, not in a pure plan projection.
 function Get-WorkloadNativeContentScopes {
-    return @('CompanionFontVisual','CompanionConfigVisual','CompanionResourceBarsVisual','CompanionCreationInputVisual','CompanionShowcaseVisual','CompanionVisual','BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
+    return @('CompanionFontVisual','CompanionConfigVisual','CompanionExitVisual','CompanionResourceBarsVisual','CompanionCreationInputVisual','CompanionShowcaseVisual','CompanionVisual','BlueprintInput','NpcInvasionFlight','NpcInvasionFlightLoss','NpcBetsy','NpcDarkMage','NpcBloodNautilus','NpcTreeBoss','NpcReviewedParticle')
 }
 function Get-WorkloadNativeContentFiles {
     param([string]$Scope)
@@ -12,10 +12,14 @@ function Get-WorkloadNativeContentFiles {
         foreach($name in @('Heart_Left','Heart_Middle','Heart_Right','Heart_Right_Fancy','Heart_Fill','Heart_Fill_B','Heart_Single_Fancy','Star_A','Star_B','Star_C','Star_Single','Star_Fill')){$files+='Images/UI/PlayerResourceSets/FancyClassic/'+$name+'.xnb'}
         return $files
     }
-    if($Scope -cin @('CompanionVisual','CompanionShowcaseVisual','CompanionCreationInputVisual','CompanionConfigVisual','CompanionFontVisual')){
+    if($Scope -cin @('CompanionVisual','CompanionShowcaseVisual','CompanionCreationInputVisual','CompanionConfigVisual','CompanionExitVisual','CompanionFontVisual')){
         # Bind resources actually requested by the original player initializer,
         # six resource sets and the finite native creation/profile fixture.
         $files+=@('PixelShader.xnb','Images/Heart.xnb','Images/Heart2.xnb','Images/Mana.xnb')
+        if($Scope -ceq 'CompanionExitVisual'){
+            $files+=@('ScreenShader.xnb','Images/Misc/noise.xnb','Images/DSTNoise.xnb','Images/NoirNoise.xnb','Images/Item_188.xnb','Images/Item_3508.xnb','Images/Item_9.xnb')
+            $files+=@(0..41 | ForEach-Object {'Images/Cloud_'+$_+'.xnb'})
+        }
         $files+=@(0,3507,3509,3506 | ForEach-Object {'Images/Item_'+$_+'.xnb'})
         $files+='Images/Item_271.xnb'
         if($Scope -ceq 'CompanionConfigVisual'){

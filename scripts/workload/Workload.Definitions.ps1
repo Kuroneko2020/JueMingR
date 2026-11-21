@@ -37,6 +37,9 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionSupplyMenuChecks.cs'=@('native-CompanionConfigVisual')
         'tests/NativeWorldTextProbe/NativeCompanionSupplyWireChecks.cs'=@('native-CompanionSuppliesCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNavigationChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionPlannedMovementChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionShapeHandChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionExitChecks.cs'=@('native-CompanionExitVisual')
         'tests/NativeWorldTextProbe/NativeCompanionMobilityChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionMobilityFacilitiesChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNativeCreationChecks.cs'=@('native-CompanionVisual','native-CompanionCreationInputVisual')
@@ -640,6 +643,11 @@ function Get-WorkloadLeafChecks {
     }
     foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-FishingBackgroundRecoveryCpu','native-InventoryStackingCpu','native-AfkOuterBackground')}
     $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CoinContinuationCpu','native-CoinConsumersCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
+    foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeJourneyChecks.cs',
+        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs','tests/NativeWorldTextProbe/ProbeGraphics.cs',
+        'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs','scripts/workload/Workload.NativeContent.ps1')){
+        $leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-CompanionExitVisual')
+    }
     $leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs'])+@('native-InventoryStackingCpu')
     foreach($path in @("tests/NativeWorldTextProbe/NativeCombatAimFixture.cs")){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')}
     return $leaves
@@ -659,6 +667,7 @@ function Get-WorkloadNativeScopes {
         'CompanionResourceBarsVisual'=@('companion-host','shared-host');
         'CompanionCreationInputVisual'=@('companion-host','shared-host');
         'CompanionConfigVisual'=@('companion-host','shared-host');
+        'CompanionExitVisual'=@('companion-host','shared-host');
         'CompanionFontVisual'=@('companion-host','shared-host');
         'CompanionShowcaseVisual'=@('companion-host','shared-host');
         'CompanionVisual'=@('companion-host','shared-host');
