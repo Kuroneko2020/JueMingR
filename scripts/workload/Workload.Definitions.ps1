@@ -45,7 +45,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionNativeCreationChecks.cs'=@('native-CompanionVisual','native-CompanionCreationInputVisual')
         'tests/NativeWorldTextProbe/NativeCompanionFeedbackChecks.cs'=@('native-CompanionCreationInputVisual')
         'tests/NativeWorldTextProbe/NativeCompanionFontChecks.cs'=@('native-CompanionFontVisual')
-        'tests/NativeWorldTextProbe/NativeCompanionConfigurationChecks.cs'=@('native-CompanionConfigVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionConfigurationChecks.cs'=@('native-CompanionConfigVisual','native-CompanionExitVisual')
         'tests/NativeWorldTextProbe/NativeCompanionResourceBarChecks.cs'=@('native-CompanionResourceBarsVisual')
         'tests/NativeWorldTextProbe/NativeCompanionFancyResourceChecks.cs'=@('native-CompanionResourceBarsVisual')
         'tests/NativeWorldTextProbe/NativeCompanionPetPreviewChecks.cs'=@('native-CompanionVisual','native-CompanionShowcaseVisual')
@@ -644,7 +644,7 @@ function Get-WorkloadLeafChecks {
     foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-FishingBackgroundRecoveryCpu','native-InventoryStackingCpu','native-AfkOuterBackground')}
     $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CoinContinuationCpu','native-CoinConsumersCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
     foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeJourneyChecks.cs',
-        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs','tests/NativeWorldTextProbe/ProbeGraphics.cs',
+        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs',
         'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs','scripts/workload/Workload.NativeContent.ps1')){
         $leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-CompanionExitVisual')
     }
