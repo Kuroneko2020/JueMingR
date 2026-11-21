@@ -126,10 +126,9 @@ namespace JueMingR.TerrariaHost.Companions
                         if (node.Previous >= 0 || motion == RouteMotion.Hooked || !TryTransit(body, mobility, node, target, candidate, ref step)) return false;
                         observe = true;
                         break;
-                    case 25:
-                        if (node.Previous >= 0 || motion != RouteMotion.Hooked || !Swept(body, from,
-                            new Vector2(facing * 16, gravity * 16), search.Terrain)) return false;
-                        step.Kind = RouteKind.ReleaseHook; step.Direction = facing; step.To += new Vector2(facing * 24, 0); step.Cost = 31;
+                    case 25: case 28:
+                        if (node.Previous >= 0 || motion != RouteMotion.Hooked || !mobility.GrappleAttached ||
+                            !TryHookRelease(body, from, target, candidate == 28 ? 0 : facing, search.Terrain, ref step)) return false;
                         observe = true;
                         break;
                 }
@@ -428,6 +427,29 @@ namespace JueMingR.TerrariaHost.Companions
                 return true;
             }
             return false;
+        }
+
+        private static bool TryHookRelease(Player body, Vector2 from, Vector2 target, int direction, ReadSet terrain, ref RouteStep step)
+        {
+            int gravity = (int)body.gravDir;
+            int vertical = (target.Y - from.Y) * gravity < -16 ? -1 : 1;
+            if (direction == 0 && Math.Abs(target.Y - from.Y) < 20) return false;
+            // Native GrappleMovement uses Down+Jump to leave without the pop.
+            // Up+Jump admits the normal upward release in a vertical opening.
+            // Prove the matching body sweep even when neither side of the shaft fits.
+            Vector2 delta = new Vector2(direction * 16, vertical * gravity * 20);
+            if (!Swept(body, from, delta, terrain))
+            {
+                vertical = -vertical;
+                delta.Y = -delta.Y;
+                if (!Swept(body, from, delta, terrain)) return false;
+            }
+            step.Kind = RouteKind.ReleaseHook;
+            step.Direction = direction;
+            step.Vertical = vertical;
+            step.To = from + delta;
+            step.Cost = 31;
+            return true;
         }
 
         private bool TryPostureChange(Player body, CompanionMobilitySnapshot mobility, RouteMotion motion, Vector2 target, ref RouteStep step)

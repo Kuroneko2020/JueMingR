@@ -466,6 +466,12 @@ namespace JueMingR.TerrariaHost.Companions
             frame.MountTypePlusOne = step.MountTypePlusOne;
             frame.EmergencyHand = step.EmergencyHand;
             if (step.Kind == RouteKind.Door) frame.Move = step.Direction;
+            if (step.Kind == RouteKind.ReleaseHook)
+            {
+                if (!mobility.GrappleAttached || !NextClear(body, step.Direction, step.Vertical * (int)body.gravDir)) return false;
+                frame.Move = step.Direction;
+                frame.Vertical = step.Vertical;
+            }
             return frame.Activation != CompanionMovementActivation.None;
         }
 

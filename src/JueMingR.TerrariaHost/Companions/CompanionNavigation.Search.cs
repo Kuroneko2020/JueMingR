@@ -9,7 +9,7 @@ namespace JueMingR.TerrariaHost.Companions
     {
         private const int SliceLimit = 160;
         private const int LocalNodes = 768;
-        private const int RouteCandidates = 28;
+        private const int RouteCandidates = 29;
         private enum RouteMotion : byte { Ground, Air, Rope, Track, Liquid, Hooked }
         private enum RouteKind : byte
         {
@@ -252,7 +252,7 @@ namespace JueMingR.TerrariaHost.Companions
                 case 21: return mobility.CanChangeGravity;
                 case 22: case 23: case 26: return node.Previous < 0;
                 case 24: return node.Previous < 0 && mobility.CanUseRod;
-                case 25: return node.Previous < 0 && node.Motion == RouteMotion.Hooked;
+                case 25: case 28: return node.Previous < 0 && node.Motion == RouteMotion.Hooked;
                 default: return true;
             }
         }

@@ -51,6 +51,7 @@ namespace NativeWorldTextProbe
                 WingsAndGravity(host, body, decide.ReturnType, mobility);
                 Console.WriteLine("PASS companion mobility inputs through native updates: extra jumps, dash, finite wings, rocket boots, carpet and isolated gravity toggle.");
                 HookAndRelease(host, body, decide.ReturnType, mobility);
+                ReleaseHookInShaft(host, body, human, decide.ReturnType, mobility);
                 Console.WriteLine("PASS companion native grapple: own birth, observed attachment and native detach.");
                 ContinuousRope(host, body, decide.ReturnType);
                 OpenDoor(host, body, decide.ReturnType, mobility);
@@ -318,6 +319,72 @@ namespace NativeWorldTextProbe
         {
             body.position = new Vector2(x * 16, 73 * 16 - body.height);
             body.velocity = Vector2.Zero;
+        }
+
+        private static void ReleaseHookInShaft(object host, Player body, Player human, Type frame, object state)
+        {
+            const int leftWall = 108, rightWall = 111, anchorRow = 66;
+            var tiles = new Dictionary<Point, Tile>();
+            Vector2 humanPosition = human.position;
+            var item = Gear(ItemID.GrapplingHook);
+            Item originalItem = body.miscEquips[4];
+            bool priorHook = Main.projHook[item.shoot];
+            try
+            {
+                for (int y = 65; y < 73; y++)
+                {
+                    FixtureTile(tiles, leftWall, y, TileID.Stone);
+                    FixtureTile(tiles, rightWall, y, TileID.Stone);
+                }
+                FixtureTile(tiles, 110, anchorRow, TileID.Stone);
+                Ground(body, 110);
+                body.position.X -= body.width * .5f;
+                Main.projHook[item.shoot] = ContentSamples.ProjectilesByType[item.shoot].aiStyle == 7;
+                body.miscEquips[4] = item;
+                Set(frame);
+                Step(host, body);
+                var target = new Vector2(110 * 16 + 1, anchorRow * 16 + 8);
+                Set(frame, "Hook", 2031, target);
+                Step(host, body);
+                var hook = (Projectile)Get(state, "Hook");
+                for (int tick = 0; tick < 60 && (Get(state, "Result").ToString() != "Completed" || body.position.Y > 1100); tick++)
+                { AdvanceHook(hook); Step(host, body); }
+                Require(hook.active && Get(state, "Result").ToString() == "Completed" && body.position.Y <= 1100,
+                    "real hook attaches above the body in the two-tile shaft");
+                foreach (int side in new[] { -1, 1 })
+                    Require(Collision.TileCollision(body.position, new Vector2(side * 16, 0), body.width, body.height).X != side * 16,
+                        "neither side of the shaft admits a full release step");
+
+                // Only the initial shot was injected. From the actual attached
+                // pose the production route chooses the vertical release.
+                human.Center = new Vector2(body.Center.X, 73 * 16 - human.height * .5f);
+                float startY = body.position.Y;
+                bool verticalRelease = false, detached = false;
+                intent = null;
+                for (int tick = 0; tick < 60 && (hook.active || body.position.Y < startY + 8); tick++)
+                {
+                    // In each world step the previous projectile update feeds
+                    // the next Player.Update's real grapple list.
+                    AdvanceHook(hook);
+                    Step(host, body);
+                    if (Get(state, "Action").ToString() != "ReleaseHook" || (int)Get(state, "Sequence") == 2031) continue;
+                    verticalRelease |= body.controlJump && body.controlDown && !body.controlLeft && !body.controlRight;
+                    detached |= !(bool)Get(Get(state, "Observed"), "GrappleAttached") && Get(state, "Result").ToString() == "Completed";
+                }
+                Require(verticalRelease && detached && !hook.active && body.position.Y > startY + 8,
+                    "the production route leaves the real overhead hook along the safe vertical shaft: " + body.position + " from " + startY +
+                    ", input=" + verticalRelease + ", detached=" + detached + ", hook=" + hook.active +
+                    ", action=" + Get(state, "Action") + "/" + Get(state, "Result"));
+                Console.WriteLine("PASS companion vertical shaft: actual attachment, route-selected vertical release and real descent.");
+            }
+            finally
+            {
+                body.RemoveAllGrapplingHooks();
+                body.miscEquips[4] = originalItem;
+                Main.projHook[item.shoot] = priorHook;
+                human.position = humanPosition;
+                RestoreTiles(tiles);
+            }
         }
 
         private static void AdvanceHook(Projectile hook)
