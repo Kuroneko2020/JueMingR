@@ -10,7 +10,14 @@ namespace JueMingR.TerrariaHost.Companions
     {
         internal long CreationSessionToken { get { return session; } }
         internal Guid LastCreatedId { get; private set; }
-        internal bool CompanionSettingCurrent(Guid ownerId, Guid id) => Find(id)?.OwnerId == ownerId;
+        internal CompanionProfile SettingProfile(Guid ownerId, Guid id)
+        {
+            var profile = Find(id);
+            return profile?.OwnerId == ownerId ? profile : null;
+        }
+        internal long SettingRevision(Guid id, CompanionSetting setting) => profiles.SettingRevision(id, setting);
+        internal long CompletedSettingSave(Guid id, CompanionSetting setting, out bool succeeded) =>
+            profiles.CompletedSettingRevision(id, setting, out succeeded);
 
         internal bool CanChangeCompanionPresence(Guid id, bool recall, out string reason)
         {

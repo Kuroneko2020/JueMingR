@@ -147,8 +147,9 @@ Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompan
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionFontChecks.cs') -join '|') -ceq 'native-CompanionFontVisual') 'font fixture owns its actual narrow graphics leaf'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionPasswordChecks.cs') -join '|') -ceq 'native-CompanionPasswordCpu|native-CompanionConfigVisual|native-CompanionFontVisual') 'password capture is shared by its protocol and real drawing consumers'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionSupplyWireChecks.cs') -join '|') -ceq 'native-CompanionSuppliesCpu') 'split-wallet wire witness belongs to the actual supply scope'
-foreach($leaf in @('ItemOnce','Furniture','SlotVisual','SupplyMenu')){
-    $consumer=if($leaf -cin @('ItemOnce','Furniture')){'native-CompanionSuppliesCpu'}else{'native-CompanionConfigVisual'}
+foreach($leaf in @('ItemOnce','Furniture','SlotVisual','SupplyMenu','HotkeyFeedback','VoidPickup','VanityShop')){
+    $consumer=if($leaf -cin @('ItemOnce','Furniture')){'native-CompanionSuppliesCpu'}
+        elseif($leaf -cin @('VoidPickup','VanityShop')){'native-CompanionItemsCpu'}else{'native-CompanionConfigVisual'}
     Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanion'+$leaf+'Checks.cs')) -join '|') -ceq $consumer) ('native companion direct consumer '+$leaf)
 }
 Assert-Route (@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeQuickItemChecks.cs') -ccontains 'native-CompanionFontVisual') 'font fixture binds its actual shared startup/wait helper'

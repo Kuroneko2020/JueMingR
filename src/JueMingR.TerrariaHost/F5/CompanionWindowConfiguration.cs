@@ -73,7 +73,7 @@ namespace JueMingR.TerrariaHost.F5
         private void ConfigurationRow(CompanionProfile profile, CompanionBehavior behavior, CompanionSetting setting,
             float x, float width, ref float y)
         {
-            int mode = SettingValue(behavior, setting);
+            int mode = behavior.SettingValue(setting);
             string[] actions = setting == CompanionSetting.Life ? LifeActions :
                 setting == CompanionSetting.Mana || setting == CompanionSetting.Buff || setting == CompanionSetting.Growth ?
                     ConfigurableActions : SwitchActions;
@@ -104,7 +104,7 @@ namespace JueMingR.TerrariaHost.F5
                     // Read the translated control on release, which is the
                     // same rectangle the shared popup's anchor checks.
                     control.Execute = () => { CloseSupplyPopup(); HotkeyClicked(id, control.Rect); };
-                    control.Hint = "双击设置" + CompanionHotkeys.Name(setting) + "的快捷键";
+                    control.Hint = F5HotkeyHints.Toggle;
                     continue;
                 }
                 int value = action == "关闭" ? 0 : action == "智能" ? 2 : 1;
@@ -122,26 +122,10 @@ namespace JueMingR.TerrariaHost.F5
             }
         }
 
-        private static int SettingValue(CompanionBehavior b, CompanionSetting setting)
-        {
-            switch (setting)
-            {
-                case CompanionSetting.Follow: return b.Follow ? 1 : 0;
-                case CompanionSetting.Attack: return b.AttackEnabled ? 1 : 0;
-                case CompanionSetting.Life: return b.HealthRecoveryEnabled ? (int)b.HealthRecoveryMode : 0;
-                case CompanionSetting.Mana: return b.ManaRecoveryEnabled ? 1 : 0;
-                case CompanionSetting.Buff: return b.BuffEnabled ? 1 : 0;
-                case CompanionSetting.Growth: return b.GrowthEnabled ? 1 : 0;
-                case CompanionSetting.Nurse: return b.AllowNurse ? 1 : 0;
-                case CompanionSetting.Furniture: return b.FurnitureEnabled ? 1 : 0;
-                default: return b.AutoRespawn ? 1 : 0;
-            }
-        }
-
         private void SetConfigurationSetting(CompanionSetting setting, int value)
         {
             var behavior = CurrentProfile()?.Behavior;
-            if (behavior == null || SettingValue(behavior, setting) == value) return;
+            if (behavior == null || behavior.SettingValue(setting) == value) return;
             ApplySetting(behavior, setting, value);
             Command(() => host.SetBehavior(selected, behavior));
         }

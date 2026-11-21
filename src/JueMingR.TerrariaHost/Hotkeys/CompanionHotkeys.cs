@@ -6,25 +6,25 @@ using JueMingR.TerrariaHost.Companions;
 
 namespace JueMingR.TerrariaHost.Hotkeys
 {
-    internal enum CompanionSetting { Follow, Attack, Life, Mana, Buff, Growth, Respawn, Nurse, Furniture }
-
     internal sealed class CompanionHotkeys
     {
         private const string Prefix = "companions.profile.";
         private static readonly string[] Keys = { "follow", "attack", "life", "mana", "buff", "growth", "respawn", "nurse", "furniture" };
         private static readonly string[] Names = { "跟随主人", "允许攻击", "主动回血", "主动回蓝", "使用增益物品", "使用成长物品", "自动复活", "护士治疗", "家具增益" };
         private readonly DynamicHotkeyOwner owner;
+        private readonly HotkeyStateFeedback feedback;
         private IReadOnlyList<CompanionProfile> observedProfiles;
         private IReadOnlyList<KeyValuePair<string, string>> observedEntries;
         private HostCompanions observedHost;
         private Guid selected;
         private Dictionary<string, HotkeyAction> actions = new Dictionary<string, HotkeyAction>(StringComparer.Ordinal);
 
-        internal CompanionHotkeys(HotkeyRegistry registry)
+        internal CompanionHotkeys(HotkeyRegistry registry, HotkeyStateFeedback feedback)
         {
             // The profile roster is unbounded. Only persisted binds and the
             // controls currently offered by the window need registry entries.
             owner = registry.CreateDynamicOwner(Prefix, HotkeyDocument.MaximumEntries + Keys.Length);
+            this.feedback = feedback;
         }
 
         internal static string Id(CompanionProfile profile, CompanionSetting setting) =>
@@ -61,10 +61,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
                         string name = profile.Name + " · " + Name(setting);
                         if (!ReferenceEquals(host, observedHost) || !actions.TryGetValue(id, out var action) || action.Name != name)
                         {
-                            Guid ownerId = profile.OwnerId, profileId = profile.Id;
-                            action = new HotkeyAction(id, name, HotkeyContext.Gameplay,
-                                () => host.CompanionSettingCurrent(ownerId, profileId),
-                                () => host.ToggleCompanionSetting(ownerId, profileId, setting));
+                            action = CreateAction(host, profile.OwnerId, profile.Id, profile.Name, setting, id, name);
                         }
                         next.Add(id, action);
                         ordered.Add(action);
@@ -72,6 +69,25 @@ namespace JueMingR.TerrariaHost.Hotkeys
             if (!owner.TryReplace(ordered, out _)) return;
             actions = next;
             observedHost = host; observedProfiles = profiles; observedEntries = entries; selected = selectedProfile;
+        }
+
+        private HotkeyAction CreateAction(HostCompanions host, Guid ownerId, Guid profileId, string profileName,
+            CompanionSetting setting, string id, string name)
+        {
+            Func<CompanionProfile> current = () => host.SettingProfile(ownerId, profileId);
+            Func<bool> available = () => current()?.Name == profileName;
+            Action command = () => host.ToggleCompanionSetting(ownerId, profileId, setting);
+            if (feedback != null)
+            {
+                // The writer may coalesce this character's inventory and other
+                // settings. Only the first persisted outcome for this switch
+                // change can acknowledge it, regardless of the selected panel.
+                command = feedback.Committed(id, name, command, () => current()?.SettingValue(setting) ?? 0, available,
+                    () => host.SettingRevision(profileId, setting), () => host.CompletedSettingSave(profileId, setting, out _),
+                    () => { host.CompletedSettingSave(profileId, setting, out bool succeeded); return succeeded; },
+                    setting == CompanionSetting.Life ? (Func<int, string>)(mode => mode == (int)CompanionHealthRecoveryMode.Smart ? "智能" : "快速") : null);
+            }
+            return new HotkeyAction(id, name, HotkeyContext.Gameplay, available, command);
         }
 
         private static bool SameRoster(IReadOnlyList<CompanionProfile> left, IReadOnlyList<CompanionProfile> right)

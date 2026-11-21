@@ -24,6 +24,9 @@ function Get-WorkloadLeafChecks {
         # NativeChecks/Program/fixture inputs retain their existing propagation.
         'tests/Companions/CompanionCoreChecks.cs'=@('CompanionCoreChecks')
         'tests/NativeWorldTextProbe/NativeCompanionItemGestureChecks.cs'=@('native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVoidPickupChecks.cs'=@('native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVanityShopChecks.cs'=@('native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionHotkeyFeedbackChecks.cs'=@('native-CompanionConfigVisual')
         'tests/NativeWorldTextProbe/NativeCompanionCreationChecks.cs'=@('native-CompanionCreationCpu','native-CompanionVisual')
         'tests/NativeWorldTextProbe/NativeCompanionTeamChecks.cs'=@('native-CompanionNetworkCpu','native-CompanionSuppliesCpu')
         'tests/NativeWorldTextProbe/NativeCompanionPasswordChecks.cs'=@('native-CompanionPasswordCpu','native-CompanionConfigVisual','native-CompanionFontVisual')

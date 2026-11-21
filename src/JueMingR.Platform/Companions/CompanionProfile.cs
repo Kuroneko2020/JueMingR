@@ -5,6 +5,7 @@ namespace JueMingR.Platform.Companions
 {
     public enum CompanionInventoryArea { Inventory, Armor, Dye, Misc, MiscDye, PiggyBank, Safe, DefenderForge, VoidVault }
     public enum CompanionHealthRecoveryMode { Fast = 1, Smart = 2 }
+    public enum CompanionSetting { Follow, Attack, Life, Mana, Buff, Growth, Respawn, Nurse, Furniture }
 
     public readonly struct CompanionWeaponPreference
     {
@@ -37,6 +38,23 @@ namespace JueMingR.Platform.Companions
         public int[] ExcludedManaTypes { get; set; } = Array.Empty<int>();
         public int[] AllowedGrowthTypes { get; set; } = Array.Empty<int>();
         public int[] AllowedBuffTypes { get; set; } = Array.Empty<int>();
+
+        public int SettingValue(CompanionSetting setting)
+        {
+            switch (setting)
+            {
+                case CompanionSetting.Follow: return Follow ? 1 : 0;
+                case CompanionSetting.Attack: return AttackEnabled ? 1 : 0;
+                case CompanionSetting.Life: return HealthRecoveryEnabled ? (int)HealthRecoveryMode : 0;
+                case CompanionSetting.Mana: return ManaRecoveryEnabled ? 1 : 0;
+                case CompanionSetting.Buff: return BuffEnabled ? 1 : 0;
+                case CompanionSetting.Growth: return GrowthEnabled ? 1 : 0;
+                case CompanionSetting.Nurse: return AllowNurse ? 1 : 0;
+                case CompanionSetting.Furniture: return FurnitureEnabled ? 1 : 0;
+                case CompanionSetting.Respawn: return AutoRespawn ? 1 : 0;
+                default: throw new ArgumentOutOfRangeException(nameof(setting));
+            }
+        }
 
         public CompanionBehavior Clone()
         {
@@ -99,6 +117,9 @@ namespace JueMingR.Platform.Companions
         public long DataEpoch { get; }
         public bool PermanentlyDead { get; }
         public CompanionBehavior Behavior { get { return behavior.Clone(); } }
+        // A displayed hotkey receipt rechecks just its setting. Keep the
+        // immutable snapshot private without copying its item lists each frame.
+        public int SettingValue(CompanionSetting setting) => behavior.SettingValue(setting);
         public byte[] NativeData { get { return (byte[])nativeData.Clone(); } }
         public CompanionProfile Revise(byte[] data, CompanionBehavior preferences = null, bool reset = false, bool? permanentlyDead = null)
         { return new CompanionProfile(Id, OwnerId, Name, checked(Revision + 1), reset ? checked(DataEpoch + 1) : DataEpoch, preferences ?? behavior, data, reset ? false : permanentlyDead ?? PermanentlyDead); }

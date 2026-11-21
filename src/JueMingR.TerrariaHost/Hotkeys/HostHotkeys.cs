@@ -125,7 +125,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
             if (canToggleCompanions != null && toggleCompanions != null)
             {
                 Registry.Register(new HotkeyAction(F5.CompanionWindow.ActionId, "AI 队友管理窗", HotkeyContext.Gameplay, canToggleCompanions, toggleCompanions));
-                CompanionSettings = new CompanionHotkeys(Registry);
+                CompanionSettings = new CompanionHotkeys(Registry, Feedback);
             }
             HotkeyChord defaultAnnouncement; string defaultReason;
             if (!HotkeyChord.TryParse("LeftShift+LeftAlt+Mouse1", out defaultAnnouncement, out defaultReason)) throw new InvalidOperationException(defaultReason);

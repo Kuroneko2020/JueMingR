@@ -125,6 +125,7 @@ namespace NativeWorldTextProbe
                 CheckHotkeyOwnership(context, window, host, shell, id, other, click, rest,
                     () => graphics.Image(Path.Combine(output,"companion-independent-hotkey-popup.png"),
                         () => Call(shell,"DrawLayer"),matrix,(int)screen.X,(int)screen.Y));
+                NativeCompanionHotkeyFeedbackChecks.Run(context, window, host, id, other, click, rest, graphics, output);
                 click("config-Attack/关闭/");Require(!Profile(host,id).Behavior.AttackEnabled&&Profile(host,id).Behavior.Follow,"one explicit switch edits its real field and preserves neighbors");
                 click("config-Follow/关闭/");Require(!Profile(host,id).Behavior.Follow,"real follow setting preserves stationary behavior");
                 click("config-Respawn/关闭/");Require(!Profile(host,id).Behavior.AutoRespawn,"real auto-respawn setting uses its existing owner");

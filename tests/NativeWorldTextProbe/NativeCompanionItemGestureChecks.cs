@@ -132,6 +132,8 @@ namespace NativeWorldTextProbe
                 Gesture(host, id, true, CompanionInventoryArea.Inventory, 12, "Left");
                 Require(human.inventory[11].stack == 5 && human.inventory[12].stack == 5, "left places the accumulated split with both sides conserved");
                 NativeRightActions(host,id,human,companion);
+                NativeCompanionVanityShopChecks.Run(Get(context, "Shell"), id, human, companion);
+                NativeCompanionVoidPickupChecks.Run(host, human);
                 Put(human.inventory, 13, ItemID.WoodenBow); human.inventory[13].Prefix(PrefixID.Demonic); Put(companion.inventory, 13, ItemID.WoodenBow);
                 Gesture(host, id, true, CompanionInventoryArea.Inventory, 13, "Left"); Gesture(host, id, false, CompanionInventoryArea.Inventory, 13, "Left");
                 Require((bool)Get(host, "HasItemGesture") && ((Item)Get(host, "CursorItem")).prefix == 0 && Preview(host, id, false, CompanionInventoryArea.Inventory, 13).prefix != 0,
@@ -684,6 +686,8 @@ namespace NativeWorldTextProbe
                     Require(primaryPackets.Any(p => p[2] == 5 && p[3] == human.whoAmI && BitConverter.ToInt16(p, 4) == slot), "human native region uses correct inventory packet slot " + slot);
                 Require(frames.Any(p => p[2] == 5 && p[3] == companion.whoAmI && BitConverter.ToInt16(p, 4) == PlayerItemSlotID.Armor0) &&
                     primaryPackets.All(p => p[2] != 5 || p[3] == human.whoAmI), "AI changes use independent connection identity without impersonating human");
+                primaryPackets.Clear();frames.Clear();
+                NativeCompanionVoidPickupChecks.NetworkLoot(host, id, companion, frames, primaryPackets);
                 Put(companion.inventory,40,ItemID.Shellphone);primaryPackets.Clear();frames.Clear();
                 Require(Gesture(host,id,false,CompanionInventoryArea.Inventory,40,"Right") && frames.Any(p=>p[2]==5 &&
                     p[3]==companion.whoAmI && BitConverter.ToInt16(p,4)==PlayerItemSlotID.Inventory0+40 &&

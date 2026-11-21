@@ -16,7 +16,14 @@ namespace JueMingR.Features.Companions
             internal long SavedRevision;
             internal long Activation;
             internal string SaveError;
+            internal SettingReceipt[] Settings;
         }
+        private sealed class SettingReceipt
+        {
+            internal long Revision, Completed;
+            internal bool Succeeded;
+        }
+        private static readonly int SettingCount = Enum.GetValues(typeof(CompanionSetting)).Length;
         private readonly ICompanionArchive archive;
         private readonly Func<CompanionProfile, CompanionProfile> validateLoaded;
         private readonly Dictionary<Guid, Entry> entries = new Dictionary<Guid, Entry>();
@@ -164,6 +171,14 @@ namespace JueMingR.Features.Companions
             if (entry.Activation != 0 && profile.DataEpoch != entry.Profile.DataEpoch &&
                 (activation == 0 || entry.SavedRevision != entry.Profile.Revision))
                 throw new InvalidOperationException("请先收回队友再清空人物存档。");
+            if (entry.Settings != null)
+                for (int i = 0; i < entry.Settings.Length; i++)
+                {
+                    var receipt = entry.Settings[i];
+                    if (receipt != null && (profile.DataEpoch != entry.Profile.DataEpoch || profile.Name != entry.Profile.Name ||
+                        profile.SettingValue((CompanionSetting)i) != entry.Profile.SettingValue((CompanionSetting)i)))
+                        receipt.Revision = profile.Revision;
+                }
             entry.Profile = profile; Refresh(); QueueSave(profile);
         }
         public bool TryReserve(Guid id, out long generation)
@@ -178,6 +193,36 @@ namespace JueMingR.Features.Companions
         { Entry entry; if (generation > 0 && entries.TryGetValue(id, out entry) && entry.Activation == generation) entry.Activation = 0; }
         public bool IsSaved(Guid id)
         { Entry entry; return entries.TryGetValue(id, out entry) && entry.SavedRevision == entry.Profile.Revision; }
+        public long SettingRevision(Guid id, CompanionSetting setting)
+        {
+            if (!entries.TryGetValue(id, out var entry) || entry.Profile.OwnerId != OwnerId) return 0;
+            // Observation starts with an actual key press. Unbound and unused
+            // switches get no per-profile tracking or per-frame roster work.
+            if (entry.Settings == null) entry.Settings = new SettingReceipt[SettingCount];
+            int i = (int)setting;
+            if (entry.Settings[i] == null) entry.Settings[i] = new SettingReceipt { Revision = entry.Profile.Revision };
+            return entry.Settings[i].Revision;
+        }
+        public long CompletedSettingRevision(Guid id, CompanionSetting setting, out bool succeeded)
+        {
+            SettingReceipt receipt = entries.TryGetValue(id, out var entry) && entry.Profile.OwnerId == OwnerId
+                ? entry.Settings?[(int)setting] : null;
+            succeeded = receipt?.Succeeded == true;
+            return receipt?.Completed ?? 0;
+        }
+        private static void CompleteSettings(Entry entry, long writtenRevision, bool succeeded)
+        {
+            if (entry.Settings == null) return;
+            foreach (var receipt in entry.Settings)
+            {
+                // A coalesced inventory/other-setting write also contains this
+                // value. A newer change to this same setting supersedes it.
+                // Keep its first outcome so a later retry cannot replay a failure.
+                if (receipt == null || receipt.Revision > writtenRevision || receipt.Completed == receipt.Revision) continue;
+                receipt.Completed = receipt.Revision;
+                receipt.Succeeded = succeeded;
+            }
+        }
         public bool SaveFailed(Guid id)
         { Entry entry; return entries.TryGetValue(id, out entry) && entry.SaveError != null; }
         public string SaveError(Guid id)
@@ -221,6 +266,7 @@ namespace JueMingR.Features.Companions
                     Entry entry;
                     if (!entries.TryGetValue(id, out entry)) return;
                     entry.SavedRevision = Math.Max(entry.SavedRevision, candidate.Revision);
+                    CompleteSettings(entry, candidate.Revision, true);
                     entry.Published = true; entry.SaveError = null;
                     RefreshError(); Refresh();
                 });
@@ -235,6 +281,7 @@ namespace JueMingR.Features.Companions
                     if (entries.TryGetValue(id, out entry))
                     {
                         entry.SaveError = exception.Message;
+                        CompleteSettings(entry, candidate.Revision, false);
                         // A failed first commit is a visible recoverable draft,
                         // never an activatable character or a second starter kit.
                         entry.Published = true; Refresh();

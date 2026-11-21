@@ -180,6 +180,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(a.Profile.PermanentlyDead)throw new InvalidOperationException("已永久死亡的人物不能加入。");
             if(slot<0 || slot>=Main.maxPlayers || slot==Main.myPlayer || slots.ContainsKey(slot))throw new InvalidOperationException("服务器分配了冲突的玩家槽位。");
+            CompanionHooks.RefreshVoidPickup(a.Body);
             a.Previous=Main.player[slot];a.Body.whoAmI=slot;a.Body.active=true;a.Body.ghost=false;Main.player[slot]=a.Body;
             if(a.NetworkSlotIds==null)a.NetworkSlotIds=NetworkSlots(a.Body);
             bodies.Add(a.Body,a);slots.Add(slot,a);

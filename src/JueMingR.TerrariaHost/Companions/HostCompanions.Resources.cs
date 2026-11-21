@@ -227,10 +227,11 @@ namespace JueMingR.TerrariaHost.Companions
 
         private bool FinishItemCommit(Actor actor, List<CompanionItemChange> changes, string message, bool nativeEquip = false)
         {
-            bool companionChanged = false; string failure = null;
+            bool companionChanged = false, backpackChanged = false; string failure = null;
             foreach (var change in changes)
             {
                 companionChanged |= !change.Owner;
+                backpackChanged |= !change.Owner && change.Area == CompanionInventoryArea.Inventory;
                 if (!change.Owner && change.Area == CompanionInventoryArea.Armor)
                     InvalidateActorTileReach(actor.Body);
                 if (change.Owner && !change.OwnerTrash)
@@ -253,6 +254,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if (companionChanged && actor != null)
             {
+                if (backpackChanged) CompanionHooks.RefreshVoidPickup(actor.Body);
                 InvalidateItemSources(actor);
                 // Capture failure retains this exact latest body. Retry only
                 // captures/sends; it never executes the accepted transfer twice.

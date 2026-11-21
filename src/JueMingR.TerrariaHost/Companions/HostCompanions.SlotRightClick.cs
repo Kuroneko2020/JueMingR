@@ -51,6 +51,10 @@ namespace JueMingR.TerrariaHost.Companions
             if (!Watch(area, slot)) return Result(false, "该物品正在使用或等待同步。");
             if (action == CompanionSlotRightClick.Kind.Open)
             {
+                // A bag may have been picked up near the end of Player.Update,
+                // after vanilla refreshed bit 0. This separate window action
+                // must protect the same actual destinations its grant will use.
+                if (!human) CompanionHooks.RefreshVoidPickup(body);
                 bool paysBankKey = item.type == ItemID.LockBox && body.useVoidBag() && !body.HasItem(ItemID.GoldenKey);
                 // GetItem chooses actual stack/coin/ammo/void destinations only
                 // after rolling. Full non-coin stacks cannot receive loot.
@@ -96,7 +100,18 @@ namespace JueMingR.TerrariaHost.Companions
                         borrowedDyeCounter = true;
                     }
                     if (action == CompanionSlotRightClick.Kind.Open) CompanionSlotRightClick.Open(source, context, slot, body);
-                    else if (action == CompanionSlotRightClick.Kind.Vanity) CompanionSlotRightClick.SwapVanity(source, context, slot, body);
+                    else if (action == CompanionSlotRightClick.Kind.Vanity)
+                    {
+                        // SwapVanityEquip also reads the human client's shop index.
+                        // Only the companion's native swap needs its own no-shop view.
+                        int shop = Main.npcShop;
+                        try
+                        {
+                            if (!human) Main.SetNPCShopIndex(0);
+                            CompanionSlotRightClick.SwapVanity(source, context, slot, body);
+                        }
+                        finally { if (!human) Main.SetNPCShopIndex(shop); }
+                    }
                     else ItemSlot.SwapEquip(source, context, slot);
                 }
             }

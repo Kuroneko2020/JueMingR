@@ -62,6 +62,9 @@ namespace JueMingR.TerrariaHost.Companions
         internal void Pump() { manager.Pump(); }
         internal CompanionProfile Find(Guid id) { return manager.Find(id); }
         internal bool IsSaved(Guid id) { return manager.IsSaved(id); }
+        internal long SettingRevision(Guid id, CompanionSetting setting) => manager.SettingRevision(id, setting);
+        internal long CompletedSettingRevision(Guid id, CompanionSetting setting, out bool succeeded) =>
+            manager.CompletedSettingRevision(id, setting, out succeeded);
         internal bool SaveFailed(Guid id) { return manager.SaveFailed(id); }
         internal string SaveError(Guid id) { return manager.SaveError(id); }
         internal void RetrySave(Guid id) { manager.RetrySave(id); }

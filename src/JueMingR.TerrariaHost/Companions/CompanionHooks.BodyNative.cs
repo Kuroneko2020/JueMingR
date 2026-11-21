@@ -18,12 +18,32 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static void ExtendActiveBodyUpdate(List<CodeInstruction> code)
         {
+            // Widen only the vanilla HasItem(VoidLens) -> voidVaultInfo[0]
+            // assignment. The adjacent local-player HUD and equipment updates
+            // remain native human work; no second scan is needed during pickup.
+            var setter = AccessTools.PropertySetter(typeof(Player), nameof(Player.IsVoidVaultEnabled));
+            var hasItem = AccessTools.Method(typeof(Player), nameof(Player.HasItem), new[] { typeof(int) });
+            int write = code.FindIndex(instruction => instruction.Calls(setter));
+            if (write < 7 || !code[write - 1].Calls(hasItem) || !code[write - 2].LoadsConstant(ItemID.VoidLens) ||
+                code[write - 5].opcode != OpCodes.Bne_Un && code[write - 5].opcode != OpCodes.Bne_Un_S ||
+                !code[write - 6].LoadsField(AccessTools.Field(typeof(Main), nameof(Main.myPlayer))) ||
+                !code[write + 1].labels.Contains((Label)code[write - 5].operand))
+                throw new InvalidOperationException("Companion void bag update gate changed.");
+            ReplaceOwner(code, write - 6);
+
             var updateBuffs = AccessTools.Method(typeof(Player), nameof(Player.UpdateBuffs));
             int buffs = code.FindLastIndex(instruction => instruction.Calls(updateBuffs));
             if (buffs < 0) throw new InvalidOperationException("Companion active body buff call missing.");
             code[buffs].opcode = OpCodes.Call;
             code[buffs].operand = AccessTools.Method(typeof(CompanionHooks), nameof(UpdateBodyBuffsAndPets));
+        }
 
+        // The archive's native byte also contains unrelated bits. Recompute
+        // only the derived pickup permission when a body or backpack becomes
+        // usable between native steps. Quick use and bank UI have other gates.
+        internal static void RefreshVoidPickup(Player body)
+        {
+            body.IsVoidVaultEnabled = body.HasItem(ItemID.VoidLens);
         }
 
         private static void PurgeCompanionEnergy(Player body)
