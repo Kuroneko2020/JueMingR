@@ -150,9 +150,121 @@ namespace NativeWorldTextProbe
                 managerClick("actor-state");NativeQuickItemChecks.Until(()=>{Call(host,"Update",(ulong)Main.GameUpdateCount);return !(bool)Call(host,"IsJoined",id);});
                 managerClick("create");creator=(UICharacterCreation)Main.InGameUI.CurrentState;Click(Snap(creator,"Back",0),graphics);Require(Session(host)==null&&(bool)Get(window,"Visible"),"actual native Back exits without world replay");
                 Require(Main.player.SequenceEqual(ownerArray),"after actual recall, native UI keeps all human/other player array identities");
+                CheckDuplicateNaming(context,graphics,managerClick,id);
+                CheckBrokenKeyboardReturn(context,graphics,managerClick);
                 Console.WriteLine("PASS true native early-UI -> mapping/final sample -> production context dispatch, physical UI1.25/worldZoom1.5, real plus/category/held-slider/keyboard cancel-submit/Back, world CopyInto+ItemCheck and neutral tails, embedded state/team and feedback; no OS IME/installed-game claim.");
             }
             finally {proveWorldUse=false;observedSlider=null;observedSession=null;inventoryBindings.Clear();inventoryBindings.AddRange(originalInventoryKeys);Set(input,"foregroundWindow",foreground);var s=Session(host);if(s!=null)Call(s,"Cancel");Call(window,"Close");guard.UnpatchAll(guard.Id);human.inventory[0]=item;human.selectedItemState.Select(selected);human.name=ownerName;Main.GameViewMatrix.Zoom=zoom;currentContext=null;NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
+        }
+
+        private static void CheckDuplicateNaming(object context,ProbeGraphics graphics,Action<string> managerClick,Guid existingId)
+        {
+            var host=Get(context,"Companions");var shell=Get(context,"Shell");var window=Get(shell,"CompanionUi");
+            var original=ReadProfiles(host).Single(p=>p.Id==existingId);
+            int count=ReadProfiles(host).Length;
+            managerClick("create");
+            var session=Session(host);var creator=(UICharacterCreation)Main.InGameUI.CurrentState;
+            var draft=(Player)Get(session,"Draft");
+            Click((UIElement)Get(creator,"_clothingStylesCategoryButton"),graphics);
+            Click(Descendants(creator).OfType<UIClothStyleButton>().Single(b=>b.ClothStyleId==9),graphics);
+            Click((UIElement)Get(creator,"_charInfoCategoryButton"),graphics);
+            Click(Snap(creator,"Create",0),graphics);
+            var first=(UIVirtualKeyboard)Main.InGameUI.CurrentState;
+            first.Text=" "+original.Name+" ";
+            DrawEnter(graphics);
+            Require(ReferenceEquals(Main.InGameUI.CurrentState,creator)&&ReferenceEquals(Session(host),session)&&draft.skinVariant==9&&
+                ((UIText)Get(session,"error")).Text.Contains("另一名队友")&&ReadProfiles(host).Length==count&&
+                (Guid)Get(host,"LastCreatedId")==existingId&&!PlayerInput.WritingText,
+                "second draft's real keyboard Enter rejects duplicate locally and preserves the edited draft, old save and input ownership");
+            Click((UIElement)Get(creator,"_charName"),graphics);
+            var current=(UIVirtualKeyboard)Main.InGameUI.CurrentState;
+            ((UIVirtualKeyboard.KeyboardSubmitEvent)Get(first,"_submitAction"))("旧键盘不应提交");
+            ((Action)Get(first,"_cancelAction"))();
+            Require(ReferenceEquals(Main.InGameUI.CurrentState,current)&&draft.name==original.Name,
+                "same-draft callbacks from an earlier native keyboard cannot submit or cancel the current one");
+
+            // The owner is an ordinary player with this same name. Duplicate
+            // AI identity checks only the current owner's companion roster.
+            current.Text=Main.LocalPlayer.name;
+            DrawEnter(graphics);
+            Click(Snap(creator,"Create",0),graphics);
+            var retryId=(Guid)Get(host,"LastCreatedId");
+            Require(retryId!=existingId&&Session(host)==null&&(bool)Get(window,"Visible"),"unique retry and ordinary player same name return to management");
+            NativeQuickItemChecks.Until(()=>{Call(host,"Update",0UL);return (bool)Call(Get(host,"profiles"),"IsSaved",retryId);});
+            var profiles=ReadProfiles(host);
+            Require(profiles.Length==count+1&&profiles.Single(p=>p.Id==retryId).Name==Main.LocalPlayer.name&&
+                profiles.Single(p=>p.Id==existingId).NativeData.SequenceEqual(original.NativeData),"retry writes exactly one new archive without changing the original companion bytes");
+            managerClick("create");creator=(UICharacterCreation)Main.InGameUI.CurrentState;
+            Click(Snap(creator,"Create",0),graphics);
+            ((UIVirtualKeyboard)Main.InGameUI.CurrentState).Text=original.Name;
+            DrawEnter(graphics);Click(Snap(creator,"Back",0),graphics);
+            Require(Session(host)==null&&(bool)Get(window,"Visible")&&ReadProfiles(host).Length==count+1,
+                "another rejected duplicate can cancel with no new profile");
+        }
+
+        private static JueMingR.Platform.Companions.CompanionProfile[] ReadProfiles(object host) =>
+            ((IEnumerable)Get(host,"Profiles")).Cast<JueMingR.Platform.Companions.CompanionProfile>().ToArray();
+
+        private static void DrawEnter(ProbeGraphics graphics)
+        {
+            Main.keyCount=1;Main.keyInt[0]=13;Main.keyString[0]="\r";
+            graphics.Render(()=>Main.InGameUI.Draw(Main.spriteBatch,new GameTime(clock,TimeSpan.FromMilliseconds(16))),Main.UIScaleMatrix);
+        }
+
+        private static void CheckBrokenKeyboardReturn(object context,ProbeGraphics graphics,Action<string> managerClick)
+        {
+            var host=Get(context,"Companions");var shell=Get(context,"Shell");var window=Get(shell,"CompanionUi");
+            int before=ReadProfiles(host).Length;
+            object priorKeyboard=typeof(UIVirtualKeyboard).GetField("_currentInstance",BindingFlags.Static|BindingFlags.NonPublic).GetValue(null);
+            managerClick("create");
+            Click(Snap(Main.InGameUI.CurrentState,"Create",0),graphics);
+            var keyboard=(UIVirtualKeyboard)Main.InGameUI.CurrentState;
+            keyboard.Text="隔离回调故障";
+            var point=((UIElement)Get(keyboard,"_submitButton")).GetDimensions().Center();
+            Step(point,false,graphics);Step(point,true,graphics);
+            var hovered=(UIElement)Get(Main.InGameUI,"_lastElementHover");
+            int faults=0;
+            hovered.OnMouseOut+=(evt,element)=>
+            {
+                if(++faults==1)throw new InvalidOperationException("fixture-native-keyboard-return-failure");
+                throw new IOException("fixture-owned-keyboard-cleanup-failure");
+            };
+            Require(PlayerInput.WritingText,"native keyboard owns text immediately before the Enter callback");
+            DrawEnter(graphics);
+            Require(faults==2&&Session(host)==null&&Main.InGameUI.CurrentState==null&&!Main.inFancyUI&&!PlayerInput.WritingText&&
+                ReferenceEquals(priorKeyboard,typeof(UIVirtualKeyboard).GetField("_currentInstance",BindingFlags.Static|BindingFlags.NonPublic).GetValue(null))&&
+                (bool)Get(window,"Visible")&&!(bool)Get(shell,"Failed")&&ReadProfiles(host).Length==before,
+                "owned native Enter failure keeps its first error, unwinds even with another MouseOut failure, and leaves F5 and its archive usable");
+            var empty=Array.Empty<Microsoft.Xna.Framework.Input.Keys>();
+            NativeFrame(context,point*Main.UIScale,true,empty);WorldBlocked();
+            NativeFrame(context,point*Main.UIScale,false,empty);
+            string report=Path.Combine((string)Get(context,"gameDirectory"),"JueMingRData","diagnostics","f5","first-companion-creation.txt");
+            string log=null;
+            NativeQuickItemChecks.Until(()=>
+            {
+                if(!File.Exists(report))return false;
+                log=File.ReadAllText(report);
+                return log.Contains("cleanup=");
+            });
+            Require(log.Contains("phase=return-from-naming")&&log.Contains("first=System.InvalidOperationException: fixture-native-keyboard-return-failure")&&
+                log.Contains("cleanup=System.IO.IOException: fixture-owned-keyboard-cleanup-failure"),"real fault output stores the original failure and independent cleanup failure");
+            Call(window,"Close");
+            var none=Array.Empty<Microsoft.Xna.Framework.Input.Keys>();
+            var f5=new[]{Microsoft.Xna.Framework.Input.Keys.F5};
+            NativeFrame(context,Vector2.Zero,false,none);NativeFrame(context,Vector2.Zero,false,f5);
+            Require((bool)Get(Get(shell,"State"),"Visible"),"fresh physical F5 sample can reopen the shell after a creation fault");
+            NativeFrame(context,Vector2.Zero,false,none);NativeFrame(context,Vector2.Zero,false,f5);
+            Require(!(bool)Get(Get(shell,"State"),"Visible"),"recovered F5 closes on its next fresh edge");
+
+            Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));
+            Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(Main.screenWidth,Main.screenHeight));
+            NativeFrame(context,Vector2.Zero,false,none);managerClick("create");
+            var retired=(UICharacterCreation)Main.InGameUI.CurrentState;
+            Call(shell,"FailClosed","fixture-shared-shell",new InvalidOperationException("fixture-shared-failure"));
+            Call(retired,"FinishCreatingCharacter");
+            Require(Session(host)==null&&Main.InGameUI.CurrentState==null&&!Main.inFancyUI&&!(bool)Get(window,"Visible")&&
+                (bool)Get(shell,"Failed")&&ReadProfiles(host).Length==before,
+                "a real shell-wide retirement also disposes its exact native page and rejects the retired callback");
         }
         internal static void Run(object context,ProbeGraphics graphics,string output)
         {

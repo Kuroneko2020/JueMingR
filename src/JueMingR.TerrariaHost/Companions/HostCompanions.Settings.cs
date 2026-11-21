@@ -19,6 +19,8 @@ namespace JueMingR.TerrariaHost.Companions
         internal long CompletedSettingSave(Guid id, CompanionSetting setting, out bool succeeded) =>
             profiles.CompletedSettingRevision(id, setting, out succeeded);
 
+        internal bool RecallPending(Guid id) => actors.TryGetValue(id,out var actor) && actor.Closing && Find(id)!=null;
+
         internal bool CanChangeCompanionPresence(Guid id, bool recall, out string reason)
         {
             var profile = Find(id);
@@ -28,7 +30,8 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 // A pending connection remains cancelable by the actual
                 // Recall command. Once closing, its save/retry owns the body.
-                reason = !recall || actor.Closing ? Status(id) : null;
+                reason = actor.Closing && SaveFailed(id) ? "保存失败，请在配置页重试保存。" :
+                    !recall || actor.Closing ? Status(id) : null;
                 return recall && !actor.Closing;
             }
             reason = recall ? "人物已收回。" : profile.PermanentlyDead ? "永久死亡人物无法加入。" :
@@ -126,14 +129,15 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal bool WeaponSelectionCurrent(Guid id, long worldSession, long generation, long epoch, Player body)
         {
-            return worldSession == session && actors.TryGetValue(id, out var actor) && ItemActorCurrent(id, actor) &&
+            return ItemCommandOwnerCurrent() && worldSession == session &&
+                actors.TryGetValue(id, out var actor) && ItemActorCurrent(id, actor) &&
                 generation == actor.Generation && epoch == actor.Profile.DataEpoch && ReferenceEquals(body, actor.Body);
         }
 
         internal bool TrySetMainWeapons(Guid id, long worldSession, long generation, long epoch,
             Player body, CompanionWeaponPreference[] chosen)
         {
-            if (!ItemOwnerCurrent() || Main.mouseItem?.IsAir == false || itemDraft != null ||
+            if (Main.mouseItem?.IsAir == false || itemDraft != null ||
                 !WeaponSelectionCurrent(id, worldSession, generation, epoch, body))
                 return Result(false, "队友已变化，请重新选择主要武器。");
             if (chosen == null || chosen.Length > CompanionBehavior.MaxMainWeapons ||

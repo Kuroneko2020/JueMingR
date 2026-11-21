@@ -28,6 +28,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal void Control(Actor a)
         {
             var p=a.Body;
+            bool mobilityHand=FinishMobilityHand(a);
             if((p.selectedItem<0 || p.selectedItem>=CompanionBehavior.MainInventorySlots) && FreeHand(p))p.selectedItemState.Select(0);
             p.controlLeft=p.controlRight=p.controlJump=p.controlDown=p.controlUp=p.controlUseItem=p.controlUseTile=p.controlHook=p.controlThrow=false;
             if(p.dead || !p.active){CancelCompanionItemOnce(a);a.Combat.ResetHand();a.Status="等待复活";return;}
@@ -37,7 +38,10 @@ namespace JueMingR.TerrariaHost.Companions
 
             // Native recovery can coexist with movement and an active hand.
             // Read its result before selecting the next actual item action.
-            bool manualSupply = RunCompanionItemOnce(a);
+            if(a.Mobility.Generation!=a.Generation)a.Mobility.Reset(a.Generation);
+            a.Mobility.ObserveGrapple(p);
+            if(planning || !a.Mobility.Observed.Ready)RefreshMobilitySources(a);
+            bool manualSupply = mobilityHand || RunCompanionItemOnce(a);
             if (!manualSupply) TryCompanionLife(a);
             if(behavior.AttackEnabled && planning && !p.noItems && !p.CCed)ChooseAttacks(a,behavior);
             if(!behavior.AttackEnabled)combat.Reset();
@@ -48,11 +52,19 @@ namespace JueMingR.TerrariaHost.Companions
             bool clearOpening=valid, waitingForMana=false;
             int heldSlot=CompanionHeldSlot(a, includeAutomatic: !manualSupply);
             bool buff=!manualSupply && heldSlot<0 && CompanionBuffPending(a);
+            var pursuit=combat.Pursuit;
+            var movementTarget=TargetCurrent(a,pursuit.Target,pursuit.TargetGeneration)?pursuit.Target:null;
+            var frame=a.Behavior.DecideMobility(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening || valid,pursuit.Weapon,a.Mobility);
+            // Urgent movement may use the next legal hand edge before queued
+            // automatic buffs or growth. The manual command keeps its own turn,
+            // and StageMobility still waits for any actual native hand tail.
+            mobilityHand=StageMobility(a,frame,manualSupply || !frame.EmergencyHand && (heldSlot>=0 || buff)) || mobilityHand;
 
             // A pending exclusive maintenance action owns the release edge.
             // ItemCheck and live projectiles finish their normal animation and
             // channel; no other policy may reassert use during that interval.
-            if(heldSlot>=0 || buff)
+            if(mobilityHand)combat.ResetHand();
+            else if(heldSlot>=0 || buff)
             {
                 combat.ResetHand();
                 SetAttackTarget(a,null);
@@ -92,10 +104,6 @@ namespace JueMingR.TerrariaHost.Companions
                 SetAttackTarget(a,null);
                 if(FreeHand(p) && a.Supplies.HeldOnce == null)IdleAim(a);
             }
-            var pursuit=combat.Pursuit;
-            var movementTarget=TargetCurrent(a,pursuit.Target,pursuit.TargetGeneration)?pursuit.Target:null;
-            var frame=a.Behavior.DecideMovement(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening || valid,pursuit.Weapon);
-            p.controlLeft=frame.Move<0;p.controlRight=frame.Move>0;p.controlJump=frame.Jump;p.controlDown=frame.Drop;
             a.Status=frame.Status;
             if(frame.Status=="停留" && behavior.AttackEnabled && combat.NearbyCount>0)
             {
@@ -245,6 +253,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal void AfterBody(Actor a)
         {
             if(a.Profile.PermanentlyDead || a.PermanentDeathPending)return;
+            if(!a.Body.dead)ObserveMobility(a);
             // A completed live update has recomputed effective accessories.
             // Inventory changes must not use the previous accessory result.
             if(!a.Body.dead)a.TileReachPending=false;
@@ -281,6 +290,7 @@ namespace JueMingR.TerrariaHost.Companions
             RetireProjectiles(a);
             CaptureActorState(a);a.TeamSavePending=false;
             long previous=a.Generation;profiles.Release(a.Profile,previous);long next;if(!profiles.TryReserve(a.Profile,out next))throw new InvalidOperationException("队友复活身份不可用。");a.Generation=next;
+            a.Mobility.Reset(next);
             // A legal death renews this same body's activation. Only its own
             // latest native team intent follows that transition, never a new
             // connection/actor that happens to reuse the player slot.

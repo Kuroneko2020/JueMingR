@@ -28,7 +28,7 @@ namespace NativeWorldTextProbe
         { return Query("Supported",body,body.position,platforms); }
         private static void TileAt(int x,int y,int type,int slope=0,bool half=false)
         { var tile=new Tile();tile.active(true);tile.type=(ushort)type;tile.slope((byte)slope);tile.halfBrick(half);Main.tile[x,y]=tile; }
-        internal static void Run(object context)
+        internal static void Run(object context, bool comparison = false)
         {
             NativeCombatAimChecks.Initialize();
             new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player),"Spawn"),HarmonyPatchType.Prefix,"JueMingR.Tests.QuickItemOutlets");
@@ -36,9 +36,11 @@ namespace NativeWorldTextProbe
             for(int x=2;x<118;x++)TileAt(x,60,TileID.Stone);
             NativeCompanionCoreLifecycleChecks.PrepareHuman();
             var host=Get(context,"Companions");var profiles=Get(host,"profiles");
+            Require((bool)Get(host, "Enabled"), "companion native hooks: " + Get(host, "Feedback"));
             NativeQuickItemChecks.Until(()=>{Call(context,"UpdateRuntime");Call(host,"Update",0UL);return (bool)Get(profiles,"Ready");});
             Require((bool)Call(host,"Create","斜平台原生代表"),"create native navigation profile");
-            NativeQuickItemChecks.Until(()=>{Call(profiles,"Pump");return ((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Any(p=>p.Name=="斜平台原生代表");});
+            try { NativeQuickItemChecks.Until(()=>{Call(profiles,"Pump");return ((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Any(p=>p.Name=="斜平台原生代表");}); }
+            catch (Exception failure) { throw new InvalidOperationException("navigation character save: " + Get(host, "Feedback"), failure); }
             Guid id=((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Single(p=>p.Name=="斜平台原生代表").Id;
             Require((bool)Call(host,"Join",id),"join native navigation profile: "+Get(host,"Feedback"));
             var body=(Player)Call(host,"GetBody",id);var actor=Call(host,"Owned",body);var human=Main.LocalPlayer;
@@ -53,6 +55,8 @@ namespace NativeWorldTextProbe
                 Main.maxTilesX=160;Main.maxTilesY=160;Main.tile=new Tile[160,160];
                 for(int x=0;x<160;x++)for(int y=0;y<160;y++)Main.tile[x,y]=new Tile();
                 Main.worldSurface=40;Main.bottomWorld=160*16;Main.rightWorld=160*16;
+                CommonMotionSample(host, body, human);
+                if (comparison) return;
                 var probe=new Player{width=20,height=42,active=true,position=new Vector2(1608,1118),gravity=.4f,gravDir=1,maxRunSpeed=3,runAcceleration=.08f,runSlowdown=.2f,maxFallSpeed=10};
                 TileAt(100,72,TileID.Platforms,1);
                 var references=new List<Tuple<int,int,Tile>>();for(int x=94;x<108;x++)for(int y=66;y<77;y++)references.Add(Tuple.Create(x,y,Main.tile[x,y]));
@@ -99,6 +103,9 @@ namespace NativeWorldTextProbe
                 for(int x=80;x<125;x++)TileAt(x,73,TileID.Stone);
                 NativeLanding(host,actor,body,human);
                 NativeWallCrossing(host,actor,body,human);
+                NativeDetour(host,actor,body,human);
+                NativeTeamSlices(host,actor,body,human,profiles);
+                NativeCompanionMobilityChecks.Run(host,body,human);
                 NativeAttackChoice(host,actor,body,human);
                 NativeAirEscape(host,actor,body,human,id);
                 NativePetAndEventItems(host,body);
@@ -113,6 +120,155 @@ namespace NativeWorldTextProbe
             }
         }
 
+        private static void CommonMotionSample(object host, Player body, Player human)
+        {
+            for (int x = 61; x < 110; x++) TileAt(x, 82, TileID.Stone);
+            body.position = new Vector2(72 * 16, 82 * 16 - body.height);
+            body.velocity = Vector2.Zero;
+            human.position = body.position;
+            for (int i = 0; i < 18; i++) NativeStep(host, body);
+            long idle = 0, idleMaximum = 0;
+            for (int i = 0; i < 120; i++)
+            {
+                long step = TimedNativeStep(host, body);
+                idle += step; idleMaximum = Math.Max(idleMaximum, step);
+            }
+
+            human.position += new Vector2(500, 0);
+            int firstMove = -1, walking = 0, lost = 0;
+            long moving = 0, movingMaximum = 0;
+            for (int i = 0; i < 65; i++)
+            {
+                long step = TimedNativeStep(host, body);
+                moving += step; movingMaximum = Math.Max(movingMaximum, step);
+                if (body.controlRight) { if (firstMove < 0) firstMove = i; walking++; }
+                else if (firstMove >= 0) lost++;
+            }
+
+            int wall = (int)(body.Right.X + 8) / 16 + 1;
+            for (int y = 71; y < 82; y++) TileAt(wall, y, TileID.Stone);
+            int braking = -1;
+            for (int i = 0; i < 12; i++)
+            {
+                NativeStep(host, body);
+                if (!body.controlRight) { braking = i; break; }
+            }
+            for (int y = 71; y < 82; y++) Main.tile[wall, y] = new Tile();
+            int recovering = -1;
+            for (int i = 0; i < 12; i++)
+            {
+                NativeStep(host, body);
+                if (body.controlRight) { recovering = i; break; }
+            }
+            Console.WriteLine(FormattableString.Invariant($"NAV_COMMON idle120Ms={Milliseconds(idle):F2} idleMaxMs={Milliseconds(idleMaximum):F2} moving65Ms={Milliseconds(moving):F2} movingMaxMs={Milliseconds(movingMaximum):F2} firstControl={firstMove} held={walking} releasedDuringOrdinaryMotion={lost} brakeUpdate={braking} recoveryUpdate={recovering}"));
+            Require(firstMove >= 0 && walking > 0 && braking >= 0 && recovering >= 0, "real route responds to moving owner, wall and restored terrain");
+        }
+
+        private static void NativeDetour(object host, object actor, Player body, Player human)
+        {
+            // The wall immediately toward the owner exceeds the ordinary jump.
+            // The reachable stair starts left of the body, behind the target.
+            var area = new Dictionary<Point, Tile>();
+            const int origin = 43; // Beyond Player.BordersMovement's 40-tile inset.
+            for (int x = 14 + origin; x <= 55 + origin; x++)
+                for (int y = 35; y <= 66; y++)
+                { area[new Point(x, y)] = Main.tile[x, y]; Main.tile[x, y] = new Tile(); }
+            try
+            {
+                for (int x = 14 + origin; x <= 55 + origin; x++) TileAt(x, 62, TileID.Stone);
+                for (int x = 34 + origin; x <= 53 + origin; x++)
+                    for (int y = 47; y < 62; y++) TileAt(x, y, TileID.Stone);
+                for (int x = 18 + origin; x <= 22 + origin; x++) TileAt(x, 58, TileID.Platforms);
+                for (int x = 20 + origin; x <= 25 + origin; x++) TileAt(x, 54, TileID.Platforms);
+                for (int x = 24 + origin; x <= 29 + origin; x++) TileAt(x, 50, TileID.Platforms);
+                for (int x = 27 + origin; x <= 34 + origin; x++) TileAt(x, 47, TileID.Platforms);
+                body.position = new Vector2((30 + origin) * 16, 62 * 16 - body.height);
+                body.velocity = Vector2.Zero;
+                human.position = new Vector2((39 + origin) * 16, 47 * 16 - human.height);
+                var initial = body.position;
+                long elapsed = 0, maximum = 0;
+                int ticks = 0, firstAway = -1, largestSlice = 0;
+                object movement = Get(Get(actor, "Behavior"), "navigation");
+                int work = (int)Get(movement, "RouteWork"), previousWork = work;
+                for (; ticks < 1200 && Vector2.DistanceSquared(body.Center, human.Center) > 55 * 55; ticks++)
+                {
+                    long step = TimedNativeStep(host, body);
+                    elapsed += step; maximum = Math.Max(maximum, step);
+                    int nextWork = (int)Get(movement, "RouteWork");
+                    largestSlice = Math.Max(largestSlice, nextWork - previousWork);
+                    previousWork = nextWork;
+                    if (firstAway < 0 && body.position.X < initial.X - 12) firstAway = ticks;
+                }
+                Console.WriteLine("NAV_ROUTE detourTicks=" + ticks + " firstAway=" + firstAway + " totalWork=" + (previousWork - work) +
+                    " maxSlice=" + largestSlice + FormattableString.Invariant($" nativeStepMs={Milliseconds(elapsed):F2} nativeMaxMs={Milliseconds(maximum):F2}") +
+                    " actual=" + body.position + " goal=" + human.position + " status=" + Get(actor, "Status"));
+                Require(firstAway >= 0 && ticks < 1200 && !(bool)Get(actor, "Faulted"),
+                    "real body backtracks to the platforms, reaches the upper owner region, and stays valid");
+                Require(largestSlice <= 160 && previousWork > work, "detour consumes incremental work inside its selected world-step bound");
+            }
+            finally
+            {
+                foreach (var cell in area) Main.tile[cell.Key.X, cell.Key.Y] = cell.Value;
+            }
+        }
+
+        private static void NativeTeamSlices(object host, object actor, Player body, Player human, object profiles)
+        {
+            const string name = "规划轮转第二人";
+            Require((bool)Call(host, "Create", name), "create second profile through the regular outlet");
+            var id = (Guid)Get(host, "LastCreatedId");
+            NativeQuickItemChecks.Until(() => { Call(profiles, "Pump"); return (bool)Call(profiles, "IsSaved", id); });
+            Require((bool)Call(host, "Join", id), "activate second real body: " + Get(host, "Feedback"));
+            var other = (Player)Call(host, "GetBody", id);
+            object firstPlan = Get(Get(actor, "Behavior"), "navigation");
+            object secondPlan = Get(Get(Call(host, "Owned", other), "Behavior"), "navigation");
+            const int origin = 43;
+            for (int x = 15 + origin; x <= 60 + origin; x++) TileAt(x, 89, TileID.Stone);
+            for (int y = 73; y < 89; y++) TileAt(30 + origin, y, TileID.Stone);
+            body.position = new Vector2((30 + origin) * 16 - body.width - 2, 89 * 16 - body.height);
+            other.position = new Vector2((30 + origin) * 16 - other.width - 2, 89 * 16 - other.height);
+            human.position = new Vector2((56 + origin) * 16, 89 * 16 - human.height);
+            body.velocity = other.velocity = Vector2.Zero;
+            body.fallStart = body.fallStart2 = (int)(body.position.Y / 16);
+            other.fallStart = other.fallStart2 = (int)(other.position.Y / 16);
+            int firstGrant = -1, secondGrant = -1, lastFirst = -1, lastSecond = -1, peak = 0;
+            int withoutBudget = 0, expectedMotion = 0;
+            try
+            {
+                for (int tick = 0; tick < 40; tick++)
+                {
+                    int previousFirst = (int)Get(firstPlan, "RouteWork"), previousSecond = (int)Get(secondPlan, "RouteWork");
+                    NativeQuickItemChecks.BeginWorldStep(); Call(host, "Update", (ulong)Main.GameUpdateCount);
+                    body.Update(body.whoAmI); other.Update(other.whoAmI);
+                    int a = (int)Get(firstPlan, "RouteWork") - previousFirst, b = (int)Get(secondPlan, "RouteWork") - previousSecond;
+                    if (a > 0) { if (firstGrant == -1) firstGrant = tick; lastFirst = tick; }
+                    if (b > 0) { if (secondGrant == -1) secondGrant = tick; lastSecond = tick; }
+                    peak = Math.Max(peak, a + b);
+                    Require(a == 0 || b == 0, "only one real body expands a new frontier on any world step");
+                }
+                other.position = new Vector2((33 + origin) * 16, 89 * 16 - other.height);
+                other.velocity = Vector2.Zero;
+                for (int tick = 0; tick < 24; tick++)
+                {
+                    NativeQuickItemChecks.BeginWorldStep(); Call(host, "Update", (ulong)Main.GameUpdateCount);
+                    body.Update(body.whoAmI); other.Update(other.whoAmI);
+                    if (ReferenceEquals(Get(host, "planningActor"), actor))
+                    { expectedMotion++; if (other.controlRight) withoutBudget++; }
+                }
+                Console.WriteLine($"NAV_TEAM first={firstGrant} second={secondGrant} lastFirst={lastFirst} lastSecond={lastSecond} peakTeamSlice={peak} movingWithoutSlice={withoutBudget}/{expectedMotion}");
+                Require(firstGrant >= 0 && firstGrant <= 3 && secondGrant >= 0 && secondGrant <= 3 &&
+                    lastFirst > firstGrant && lastSecond > secondGrant && peak <= 160 && !body.dead && !other.dead,
+                    "two blocked real bodies both retain bounded search service: " + body.dead + "/" + other.dead);
+                Require(expectedMotion >= 8 && withoutBudget >= expectedMotion - 1, "ordinary safe controls continue while the other body searches");
+            }
+            finally
+            {
+                Call(host, "Recall", id);
+                for (int x = 15 + origin; x <= 60 + origin; x++) Main.tile[x, 89] = new Tile();
+                for (int y = 73; y < 89; y++) Main.tile[30 + origin, y] = new Tile();
+            }
+        }
+
         private static void NativeWallCrossing(object host,object actor,Player body,Player human)
         {
             for(int y=71;y<73;y++)TileAt(106,y,TileID.Stone);
@@ -120,7 +276,7 @@ namespace NativeWorldTextProbe
             {
                 body.position=new Vector2(106*16-body.width-1,73*16-body.height);
                 body.velocity=Vector2.Zero;body.releaseJump=false;
-                human.position=body.position+new Vector2(130,-46);
+                human.position=body.position+new Vector2(130,0);
                 NativeStep(host,body);
                 Require(!body.controlJump && body.releaseJump,"real obstacle demand allows the initializing jump release");
                 bool rose=false;
@@ -201,7 +357,10 @@ namespace NativeWorldTextProbe
             body.position=new Vector2(1608,72*16+8-body.height);body.velocity=Vector2.Zero;human.position=body.position;
             for(int tick=0;tick<8;tick++)NativeStep(host,body);
             Require(!(bool)Get(actor,"Faulted") && Support(body),"real native update settles on slope platform: "+body.position+" "+body.velocity+" "+Get(actor,"Status"));
-            var start=body.position;human.position=body.position-new Vector2(0,80);bool airborne=false,landed=false;
+            for (int x = 95; x <= 102; x++) TileAt(x, 67, TileID.Platforms);
+            var start=body.position;
+            human.position=new Vector2(body.position.X, 67*16-human.height);
+            bool airborne=false,landed=false;
             // Model first-activation input without the old fixture's manual
             // releaseJump=true. The destination remains above throughout.
             body.releaseJump=false;
@@ -217,6 +376,8 @@ namespace NativeWorldTextProbe
             Require(airborne && landed,"actual follow input takes off and lands on slope platform");
             // Set only the fixture's incoming pose. A millimetre of geometric
             // support while falling does not supply native takeoff admission.
+            for (int x = 93; x <= 103; x++) TileAt(x, 63, TileID.Platforms);
+            human.position=new Vector2(body.position.X, 63*16-human.height);
             body.position-=new Vector2(0,.5f);body.velocity=new Vector2(0,.5f);body.releaseJump=false;
             start=body.position;
             NativeStep(host,body);
@@ -233,6 +394,7 @@ namespace NativeWorldTextProbe
             NativeStep(host,body);
             Require(body.controlLeft && !body.controlRight && !(bool)Get(actor,"Faulted"),"after genuine slope landing old jump direction retires and new owner direction enters Player.Update");
             var at=body.position;body.Update(body.whoAmI);Require(body.position==at,"same world-step duplicate native body update remains suppressed");
+            for (int x = 93; x <= 103; x++) { Main.tile[x, 63] = new Tile(); Main.tile[x, 67] = new Tile(); }
         }
 
         private static void NativeAttackChoice(object host,object actor,Player body,Player human)
@@ -312,7 +474,9 @@ namespace NativeWorldTextProbe
 
         private static void NativeRangedReposition(object host,object actor,Player body,Player human,NPC target,Guid id,CompanionBehavior preferences)
         {
-            const int wall=123;
+            // Keep both the incoming body and its chosen firing position within
+            // the stock 40-tile player boundary of this 160-tile test world.
+            const int wall=113;
             var upper=Main.tile[wall,71];var lower=Main.tile[wall,72];
             var harmony=new Harmony("JueMingR.Tests.CompanionBasicReposition");
             var aim=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Combat.HostAttackAim",true);
@@ -338,14 +502,20 @@ namespace NativeWorldTextProbe
                 NativeCombatStep(host,body);
                 Require(body.inventory[54].stack==20,"an initially blocked low-wall shot preserves real ammo");
                 float peak=body.position.Y;
+                object behavior = Get(actor, "Behavior");
+                object movement = Get(behavior, "navigation");
+                bool advisedJump = false;
                 for(int tick=0;tick<105 && body.inventory[54].stack==20;tick++)
                 {
                     NativeCombatStep(host,body);
                     peak=Math.Min(peak,body.position.Y);
+                    advisedJump |= (bool)Get(behavior, "lateralJump");
                 }
                 Require(body.inventory[54].stack<20 && peak<start.Y-9 &&
                     Main.projectile.Any(p=>p.active && p.owner==body.whoAmI && p.type==ProjectileID.WoodenArrowFriendly),
-                    "the only target cannot spend ammo until a real local takeoff opens a native shot: position="+body.position+" peak="+peak+" start="+start+" status="+Get(actor,"Status"));
+                    "the only target cannot spend ammo until a real local takeoff opens a native shot: position="+body.position+" peak="+peak+" start="+start+" status="+Get(actor,"Status")+
+                    " elevated=" + advisedJump + " localGoal=" + Get(behavior, "lateralGoal") + " cachedJump=" + Get(movement, "cachedResult") +
+                    " jumpBuilds=" + Get(movement, "TrajectoryBuilds"));
                 Console.WriteLine("PASS blocked low wall: actual native movement opened the only bow shot and paid ammo.");
             }
             finally
@@ -545,5 +715,12 @@ namespace NativeWorldTextProbe
         }
         private static void NativeStep(object host,Player body)
         { NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",(ulong)Main.GameUpdateCount);body.Update(body.whoAmI); }
+        private static long TimedNativeStep(object host, Player body)
+        {
+            long start = System.Diagnostics.Stopwatch.GetTimestamp();
+            NativeStep(host, body);
+            return System.Diagnostics.Stopwatch.GetTimestamp() - start;
+        }
+        private static double Milliseconds(long ticks) => ticks * 1000d / System.Diagnostics.Stopwatch.Frequency;
     }
 }

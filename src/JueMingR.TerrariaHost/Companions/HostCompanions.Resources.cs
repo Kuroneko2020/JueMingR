@@ -95,9 +95,14 @@ namespace JueMingR.TerrariaHost.Companions
 
         private bool ItemOwnerCurrent()
         {
-            return Thread.CurrentThread.ManagedThreadId == itemThread && ArchiveIdentityCurrent() && owner.active &&
+            return ItemCommandOwnerCurrent() &&
                 !owner.dead && !owner.ghost && !Main.LocalPlayerHasPendingInventoryActions();
         }
+
+        // Giving a command to a living teammate does not take a turn with the
+        // human's inventory. Actual transfers still require ItemOwnerCurrent.
+        private bool ItemCommandOwnerCurrent() =>
+            Thread.CurrentThread.ManagedThreadId == itemThread && ArchiveIdentityCurrent() && owner.active;
 
         private bool ItemActorCurrent(Guid id, Actor actor)
         { return actor != null && CanTransfer(id) && !actor.Faulted && !actor.Body.ghost && profiles.OwnsActivation(id, actor.Generation); }

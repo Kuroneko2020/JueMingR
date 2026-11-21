@@ -8,7 +8,7 @@ namespace JueMingR.TerrariaHost.Companions
     // Bounded value geometry only: the one real Player.Update owns movement.
     // Native queries mutate scratch and may allocate null tiles; scope their
     // scratch and validate their loaded, non-null footprint before calling.
-    internal sealed class CompanionNavigation
+    internal sealed partial class CompanionNavigation
     {
         private float jumpSpeed = 5.01f;
         private int jumpHold = 15;
@@ -37,12 +37,34 @@ namespace JueMingR.TerrariaHost.Companions
         {
             internal readonly List<Dependency> Cells = new List<Dependency>();
             internal readonly HashSet<int> Keys = new HashSet<int>();
+            private readonly bool retainUnknown;
             internal bool Known;
 #if DEBUG
             internal int Moves, VerticalMoves;
 #endif
             private int worldWidth, worldHeight;
+            internal ReadSet(bool retainUnknown = false) { this.retainUnknown = retainUnknown; }
             internal void Clear() { Cells.Clear(); Keys.Clear(); Known=true; worldWidth=Main.maxTilesX; worldHeight=Main.maxTilesY; }
+            internal bool Record(int x, int y)
+            {
+                bool loaded = Loaded(x, y);
+                if (!loaded && !retainUnknown) { Known = false; return false; }
+                if (Cells.Count >= 2048) { if (!retainUnknown) Known = false; return retainUnknown && loaded; }
+                if (Keys.Add(x * Main.maxTilesY + y))
+                    Cells.Add(new Dependency { X = x, Y = y, Value = loaded ? TileValue(Main.tile[x, y]) : int.MinValue });
+                return loaded;
+            }
+            internal bool Changed(ref int cursor, int count)
+            {
+                for (int i = 0; i < count && i < Cells.Count; i++)
+                {
+                    if (cursor >= Cells.Count) cursor = 0;
+                    var cell = Cells[cursor++];
+                    int value = Loaded(cell.X, cell.Y) ? TileValue(Main.tile[cell.X, cell.Y]) : int.MinValue;
+                    if (value != cell.Value) return true;
+                }
+                return false;
+            }
             internal bool Current()
             {
                 if(!Known || worldWidth!=Main.maxTilesX || worldHeight!=Main.maxTilesY)return false;
@@ -86,25 +108,25 @@ namespace JueMingR.TerrariaHost.Companions
         private static int TileValue(Tile tile)
         {
             unchecked { int value=tile.type; value=value*31+(tile.active()?1:0); value=value*31+(tile.inActive()?1:0);
-                value=value*31+tile.slope(); value=value*31+(tile.halfBrick()?1:0); value=value*31+tile.frameY;
+                value=value*31+tile.slope(); value=value*31+(tile.halfBrick()?1:0); value=value*31+tile.frameX; value=value*31+tile.frameY;
                 value=value*31+tile.liquid; return value*31+tile.liquidType(); }
         }
         private static bool Loaded(int x,int y)
         { return x>=1 && y>=1 && x<Main.maxTilesX-1 && y<Main.maxTilesY-42 && Main.tile[x,y]!=null &&
             (Main.netMode!=1 || Main.sectionManager!=null && Main.sectionManager.TileLoaded(x,y)); }
         private static bool Footprint(Player body,Vector2 from,Vector2 velocity,ReadSet record=null)
+        { return Footprint(body.width, body.height, from, velocity, record); }
+        private static bool Footprint(int width,int height,Vector2 from,Vector2 velocity,ReadSet record=null)
         {
             // Two tiles cover Tile/SlopeCollision neighbors plus StepUp headroom
             // and StepDown's two foot rows, including the swept body.
             int x0=(int)Math.Floor(Math.Min(from.X,from.X+velocity.X)/16)-2;
-            int x1=(int)Math.Floor((Math.Max(from.X,from.X+velocity.X)+body.width)/16)+2;
+            int x1=(int)Math.Floor((Math.Max(from.X,from.X+velocity.X)+width)/16)+2;
             int y0=(int)Math.Floor(Math.Min(from.Y,from.Y+velocity.Y)/16)-2;
-            int y1=(int)Math.Floor((Math.Max(from.Y,from.Y+velocity.Y)+body.height)/16)+2;
+            int y1=(int)Math.Floor((Math.Max(from.Y,from.Y+velocity.Y)+height)/16)+2;
             for(int x=x0;x<=x1;x++) for(int y=y0;y<=y1;y++)
             {
-                if(!Loaded(x,y)) { if(record!=null)record.Known=false;return false; }
-                if(record!=null && record.Keys.Add(x*Main.maxTilesY+y))
-                { if(record.Cells.Count>=2048){record.Known=false;return false;}record.Cells.Add(new Dependency{X=x,Y=y,Value=TileValue(Main.tile[x,y])}); }
+                if (record == null ? !Loaded(x, y) : !record.Record(x, y)) return false;
             }
             return true;
         }

@@ -45,6 +45,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal JueMingR.Platform.Combat.PredictionPlayerMotion? AimPlayer;internal uint AimPlayerTick,AimPlayerAnchor;
             internal long LastAimAttempt;
             internal CompanionBehaviorHost Behavior=new CompanionBehaviorHost();
+            internal readonly CompanionMobilityState Mobility = new CompanionMobilityState();
             internal bool HasAim;
             internal bool Dirty,Faulted,WasUsing;
             internal bool DeathObserved,PermanentDeathPending,TileReachPending;
@@ -85,6 +86,7 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly JueMingR.Features.Combat.CombatPredictionWork work=new JueMingR.Features.Combat.CombatPredictionWork(2);
         private object world;private Player owner;private long session;private int planningTurn;private uint planningStep=UInt32.MaxValue,aimStep;
         private Actor planningActor;
+        private readonly List<Actor> planningActors = new List<Actor>();
         private long aimAttempt;
         private uint aimSelectionStep=UInt32.MaxValue;
         private Actor aimSelected;
@@ -338,12 +340,16 @@ namespace JueMingR.TerrariaHost.Companions
             if(planningStep!=Main.GameUpdateCount)
             {
                 planningStep=Main.GameUpdateCount;
-                var active=actors.Values.Where(a=>a.Ready && !a.Closing && !a.Faulted && a.Body.active && !a.Body.dead && !a.Body.CCed).ToArray();
+                planningActors.Clear();
+                foreach (var a in actors.Values)
+                    if (a.Ready && !a.Closing && !a.Faulted && a.Body.active && !a.Body.dead && !a.Body.CCed)
+                        planningActors.Add(a);
                 // One movement/target-refresh slice per real world step,
                 // independent of attacking, channel release or packet phase.
                 // Retained navigation prefixes remain usable by every body;
                 // fresh aiming opportunities have their separate scheduler.
-                planningActor=active.Length==0?null:active[(int)((uint)planningTurn++%(uint)active.Length)];
+                planningActor=planningActors.Count==0?null:planningActors[(int)((uint)planningTurn++%(uint)planningActors.Count)];
+                planningActors.Clear();
             }
             foreach(var a in actors.Values.ToArray())
             {

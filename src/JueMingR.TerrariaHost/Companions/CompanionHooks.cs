@@ -82,6 +82,7 @@ namespace JueMingR.TerrariaHost.Companions
             F5.CompanionCreationHooks.Install(Harmony);
             F5.CompanionPetPreviewHooks.Install(Harmony);
             InstallFurnitureHooks();
+            InstallMobilityHooks();
             CompanionSupplyHooks.Install(value);
             installed=true;
         }
@@ -190,13 +191,18 @@ namespace JueMingR.TerrariaHost.Companions
                 ApplyHumanShieldHits(__state.HumanShieldHits);
             }
             if(__exception!=null){var a=host?.Owned(__instance);if(a!=null){
-                a.Status="人物更新失败："+__exception.Message;a.Faulted=true;a.Body.controlUseItem=false;a.Body.channel=false;return null;}}return __exception;
+                HostCompanions.RetireMobilityHand(a);a.Status="人物更新失败："+__exception.Message;a.Faulted=true;a.Body.controlUseItem=false;a.Body.channel=false;return null;}}return __exception;
         }
         private static void UseBefore(Player __instance,MethodBase __originalMethod,ref Scope __state)
         {
             var a=host?.Owned(__instance);
             if(a==null || !a.Ready || a.Closing || __originalMethod.Name=="UpdateBuffs" && ReferenceEquals(a,CurrentActor))return;
             bool use=__originalMethod.Name=="ItemCheck";
+            if(use && host.PrepareMobilityItem(a,out Vector2 mobilityAim))
+            {
+                __state=new Scope(a,mobilityAim,__instance.controlUseItem,false);
+                return;
+            }
             if(use)
             {
                 var hits=host.EnterObservedNpcHitState(Main.npc);var table=host.EnterNpcObservation();
@@ -222,7 +228,7 @@ namespace JueMingR.TerrariaHost.Companions
             // wire. The independent shoot, self-use and timer paths stay native.
             if(current==null || !ReferenceEquals(current.Actor.Body,__instance))return true;
             var hand=current.Actor.Supplies;
-            return current.TileInteractionReady && hand.HeldOnce==null && hand.RestoreSelection<0;
+            return current.TileInteractionReady && hand.HeldOnce==null && hand.RestoreSelection<0 && current.Actor.Mobility.PreviousSelection<0;
         }
         private static bool PreviewBefore(Player __instance)
         {
@@ -424,6 +430,7 @@ namespace JueMingR.TerrariaHost.Companions
             // block owns DelBuff/compaction after expiry. Neither is replayed.
             if(falls!=1 || lavas!=1 || contacts!=1 || expiredBuffs!=1)throw new InvalidOperationException("Companion native survival layout changed: fall="+falls+" lava="+lavas+" contact="+contacts+" buffs="+expiredBuffs);
             ExtendActiveBodyUpdate(c);
+            ExtendMobilityUpdate(c);
             return c;
         }
         private static void ContactThenGrapple(Player p)
@@ -431,8 +438,8 @@ namespace JueMingR.TerrariaHost.Companions
             var a=host?.Owned(p);
             if(a!=null && a.Ready && !a.Closing && !p.dead)
                 using(Enter(a,a.Aim))
-                {p.Update_NPCCollision();if(!p.shimmering){var tile=(Collision.HurtTile)hurtTile.Invoke(p,null);if(tile.type>=0)touchDamage.Invoke(p,new object[]{tile.type,tile.x,tile.y});}shimmer.Invoke(p,null);}
-            p.GrappleMovement();
+                {p.Update_NPCCollision();if(!p.shimmering){var tile=(Collision.HurtTile)hurtTile.Invoke(p,null);if(tile.type>=0)touchDamage.Invoke(p,new object[]{tile.type,tile.x,tile.y});}shimmer.Invoke(p,null);p.GrappleMovement();}
+            else p.GrappleMovement();
         }
         private static Player SpawnLocal(){return Spawning??Main.LocalPlayer;}
         private static bool ItemRecallBefore(Player __instance,PlayerSpawnContext context)

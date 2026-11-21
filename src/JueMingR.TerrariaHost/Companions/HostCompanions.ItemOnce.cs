@@ -28,7 +28,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if (area != CompanionInventoryArea.Inventory)
             { reason = "请先将物品移到队友主背包。"; return false; }
-            if (!ItemOwnerCurrent() || !actors.TryGetValue(id, out var actor) || !ItemActorCurrent(id, actor))
+            if (!ItemCommandOwnerCurrent() || !actors.TryGetValue(id, out var actor) || !ItemActorCurrent(id, actor))
             { reason = "队友当前不能使用物品。"; return false; }
             if (itemDraft != null || Main.mouseItem?.IsAir == false)
             { reason = "请先放回手中的物品。"; return false; }
