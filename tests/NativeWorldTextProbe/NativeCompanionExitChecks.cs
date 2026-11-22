@@ -413,16 +413,23 @@ namespace NativeWorldTextProbe
             start.EnvironmentVariables[ReaderVariable] = nonce;
             using (var child = Process.Start(start))
             {
+                var elapsed = Stopwatch.StartNew();
                 var stdout = child.StandardOutput.ReadToEndAsync();
                 var stderr = child.StandardError.ReadToEndAsync();
-                if (!child.WaitForExit(45000))
+                // Loading and drawing the saved world can itself exceed 45s
+                // on the ordinary probe runner. Keep a finite child deadline
+                // and retain partial native progress if it is exceeded.
+                const int readerDeadline = 75000;
+                bool completed = child.WaitForExit(readerDeadline);
+                if (!completed)
                 {
-                    child.Kill();
+                    if (!child.HasExited) child.Kill();
                     child.WaitForExit();
-                    throw new TimeoutException("Owned companion re-entry probe timed out");
                 }
                 string log = stdout.Result + stderr.Result;
                 File.WriteAllText(Path.Combine(output, "exit-reader.log"), log);
+                Console.WriteLine("COMPANION-EXIT reader elapsed-ms=" + elapsed.ElapsedMilliseconds + " completed=" + completed);
+                if (!completed) throw new TimeoutException("Owned companion re-entry probe timed out: " + log);
                 Require(child.ExitCode == 0, "fresh owned companion re-entry succeeds: " + log);
                 Console.WriteLine(log);
             }
