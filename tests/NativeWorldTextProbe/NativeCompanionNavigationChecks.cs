@@ -121,7 +121,20 @@ namespace NativeWorldTextProbe
                 Require(Query("DropSafe",probe),"drop-through requires actual platform support and bounded lower landing");
                 for(int x=80;x<125;x++)Main.tile[x,75]=new Tile();
                 Require(!Query("WalkSafe",probe,1),"real cliff has no fabricated support route");
-                GroundQueryWork(host,probe);
+                // The walking sample's row 82 is also within the new
+                // physically reachable fall. Give this query an actual empty
+                // shaft and restore that sample's terrain for its neighbors.
+                var walkingFloor = new Tile[7];
+                for (int index = 0; index < walkingFloor.Length; index++)
+                {
+                    walkingFloor[index] = Main.tile[98 + index, 82];
+                    Main.tile[98 + index, 82] = new Tile();
+                }
+                try { GroundQueryWork(host,probe); }
+                finally
+                {
+                    for (int index = 0; index < walkingFloor.Length; index++) Main.tile[98 + index, 82] = walkingFloor[index];
+                }
                 for(int x=80;x<125;x++)TileAt(x,73,TileID.Stone);
                 NativeLanding(host,actor,body,human);
                 NativeWallCrossing(host,actor,body,human);
