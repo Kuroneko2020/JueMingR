@@ -749,12 +749,22 @@ namespace JueMingR.TerrariaHost.Companions
                         if (age > 1 && vertical <= 4 && (direction == 0 || along <= 5) &&
                             body.velocity.Y * body.gravDir >= -.01f)
                         {
-                            if (step.Retreat && motion == RouteMotion.Air &&
-                                ContinueAirRetreat(body, mobility, routeGoal, ref step))
+                            if (step.Retreat && motion == RouteMotion.Air)
                             {
-                                route[routeIndex] = step;
-                                return AirInput(body, mobility, motion, step.Direction,
-                                    step.Kind == RouteKind.AirAcross ? 0 : 1, out frame);
+                                // The descent already happened. Wait for the
+                                // native equipment refresh before choosing a
+                                // powered exit from its new actual position.
+                                if (state.AwaitingEquipmentObservation)
+                                {
+                                    frame.Status = "下降中";
+                                    return true;
+                                }
+                                if (ContinueAirRetreat(body, mobility, routeGoal, ref step))
+                                {
+                                    route[routeIndex] = step;
+                                    return AirInput(body, mobility, motion, step.Direction,
+                                        step.Kind == RouteKind.AirAcross ? 0 : 1, out frame);
+                                }
                             }
                             finished = true;
                             return false;
