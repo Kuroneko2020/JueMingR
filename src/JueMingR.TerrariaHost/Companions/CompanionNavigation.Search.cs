@@ -24,9 +24,10 @@ namespace JueMingR.TerrariaHost.Companions
             internal Vector2 From, To, Operand;
             internal int Direction, Vertical, Duration, ItemSlot, MountTypePlusOne;
             internal float Cost;
-            internal bool EmergencyHand, DescentLands, DescentEntersLiquid, ObserveAfter, Retreat;
+            internal bool EmergencyHand, DescentLands, DescentEntersLiquid, DescentWaterSurface, ObserveAfter, Retreat;
             internal Rectangle DescentArea;
             internal JumpInputs Launch;
+            internal DoorPassageProof DoorProof;
         }
 
         private readonly struct JumpInputs : IEquatable<JumpInputs>
@@ -256,7 +257,7 @@ namespace JueMingR.TerrariaHost.Companions
         private int routeIndex;
         private int pendingResult = -1, publishing = -1, publicationCursor, connectCursor, lastRejectedPublication = -1;
         private RouteResultKind pendingKind;
-        private Vector2 pendingGoal, publicationRejectionPosition;
+        private Vector2 pendingGoal, publicationGoal, publicationRejectionPosition;
 
         private static float Estimate(Vector2 position, Vector2 target)
         { return Math.Abs(position.X - target.X) + Math.Abs(position.Y - target.Y) * 1.4f; }
@@ -326,6 +327,7 @@ namespace JueMingR.TerrariaHost.Companions
             RouteWork += repair;
 #endif
             if (search.RepairPending) return;
+            if (publishing >= 0 && GoalRedirects(body.position, publicationGoal, target)) RetirePublication();
             if (pendingResult >= 0 && (search.Nodes[pendingResult].Invalid || GoalRedirects(body.position, pendingGoal, target)))
                 pendingResult = -1;
             if (!publish && pendingResult >= 0 && pendingKind == RouteResultKind.Goal && Reached(search.Nodes[pendingResult].Position, target, stop))
@@ -373,7 +375,8 @@ namespace JueMingR.TerrariaHost.Companions
                     if (expanded.Previous >= 0 && Reached(expanded.Position, target, stop) &&
                         InGoalRegion(body, search.Nodes[search.Expanding].Position, target, search.Terrain))
                     { if (OfferResult(body, root, search.Expanding, target, RouteResultKind.Goal, publish, ref remaining)) return; }
-                    if (expanded.Observe && !CanPlanBeyondObservation(expanded))
+                    if (expanded.Observe && (!CanPlanBeyondObservation(expanded) ||
+                        OutsideSearchWindow(expanded.Position, search.Nodes[expanded.Root].Position, search.Window)))
                     {
                         search.AwaitsNativeChange = true;
                         search.Expanding = -1;
@@ -415,8 +418,14 @@ namespace JueMingR.TerrariaHost.Companions
                 if (RecentlyRejected(next.Step)) { search.AwaitsNativeChange = true; continue; }
                 if (!InPlayableBounds(body, next.Position)) continue;
                 var origin = search.Nodes[node.Root].Position;
-                if ((!observe || CanPlanBeyondObservation(next)) && (Math.Abs(next.Position.X - origin.X) > search.Window ||
-                    Math.Abs(next.Position.Y - origin.Y) > search.Window)) { search.WindowLimited = true; continue; }
+                if (OutsideSearchWindow(next.Position, origin, search.Window))
+                {
+                    search.WindowLimited = true;
+                    // A proven single native transition can outspan local
+                    // exploration. Keep its executable prefix, but do not
+                    // expand from that speculative position outside the box.
+                    if (!observe) continue;
+                }
                 next.Previous = parent;
                 next.Root = node.Root;
                 next.Cost = node.Cost + next.Step.Cost;
@@ -424,6 +433,7 @@ namespace JueMingR.TerrariaHost.Companions
                 int index = search.Nodes.Count - 1;
                 if (search.Closest < 0 || Estimate(next.Position, target) + 12 < Estimate(search.Nodes[search.Closest].Position, target)) search.Closest = index;
                 if (next.Step.DescentLands && !next.Step.DescentEntersLiquid &&
+                    Estimate(origin, target) - Estimate(next.Position, target) < 20 &&
                     OfferDescentContinuation(body, root, node, next, index, target, publish, ref remaining)) return;
                 if (next.Step.Kind == RouteKind.GlideJump && Estimate(origin, target) - Estimate(next.Position, target) >= 96)
                 {
@@ -534,6 +544,7 @@ namespace JueMingR.TerrariaHost.Companions
                     return node.Motion == RouteMotion.Liquid || node.Motion == RouteMotion.Air || node.Fuel > 0 ||
                         node.GlideFuel > 0 || mobility.UnlimitedWings || mobility.UnlimitedMountHover;
                 case 14: case 15: return node.Motion == RouteMotion.Track || mobility.CanUseCart;
+                case 16: case 17: return node.Motion == RouteMotion.Ground;
                 case 18: case 19: case 27: return nearRoot && mobility.HookRange > 0;
                 case 20: return nearRoot && (mobility.MountType >= 0 || mobility.DefaultMountType >= 0 || mobility.FlightMountType >= 0);
                 case 21: return mobility.CanChangeGravity;
@@ -564,6 +575,9 @@ namespace JueMingR.TerrariaHost.Companions
             return node.Step.Kind == RouteKind.Drop || node.Step.Kind == RouteKind.LedgeDrop ||
                 node.Step.Kind == RouteKind.Door && node.Motion == RouteMotion.Ground && node.Step.Vertical == 0;
         }
+
+        private static bool OutsideSearchWindow(Vector2 position, Vector2 origin, int window) =>
+            Math.Abs(position.X - origin.X) > window || Math.Abs(position.Y - origin.Y) > window;
 
         private bool OfferResult(Player body, RouteMotion motion, int node, Vector2 goal, RouteResultKind kind, bool publish, ref int remaining)
         {
@@ -599,6 +613,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (search.Nodes[last].Previous < 0 || last == lastRejectedPublication &&
                 Vector2.DistanceSquared(body.position, publicationRejectionPosition) < 24 * 24) return false;
             publishing = publicationCursor = last;
+            publicationGoal = search.Goal;
             connectCursor = -1;
             ContinuePublication(body, motion, ref remaining);
             // One proposal per grant. Its path walk and the live connection
@@ -634,15 +649,17 @@ namespace JueMingR.TerrariaHost.Companions
                 ChargePublication(ref remaining, ConnectCost - 1);
                 int direction = Math.Sign(adjust.X);
                 Vector2 joined = body.position;
-                if (motion == RouteMotion.Ground && Math.Abs(adjust.X) > 5)
+                bool atDeparture = motion == RouteMotion.Ground && i > 0 &&
+                    IsOnDescentApproach(body, search.Nodes[connectionPath[i - 1]].Step);
+                if (!atDeparture && motion == RouteMotion.Ground && Math.Abs(adjust.X) > 5)
                 {
                     if (!TrySupportedTravel(body, body.position, direction, Math.Abs(adjust.X), null, out joined, out _) ||
                         Math.Abs(joined.Y - node.Position.Y) > 4) continue;
                 }
-                else if (Math.Abs(adjust.X) > 6 || Math.Abs(adjust.Y) > 8 || !Swept(body, body.position, adjust, null)) continue;
+                else if (!atDeparture && (Math.Abs(adjust.X) > 6 || Math.Abs(adjust.Y) > 8 || !Swept(body, body.position, adjust, null))) continue;
 
                 ReleaseRoute();
-                if (motion == RouteMotion.Ground && Math.Abs(adjust.X) > 5)
+                if (!atDeparture && motion == RouteMotion.Ground && Math.Abs(adjust.X) > 5)
                     route.Add(new RouteStep { Kind = RouteKind.Walk, From = body.position, To = joined, Direction = direction });
                 int count = Math.Min(12, i);
                 for (int step = i - 1; step >= i - count; step--)
@@ -664,6 +681,18 @@ namespace JueMingR.TerrariaHost.Companions
             if (Vector2.DistanceSquared(body.position, search.Origin) > 24 * 24) search.NeedsLiveRoot = true;
             RetirePublication();
             return false;
+        }
+
+        private static bool IsOnDescentApproach(Player body, RouteStep step)
+        {
+            if (step.Kind != RouteKind.LedgeDrop || Math.Abs(body.position.Y - step.From.Y) > 4) return false;
+            // The walking prefix has already been consumed when the live
+            // body is ahead of its starting pose on this same approach.
+            // DriveDescentStep still checks real support, braking and the
+            // departure/landing from the actual launch pose.
+            return (body.position.X - step.From.X) * step.Direction >= 0 &&
+                (step.Operand.X - body.position.X) * step.Direction >= 0 &&
+                CanJoinLedgeDeparture(body, step);
         }
 
         private void ChargePublication(ref int remaining, int cost)

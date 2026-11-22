@@ -53,6 +53,14 @@ namespace JueMingR.TerrariaHost.Companions
             internal void Clear() { Cells.Clear(); Keys.Clear(); Known=true; trackArea=false; unknown=0; unrecordedUnknown=Truncated=false; worldWidth=Main.maxTilesX; worldHeight=Main.maxTilesY; }
             internal void BeginArea() { area = Rectangle.Empty; trackArea = true; }
             internal Rectangle EndArea() { trackArea = false; return area; }
+            internal Rectangle BeginNestedArea()
+            { Rectangle outer = area; BeginArea(); return outer; }
+            internal Rectangle EndNestedArea(Rectangle outer)
+            {
+                Rectangle result = area;
+                if (outer.Width != 0) area = result.Width == 0 ? outer : Rectangle.Union(outer, result);
+                return result;
+            }
             internal bool Record(int x, int y)
             {
                 if (trackArea)
@@ -120,7 +128,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal void Prepare(Player current,int cap)
             { Valid=false;body=current;world=Main.ActiveWorldFileData;position=current.position;velocity=current.velocity;capabilities=cap;Reads.Clear(); }
         }
-        private struct Step { internal Vector2 Position, Velocity; internal bool Ground, Wall, Known; }
+        private struct Step { internal Vector2 Position, Velocity; internal bool Ground, Wall, Known, WaterSurface; }
         internal struct Scratch : IDisposable
         {
             private bool up, down, stair, fall, slope, honey, shimmer, mine;
@@ -187,7 +195,7 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 if(!Footprint(body,position,velocity,record))return false;
             }
-            Vector2 actual=ResolveGroundContact(body,position,velocity,platforms,throughDoor);
+            Vector2 actual=ResolveGroundContact(body,position,velocity,platforms,throughDoor,out bool waterSurface);
             bool ground=velocity.Y>0 && actual.Y<velocity.Y;
             bool wall=Math.Abs(actual.X-velocity.X)>.1f;
             position+=actual; Vector2 advanced=position;
@@ -195,7 +203,8 @@ namespace JueMingR.TerrariaHost.Companions
                 Collision.SlopeCollision(position,actual,body.width,body.height,body.gravity,!platforms);
             position=new Vector2(slope.X,slope.Y);
             ground |= velocity.Y>=0 && position.Y<advanced.Y-.001f && slope.W<=0;
-            result=new Step{Position=position,Velocity=new Vector2(slope.Z,slope.W),Ground=ground,Wall=wall,Known=Footprint(body,position,Vector2.Zero,record)};
+            result=new Step{Position=position,Velocity=new Vector2(slope.Z,slope.W),Ground=ground,Wall=wall,
+                Known=Footprint(body,position,Vector2.Zero,record),WaterSurface=waterSurface && position.Y == advanced.Y};
             return result.Known && ClearBody(body,position,throughDoor) && (body.lavaImmune || !Collision.LavaCollision(position,body.width,body.height));
         }
         internal static bool Supported(Player body,Vector2 position,bool platforms=true)
@@ -228,8 +237,9 @@ namespace JueMingR.TerrariaHost.Companions
             return Vector2.DistanceSquared(position,new Vector2(slope.X,slope.Y))<=4;
         }
 
-        private static Vector2 ResolveGroundContact(Player body, Vector2 from, Vector2 velocity, bool platforms, bool throughDoor)
+        private static Vector2 ResolveGroundContact(Player body, Vector2 from, Vector2 velocity, bool platforms, bool throughDoor, out bool waterSurface)
         {
+            waterSurface = false;
             int direction = body.gravDir < 0 ? -1 : 1;
             var actual = throughDoor ? CompanionDoorCollision.TileCollision(from, velocity, body.width, body.height,
                 !platforms, !platforms, direction, false, false, true) :
@@ -247,7 +257,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 Tile tile = Main.tile[x, row];
                 if (tile.liquid > 0 && tile.water() && Math.Abs((row + 1) * 16 - (tile.liquid / 32 * 2 + 2) - bottom) < .1f)
-                    return liquid;
+                { waterSurface = true; return liquid; }
             }
             return actual;
         }
@@ -255,7 +265,7 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool HasSurface(Player body, Vector2 from, ReadSet terrain, bool platforms = true, bool throughDoor = false)
         {
             var delta = new Vector2(0, body.gravDir < 0 ? -2 : 2);
-            return Footprint(body, from, delta, terrain) && Math.Abs(ResolveGroundContact(body, from, delta, platforms, throughDoor).Y) < 2;
+            return Footprint(body, from, delta, terrain) && Math.Abs(ResolveGroundContact(body, from, delta, platforms, throughDoor, out _).Y) < 2;
         }
 
         private static bool TrySupportedTravel(Player body, Vector2 from, int direction, float distance, ReadSet terrain,
@@ -279,7 +289,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if (throughDoor)
                     {
                         if (!Footprint(body, to, across, terrain) ||
-                            Vector2.DistanceSquared(ResolveGroundContact(body, to, across, true, true), across) >= .25f ||
+                            Vector2.DistanceSquared(ResolveGroundContact(body, to, across, true, true, out _), across) >= .25f ||
                             !ClearBody(body, to + across, throughDoor: true)) return false;
                     }
                     else if (!Swept(body, to, across, terrain)) return false;

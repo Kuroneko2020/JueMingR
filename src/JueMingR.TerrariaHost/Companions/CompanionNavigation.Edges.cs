@@ -47,7 +47,8 @@ namespace JueMingR.TerrariaHost.Companions
                 case 8: case 9: case 10: case 11: case 33: case 34: return 10;
                 case 12: case 13: return 10;
                 case 14: case 15: return 16;
-                case 16: case 17: case 18: case 19: case 27: return 9;
+                case 16: case 17: return DoorWork;
+                case 18: case 19: case 27: return 9;
                 case 20: case 22: case 23: case 24: case 26: return 32;
                 case 29: case 30: return 152;
                 default: return 4;
@@ -123,7 +124,7 @@ namespace JueMingR.TerrariaHost.Companions
                         observe = step.Kind == RouteKind.Cart;
                         break;
                     case 16: case 17:
-                        if (!TryDoorEdge(body, from, direction, search.Terrain, out step.Operand, out step.To)) return false;
+                        if (!TryDoorEdge(body, from, direction, search.Terrain, ref step)) return false;
                         step.Kind = RouteKind.Door; step.Cost = 46; observe = true;
                         break;
                     case 18: case 19: case 27:

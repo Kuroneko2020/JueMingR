@@ -52,31 +52,38 @@ namespace NativeWorldTextProbe
 
         private static void WaterSurface(object host, object profiles, Player human)
         {
-            const int row = 83, shore = 65, farShore = 84, start = 61 * 16, goal = 91 * 16;
-            using (var run = new Scenario(host, profiles, human, "water-walk-surface", start, row, () =>
+            const int row = 83, upper = 77, shore = 65, farShore = 84, start = 68 * 16 + 8, goal = 91 * 16;
+            const int waterline = row * 16 + 6;
+            using (var run = new Scenario(host, profiles, human, "water-walk-surface", start, upper, () =>
             {
+                Fill(62, 72, upper, TileID.Platforms);
                 Fill(46, shore, row, TileID.Stone);
                 Fill(farShore, 106, row, TileID.Stone);
                 Fill(46, 106, row + 24, TileID.Stone);
                 for (int x = shore + 1; x < farShore; x++)
-                    for (int y = row; y < row + 24; y++) Main.tile[x, y].liquid = byte.MaxValue;
+                    for (int y = row; y < row + 24; y++) Main.tile[x, y].liquid = y == row ? (byte)128 : byte.MaxValue;
             }, ItemID.WaterWalkingBoots))
             {
-                int wet = 0, supportedRun = 0, longestSupport = 0, reached = -1;
+                int down = -1, surface = -1, wet = 0, supportedRun = 0, longestSupport = 0, reached = -1;
                 Require(run.Body.waterWalk || run.Body.waterWalk2, "actual equipped boots apply a native water-walking effect");
-                for (int tick = 0; tick < 270; tick++)
+                for (int tick = 0; tick < 325; tick++)
                 {
-                    run.StepToward(new Vector2(goal, row * 16), new Vector2(3.2f, 0));
+                    int ownerX = tick < 90 ? start : goal;
+                    int ownerY = human.Left.X < farShore * 16 ? waterline : row * 16;
+                    run.StepToward(new Vector2(ownerX, ownerY), new Vector2(3.2f, 4));
                     var body = run.Body;
+                    if (down < 0 && body.controlDown) down = tick;
                     if (body.wet) wet++;
                     bool inBasin = body.Left.X > (shore + 1) * 16 + 12 && body.Right.X < farShore * 16 - 12;
-                    supportedRun = inBasin && OnFloor(body, row) && body.velocity.X > .6f ? supportedRun + 1 : 0;
+                    bool supported = inBasin && Math.Abs(body.Bottom.Y - waterline) < .25f && Math.Abs(body.velocity.Y) < .25f;
+                    if (surface < 0 && down >= 0 && supported) surface = tick;
+                    supportedRun = supported && body.velocity.X > .6f ? supportedRun + 1 : 0;
                     longestSupport = Math.Max(longestSupport, supportedRun);
                     if (body.Center.X > goal - 28 && OnFloor(body, row)) { reached = tick; break; }
                 }
-                Console.WriteLine($"FOLLOW water-walking boots nativeSupportRun={longestSupport} wet={wet} reached={reached} body={run.Body.Bottom} status={Get(run.Actor, "Status")}");
-                Require(longestSupport >= 20 && wet == 0 && reached >= 0,
-                    "follow uses actual water-walking support across a real deep basin and returns to the far solid shore");
+                Console.WriteLine($"FOLLOW water-walking boots down={down} surface={surface} nativeSupportRun={longestSupport} wet={wet} reached={reached} body={run.Body.Bottom} status={Get(run.Actor, "Status")}");
+                Require(down >= 0 && surface > down && longestSupport >= 20 && wet == 0 && reached > surface,
+                    "the equipped body drops onto half-full water, stays dry and walks to the far solid shore in the same Follow");
             }
         }
     }

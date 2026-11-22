@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.ExceptionServices;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
@@ -46,10 +47,14 @@ namespace NativeWorldTextProbe
                 Vector2 exterior = new Vector2((door + 10) * 16, floor * 16 + 8);
                 human.Bottom = exterior;
                 int opened = -1, crossed = -1, downstep = -1, resumed = -1;
+                bool sampledWithoutGrant = false;
                 for (int tick = 0; tick < 240; tick++)
                 {
                     run.StepOwner(Vector2.Zero);
                     if (opened < 0 && Main.tile[door, floor - 2].type == TileID.OpenDoor) opened = tick;
+                    float gap = door * 16 - body.Right.X;
+                    if (!sampledWithoutGrant && !openAtStart && !lowHeadroom && opened < 0 && gap > 8 && gap < 16)
+                        sampledWithoutGrant = CheckUnselectedDoorApproach(run.Actor, body);
                     if (crossed < 0 && body.Left.X > (door + 1) * 16 + 3) crossed = tick;
                     if (downstep < 0 && body.Left.X > (door + 1) * 16 && Math.Abs(body.Bottom.Y - exterior.Y) < .2f && body.velocity.Y == 0)
                         downstep = tick;
@@ -65,6 +70,8 @@ namespace NativeWorldTextProbe
                 Require(opened >= 0 && crossed > opened && downstep >= opened && resumed > crossed,
                     "ordinary Follow opens or uses the real door and treads down onto the exterior half-brick before continuing");
                 if (openAtStart) return;
+                if (Get(Get(run.Actor, "Behavior"), "navigation").GetType().GetMethod("TryDoorImmediate", BindingFlags.Instance | BindingFlags.NonPublic) != null)
+                    Require(sampledWithoutGrant, "the real prepass has a loaded door approach under the no-grant probe");
                 Require(Main.tile[door, floor - 2].type == TileID.ClosedDoor, "the real closed door is restored after the first passage");
 
                 human.Bottom = new Vector2(approach, floor * 16);
@@ -80,6 +87,27 @@ namespace NativeWorldTextProbe
                 Require(reverse >= 0 && upstep >= reverse && returned > upstep && Main.tile[door, floor - 2].type == TileID.ClosedDoor,
                     "the same recovered door reopens as the actual body treads up from half-brick and follows into the interior");
             }
+        }
+
+        private static bool CheckUnselectedDoorApproach(object actor, Player body)
+        {
+            var navigation = Get(Get(actor, "Behavior"), "navigation");
+            Type type = navigation.GetType();
+            var query = type.GetMethod("TryDoorImmediate", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (query == null) return false; // The fixed earlier comparison has no split entrance.
+            var scratch = type.GetNestedType("Scratch", BindingFlags.NonPublic);
+            var route = type.GetNestedType("RouteStep", BindingFlags.NonPublic);
+            var count = type.GetProperty("DoorPassageProbes", BindingFlags.Instance | BindingFlags.NonPublic);
+            object before = count?.GetValue(navigation);
+            var values = new[] { body, (object)1, false, Activator.CreateInstance(route), false, false };
+            bool planned;
+            using ((IDisposable)scratch.GetMethod("Save", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null))
+                planned = (bool)query.Invoke(navigation, values);
+            object after = count?.GetValue(navigation);
+            Require(!planned && !(bool)values[4] && (bool)values[5] && Equals(before, after),
+                "an unselected real body can prove its next doorstep approach without an entire closed-door forecast");
+            Console.WriteLine($"FOLLOW no-grant door step={values[5]} fullForecasts={before ?? "release"}->{after ?? "release"}");
+            return true;
         }
 
         internal static void Run(object host, object actor, Player body, Player human)

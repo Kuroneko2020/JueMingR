@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
@@ -55,6 +56,118 @@ namespace NativeWorldTextProbe
                 Require(roofHit >= 0 && retreated > roofHit && retreated - roofHit <= 90 && exitFuel > 25 &&
                     open > retreated && reached > open && stable >= 12,
                     "B: a genuine finite-wing ceiling trap actively releases or backs away into native free air, clears the obstruction and reaches the owner before waiting for exhaustion");
+            }
+            RoofReserveAndWake(host, profiles, human);
+        }
+
+        private static void RoofReserveAndWake(object host, object profiles, Player human)
+        {
+            const int ground = 94, roof = 83, wall = 66, blockerX = 62, blockerY = 85, x = 64 * 16;
+            int ownerFloor = roof - 2;
+            using (var run = new Scenario(host, profiles, human, "terrain-roof-reserve", x, ground, () =>
+            {
+                Fill(48, 93, ground, TileID.Stone);
+                Fill(blockerX, wall, roof, TileID.Stone);
+                StoneVertical(blockerX, blockerY);
+                for (int y = roof + 1; y <= 88; y++) StoneVertical(wall, y);
+                Fill(70, 86, ownerFloor, TileID.Stone);
+            }, Starboard))
+            {
+                var body = run.Body;
+                var navigation = Navigator(run.Actor);
+                human.Bottom = new Vector2(x, ownerFloor * 16);
+                int obstructed = -1, turned = -1, stable = 0;
+                Vector2 failedProbePose = default;
+                float movedBeforeWake = -1;
+                for (int tick = 0; tick < 220 && stable < 12; tick++)
+                {
+                    var before = body.position;
+                    run.StepToward(new Vector2(75 * 16, ownerFloor * 16), new Vector2(turned < 0 ? 0 : 3.5f, 0));
+                    var reads = GetOptional(navigation, "roofReads");
+                    if (obstructed < 0 && reads != null && ((ISet<int>)Get(reads, "Keys")).Contains(blockerX * Height + blockerY) &&
+                        !RouteStep(run.Actor).StartsWith("AirAcross:", StringComparison.Ordinal))
+                    {
+                        obstructed = tick;
+                        failedProbePose = (Vector2)Get(navigation, "roofProbePosition");
+                        // Remove exactly the obstructing tile already read by
+                        // this actor. The usable roof and opposite wall remain.
+                        Main.tile[blockerX, blockerY] = new Tile();
+                    }
+                    if (obstructed >= 0 && turned < 0 && body.controlLeft && body.velocity.X < -.25f)
+                    { turned = tick; movedBeforeWake = Vector2.Distance(failedProbePose, before); }
+                    stable = OnFloor(body, ownerFloor) && Math.Abs(body.Center.X - human.Center.X) < 28 ? stable + 1 : 0;
+                }
+                Console.WriteLine(FormattableString.Invariant($"TERRAIN B' roof edit readAndClosed={obstructed} resumedLeft={turned} movedBeforeWake={movedBeforeWake:F1} stable={stable} blocker={Main.tile[blockerX,blockerY].active()} opposite={Main.tile[wall,blockerY].active()} body={body.Bottom}"));
+                Require(obstructed >= 0 && turned > obstructed && turned - obstructed <= 22 && movedBeforeWake < 16 && stable >= 12 &&
+                    !Main.tile[blockerX, blockerY].active() && Main.tile[wall, blockerY].active(),
+                    "B': opening a real previously read tile wakes the same blocked native follower, which uses that side and reaches the owner");
+
+                // Fly naturally above the cleared area until the same real
+                // Starboard has little of its own finite reserve remaining.
+                Vector2 target = human.Bottom - new Vector2(0, 132);
+                Vector2 healthyPose = default;
+                float healthy = 0, low = 0;
+                int roofRow = 0, roofColumn = 0;
+                bool healthyAllowed = false, lowAllowed = false;
+                for (int tick = 0; tick < 450 && low == 0; tick++)
+                {
+                    run.StepToward(target, new Vector2(0, 4.6f));
+                    var observed = Get(Get(run.Actor, "Mobility"), "Observed");
+                    float reserve = (float)Get(observed, "WingTime");
+                    bool hover = body.controlDown && body.controlJump && Math.Abs(body.velocity.Y) < .1f && Math.Abs(body.velocity.X) < .25f;
+                    if (healthy == 0 && hover && reserve > 60 && reserve < 170)
+                    {
+                        healthy = reserve; healthyPose = body.position;
+                        roofColumn = (int)(body.Center.X / 16); roofRow = (int)(body.Top.Y / 16) - 1;
+                        healthyAllowed = ProbeRoofSide(navigation, body, observed, roofColumn, roofRow);
+                    }
+                    if (healthy > 0 && hover && reserve > 0 && reserve <= 8)
+                    {
+                        Require(Vector2.DistanceSquared(healthyPose, body.position) < 4 * 4,
+                            "B' compares an identical roof and nearly unchanged actual hover pose at two native reserves");
+                        low = reserve;
+                        lowAllowed = ProbeRoofSide(navigation, body, observed, roofColumn, roofRow);
+                    }
+                }
+                float heldY = body.Bottom.Y;
+                bool released = false;
+                for (int tick = 0; tick < 90 && !released; tick++)
+                {
+                    run.StepOwner(Vector2.Zero);
+                    released = body.wingTime <= 0 && body.Bottom.Y > heldY + 12 && body.velocity.Y > 1;
+                }
+                Console.WriteLine(FormattableString.Invariant($"TERRAIN B' native reserve normal={healthy:F1} normalAdmitted={healthyAllowed} low={low:F1} lowAdmitted={lowAllowed} released={released} body={body.Bottom}"));
+                Require(healthyAllowed && low > 0 && !lowAllowed && released,
+                    "B': real low reserve does not authorize a long hover exit on the same geometry, and the real body releases after its own finite reserve ends");
+            }
+        }
+
+        private static bool ProbeRoofSide(object navigation, Player body, object observed, int center, int row)
+        {
+            var original = new Tile[7];
+            for (int i = 0; i < original.Length; i++)
+            {
+                original[i] = Main.tile[center - 3 + i, row];
+                Main.tile[center - 3 + i, row] = new Tile();
+            }
+            try
+            {
+                Fill(center - 3, center + 3, row, TileID.Stone);
+                var type = navigation.GetType();
+                var probe = AccessTools.Method(type, "TryOverheadExit");
+                var isolatedSearch = Activator.CreateInstance(type, true);
+                var next = Activator.CreateInstance(AccessTools.Inner(type, "RouteStep"));
+                var goal = body.position + new Vector2(64, -70);
+                // A state-only check against the real observed body. The
+                // resulting candidate is never applied to the actual actor.
+                var args = probe.GetParameters().Length == 5 ? new[] { body, observed, (object)goal, 1, next } :
+                    new[] { (object)body, goal, 1, next };
+                using ((IDisposable)AccessTools.Method(AccessTools.Inner(type, "Scratch"), "Save").Invoke(null, null))
+                    return (bool)probe.Invoke(isolatedSearch, args);
+            }
+            finally
+            {
+                for (int i = 0; i < original.Length; i++) Main.tile[center - 3 + i, row] = original[i];
             }
         }
 

@@ -138,22 +138,122 @@ namespace JueMingR.TerrariaHost.Companions
 
     internal sealed partial class CompanionNavigation
     {
-        private static bool TryDoorEdge(Player body, Vector2 from, int direction, ReadSet terrain, out Vector2 door, out Vector2 to)
+        private const int DoorWork = 64, DoorProbeReach = 18, MaxDoorProofTiles = 256;
+        private bool doorCommitRead;
+        private ReadSet doorQueryTerrain;
+        private RouteStep doorQuery;
+        private object doorQueryWorld;
+        private bool doorQueryPass;
+        private DoorPassageProof doorActivationProof;
+        private int doorActivationSequence;
+#if DEBUG
+        internal int DoorPassageProbes { get; private set; }
+#endif
+
+        private struct DoorPassageProof
         {
-            door = to = default;
+            internal Rectangle Area;
+            internal ulong Tiles;
+            internal Vector2 Start;
+            internal float Gravity, GravityDirection;
+            internal int Shape, Flags;
+            internal uint At;
+
+            internal bool MatchesBody(Player body) => Area.Width != 0 && Gravity == body.gravity && GravityDirection == body.gravDir &&
+                Shape == (body.width | body.height << 16) && Flags == DoorBodyFlags(body);
+        }
+
+        private static int DoorBodyFlags(Player body) => (body.wet ? 1 : 0) | (body.waterWalk || body.waterWalk2 ? 2 : 0) |
+            (body.controlDown ? 4 : 0) | (body.controlUp ? 8 : 0) | (body.stairFall ? 16 : 0);
+
+        private static bool FindClosedHorizontalDoor(Player body, Vector2 from, int direction, ReadSet terrain, out CompanionDoor door)
+        {
+            door = default;
             float front = from.X + (direction > 0 ? body.width : 0);
-            int first = (int)Math.Floor((front + direction * .1f) / 16), last = (int)Math.Floor((front + direction * 18) / 16);
+            int first = (int)Math.Floor((front + direction * .1f) / 16), last = (int)Math.Floor((front + direction * DoorProbeReach) / 16);
             int center = (int)(from.Y + body.height * .5f) / 16;
             for (int x = first; x != last + direction; x += direction)
-                for (int y = center - 1; y <= center + 1; y++)
+                for (int offset = 0; offset < 3; offset++)
                 {
+                    int y = center + (offset == 2 ? -1 : offset);
                     if (!(terrain == null ? Loaded(x, y) : terrain.Record(x, y)) || !CompanionDoor.TryRead(new Point(x, y), out var fixture) || fixture.Open ||
                         fixture.Family == CompanionDoorFamily.Trapdoor) continue;
-                    if (!DoorGroundTravel(body, from, direction, fixture, terrain, out to)) continue;
-                    door = fixture.Target;
+                    // All rows of a known frame name the same hinge. Only
+                    // the first fixture in the body's passage can be proved.
+                    door = fixture;
                     return true;
                 }
             return false;
+        }
+
+        private bool TryDoorEdge(Player body, Vector2 from, int direction, ReadSet terrain, ref RouteStep step) =>
+            FindClosedHorizontalDoor(body, from, direction, terrain, out var door) &&
+            ProveDoorPassage(body, from, direction, door, terrain, ref step);
+
+        private bool TryDoorImmediate(Player body, int direction, bool allowPlanning, ref RouteStep step, out bool spent, out bool approach)
+        {
+            spent = approach = false;
+            if (!FindClosedHorizontalDoor(body, body.position, direction, null, out var door)) return false;
+            approach = !door.AtApproach(body, direction) && TrySupportedTravel(body, body.position, direction, 4, null,
+                out _, out _, rejectDangerLiquids: true);
+            if (!allowPlanning) return false;
+            if (ReferenceEquals(doorQueryWorld, Main.ActiveWorldFileData) && doorQuery.Operand == door.Target &&
+                direction == doorQuery.Direction && body.position == doorQuery.DoorProof.Start && DoorProofCurrent(body, doorQuery.DoorProof))
+            {
+                if (doorQueryPass) step = doorQuery;
+                return doorQueryPass;
+            }
+
+            spent = true;
+            doorQueryTerrain = doorQueryTerrain ?? new ReadSet();
+            doorQueryTerrain.Clear();
+            doorQueryWorld = Main.ActiveWorldFileData;
+            doorQueryPass = ProveDoorPassage(body, body.position, direction, door, doorQueryTerrain, ref step);
+            doorQuery = step;
+            return doorQueryPass;
+        }
+
+        private bool ProveDoorPassage(Player body, Vector2 from, int direction, CompanionDoor door, ReadSet terrain, ref RouteStep step)
+        {
+#if DEBUG
+            DoorPassageProbes++;
+#endif
+            step.Operand = door.Target;
+            Rectangle preceding = terrain.BeginNestedArea();
+            bool pass = DoorGroundTravel(body, from, direction, door, terrain, out step.To);
+            Rectangle area = terrain.EndNestedArea(preceding);
+            if (!DoorStamp(area, out ulong stamp)) return false;
+            step.DoorProof = new DoorPassageProof { Area = area, Tiles = stamp, Start = from, At = Main.GameUpdateCount,
+                Gravity = body.gravity, GravityDirection = body.gravDir, Shape = body.width | body.height << 16, Flags = DoorBodyFlags(body) };
+            return pass;
+        }
+
+        private static bool DoorStamp(Rectangle area, out ulong stamp)
+        {
+            stamp = 14695981039346656037UL;
+            if (area.Width == 0 || area.Width * area.Height > MaxDoorProofTiles) return false;
+            for (int x = area.Left; x < area.Right; x++)
+                for (int y = area.Top; y < area.Bottom; y++)
+                {
+                    if (!Loaded(x, y)) return false;
+                    stamp = unchecked((stamp ^ (uint)TileValue(Main.tile[x, y])) * 1099511628211UL);
+                }
+            return true;
+        }
+
+        private static bool DoorProofCurrent(Player body, DoorPassageProof proof) => proof.MatchesBody(body) &&
+            (proof.At == Main.GameUpdateCount || DoorStamp(proof.Area, out ulong stamp) && stamp == proof.Tiles);
+
+        private static bool DoorProofApplies(Player body, int direction, DoorPassageProof proof)
+        {
+            if (!DoorProofCurrent(body, proof)) return false;
+            float dx = body.position.X - proof.Start.X;
+            if (Math.Abs(dx) > DoorProbeReach + 3 || dx * direction < -3) return false;
+            // Rejoin no farther than the short approach which was proved.
+            // Actual support height must agree even on a half-brick.
+            if (Math.Abs(dx) < .1f) return Math.Abs(body.position.Y - proof.Start.Y) <= 1 && HasSurface(body, body.position, null);
+            return TrySupportedTravel(body, proof.Start, Math.Sign(dx), Math.Abs(dx), null, out Vector2 contact, out _) &&
+                Math.Abs(contact.Y - body.position.Y) <= 1 && HasSurface(body, body.position, null);
         }
 
         private static bool DoorGroundTravel(Player body, Vector2 from, int direction, CompanionDoor door, ReadSet terrain, out Vector2 to)
@@ -162,6 +262,9 @@ namespace JueMingR.TerrariaHost.Companions
             Rectangle aperture = door.Aperture;
             float across = (direction > 0 ? aperture.Right + 6 - from.X : from.X + body.width + 6 - aperture.Left);
             if (across <= 0 || across > body.width + aperture.Width + 28) return false;
+            for (int x = door.Tiles.Left - 1; x <= door.Tiles.Right; x++)
+                for (int y = door.Tiles.Top; y < door.Tiles.Bottom; y++)
+                    if (!terrain.Record(x, y)) return false;
             // Predict the actual tread instead of requiring equal height.
             // Ignore only this verified closed fixture inside native queries.
             using (new CompanionDoorCollision.Fixture(door.Tiles))
@@ -237,7 +340,7 @@ namespace JueMingR.TerrariaHost.Companions
             return true;
         }
 
-        private bool DriveDoorStep(Player body, CompanionMobilityState state, RouteStep step,
+        private bool DriveDoorStep(Player body, CompanionMobilityState state, RouteStep step, bool allowPlanning,
             out CompanionMobilityFrame frame, out bool finished)
         {
             frame = new CompanionMobilityFrame { Status = "接近门口" };
@@ -291,7 +394,25 @@ namespace JueMingR.TerrariaHost.Companions
                     if (!TrySupportedTravel(body, body.position, passage, 5, null, out _, out _, rejectDangerLiquids: true)) return false;
                     frame.Move = passage;
                 }
-                else if (commandSequence == 0 && !DoorGroundTravel(body, body.position, passage, door, null, out _)) return false;
+                else if (commandSequence == 0 || state.Sequence != commandSequence || state.Result != CompanionMobilityResult.Started)
+                {
+                    var proof = commandSequence != 0 && doorActivationSequence == commandSequence ? doorActivationProof : step.DoorProof;
+                    if (!DoorProofApplies(body, passage, proof))
+                    {
+                        // A stale forecast cannot open a new route. Wait on
+                        // the known approach until this body has the grant.
+                        if (!allowPlanning || doorCommitRead || state.AwaitingEquipmentObservation) return true;
+                        doorCommitRead = true;
+                        doorQueryTerrain = doorQueryTerrain ?? new ReadSet();
+                        doorQueryTerrain.Clear();
+                        if (!ProveDoorPassage(body, body.position, passage, door, doorQueryTerrain, ref step)) return false;
+                        proof = step.DoorProof;
+                    }
+                    if (state.AwaitingEquipmentObservation) return true;
+                    if (commandSequence == 0) commandSequence = ++sequence;
+                    doorActivationSequence = commandSequence;
+                    doorActivationProof = proof;
+                }
             }
 
             if (door.Open) { frame.Status = "正在过门"; return true; }

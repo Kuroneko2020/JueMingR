@@ -113,7 +113,7 @@ namespace JueMingR.TerrariaHost.Companions
             ReleaseRoute();
             RetirePublication();
             pendingResult = -1;
-            roofProbeSet = false;
+            roofGravity = 0;
             advancing = false;
             if (search != null) { search.Active = false; search.Exhausted = false; }
         }
@@ -195,7 +195,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal CompanionMobilityFrame FollowRoute(Player body, CompanionMobilityState state, Vector2 target, Vector2 targetVelocity, bool allowPlanning,
             bool grounded, int stopDistance, int resumeDistance)
         {
-            descentCommitRead = false;
+            descentCommitRead = doorCommitRead = false;
             var mobility = state.Observed;
             var offset = new Vector2(body.width / 2f, body.height / 2f);
             Vector2 goal = target - offset;
@@ -277,12 +277,12 @@ namespace JueMingR.TerrariaHost.Companions
                 RouteStep step = route[routeIndex];
                 if (ExecuteStep(body, state, mobility, motion, step, out CompanionMobilityFrame frame, out bool finished, allowPlanning))
                 {
-                    if (allowPlanning && !descentCommitRead && route.Count - routeIndex <= 2 &&
+                    if (allowPlanning && !descentCommitRead && !doorCommitRead && route.Count - routeIndex <= 2 &&
                         (step.Retreat || search != null && search.Active))
                         SearchRoute(body, mobility, goal, stopDistance, motion, publish: false);
                     return frame;
                 }
-                if (descentCommitRead) allowPlanning = false;
+                if (descentCommitRead || doorCommitRead) allowPlanning = false;
                 if (finished) CompleteRouteStep(step);
                 else RejectStep(step);
             }
@@ -342,8 +342,11 @@ namespace JueMingR.TerrariaHost.Companions
             advancing = true;
             if (motion == RouteMotion.Hooked && mobility.GrappleAttached &&
                 TryAttachedHookExit(body, state, goal, out var detach)) return detach;
-            if ((motion == RouteMotion.Ground || motion == RouteMotion.Air) &&
-                TryDoorPrefix(body, state, motion, goal, direction, out var passage)) return passage;
+            if (motion == RouteMotion.Ground || motion == RouteMotion.Air)
+            {
+                if (TryDoorPrefix(body, state, motion, goal, direction, allowPlanning, out var passage)) return passage;
+                if (doorCommitRead) allowPlanning = false;
+            }
             CompanionMobilityFrame airFallback = default;
             if (motion == RouteMotion.Air)
             {
@@ -460,7 +463,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         private bool TryDoorPrefix(Player body, CompanionMobilityState state, RouteMotion motion, Vector2 goal, int direction,
-            out CompanionMobilityFrame frame)
+            bool allowPlanning, out CompanionMobilityFrame frame)
         {
             frame = default;
             var step = new RouteStep { Kind = RouteKind.Door, From = body.position, Direction = direction };
@@ -469,8 +472,17 @@ namespace JueMingR.TerrariaHost.Companions
                 float height = goal.Y - body.position.Y;
                 bool vertical = Math.Abs(height) > 28 && Math.Abs(goal.X - body.position.X) < 48 &&
                     TryTrapdoorEdge(body, body.position, Math.Sign(height), null, ref step, out _);
-                bool horizontal = !vertical && direction != 0 && motion == RouteMotion.Ground && Math.Abs(height) < 48 &&
-                    TryDoorEdge(body, body.position, direction, null, out step.Operand, out step.To);
+                bool horizontal = false;
+                if (!vertical && direction != 0 && motion == RouteMotion.Ground && Math.Abs(height) < 48)
+                {
+                    horizontal = TryDoorImmediate(body, direction, allowPlanning, ref step, out bool spent, out bool approach);
+                    doorCommitRead |= spent;
+                    if (!horizontal && approach && !RecentlyRejected(step))
+                    {
+                        frame = new CompanionMobilityFrame { Move = direction, Status = "接近门口" };
+                        return true;
+                    }
+                }
                 if ((!vertical && !horizontal) || RecentlyRejected(step)) return false;
             }
             ReleaseRoute();
@@ -751,23 +763,28 @@ namespace JueMingR.TerrariaHost.Companions
                     case RouteKind.Ascend: case RouteKind.AirAcross:
                         if (step.Retreat)
                         {
+                            if (state.AwaitingEquipmentObservation || HoverReserve(body, mobility) <= 0) return false;
                             if (step.Kind == RouteKind.Ascend)
                             {
-                                if (vertical >= -4) { finished = true; return false; }
+                                if (vertical >= -4)
+                                {
+                                    if (!TryShortExitAscent(body, mobility, routeGoal, ref step))
+                                    { finished = true; return false; }
+                                    route[routeIndex] = step;
+                                }
                                 return AirInput(body, mobility, motion, 0, -1, out frame, quickAscent: vertical < -64);
                             }
                             if (Math.Abs(step.To.X - body.position.X) <= 8 && Math.Abs(body.velocity.X) < 2 ||
                                 motion == RouteMotion.Ground)
                             {
-                                if (step.Vertical == 0 || !NextClear(body, 0, -(int)body.gravDir))
+                                if (step.Vertical == 0 || !TryShortExitAscent(body, mobility, routeGoal, ref step))
                                 { finished = true; return false; }
-                                step.Kind = RouteKind.Ascend;
-                                step.To = new Vector2(body.position.X, routeGoal.Y);
-                                step.Direction = 0;
                                 route[routeIndex] = step;
                                 return AirInput(body, mobility, motion, 0, -1, out frame);
                             }
                             return motion == RouteMotion.Air &&
+                                CanHoldRetreat(body, mobility, Math.Sign(step.To.X - body.position.X),
+                                    Math.Abs(step.To.X - body.position.X)) &&
                                 DriveFlight(body, mobility, motion, step.To, Vector2.Zero, 2, 0, out frame);
                         }
                         if (step.Kind == RouteKind.Ascend ? vertical >= -3 : along <= 5 && Math.Abs(vertical) <= 14)
@@ -802,7 +819,7 @@ namespace JueMingR.TerrariaHost.Companions
                         frame.Move = direction; frame.Vertical = step.Vertical; frame.Status = "矿车行驶中";
                         return true;
                     case RouteKind.Door:
-                        return DriveDoorStep(body, state, step, out frame, out finished);
+                        return DriveDoorStep(body, state, step, allowDescentCommit, out frame, out finished);
                     default:
                         return ActivationStep(body, state, mobility, step, out frame, out finished);
                 }
@@ -837,6 +854,19 @@ namespace JueMingR.TerrariaHost.Companions
                     if (step.Kind == RouteKind.Hook && mobility.GrappleAttached &&
                         Vector2.DistanceSquared(body.position, step.To) > 16 * 16 && body.velocity.LengthSquared() > 1)
                     { frame.Status = "抓钩牵引中"; return true; }
+                    if (step.Kind == RouteKind.ReleaseHook && step.Direction == 0 && step.Vertical > 0 &&
+                        (step.To.Y - body.position.Y) * body.gravDir > 4 &&
+                        (routeGoal.Y - body.position.Y) * body.gravDir > 16 &&
+                        (body.velocity.Y != 0 || !Surface(body, body.position, null)) &&
+                        NextClear(body, 0, (int)body.gravDir))
+                    {
+                        // Detaching ends the hook action, but its upward
+                        // inertia can precede the requested free descent.
+                        // Do not start a new tool operation before observing
+                        // the released body carry out this short prefix.
+                        frame.Status = "下降中";
+                        return true;
+                    }
                     if (step.Kind == RouteKind.Mount || step.Kind == RouteKind.Dismount || step.Kind == RouteKind.Cart)
                         postureChangedAt = Main.GameUpdateCount;
                     finished = true;

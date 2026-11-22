@@ -6,7 +6,10 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal sealed partial class CompanionNavigation
     {
-        private bool roofProbeSet;
+        private ReadSet roofReads;
+        private int roofCursor, roofHeading, roofWidth, roofHeight, roofGravity;
+        private uint roofReviewAt;
+        private float roofReserve;
         private Vector2 roofProbePosition;
 
         private static bool HasWingThrust(CompanionMobilitySnapshot mobility) =>
@@ -76,20 +79,55 @@ namespace JueMingR.TerrariaHost.Companions
             using (Scratch.Save())
             {
                 bool ahead = facing != 0 && !NextClear(body, facing, 0);
-                bool above = (goal.Y - body.position.Y) * gravity < 0 && !NextClear(body, 0, -gravity);
+                float goalHeight = (goal.Y - body.position.Y) * gravity;
+                bool rising = body.velocity.Y * gravity < -.5f && goalHeight <= 24;
+                bool above = (goalHeight < 0 || rising) && !NextClear(body, 0, -gravity);
                 if (!ahead && !above) return false;
+
+                // If a real ascent is already gaining height beside a wall,
+                // the blocked lateral input does not require descending.
+                // Finish clearing the wall one safe update at a time.
+                if (ahead && rising && !above && !state.AwaitingEquipmentObservation &&
+                    AirInput(body, mobility, RouteMotion.Air, 0, -1, out frame) &&
+                    (frame.Jump || frame.Vertical != 0)) return true;
 
                 var step = new RouteStep { From = body.position, To = body.position, Retreat = true, ObserveAfter = true };
                 bool foundSide = false;
-                if (above && !ahead && allowPlanning && (mobility.MountHover || mobility.WingHover && HasWingThrust(mobility)) &&
-                    (!roofProbeSet || Vector2.DistanceSquared(body.position, roofProbePosition) >= 16 * 16))
+                float reserve = above && !ahead ? HoverReserve(body, mobility) : 0;
+                if (allowPlanning && !state.AwaitingEquipmentObservation && reserve > 0)
                 {
-                    roofProbeSet = true;
-                    roofProbePosition = body.position;
-                    foundSide = TryOverheadExit(body, goal, gravity, ref step);
-                    spentPlanning = true;
+                    bool samePose = roofReads != null && roofHeading == facing && roofWidth == body.width &&
+                        roofHeight == body.height && roofGravity == gravity &&
+                        reserve <= roofReserve &&
+                        Vector2.DistanceSquared(body.position, roofProbePosition) < 16 * 16;
+                    bool review = samePose && unchecked((int)(Main.GameUpdateCount - roofReviewAt)) >= 0;
+                    if (!samePose || review)
+                    {
+                        roofReviewAt = Main.GameUpdateCount + 6;
+                        spentPlanning = true;
+                    }
+                    if (review)
+                    {
+#if DEBUG
+                        RouteWork += 12;
+#endif
+                        samePose = roofReads.Changes(ref roofCursor, 12).Width == 0;
+                    }
+                    if (!samePose)
+                    {
+                        roofReads = roofReads ?? new ReadSet(retainUnknown: true);
+                        roofReads.Clear();
+                        roofCursor = 0;
+                        roofHeading = facing;
+                        roofWidth = body.width;
+                        roofHeight = body.height;
+                        roofGravity = gravity;
+                        roofReserve = reserve;
+                        roofProbePosition = body.position;
+                        foundSide = TryOverheadExit(body, mobility, goal, gravity, ref step);
+                    }
                 }
-                if (!foundSide && (!ahead || !ProveAirRetreat(body, mobility, facing, ref step)) ||
+                if (!foundSide && (!ahead || state.AwaitingEquipmentObservation || !ProveAirRetreat(body, mobility, facing, ref step)) ||
                     RecentlyRejected(step)) return false;
 
                 // A verified release is an ordinary short route action. It
@@ -104,7 +142,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
 
-        private bool TryOverheadExit(Player body, Vector2 goal, int gravity, ref RouteStep step)
+        private bool TryOverheadExit(Player body, CompanionMobilitySnapshot mobility, Vector2 goal, int gravity, ref RouteStep step)
         {
             int away = goal.X >= body.position.X ? -1 : 1;
             bool awayClear = true, towardClear = true;
@@ -114,8 +152,10 @@ namespace JueMingR.TerrariaHost.Companions
             for (int span = stride; span <= 96 && (awayClear || towardClear); span += stride)
             {
                 int direction = 0;
-                if (awayClear && ProbeOverheadSide(body, away, gravity, span, ref awayClear)) direction = away;
-                else if (towardClear && ProbeOverheadSide(body, -away, gravity, span, ref towardClear)) direction = -away;
+                if (awayClear && ProbeOverheadSide(body, away, gravity, span, ref awayClear) &&
+                    CanHoldRetreat(body, mobility, away, span)) direction = away;
+                else if (towardClear && ProbeOverheadSide(body, -away, gravity, span, ref towardClear) &&
+                    CanHoldRetreat(body, mobility, -away, span)) direction = -away;
                 if (direction == 0) continue;
                 step.Kind = RouteKind.AirAcross;
                 step.Direction = direction;
@@ -134,8 +174,44 @@ namespace JueMingR.TerrariaHost.Companions
 #endif
             var delta = new Vector2(direction * 16, 0);
             var at = body.position + new Vector2(direction * span, 0);
-            open = Swept(body, at - delta, delta, null);
-            return open && Swept(body, at, new Vector2(0, -20 * gravity), null);
+            open = Swept(body, at - delta, delta, roofReads);
+            return open && Swept(body, at, new Vector2(0, -20 * gravity), roofReads);
+        }
+
+        private static float HoverReserve(Player body, CompanionMobilitySnapshot mobility)
+        {
+            if (mobility.MountHover)
+                return mobility.UnlimitedMountHover ? float.PositiveInfinity : mobility.MountFlightTime +
+                    Math.Max(0, mobility.MountFatigueMax - mobility.MountFatigue) / Math.Max(1, body.gravity / Player.defaultGravity);
+            if (!mobility.WingHover || !HasWingThrust(mobility)) return 0;
+            return mobility.UnlimitedWings ? float.PositiveInfinity : mobility.WingTime;
+        }
+
+        private static bool TryShortExitAscent(Player body, CompanionMobilitySnapshot mobility, Vector2 goal, ref RouteStep step)
+        {
+            float rise = Math.Min(24, (body.position.Y - goal.Y) * body.gravDir);
+            var delta = new Vector2(0, -rise * body.gravDir);
+            // Keep this exit column until the owner's level is reachable,
+            // proving one more short rise against live geometry and budget.
+            if (rise < 5 || HoverReserve(body, mobility) < 12 || !Swept(body, body.position, delta, null)) return false;
+            step.Kind = RouteKind.Ascend;
+            step.To = body.position + delta;
+            step.Direction = 0;
+            return true;
+        }
+
+        private static bool CanHoldRetreat(Player body, CompanionMobilitySnapshot mobility, int direction, float distance)
+        {
+            float reserve = HoverReserve(body, mobility);
+            if (float.IsPositiveInfinity(reserve)) return true;
+            if (reserve <= 0) return false;
+            // Budget for reversing real inertia, attaining a modest travel
+            // speed and settling into the exit column. Charge a whole native
+            // wing unit per update even for wings with cheaper hover.
+            float speed = Math.Min(3, mobility.MountHover ? body.accRunSpeed : mobility.WingHoverSpeed);
+            float acceleration = (mobility.MountHover ? body.runAcceleration : mobility.WingHoverAcceleration) * .4f;
+            if (speed <= 0 || acceleration <= 0) return false;
+            return reserve >= (Math.Max(0, speed - body.velocity.X * direction) / acceleration) + distance / speed + 6;
         }
 
         private static bool ContinueAirRetreat(Player body, CompanionMobilitySnapshot mobility, Vector2 goal, ref RouteStep step)
@@ -149,7 +225,7 @@ namespace JueMingR.TerrariaHost.Companions
                 // Clear the side of the obstruction before pointing up
                 // again. The next leg uses a mode that can actually hold its
                 // altitude; ordinary wings can still search a released arc.
-                if (!mobility.MountHover && !(mobility.WingHover && HasWingThrust(mobility))) return false;
+                if (!CanHoldRetreat(body, mobility, facing, Math.Abs(across.X))) return false;
                 step.Kind = RouteKind.AirAcross;
                 step.Direction = facing;
                 step.Vertical = 0;

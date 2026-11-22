@@ -25,6 +25,11 @@ namespace JueMingR.TerrariaHost.Companions
             internal Vector2 Release, Position, Velocity, Prefix;
         }
 
+        private struct DescentProjection
+        {
+            internal float Gravity, Terminal, Fall, Friction, MovingTime, StopTime, Drift;
+        }
+
         private struct DescentObstruction
         {
             internal Point Tile;
@@ -71,14 +76,11 @@ namespace JueMingR.TerrariaHost.Companions
             if (!Move(body, before, new Vector2(0, 8), true, false, out Step contact) || !contact.Ground ||
                 !SafeDropLanding(body, step.From, contact.Position)) return false;
             return step.DescentEntersLiquid ? BreathableWater(body, contact.Position) :
-                !Collision.WetCollision(contact.Position, body.width, body.height);
+                contact.WaterSurface == step.DescentWaterSurface && !Collision.WetCollision(contact.Position, body.width, body.height);
         }
 
-        private bool DescentDepartureClear(Player body, RouteStep step, Vector2 departure, float speedX, bool sharedCheck)
+        private static DescentProjection ProjectDescent(Player body, float depth, float speedX)
         {
-            // Project neutral drift using live speed before committing
-            // across the lip, then recheck the destination under that pose.
-            float depth = Math.Max(0, step.To.Y - departure.Y);
             float gravity = Math.Max(.05f, body.gravity);
             float terminal = Math.Max(gravity, body.maxFallSpeed);
             float fall = Math.Max(0, body.velocity.Y);
@@ -91,22 +93,49 @@ namespace JueMingR.TerrariaHost.Companions
             float stopTime = speed / friction;
             float movingTime = Math.Min(time + 1, stopTime);
             float drift = Math.Sign(speedX) * movingTime * (speed - .5f * friction * movingTime);
-            if (Math.Abs(drift) + body.width > DescentCommitColumns * 16) return false;
+            return new DescentProjection { Gravity = gravity, Terminal = terminal, Fall = fall, Friction = friction,
+                MovingTime = movingTime, StopTime = stopTime, Drift = drift };
+        }
+
+        private static bool CanJoinLedgeDeparture(Player body, RouteStep step)
+        {
+            // Being close to the lip is insufficient when the planned shelf
+            // needs a running approach. Keep the preceding walk when the
+            // current speed and remaining runway cannot reach its support.
+            float runway = (step.Operand.X - body.position.X) * step.Direction;
+            float speed = Math.Max(0, body.velocity.X * step.Direction);
+            float launch = Math.Max(speed, Math.Min((float)Math.Sqrt(speed * speed + 2 * body.runAcceleration * runway),
+                Math.Max(body.maxRunSpeed, body.accRunSpeed)));
+            var projected = ProjectDescent(body, Math.Max(0, step.To.Y - body.position.Y), step.Direction * launch);
+            float x = step.Operand.X + projected.Drift;
+            return x >= (step.DescentArea.Left + 1) * 16 && x + body.width <= (step.DescentArea.Right - 1) * 16 &&
+                DescentDestination(body, step, x);
+        }
+
+        private bool DescentDepartureClear(Player body, RouteStep step, Vector2 departure, float speedX, bool sharedCheck)
+        {
+            // Project neutral drift using live speed before committing
+            // across the lip, then recheck the destination under that pose.
+            float depth = Math.Max(0, step.To.Y - departure.Y);
+            var projected = ProjectDescent(body, depth, speedX);
+            float speed = Math.Abs(speedX);
+            if (Math.Abs(projected.Drift) + body.width > DescentCommitColumns * 16) return false;
             descentCommitRead |= sharedCheck;
 
             // Replay only while this body still drifts sideways. A dry side
             // wall can stop the drift before its projected column, leaving
             // the old destination on a ledge the body cannot actually reach.
             float launchX = step.Direction == 0 && body.velocity.Y == 0 ?
-                Math.Sign(speedX) * Math.Max(0, speed - friction) : speedX;
-            var probe = new DescentProbe { Release = departure, Position = departure, Velocity = new Vector2(launchX, fall) };
-            int ticks = (int)Math.Ceiling(movingTime) + 2;
+                Math.Sign(speedX) * Math.Max(0, speed - projected.Friction) : speedX;
+            var probe = new DescentProbe { Release = departure, Position = departure, Velocity = new Vector2(launchX, projected.Fall) };
+            int ticks = (int)Math.Ceiling(projected.MovingTime) + 2;
             Point? wall = null;
             bool wet = false;
             while (probe.Velocity.X != 0 && probe.Position.Y < step.To.Y)
             {
                 int heading = Math.Sign(probe.Velocity.X);
-                if (ticks-- == 0 || !AdvanceDescent(body, step.Direction, friction, gravity, terminal, null, ref probe, out Step contact)) return false;
+                if (ticks-- == 0 || !AdvanceDescent(body, step.Direction, projected.Friction, projected.Gravity, projected.Terminal,
+                    null, ref probe, out Step contact)) return false;
                 if (contact.Wall) wall = DescentWallTile(body, contact.Position, heading);
                 wet = Collision.WetCollision(contact.Position, body.width, body.height);
                 if (wet) break;
@@ -137,17 +166,18 @@ namespace JueMingR.TerrariaHost.Companions
             float driftSlack = speed * .5f;
             // Water dampens actual drift after contact. The dry projection
             // bounds its residual reach, while the first wet pose is observed.
-            float far = wet && step.DescentEntersLiquid ? departure.X + drift : x;
+            float far = wet && step.DescentEntersLiquid ? departure.X + projected.Drift : x;
             int left = (int)Math.Floor((Math.Min(departure.X, Math.Min(x, far) - driftSlack)) / 16);
             int right = (int)Math.Floor((Math.Max(departure.X, Math.Max(x, far) + driftSlack) + body.width - .01f) / 16);
             int top = (int)Math.Floor(departure.Y / 16);
             int bottom = (int)Math.Floor((departure.Y + checkedDepth + body.height - .01f) / 16);
+            int surfaceRow = step.DescentWaterSurface ? (int)Math.Floor((step.To.Y + body.height + .01f) / 16) : -1;
             if (right - left + 1 > DescentCommitColumns) return false;
             // After enough vertical travel that even terminal speed gives
             // neutral friction time to settle, only the final body width can
             // meet the remaining rows. Vanilla height bounds the narrow scan.
             int settledRow = speed == 0 ? top : step.DescentEntersLiquid ? bottom + 1 :
-                (int)Math.Ceiling((departure.Y + terminal * (stopTime + 2) + body.height) / 16);
+                (int)Math.Ceiling((departure.Y + projected.Terminal * (projected.StopTime + 2) + body.height) / 16);
             for (int row = top; row <= bottom; row++)
             {
                 if (row == settledRow)
@@ -155,11 +185,15 @@ namespace JueMingR.TerrariaHost.Companions
                     left = (int)Math.Floor((x - driftSlack) / 16);
                     right = (int)Math.Floor((x + driftSlack + body.width - .01f) / 16);
                 }
+                // A partial water surface occupies the very tile containing
+                // the last few pixels of the dry body's feet. Only the
+                // confirmed native support row may be wet for this landing.
+                bool acceptsWater = step.DescentEntersLiquid || row == surfaceRow;
                 for (int column = left; column <= right; column++)
-                    if (!DescentTileClear(column, row, step.DescentEntersLiquid))
+                    if (!DescentTileClear(column, row, acceptsWater))
                     {
                         descentObstruction = new DescentObstruction
-                        { Tile = new Point(column, row), Departure = departure, AcceptsWater = step.DescentEntersLiquid };
+                        { Tile = new Point(column, row), Departure = departure, AcceptsWater = acceptsWater };
                         return false;
                     }
             }
@@ -331,6 +365,7 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     if (probe.Position.Y - from.Y < 12 || !SafeDropLanding(body, from, probe.Position)) return DescentResult.Rejected;
                     step.DescentLands = true;
+                    step.DescentWaterSurface = fall.WaterSurface;
                     step.To = probe.Position;
                     return CompleteDescent(from, direction, probe.Release, ref step);
                 }

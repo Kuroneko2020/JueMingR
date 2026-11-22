@@ -230,42 +230,53 @@ namespace NativeWorldTextProbe
             };
             Action<Scenario> step = run => run.StepToward(new Vector2(target, (human.Left.X < edge ? high : lower) * 16), new Vector2(3.2f, 4));
             const int updates = 180;
-            int release = -1, landing = -1;
+            int editAt = -1, release = -1, landing = -1;
             float dryLeft = 0;
             using (var dry = new Scenario(host, profiles, human, "dry-ledge-side", start, high, terrain))
             {
                 for (int tick = 0; tick < updates; tick++)
                 {
                     step(dry);
+                    if (release < 0 && OnFloor(dry.Body, high) && dry.Body.velocity.X > 1 &&
+                        edge - dry.Body.Left.X > OriginalBrakeRoom(dry.Body) + 3 &&
+                        RouteStep(dry.Actor).StartsWith("LedgeDrop:", StringComparison.Ordinal)) editAt = tick + 1;
                     if (release < 0 && dry.Body.Left.X >= edge && dry.Body.Bottom.Y > high * 16 + .1f) release = tick;
                     if (release >= 0 && OnFloor(dry.Body, lower)) { landing = tick; dryLeft = dry.Body.Left.X; break; }
                 }
-                Require(release >= 7 && landing > release && dryLeft + dry.Body.width > wallColumn * 16,
-                    $"the moving body actually lands on the narrow dry shelf (release={release}, landing={landing}, left={dryLeft})");
+                Require(editAt >= 0 && release > editAt && landing > release && dryLeft + dry.Body.width > wallColumn * 16,
+                    $"the moving body commits from a still-brakeable ledge and lands on the narrow dry shelf (edit={editAt}, release={release}, landing={landing}, left={dryLeft})");
             }
 
             using (var edited = new Scenario(host, profiles, human, "ledge-side-wall", start, high, terrain))
             {
-                for (int tick = 0; tick < release - 7; tick++) step(edited);
+                for (int tick = 0; tick < editAt; tick++) step(edited);
                 Vector2 before = edited.Body.Bottom;
                 float speed = edited.Body.velocity.X;
                 string route = RouteStep(edited.Actor);
-                Require(OnFloor(edited.Body, high) && edge - edited.Body.Left.X > 8 && speed > 1 && route.StartsWith("LedgeDrop:", StringComparison.Ordinal),
+                Require(OnFloor(edited.Body, high) && edge - edited.Body.Left.X > OriginalBrakeRoom(edited.Body) + 3 &&
+                    speed > 1 && route.StartsWith("LedgeDrop:", StringComparison.Ordinal),
                     $"the published ledge route still has enough original braking room (body={before}, speed={speed}, route={route})");
                 // The face is beyond this update's horizontal reach. Its
                 // roof is above the source body and its base is above the
                 // original shelf, so it cannot supply a replacement landing.
                 for (int row = high - 4; row <= high + 2; row++) Fill(wallColumn, wallColumn, row, TileID.Stone);
                 float maxDrop = 0;
-                bool braked = false;
+                bool braked = false, coastBraked = false, supportedThroughout = true;
+                float minimumClearance = edge - edited.Body.Left.X;
                 for (int tick = 0; tick < 32; tick++)
                 {
+                    float beforeSpeed = edited.Body.velocity.X;
                     step(edited);
                     braked |= edited.Body.controlLeft;
+                    float clearance = edge - edited.Body.Left.X;
+                    supportedThroughout &= clearance > 0 && OnFloor(edited.Body, high);
+                    minimumClearance = Math.Min(minimumClearance, clearance);
+                    coastBraked |= !edited.Body.controlLeft && !edited.Body.controlRight && beforeSpeed > .2f &&
+                        edited.Body.velocity.X < beforeSpeed - .05f && clearance > 0 && OnFloor(edited.Body, high);
                     maxDrop = Math.Max(maxDrop, edited.Body.Bottom.Y - high * 16);
                 }
-                Console.WriteLine(FormattableString.Invariant($"FOLLOW side wall dryRelease={release} dryLanding={landing} dryLeft={dryLeft:F2} before={before} speed={speed:F2} route={route} bottom={edited.Body.Bottom} maxDrop={maxDrop:F2} braked={braked}"));
-                Require(maxDrop < 3 && OnFloor(edited.Body, high) && braked,
+                Console.WriteLine(FormattableString.Invariant($"FOLLOW side wall dryRelease={release} dryLanding={landing} dryLeft={dryLeft:F2} before={before} speed={speed:F2} route={route} bottom={edited.Body.Bottom} maxDrop={maxDrop:F2} reverseBrake={braked} neutralBrake={coastBraked} minSupport={minimumClearance:F2}"));
+                Require(maxDrop < 3 && supportedThroughout && (braked || coastBraked),
                     "a wall added beside the fall cannot steer the companion past its verified narrow landing");
 
                 for (int row = high - 4; row <= high + 2; row++) Main.tile[wallColumn, row].active(false);
@@ -274,6 +285,19 @@ namespace NativeWorldTextProbe
                 Console.WriteLine($"FOLLOW side wall clearLanding={resumed} body={edited.Body.Bottom}/{edited.Body.velocity} route={RouteStep(edited.Actor)}");
                 Require(resumed < updates, "removing the wall restores Follow to the original narrow landing");
             }
+        }
+
+        private static float OriginalBrakeRoom(Player body)
+        {
+            // Mirror the grounded opposite-input branch only to choose an
+            // editable fixture phase with a real remaining stopping distance.
+            float distance = 0;
+            for (float speed = body.velocity.X; speed > 0;)
+            {
+                speed -= (speed > body.runSlowdown ? body.runSlowdown : 0) + body.runAcceleration;
+                distance += Math.Max(0, speed);
+            }
+            return distance;
         }
 
         private static void Ledge(object host, object profiles, Player human)
