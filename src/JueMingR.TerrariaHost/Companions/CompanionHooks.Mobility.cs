@@ -26,9 +26,17 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player), "QuickMinecart", prefix: nameof(AllowQuickCart));
             Patch(typeof(Player), "QuickMinecartSnap", prefix: nameof(AllowQuickCart));
             Patch(typeof(Player), "DoCommonDashHandle", transpiler: nameof(ActorDashInput));
+            Patch(typeof(Player), "WingAirLogicTweaks", prefix: nameof(ObserveWingRunInputs));
             Patch(typeof(Player), nameof(Player.Teleport), postfix: nameof(MobilityTeleportAfter));
             Patch(typeof(PortalHelper), nameof(PortalHelper.TryGoingThroughPortals), transpiler: nameof(ActorPortalEntry));
             Patch(typeof(TeleportPylonsSystem), nameof(TeleportPylonsSystem.HandleTeleportRequest), transpiler: nameof(PylonFailureReceiver));
+        }
+
+        private static void ObserveWingRunInputs(Player __instance)
+        {
+            var actor = playerStep?.Actor;
+            if (actor == null || !ReferenceEquals(actor.Body, __instance)) return;
+            actor.Mobility.ObserveWingRunInputs(__instance);
         }
 
         private static void ExtendMobilityUpdate(List<CodeInstruction> code)

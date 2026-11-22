@@ -96,7 +96,8 @@ namespace JueMingR.TerrariaHost.Companions
                         navigation.JumpSafe(body, target, toward, true);
                     if (leap && navigation.TryCombatJump(body, mobility, target, out var jump)) return jump;
                 }
-                return navigation.FollowRoute(body, mobility, target, allowPlanning, grounded, stopDistance, resumeDistance);
+                Vector2 targetVelocity = behavior.Follow && ownerAvailable && !reposition ? owner.velocity : Vector2.Zero;
+                return navigation.FollowRoute(body, mobility, target, targetVelocity, allowPlanning, grounded, stopDistance, resumeDistance);
             }
             int direction = brain.DirectionTo(target.X - body.Center.X, stopDistance, resumeDistance);
             var route = navigation.PlanWalk(body, direction, allowPlanning);

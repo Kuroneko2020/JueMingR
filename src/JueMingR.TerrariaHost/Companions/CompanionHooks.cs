@@ -156,6 +156,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private sealed class PlayerStep
         {
+            internal HostCompanions.Actor Actor;
             internal int X,Y;
             internal NPC[] Npcs;
             internal uint[,] StaticHits;
@@ -169,9 +170,10 @@ namespace JueMingR.TerrariaHost.Companions
             var a=host?.Owned(__instance);if(a==null)return true;
             if(!a.Ready || a.Closing || a.Faulted)return false;
             if(a.LastUpdate==Main.GameUpdateCount)return false;
-            __state=new PlayerStep{X=Player.tileTargetX,Y=Player.tileTargetY,StaticHits=host.EnterObservedNpcHitState(Main.npc),Previous=playerStep,EntryScope=current};__state.Npcs=host.EnterNpcObservation();
+            __state=new PlayerStep{Actor=a,X=Player.tileTargetX,Y=Player.tileTargetY,StaticHits=host.EnterObservedNpcHitState(Main.npc),Previous=playerStep,EntryScope=current};__state.Npcs=host.EnterNpcObservation();
             playerStep=__state;
             a.LastUpdate=Main.GameUpdateCount;
+            a.Mobility.WingRunSampled=false;
             PurgeCompanionEnergy(__instance);
             host.Control(a);
             return true;

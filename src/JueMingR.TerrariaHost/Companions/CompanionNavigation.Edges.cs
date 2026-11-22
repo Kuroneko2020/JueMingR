@@ -43,7 +43,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 case 0: case 1: return motion == RouteMotion.Ground ? 20 : 1;
                 case 2: case 3: case 4: return motion == RouteMotion.Ground || motion == RouteMotion.Rope ? 94 : 1;
-                case 5: case 6: case 7: return motion == RouteMotion.Ground ? 24 : 1;
+                case 5: case 6: case 7: return motion == RouteMotion.Ground ? DescentWork : 1;
                 case 8: case 9: case 10: case 11: return 6;
                 case 12: case 13: return 10;
                 case 14: case 15: return 16;
@@ -55,10 +55,10 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         private bool TryEdge(Player body, CompanionMobilitySnapshot mobility, RouteNode node, Vector2 target, int candidate,
-            out RouteNode next, out bool observe)
+            out RouteNode next, out bool observe, out bool pending)
         {
             next = default(RouteNode);
-            observe = false;
+            observe = pending = false;
             Vector2 from = node.Position;
             int facing = target.X < from.X ? -1 : 1;
             int direction = (candidate & 1) == 0 ? facing : -facing;
@@ -91,10 +91,15 @@ namespace JueMingR.TerrariaHost.Companions
                         break;
                     case 5: case 6: case 7:
                         if (motion != RouteMotion.Ground) return false;
-                        step.Direction = candidate == 5 ? 0 : candidate == 6 ? facing : -facing;
-                        if (!TryDropEdge(body, from, step.Direction, search.Terrain, out step.To)) return false;
-                        step.Kind = step.Direction == 0 ? RouteKind.Drop : RouteKind.LedgeDrop;
-                        step.Cost = 26 + Vector2.Distance(step.To, from);
+                        var launchVelocity = node.Previous < 0 && Vector2.DistanceSquared(body.position, from) <= 16 * 16 ?
+                            body.velocity : Vector2.Zero;
+                        var result = ProbeDescent(body, mobility, from, candidate == 5 ? 0 : candidate == 6 ? facing : -facing,
+                            launchVelocity, search.Terrain, ref search.Descent, ref step, out motion);
+                        pending = result == DescentResult.Pending;
+                        if (result != DescentResult.Found) return false;
+                        // The landing or the short controlled-air pose is
+                        // confirmed from the live body before the next edge.
+                        observe = true;
                         break;
                     case 8: case 9: case 10: case 11:
                         if (!TryAirEdge(body, mobility, node, candidate, facing, ref step, ref fuel, ref glideFuel, out motion)) return false;
@@ -335,22 +340,6 @@ namespace JueMingR.TerrariaHost.Companions
             step.Wall = Math.Abs(actual.X - velocity.X) > .1f;
             step.Ground = velocity.Y * gravity > 0 && (velocity.Y - actual.Y) * gravity > 0;
             return SolidForBody(body, step.Position, terrain);
-        }
-
-        private static bool TryDropEdge(Player body, Vector2 from, int direction, ReadSet terrain, out Vector2 to)
-        {
-            to = from;
-            if (body.gravDir != 1 || (direction == 0 && (!Surface(body, from, terrain) || Surface(body, from, terrain, false)))) return false;
-            int i = 0;
-            for (; i < 20; i++)
-            {
-                bool platforms = direction != 0 || i >= 4;
-                Vector2 delta = new Vector2(i < 5 ? direction * 4 : 0, 4);
-                if (!Move(body, to, delta, platforms, false, out var step, terrain) || step.Wall) return false;
-                to = step.Position;
-                if (step.Ground) return to.Y - from.Y >= 12;
-            }
-            return false;
         }
 
         private bool TryAirEdge(Player body, CompanionMobilitySnapshot mobility, RouteNode node, int candidate, int facing,

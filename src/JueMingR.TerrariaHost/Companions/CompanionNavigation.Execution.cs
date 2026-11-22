@@ -189,7 +189,7 @@ namespace JueMingR.TerrariaHost.Companions
             return grounded ? RouteMotion.Ground : RouteMotion.Air;
         }
 
-        internal CompanionMobilityFrame FollowRoute(Player body, CompanionMobilityState state, Vector2 target, bool allowPlanning,
+        internal CompanionMobilityFrame FollowRoute(Player body, CompanionMobilityState state, Vector2 target, Vector2 targetVelocity, bool allowPlanning,
             bool grounded, int stopDistance, int resumeDistance)
         {
             var mobility = state.Observed;
@@ -271,7 +271,11 @@ namespace JueMingR.TerrariaHost.Companions
             int direction = Math.Sign(goal.X - body.position.X);
             using (Scratch.Save())
             {
-                if (motion == RouteMotion.Ground && Reached(body.position, goal, threshold) && InGoalRegion(body, body.position, goal, null))
+                bool movingWithOwner = motion == RouteMotion.Ground && Math.Abs(targetVelocity.X) >= 1f;
+                int groundMove = movingWithOwner ? FollowHorizontal(body, goal.X, targetVelocity.X, body.accRunSpeed,
+                    body.runAcceleration, body.runSlowdown, stopDistance / 2) : direction;
+                if (motion == RouteMotion.Ground && (!movingWithOwner || groundMove == 0) &&
+                    Reached(body.position, goal, threshold) && InGoalRegion(body, body.position, goal, null))
                 {
                     ReleaseRoute(); advancing = false;
                     return new CompanionMobilityFrame { Status = "停留" };
@@ -280,7 +284,8 @@ namespace JueMingR.TerrariaHost.Companions
                     TryModePrefix(body, state, mobility, goal, motion, direction, out var modeFrame)) return modeFrame;
                 if (allowPlanning && motion == RouteMotion.Ground &&
                     TryStandingTeleporter(body, state, mobility, goal, out var transit)) return transit;
-                if (motion == RouteMotion.Ground && !state.AwaitingEquipmentObservation && (goal.Y - body.position.Y) * body.gravDir < -42 &&
+                if (motion == RouteMotion.Ground && !state.AwaitingEquipmentObservation &&
+                    ((goal.Y - body.position.Y) * body.gravDir < -42 || WantsAirCatch(body, mobility, goal, targetVelocity)) &&
                     CanPowerAscent(mobility) && SafeTakeoff(body, mobility) &&
                     AirInput(body, mobility, motion, 0, -1, out var takeoff) && (takeoff.Jump || takeoff.Vertical != 0))
                 {
@@ -293,16 +298,19 @@ namespace JueMingR.TerrariaHost.Companions
                 // as dismount. Let the real cart settle or request an explicit
                 // safe dismount before using ordinary left/right controls.
                 if (mobility.MountCart && !mobility.Track) return new CompanionMobilityFrame { Status = "等待接轨" };
+                if (movingWithOwner && groundMove == 0 && Math.Abs(goal.Y - body.position.Y) < 36 &&
+                    QuickWalk(body, direction, out _))
+                    return new CompanionMobilityFrame { Status = "移动中" };
                 if (motion == RouteMotion.Ground && Math.Abs(goal.Y - body.position.Y) < 36 &&
-                    QuickWalk(body, direction, out bool wall))
+                    QuickWalk(body, groundMove, out bool wall))
                 {
                     advancing = true;
                     // The launch update itself uses vanilla's full impulse.
                     // The remaining lane must permit braking with neutral input.
                     if (!wall && !state.AwaitingEquipmentObservation && Math.Abs(goal.X - body.position.X) > 240 && allowPlanning && mobility.DashReady &&
-                        CanStartDash(body, mobility.DashType, direction))
-                        return new CompanionMobilityFrame { Move = direction, Dash = direction, Status = "冲刺中" };
-                    return new CompanionMobilityFrame { Move = direction, Status = "移动中" };
+                        groundMove == direction && CanStartDash(body, mobility.DashType, groundMove))
+                        return new CompanionMobilityFrame { Move = groundMove, Dash = groundMove, Status = "冲刺中" };
+                    return new CompanionMobilityFrame { Move = groundMove, Status = "移动中" };
                 }
             }
 
@@ -311,19 +319,19 @@ namespace JueMingR.TerrariaHost.Companions
                 TryAttachedHookExit(body, state, goal, out var detach)) return detach;
             if ((motion == RouteMotion.Ground || motion == RouteMotion.Air) &&
                 TryDoorPrefix(body, state, motion, goal, direction, out var passage)) return passage;
+            CompanionMobilityFrame airFallback = default;
             if (motion == RouteMotion.Air)
             {
                 // Cheap live steering can continue independently of the
                 // frontier while it is making progress in the current pose.
-                var flight = LocalRecovery(body, mobility, motion, goal);
-                bool driving = flight.Move != 0 || flight.Vertical != 0 || flight.Jump;
-                bool braking = (mobility.MountHover || body.hasWings) &&
-                    Math.Abs(goal.X - body.position.X) < 32 && Math.Abs(goal.Y - body.position.Y) < 40;
-                if (driving || braking)
+                using (Scratch.Save())
                 {
-                    if (allowPlanning && search != null && search.Active)
-                        SearchRoute(body, mobility, goal, stopDistance, motion, publish: false);
-                    return flight;
+                    if (TryAirFollow(body, mobility, goal, targetVelocity, stopDistance / 2, out airFallback))
+                    {
+                        if (allowPlanning && search != null && search.Active)
+                            SearchRoute(body, mobility, goal, stopDistance, motion, publish: false);
+                        return airFallback;
+                    }
                 }
             }
             if (allowPlanning && routeIndex >= route.Count)
@@ -339,6 +347,7 @@ namespace JueMingR.TerrariaHost.Companions
                 }
             }
 
+            if (airFallback.Jump || airFallback.Vertical != 0 || airFallback.Move != 0) return airFallback;
             var recovery = LocalRecovery(body, mobility, motion, goal);
             if (recovery.Status == "寻找路线" && search != null && search.Exhausted)
                 recovery.Status = search.Terrain.HasUnknown ? "等待地形就绪" : "暂无可行路线";
@@ -619,7 +628,9 @@ namespace JueMingR.TerrariaHost.Companions
             if (Vector2.DistanceSquared(progressPosition, body.position) > 4)
             { progressPosition = body.position; noProgress = 0; }
             else noProgress++;
-            if (age > (step.Kind == RouteKind.GlideJump ? 190 : 150) || noProgress > 24 && !actionStarted && !jumpAccepted) return false;
+            bool inVerifiedDescent = actionStarted && (step.Kind == RouteKind.Drop || step.Kind == RouteKind.LedgeDrop);
+            if (!inVerifiedDescent && age > (step.Kind == RouteKind.GlideJump ? 190 : 150) ||
+                noProgress > 24 && !actionStarted && !jumpAccepted) return false;
 
             using (Scratch.Save())
             {
@@ -683,25 +694,17 @@ namespace JueMingR.TerrariaHost.Companions
                         }
                         return true;
                     case RouteKind.Drop: case RouteKind.LedgeDrop:
-                        if (motion == RouteMotion.Ground && age > 1 && vertical < 6) { finished = true; return false; }
-                        if (vertical < -24 || motion == RouteMotion.Hooked || motion == RouteMotion.Track) return false;
-                        frame.Drop = step.Kind == RouteKind.Drop && body.position.Y - actionOrigin.Y < 14;
-                        frame.Move = along > 4 && NextClear(body, direction, 0) ? direction : 0;
-                        frame.Status = "下降中";
-                        return true;
+                        return DriveDescentStep(body, state, mobility, motion, step, out frame, out finished);
                     case RouteKind.Descend:
                         if (age > 1 && vertical <= 4 && body.velocity.Y * body.gravDir >= -.01f)
                         { finished = true; return false; }
-                        if (motion != RouteMotion.Air || !AirInput(body, mobility, motion, along > 4 ? direction : 0, 1, out frame)) return false;
-                        return true;
+                        return motion == RouteMotion.Air && DriveFlight(body, mobility, motion, step.To, Vector2.Zero, 3, 1, out frame);
                     case RouteKind.Ascend: case RouteKind.AirAcross:
                         if (step.Kind == RouteKind.Ascend ? vertical >= -3 : along <= 5 && Math.Abs(vertical) <= 14)
                         { finished = true; return false; }
                         if (step.Kind == RouteKind.AirAcross && (motion != RouteMotion.Air || along < -24)) return false;
-                        int heightIntent = step.Kind == RouteKind.Ascend ? -1 : HeightIntent(body, vertical, 14);
-                        if (!AirInput(body, mobility, motion, along > 4 ? direction : 0, heightIntent,
-                            out frame)) return false;
-                        return true;
+                        int heightIntent = step.Kind == RouteKind.Ascend ? -1 : FlightHeight(body, mobility, step.To.Y, 0, 14);
+                        return DriveFlight(body, mobility, motion, step.To, Vector2.Zero, 3, heightIntent, out frame);
                     case RouteKind.Swim:
                         if (!mobility.Wet || (step.Vertical == 0 ? along <= 5 : Math.Abs(vertical) <= 5)) { finished = true; return false; }
                         if (!CanLeaveLiquid(body, direction, step.Vertical, mobility.Lava && mobility.LavaTime > 24)) return false;
@@ -816,7 +819,7 @@ namespace JueMingR.TerrariaHost.Companions
             return Swept(body, body.position, delta, null, passPlatform: vertical >= 0 && body.gravDir > 0);
         }
 
-        private static bool CanPowerAscent(CompanionMobilitySnapshot mobility) => mobility.UnlimitedWings || mobility.WingTime > 0 ||
+        private static bool CanPowerAscent(CompanionMobilitySnapshot mobility) => HasWingThrust(mobility) ||
             mobility.RocketAvailable || mobility.MountFly || mobility.MountHover || mobility.ExtraJumps != 0 || mobility.Sliding;
 
         private static bool SafeTakeoff(Player body, CompanionMobilitySnapshot mobility)
@@ -830,56 +833,6 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static bool SafeFreeFlight(Player body, CompanionMobilitySnapshot mobility) =>
             body.noFallDmg || body.hasWings || mobility.UnlimitedWings || mobility.MountFly || mobility.MountHover;
-
-        private static int HeightIntent(Player body, float height, int tolerance)
-        {
-            float offset = height - body.velocity.Y * body.gravDir * 6;
-            return offset < -tolerance ? -1 : offset > tolerance ? 1 : 0;
-        }
-
-        private static int AirSteerDirection(Player body, float offset)
-        {
-            float desired = Math.Abs(offset) <= 18 ? 0 : MathHelper.Clamp(offset / 8, -body.maxRunSpeed, body.maxRunSpeed);
-            float correction = desired - body.velocity.X;
-            return Math.Abs(correction) > Math.Max(.2f, body.runAcceleration) ? Math.Sign(correction) : 0;
-        }
-
-        private static bool AirInput(Player body, CompanionMobilitySnapshot mobility, RouteMotion motion,
-            int direction, int heightIntent, out CompanionMobilityFrame frame)
-        {
-            frame = new CompanionMobilityFrame { Status = "空中移动" };
-            if (motion == RouteMotion.Hooked || motion == RouteMotion.Track || motion == RouteMotion.Rope) return false;
-            int vertical = heightIntent * (int)body.gravDir;
-            if (direction != 0 && !NextClear(body, direction, vertical)) direction = 0;
-            if (vertical != 0 && !NextClear(body, 0, vertical))
-            {
-                // Releasing thrust is still a legal descent/brake even near a
-                // floor. A blocked ascent cannot authorize another jump.
-                if (heightIntent < 0) return false;
-                vertical = 0;
-            }
-            frame.Move = direction;
-            if (mobility.MountHover) frame.Vertical = vertical;
-            else if (heightIntent < 0)
-            {
-                if (!CanPowerAscent(mobility) && mobility.JumpTime <= 0) return false;
-                if (motion == RouteMotion.Ground)
-                    frame.Jump = body.velocity.Y == 0 && (body.releaseJump || body.autoJump);
-                else
-                    frame.Jump = mobility.JumpTime > 0 && body.velocity.Y * body.gravDir < 0 ||
-                        mobility.WingTime > 0 || mobility.UnlimitedWings || mobility.MountFly || mobility.RocketReady ||
-                        mobility.ReleaseJump && (mobility.ExtraJumps != 0 || mobility.Sliding);
-            }
-            else if (heightIntent == 0 && direction != 0 && motion != RouteMotion.Ground)
-            {
-                // Only wings with the actual hover input and a ready carpet
-                // hold altitude. Ordinary wings receive a genuine release.
-                if (mobility.WingHover && (mobility.WingTime > 0 || mobility.UnlimitedWings)) { frame.Vertical = 1; frame.Jump = true; }
-                else if (mobility.CarpetReady) frame.Jump = true;
-            }
-            if (heightIntent > 0) frame.Status = "下降中";
-            return true;
-        }
 
         private static CompanionMobilityFrame LocalRecovery(Player body, CompanionMobilitySnapshot mobility, RouteMotion motion, Vector2 goal)
         {
@@ -896,16 +849,6 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     int brake = Math.Abs(body.velocity.X) > 1.5f ? -Math.Sign(body.velocity.X) : 0;
                     return new CompanionMobilityFrame { Move = brake, Status = "矿车减速中" };
-                }
-                if (motion == RouteMotion.Air)
-                {
-                    float height = (goal.Y - body.position.Y) * body.gravDir;
-                    int control = HeightIntent(body, height, 18);
-                    direction = AirSteerDirection(body, goal.X - body.position.X);
-                    if (direction != 0 && !SafeFreeFlight(body, mobility) && !mobility.CarpetReady &&
-                        !FindNearSurface(body, body.position + new Vector2(direction * 12, 0), null, out _)) direction = 0;
-                    if (AirInput(body, mobility, motion, direction, control, out var frame) ||
-                        AirInput(body, mobility, motion, direction, 0, out frame)) return frame;
                 }
                 if (motion == RouteMotion.Ground && Math.Abs(goal.X - body.position.X) > 40 && QuickWalk(body, direction, out _))
                     return new CompanionMobilityFrame { Move = direction, Status = "接近目标" };

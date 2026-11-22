@@ -23,7 +23,8 @@ namespace JueMingR.TerrariaHost.Companions
             internal Vector2 From, To, Operand;
             internal int Direction, Vertical, Duration, ItemSlot, MountTypePlusOne;
             internal float Cost;
-            internal bool EmergencyHand;
+            internal bool EmergencyHand, DescentLands;
+            internal Rectangle DescentArea;
             internal JumpInputs Launch;
         }
 
@@ -73,7 +74,9 @@ namespace JueMingR.TerrariaHost.Companions
             private Vector2 priorityGoal, scoreOrigin;
             private int priorityRevision, nextRedirect;
             internal int Expanding, Candidate, Closest, TerrainCursor, Window, Capabilities;
-            internal bool AscentFirst;
+            internal bool AscentFirst, DescentFirst;
+            internal DescentProbe Descent;
+            internal Rectangle DescentReads;
             private Rectangle repairing, queuedRepair;
             private int repairCursor;
             internal uint RetryAt;
@@ -85,6 +88,7 @@ namespace JueMingR.TerrariaHost.Companions
                 Origin = scoreOrigin = origin; Goal = priorityGoal = goal; Window = window;
                 Capabilities = capabilities;
                 Expanding = Closest = -1;
+                ResetDescent();
                 Candidate = TerrainCursor = nextRedirect = repairCursor = 0;
                 repairing = queuedRepair = Rectangle.Empty;
                 Active = true; Exhausted = NeedsLiveRoot = false;
@@ -179,8 +183,16 @@ namespace JueMingR.TerrariaHost.Companions
 
             internal void Dirty(Rectangle area)
             {
-                if (area.Width != 0) queuedRepair = Cover(queuedRepair, area);
+                if (area.Width == 0) return;
+                if (DescentReads.Intersects(area)) ResetDescent();
+                queuedRepair = Cover(queuedRepair, area);
             }
+
+            internal void ResetDescent()
+            { Descent = default; DescentReads = Rectangle.Empty; }
+
+            internal Rectangle RememberDescent(Rectangle reads)
+            { return DescentReads = Cover(DescentReads, reads); }
 
             internal int Repair(int budget)
             {
@@ -252,7 +264,7 @@ namespace JueMingR.TerrariaHost.Companions
         private void SearchRoute(Player body, CompanionMobilitySnapshot mobility, Vector2 target, int stop, RouteMotion root, bool publish = true)
         {
             if (search == null) search = new RouteSearch();
-            int capabilities = RouteCapabilityKey(mobility);
+            int capabilities = RouteCapabilityKey(mobility) * 31 + DescentSafetyKey(body);
             bool sameGeometry = search.Capabilities == capabilities;
             var changed = (search.Active || search.Exhausted) && sameGeometry ?
                 search.Terrain.Changes(ref search.TerrainCursor, search.Exhausted ? 8 : 24) : Rectangle.Empty;
@@ -330,10 +342,13 @@ namespace JueMingR.TerrariaHost.Companions
                         return;
                     }
                     search.Candidate = 0;
+                    search.ResetDescent();
                     search.ExpansionGoal = target;
                     var expanded = search.Nodes[search.Expanding];
                     search.AscentFirst = expanded.Motion == RouteMotion.Ground && expanded.Fuel > 0 &&
                         (target.Y - expanded.Position.Y) * body.gravDir < -40;
+                    search.DescentFirst = expanded.Motion == RouteMotion.Ground &&
+                        (target.Y - expanded.Position.Y) * body.gravDir > 40;
                     if (publish && expanded.Previous >= 0 && Reached(expanded.Position, target, stop) &&
                         InGoalRegion(body, search.Nodes[search.Expanding].Position, target, search.Terrain))
                     { if (Propose(body, root, search.Expanding, ref remaining)) return; }
@@ -342,7 +357,7 @@ namespace JueMingR.TerrariaHost.Companions
 
                 int parent = search.Expanding;
                 RouteNode node = search.Nodes[parent];
-                int candidate = SearchCandidate(search.Candidate, search.AscentFirst);
+                int candidate = SearchCandidate(search.Candidate, search.AscentFirst, search.DescentFirst);
                 bool nearRoot = node.Previous < 0 && node.Motion == root && Vector2.DistanceSquared(node.Position, body.position) <= 16 * 16;
                 if (!CanConsider(node, mobility, candidate, nearRoot))
                 {
@@ -353,16 +368,24 @@ namespace JueMingR.TerrariaHost.Companions
                 if (charge > remaining) break;
                 remaining -= charge;
                 candidates++;
-                if (++search.Candidate == RouteCandidates) search.Expanding = -1;
 #if DEBUG
                 RouteCandidateChecks++;
                 RouteWork += charge;
 #endif
                 search.Terrain.BeginArea();
-                bool found = TryEdge(body, mobility, node, search.ExpansionGoal, candidate, out RouteNode next, out bool observe);
+                bool found = TryEdge(body, mobility, node, search.ExpansionGoal, candidate, out RouteNode next, out bool observe, out bool pending);
                 next.EdgeReads = search.Terrain.EndArea();
                 search.RecordExpansion(parent, next.EdgeReads);
+                if (candidate >= 5 && candidate <= 7)
+                {
+                    next.EdgeReads = search.RememberDescent(next.EdgeReads);
+                    if (pending) continue;
+                    search.ResetDescent();
+                }
+                if (++search.Candidate == RouteCandidates) search.Expanding = -1;
                 if (!found) continue;
+                if (next.Step.Kind == RouteKind.Drop || next.Step.Kind == RouteKind.LedgeDrop)
+                    next.Step.DescentArea = next.EdgeReads;
                 if (RecentlyRejected(next.Step)) { search.AwaitsNativeChange = true; continue; }
                 if (!InPlayableBounds(body, next.Position)) continue;
                 var origin = search.Nodes[node.Root].Position;
@@ -401,8 +424,9 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
 
-        private static int SearchCandidate(int cursor, bool ascentFirst)
+        private static int SearchCandidate(int cursor, bool ascentFirst, bool descentFirst)
         {
+            if (descentFirst) return cursor < 3 ? 5 + cursor : cursor < 8 ? cursor - 3 : cursor;
             if (!ascentFirst) return cursor;
             return cursor < 4 ? 8 + cursor : cursor < 12 ? cursor - 4 : cursor;
         }
@@ -486,12 +510,15 @@ namespace JueMingR.TerrariaHost.Companions
                 publicationCursor = node.Previous;
             }
             if (publicationCursor >= 0) return false;
-            if (connectCursor < 0) connectCursor = connectionPath.Count - 1;
+            // The path was collected from the destination back to its root.
+            // Reconnect to the furthest live-compatible suffix first so an
+            // actor that already walked its prefix does not return to it.
+            if (connectCursor < 0) connectCursor = 1;
             using (Scratch.Save())
-            while (connectCursor > 0 && remaining >= ConnectCost)
+            while (connectCursor < connectionPath.Count && remaining >= ConnectCost)
             {
                 ChargePublication(ref remaining, 1);
-                int i = connectCursor--;
+                int i = connectCursor++;
                 var node = search.Nodes[connectionPath[i]];
                 Vector2 adjust = node.Position - body.position;
                 if (node.Motion != motion || Math.Abs(adjust.Y) > 8 || Math.Abs(adjust.X) > ConnectCost) continue;
@@ -511,7 +538,7 @@ namespace JueMingR.TerrariaHost.Companions
                 RetirePublication();
                 return true;
             }
-            if (connectCursor > 0) return false;
+            if (connectCursor < connectionPath.Count) return false;
             lastRejectedPublication = publishing;
             publicationRejectionPosition = body.position;
             RetirePublication();

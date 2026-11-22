@@ -325,32 +325,33 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
         internal static bool DropSafe(Player body)
-        { return DropCore(body,null); }
+        { return ProbePlatformDrop(body,null); }
         internal bool PlanDrop(Player body,bool allowPlanning)
         {
             if(!Ordinary(body) || body.controlDown || body.stairFall){dropQuery.Valid=false;return false;}
-            int cap=Capabilities(body);if(dropQuery.Matches(body,cap))return dropQuery.Drop;
+            int cap=Capabilities(body)*31+DescentSafetyKey(body);if(dropQuery.Matches(body,cap))return dropQuery.Drop;
             dropQuery.Valid=false;if(!allowPlanning)return false;
-            // Unlike an immediate support probe, a new 160-step lower-landing
-            // search belongs to the team's granted planning opportunity. Both
-            // success and known failure retain their real finite read set.
+            // This remains the first-observation compatibility fallback.
+            // It uses the same ground-to-platform proof as the route solver.
             dropQuery.Prepare(body,cap);
 #if DEBUG
             DropBuilds++;
 #endif
-            dropQuery.Drop=DropCore(body,dropQuery.Reads);
+            dropQuery.Drop=ProbePlatformDrop(body,dropQuery.Reads);
             dropQuery.Valid=dropQuery.Reads.Known;return dropQuery.Drop;
         }
-        private static bool DropCore(Player body,ReadSet record)
+        private static bool ProbePlatformDrop(Player body,ReadSet record)
         {
             if(!Ordinary(body) || body.controlDown || body.stairFall)return false;
             using(Scratch.Save())
             {
-                Vector2 position=body.position;Step step;
-                if(!Move(body,position,new Vector2(0,1),true,false,out step,record) || !step.Ground)return false;
-                if(!Move(body,position,new Vector2(0,1),false,false,out step,record) || step.Ground)return false;
-                for(int y=0;y<160;y++)
-                { if(!Move(body,position,new Vector2(0,1),y>=16,false,out step,record))return false;position=step.Position;if(y>=16 && step.Ground)return true; }
+                var candidate = new RouteStep { From = body.position };
+                var probe = default(DescentProbe);
+                for (int slice = 0; slice < 4; slice++)
+                {
+                    var result = ProbeDescent(body, default, body.position, 0, body.velocity, record, ref probe, ref candidate, out _);
+                    if (result != DescentResult.Pending) return result == DescentResult.Found;
+                }
                 return false;
             }
         }

@@ -12,7 +12,8 @@ namespace JueMingR.TerrariaHost.Companions
 
     internal struct CompanionMobilitySnapshot
     {
-        internal bool Ready, ReleaseJump, Sliding, DashReady, DashActive, UnlimitedWings, WingHover, RocketReady, RocketAvailable,
+        internal bool Ready, ReleaseJump, Sliding, DashReady, DashActive, UnlimitedWings, WingHover, WingHovering, WingHoverRun, WingFastAscent,
+            WingAbilities, RocketReady, RocketAvailable,
             Carpet, CarpetAvailable, CarpetReady, MountFly, MountHover, MountUseWings, MountCart, Track, CanChangeGravity,
             Pulley, GrappleAttached, GrappleInFlight, Wet, Lava, Honey, Shimmer, CanSwim, MountSwim, BreathProtected, LavaImmune,
             Controlled, HandBusy, CanUseRod, CanUseCart, DefaultMountFly, DefaultMountHover, CanDismount, UnlimitedMountHover;
@@ -22,6 +23,7 @@ namespace JueMingR.TerrariaHost.Companions
             WaterMountType, WaterMountSlot, NarrowMountType, NarrowMountSlot, NarrowMountWidth, NarrowMountHeight, RodSlot, LavaTime;
         internal float GravityDirection, Gravity, Speed, RunAcceleration, RunSlowdown, MaxFallSpeed,
             JumpSpeed, WingTime, MountFatigue, MountFatigueMax, HookRange, FlightMountBudget, WaterMountSpeed;
+        internal float WingSpeed, WingAcceleration, WingHoverSpeed, WingHoverAcceleration, WingSlowdown;
     }
 
     internal sealed class CompanionMobilityState
@@ -53,6 +55,9 @@ namespace JueMingR.TerrariaHost.Companions
         internal byte SourcePrefix;
         internal Projectile Hook;
         internal int HookKey;
+        internal bool WingRunSampled;
+        private float wingBaseSpeed, wingBaseAcceleration;
+        private bool wingSampledHover;
         private struct HookLease
         {
             internal Projectile Body;
@@ -128,6 +133,51 @@ namespace JueMingR.TerrariaHost.Companions
             return data != null && type >= 0 && type < data.Length ? data[type] : null;
         }
 
+        internal void ObserveWingRunInputs(Player body)
+        {
+            // These are this actor's native inputs before WingAirLogicTweaks
+            // applies the selected mode. The tail alone only exposes the mode
+            // that ran and would give the wrong acceleration on a transition.
+            WingRunSampled = true;
+            wingBaseSpeed = body.accRunSpeed;
+            wingBaseAcceleration = body.runAcceleration;
+            wingSampledHover = body.TryingToHoverDown && body.controlJump && body.wingTime > 0 && !body.isPerformingJump_DownDash;
+        }
+
+        private void ObserveWingModes(Player body)
+        {
+            int wings = body.wingsLogic;
+            Observed.Wings = wings;
+            Observed.WingTime = body.wingTime;
+            Observed.WingTimeMax = body.wingTimeMax;
+            Observed.UnlimitedWings = body.empressBrooch && wings > 0;
+            Observed.WingAbilities = wings > 0 && body.CanUseWingAbilities && body.mount.CanUseWings;
+            // The jump-reset list also mentions 29 and 32. Only the actual
+            // native vertical clamp grants hover, independent of WingStats.
+            Observed.WingHover = wings == 22 || wings == 28 || wings == 30 || wings == 31 ||
+                wings == 33 || wings == 35 || wings == 37 || wings == 45;
+            Observed.WingHovering = Observed.WingHover && Observed.WingAbilities && WingRunSampled && wingSampledHover;
+            Observed.WingFastAscent = wings == 4 || wings == 44 || wings == 45;
+            Observed.WingHoverRun = false;
+            if (!Observed.WingAbilities || ArmorIDs.Wing.Sets.Stats == null) { Observed.WingSpeed = 0; return; }
+
+            var stats = body.GetWingStats(wings);
+            float ordinary = stats.AccRunAccelerationMult;
+            float active = wingSampledHover && stats.HasDownHoverStats ? stats.DownHoverAccelerationMult : ordinary;
+            float acceleration = WingRunSampled && active > 0 ? body.runAcceleration / active :
+                WingRunSampled ? wingBaseAcceleration : body.runAcceleration;
+            float speed = WingRunSampled ? wingBaseSpeed : body.accRunSpeed;
+            Observed.WingSpeed = System.Math.Max(speed, stats.AccRunSpeedOverride);
+            Observed.WingAcceleration = acceleration * ordinary;
+            Observed.WingHoverRun = stats.HasDownHoverStats;
+            Observed.WingHoverSpeed = stats.DownHoverSpeedOverride >= 0 ? stats.DownHoverSpeedOverride : speed;
+            Observed.WingHoverAcceleration = acceleration * stats.DownHoverAccelerationMult;
+            // 45's fast brake is native state, not a property of Down-hover.
+            // When grounded the wing modifier has not run on this observation.
+            Observed.WingSlowdown = body.runSlowdown *
+                (!WingRunSampled && wings == 45 && body.timeSinceLastDashStarted >= 60 ? 6f : 1f);
+        }
+
         internal void ObserveBody(Player body, bool busy)
         {
             // Player.jumpSpeed/Height belong to the body whose Update just ran.
@@ -156,19 +206,7 @@ namespace JueMingR.TerrariaHost.Companions
             Observed.DashReady = Observed.DashType > 0 && body.dashDelay == 0 && !body.controlDash;
             Observed.DashKind = body.dash;
             Observed.DashActive = body.dashDelay < 0 || body.dash == 2 && body.eocDash > 0;
-            Observed.Wings = body.wingsLogic;
-            Observed.WingTime = body.wingTime;
-            Observed.WingTimeMax = body.wingTimeMax;
-            Observed.UnlimitedWings = body.empressBrooch && body.wingsLogic > 0;
-            switch (body.wingsLogic)
-            {
-                case 22: case 28: case 29: case 30: case 31: case 32: case 33: case 35: case 37: case 45:
-                    Observed.WingHover = true;
-                    break;
-                default:
-                    Observed.WingHover = false;
-                    break;
-            }
+            ObserveWingModes(body);
             Observed.RocketBoots = body.rocketBoots;
             Observed.RocketTime = body.rocketTime;
             Observed.RocketDelay = body.rocketDelay;
