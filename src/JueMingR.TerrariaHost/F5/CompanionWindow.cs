@@ -181,7 +181,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (!Visible && !ready && editor == null) return;
             CancelDrag();
-            Visible = false; ready = false; armedKey = null; confirmingReset = false; CloseSupplyPopup();
+            Visible = false; ready = false; armedKey = null; confirmingReset = false; deletionTarget = null; CloseSupplyPopup();
             CancelSelectionModes();
             SelectStorage(CompanionInventoryArea.Inventory, false);
             ResetPasswordPresentation();
@@ -290,7 +290,15 @@ namespace JueMingR.TerrariaHost.F5
             }
             int visible = Math.Max(1, (int)(listView.Height / AvatarStep));
             listMaximum = Math.Max(0, profiles.Count - visible); listOffset = Math.Max(0, Math.Min(listOffset, listMaximum));
-            if (profiles.Count == 0) return;
+            if (profiles.Count == 0)
+            {
+                if (pendingCreatedId == Guid.Empty && selected != Guid.Empty)
+                {
+                    RetireConfigurationInput(); CancelSelectionModes();
+                    selected = Guid.Empty; SelectStorage(CompanionInventoryArea.Inventory, false);
+                }
+                return;
+            }
             bool found = false; for (int i = 0; i < profiles.Count; i++) if (profiles[i].Id == selected) found = true;
             if (!found && pendingCreatedId==Guid.Empty)
             {
@@ -357,6 +365,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (contentInvalidated || preparedGeneration != generation || editing != (editor != null) || !ReferenceEquals(presentedOwner,Main.LocalPlayer) ||
                 presentedOwnerName != Main.LocalPlayer?.name || archiveRetry != host.CanRetryArchive || archiveCreate != host.CanCreate) return true;
+            if (page == 1 && (!ReferenceEquals(shownDeletions, host.Deletions) || shownDeletionOwner != host.DeletionViewOwner)) return true;
             var profiles = host.Profiles;
             if (profiles.Count != previousProfileCount) return true;
             for (int i = 0; i < visibleIds.Count; i++)
@@ -394,6 +403,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             resourceStyle=Main.ResourceSetsManager?.ActiveSetKeyName??"Default"; ownerLifeMax=Main.LocalPlayer?.statLifeMax2??0; ownerManaMax=Main.LocalPlayer?.statManaMax2??0; presentedOwner=Main.LocalPlayer;presentedOwnerName=Main.LocalPlayer?.name; preparedGeneration = generation; editing = editor != null;
             archiveRetry=host.CanRetryArchive;archiveCreate=host.CanCreate;
+            shownDeletions = host.Deletions;
+            shownDeletionOwner = page == 1 ? host.DeletionViewOwner : Guid.Empty;
             var profiles = host.Profiles; previousProfileCount = profiles.Count;
             visibleIds.Clear(); visibleNames.Clear(); visibleStatuses.Clear(); visibleBodies.Clear();
             int count = Math.Max(1, (int)(listView.Height / AvatarStep));

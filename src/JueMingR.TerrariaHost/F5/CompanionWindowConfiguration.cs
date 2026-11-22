@@ -14,12 +14,16 @@ namespace JueMingR.TerrariaHost.F5
         private static readonly string[] LifeActions = { "智能", "快速", "关闭", "配置", "键" };
         private F5Rect configurationViewport, configurationNameRect;
         private string configurationName;
+        private CompanionProfile deletionTarget;
+        private long deletionSession;
+        private IReadOnlyList<CompanionDeletion> shownDeletions;
+        private Guid shownDeletionOwner;
         private readonly List<F5Element> rowElements = new List<F5Element>();
         private F5Rect ConfigurationScrollView => configurationViewport.Width > 0 ? configurationViewport : bodyView;
 
         private void RetireConfigurationInput()
         {
-            CloseSupplyPopup(); confirmingReset = false; CancelEdit();
+            CloseSupplyPopup(); confirmingReset = false; deletionTarget = null; CancelEdit();
         }
 
         private void BuildConfiguration(CompanionProfile profile, float row)
@@ -38,6 +42,7 @@ namespace JueMingR.TerrariaHost.F5
             y += row + 24;
             configurationViewport = new F5Rect(x, y, width, Math.Max(0, bodyView.Bottom - y));
             contentY = y - bodyOffset;
+            BuildDeletionReceipts(row);
             var behavior = profile.Behavior;
             ConfigurationPair(profile, behavior, CompanionSetting.Follow, CompanionSetting.Attack);
             ConfigurationPair(profile, behavior, CompanionSetting.Life, CompanionSetting.Mana);
@@ -49,14 +54,85 @@ namespace JueMingR.TerrariaHost.F5
                 ConfigurationAction("retry-save", "保存失败 · 重试保存", () => Command(() => host.RetrySave(selected)), row);
             ConfigurationAction("restore-behavior", "恢复行为设置", () => Command(() => host.RestoreBehavior(selected)), row);
             if (!confirmingReset)
-                ConfigurationAction("request-reset", "清空人物", () => { confirmingReset = true; Invalidate(); }, row);
+                ConfigurationAction("request-reset", "清空配置", () => { RetireConfigurationInput(); confirmingReset = true; Invalidate(); }, row);
             else
             {
                 ConfigurationText("将清空物品、装备、成长和 AI 设置。", row);
                 ConfigurationText("保留名字、外观、难度和归属。", row);
-                ConfigurationAction("confirm-reset", "确认清空人物", () => { if (host.Reset(selected)) confirmingReset = false; ShowNotice(host.Feedback); Invalidate(); }, row);
+                ConfigurationAction("confirm-reset", "确认清空配置", () => { if (host.Reset(selected)) confirmingReset = false; ShowNotice(host.Feedback); Invalidate(); }, row);
                 ConfigurationAction("cancel-reset", "取消", () => { confirmingReset = false; Invalidate(); }, row);
             }
+            if (deletionTarget == null)
+                ConfigurationAction("request-delete", "删除人物", () =>
+                {
+                    RetireConfigurationInput();
+                    deletionTarget = profile; deletionSession = host.CreationSessionToken;
+                    Invalidate();
+                }, row);
+            else
+            {
+                var target = deletionTarget;
+                long session = deletionSession;
+                ConfigurationText("删除「" + target.Name + "」及其物品、成长和专属配置。", row);
+                ConfigurationText("删除后无法通过重新加入恢复。", row);
+                ConfigurationAction("confirm-delete", "确认删除人物", () =>
+                {
+                    if (!ReferenceEquals(deletionTarget, target) || selected != target.Id) return;
+                    RetireConfigurationInput();
+                    if (host.DeleteCompanion(target.OwnerId, target.Id, session))
+                    {
+                        CancelSelectionModes(); pendingCreatedId = Guid.Empty; pendingCreatedName = null;
+                        bodyOffset = 0;
+                    }
+                    ShowNotice(host.Feedback); Invalidate();
+                }, row);
+                ConfigurationAction("cancel-delete", "取消", () => { deletionTarget = null; Invalidate(); }, row);
+            }
+            FinishConfiguration();
+        }
+
+        private void BuildDeletionReceipts(float row)
+        {
+            Guid owner = host.DeletionViewOwner;
+            if (owner == Guid.Empty) return;
+            foreach (var deletion in host.Deletions)
+            {
+                if (deletion.OwnerId != owner) continue;
+                string status = deletion.Error ?? (deletion.Finishing ? "正在确认删除结果。" : deletion.FilesRemoved ? "正在清理快捷键。" : "正在删除人物。");
+                string line = deletion.Name + " · " + status;
+                float width = configurationViewport.Width;
+                if (measure(line, .65f).Width <= width) ConfigurationText(line, row);
+                else
+                {
+                    ConfigurationText(deletion.Name, row);
+                    if (deletion.Error != null)
+                    {
+                        var bounds = new F5Rect(configurationViewport.X, contentY, width, row);
+                        if (ConfigurationVisible(bounds)) Text(StatusFirstSentence(status), bounds, .65f);
+                        contentY += row + 4;
+                    }
+                    else ConfigurationText(status, row);
+                }
+                if (deletion.Error != null)
+                {
+                    var retry = ConfigurationAction("retry-delete-" + deletion.ProfileId, "重试删除", () =>
+                    {
+                        host.RetryCompanionDeletion(deletion.OwnerId, deletion.ProfileId);
+                        ShowNotice(host.Feedback); Invalidate();
+                    }, row);
+                    if (retry != null) retry.Hint = deletion.Error;
+                }
+            }
+        }
+
+        private static string StatusFirstSentence(string text)
+        {
+            int end = text.IndexOf('。');
+            return end < 0 ? text : text.Substring(0, end + 1);
+        }
+
+        private void FinishConfiguration()
+        {
             bodyMaximum = Math.Max(0, (int)Math.Ceiling(contentY + bodyOffset - configurationViewport.Bottom));
             if (bodyOffset > bodyMaximum) { bodyOffset = bodyMaximum; bodyOffsetClamped = true; Invalidate(); }
         }
@@ -194,11 +270,12 @@ namespace JueMingR.TerrariaHost.F5
             contentY += height + 4;
         }
 
-        private void ConfigurationAction(string key, string text, Action execute, float row)
+        private Control ConfigurationAction(string key, string text, Action execute, float row)
         {
             var rect = new F5Rect(configurationViewport.X, contentY, Math.Min(configurationViewport.Width, ConfigurationWidth(text)), row);
-            if (ConfigurationVisible(rect)) ConfigurationButton(key, text, rect, execute);
+            var control = ConfigurationVisible(rect) ? ConfigurationButton(key, text, rect, execute) : null;
             contentY += row + 6;
+            return control;
         }
     }
 }

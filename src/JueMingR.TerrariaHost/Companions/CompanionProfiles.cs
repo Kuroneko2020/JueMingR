@@ -52,6 +52,7 @@ namespace JueMingR.TerrariaHost.Companions
                 profile.DataEpoch, preferences, profile.NativeData, profile.PermanentlyDead);
         }
         internal IReadOnlyList<CompanionProfile> Profiles { get { return manager.Profiles; } }
+        internal IReadOnlyList<CompanionDeletion> Deletions => manager.Deletions;
         internal Guid OwnerId { get { return manager.OwnerId; } }
         internal bool Ready { get { return manager.Ready && installed; } }
         internal bool CanCreate { get { return Ready && !manager.Loading && manager.LoadError == null; } }
@@ -69,6 +70,11 @@ namespace JueMingR.TerrariaHost.Companions
         internal string SaveError(Guid id) { return manager.SaveError(id); }
         internal void RetrySave(Guid id) { manager.RetrySave(id); }
         internal void RetryLoad() { manager.RetryLoad(); }
+        internal bool RequestDeletion(Guid owner, Guid id) => manager.RequestDeletion(owner, id);
+        internal bool IsDeletionComplete(Guid id) => manager.IsDeletionComplete(id);
+        internal bool RetryDeletion(Guid owner, Guid id) => manager.RetryDeletion(owner, id);
+        internal void FinishDeletion(Guid owner, Guid id) => manager.FinishDeletion(owner, id);
+        internal void FailDeletionBindings(Guid owner, Guid id) => manager.FailDeletionBindings(owner, id);
         internal bool TryReserve(CompanionProfile profile, out long generation) { return manager.TryReserve(profile.Id, out generation); }
         internal void Release(CompanionProfile profile, long generation) { manager.Release(profile.Id, generation); }
         internal bool OwnsActivation(Guid id, long generation) { return manager.OwnsActivation(id, generation); }
@@ -86,7 +92,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (rejection!=null) return false;
             string name = draft.name.Trim();
             if (!CanCreate) { rejection=LoadError??"队友档案尚未就绪。"; return false; }
-            if (manager.FindName(name)!=null) { rejection="该名字已被你的另一名队友使用，请修改名字。"; return false; }
+            if (manager.NameInUse(name)) { rejection="该名字已被你的另一名队友使用，请修改名字。"; return false; }
             Player body = NewCharacter(name, draft.difficulty);
             CompanionCreation.CopyAppearance(draft, body);
             profile = new CompanionProfile(Guid.NewGuid(), OwnerId, name, 1, 1, new CompanionBehavior(), Capture(body));

@@ -129,6 +129,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Companions.CompanionHealthRecoveryMode",
                 "JueMingR.Platform.Companions.CompanionSetting",
                 "JueMingR.Platform.Companions.CompanionOwnerArchive",
+                "JueMingR.Platform.Companions.CompanionDeletion",
                 "JueMingR.Platform.Companions.ICompanionArchive",
                 "JueMingR.Platform.Companions.CompanionMovementObservation",
                 "JueMingR.Platform.Companions.CompanionControlFrame"

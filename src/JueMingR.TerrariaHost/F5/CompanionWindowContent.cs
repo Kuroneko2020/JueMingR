@@ -39,8 +39,11 @@ namespace JueMingR.TerrariaHost.F5
             }
             if (profile == null)
             {
-                BodyText(pendingCreatedName ?? host.ArchiveNotice ?? (host.CanCreate ? "点击左下角＋创建队友" : ""), row);
-                FinishBody(); return;
+                float x = bodyView.X + 8;
+                configurationViewport = new F5Rect(x, bodyView.Y, bodyView.Width - 16, bodyView.Height);
+                BuildDeletionReceipts(row);
+                ConfigurationText(pendingCreatedName ?? host.ArchiveNotice ?? (host.CanCreate ? "点击左下角＋创建队友" : ""), row);
+                FinishConfiguration(); return;
             }
             BuildConfiguration(profile,row);
         }

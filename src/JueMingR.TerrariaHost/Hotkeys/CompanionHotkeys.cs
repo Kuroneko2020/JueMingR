@@ -17,6 +17,8 @@ namespace JueMingR.TerrariaHost.Hotkeys
         private IReadOnlyList<KeyValuePair<string, string>> observedEntries;
         private HostCompanions observedHost;
         private Guid selected;
+        private CompanionDeletion removing;
+        private long removalCommand;
         private Dictionary<string, HotkeyAction> actions = new Dictionary<string, HotkeyAction>(StringComparer.Ordinal);
 
         internal CompanionHotkeys(HotkeyRegistry registry, HotkeyStateFeedback feedback)
@@ -28,9 +30,46 @@ namespace JueMingR.TerrariaHost.Hotkeys
         }
 
         internal static string Id(CompanionProfile profile, CompanionSetting setting) =>
-            Prefix + profile.OwnerId.ToString("N") + "." + profile.Id.ToString("N") + "." + Keys[(int)setting];
+            Id(profile.OwnerId, profile.Id, (int)setting);
+
+        private static string Id(Guid ownerId, Guid profileId, int setting) =>
+            Prefix + ownerId.ToString("N") + "." + profileId.ToString("N") + "." + Keys[setting];
 
         internal static string Name(CompanionSetting setting) => Names[(int)setting];
+
+        internal void PollDeletions(HostCompanions host, HotkeyBindings bindings, Guid selectedProfile)
+        {
+            if (host == null) return;
+            var pending = host.PollDeletionBindings();
+            if (removing != null && bindings.CompletionId == removalCommand)
+            {
+                if (!bindings.CompletionSucceeded) host.FailDeletionBindings(removing);
+                removing = null;
+            }
+            if (pending.Count == 0 || removing != null || !bindings.Loaded || bindings.Busy) return;
+
+            // Retire dynamic actions before removing their rows. A write that
+            // was already pending keeps its own receipt and is polled first.
+            bool refreshed = false;
+            foreach (var deletion in host.Deletions)
+            {
+                if (!deletion.FilesRemoved || deletion.Error != null || deletion.Finishing) continue;
+                if (!refreshed) { Refresh(host, bindings, selectedProfile); refreshed = true; }
+                if (bindings.Protected) { host.FailDeletionBindings(deletion); continue; }
+                string row = null;
+                for (int i = 0; row == null && i < Keys.Length; i++)
+                {
+                    string id = Id(deletion.OwnerId, deletion.ProfileId, i);
+                    foreach (var entry in bindings.StoredEntries)
+                        if (entry.Key == id) { row = id; break; }
+                }
+                if (row == null) { host.FinishDeletionBindings(deletion); continue; }
+                if (!bindings.TryRemoveRetired(owner, row, out removalCommand, out _))
+                { host.FailDeletionBindings(deletion); continue; }
+                removing = deletion;
+                return;
+            }
+        }
 
         internal void Refresh(HostCompanions host, HotkeyBindings bindings, Guid selectedProfile)
         {

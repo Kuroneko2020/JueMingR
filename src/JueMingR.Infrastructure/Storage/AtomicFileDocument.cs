@@ -101,6 +101,10 @@ namespace JueMingR.Infrastructure.Storage
             return initialRead;
         }
 
+        // A protected missing document may still own its normal writer lease.
+        // Companion deletion needs that exact lease while verifying recovery files.
+        internal bool HasWriteLease => !disposed && writerLease != null;
+
         // Called on the document worker only after the semantic decoder has
         // validated the entire known older format. The adapter never parses JSON.
         public void RetainLoadedSource()

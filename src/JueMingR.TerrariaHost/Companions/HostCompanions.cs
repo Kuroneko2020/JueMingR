@@ -153,7 +153,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(failed || !ArchiveIdentityCurrent())return Result(false,"当前不能加入队友。");
             if(actors.ContainsKey(id))return Result(false,"该人物已加入或正在加入。");var profile=Find(id);if(profile==null)return Result(false,"人物不存在。");
-            if(profile.PermanentlyDead)return Result(false,"该人物已永久死亡；明确清空人物后可重新创建身体。");
+            if(profile.PermanentlyDead)return Result(false,"该人物已永久死亡。清空配置后可重新创建身体。");
             long reservation=0;
             try
             {
@@ -244,7 +244,7 @@ namespace JueMingR.TerrariaHost.Companions
                 try
                 {
                     a.Profile=profiles.Reset(id,a.Generation);
-                    if(Find(id)!=null)Feedback="人物已清空，正在保存。";
+                    if(Find(id)!=null)Feedback="配置已清空，正在保存。";
                     a.TerminalFailure=null;
                 }
                 catch(Exception error) { a.TerminalFailure=error.Message; }
@@ -262,9 +262,9 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 resetAfterRecall.Add(id);
                 if(!actor.Closing) CloseActor(actor,null);
-                return Result(true,"正在收回并清空人物。");
+                return Result(true,"正在收回并清空配置。");
             }
-            try{profiles.Reset(id);previews.Remove(id);states.Remove(id);return Result(true,"人物已清空，正在保存。");}catch(Exception e){return Result(false,e.Message);}
+            try{profiles.Reset(id);previews.Remove(id);states.Remove(id);return Result(true,"配置已清空，正在保存。");}catch(Exception e){return Result(false,e.Message);}
         }
         internal bool RestoreBehavior(Guid id){return SetBehavior(id,new CompanionBehavior());}
         internal bool SaveFailed(Guid id){Actor a;return Find(id)!=null && (HasPendingItemCapture(id) || profiles.SaveFailed(id) || actors.TryGetValue(id,out a) && (a.TeamSavePending || a.Closing && !a.CloseCaptured));}

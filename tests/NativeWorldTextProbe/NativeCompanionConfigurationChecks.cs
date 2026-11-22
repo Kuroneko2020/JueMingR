@@ -8,9 +8,11 @@ using System.Runtime.Remoting.Proxies;
 using HarmonyLib;
 using JueMingR.Platform.Companions;
 using JueMingR.Platform.Hotkeys;
+using JueMingR.Platform.Settings;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
+using Terraria.DataStructures;
 using Terraria.GameInput;
 using Terraria.ID;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -182,9 +184,24 @@ namespace NativeWorldTextProbe
                 image("companion-config-narrow-reset");click("cancel-reset/");Require(Profile(host,id).DataEpoch==epoch&&!(bool)Get(window,"confirmingReset")&&
                     Get(window,"panel").Equals(narrowPanel)&&(int)Get(window,"bodyOffset")<=(int)Get(window,"bodyMaximum"),"confirmation cancellation clamps the body without resizing or resetting");
                 // Confirm through the actual button on the same real identity.
-                scrollTo("request-reset/");click("request-reset/");scrollTo("confirm-reset/");click("confirm-reset/");
+                body.hairColor=new Color(65,123,212); body.voicePitchOffset=.25f;
+                body.inventory[10].SetDefaults(ItemID.SDMG); body.armor[0].SetDefaults(ItemID.CopperHelmet);
+                body.statLifeMax=180; body.statManaMax=60;
+                var custom=Profile(host,id).Behavior; custom.Follow=false; custom.BuffEnabled=false;
+                Require((bool)Call(host,"SetBehavior",id,custom),"the real Reset has non-default gear, growth, appearance and AI settings to compare");
+                var customProfile=Profile(host,id); var customBody=(Player)Call(archive,"LoadBody",customProfile);
+                scrollTo("request-reset/");Require((string)Get(Control(window,"request-reset/"),"Text")=="清空配置","the original reset now has the approved entry label");
+                click("request-reset/");scrollTo("confirm-reset/");
+                Require((string)Get(Control(window,"confirm-reset/"),"Text")=="确认清空配置","the reset confirmation uses the new label");
+                click("confirm-reset/");
                 NativeQuickItemChecks.Until(()=>{Call(host,"Update",(ulong)Main.GameUpdateCount);return !(bool)Call(host,"IsJoined",id)&&Profile(host,id).DataEpoch==epoch+1&&(bool)Call(archive,"IsSaved",id);});
-                Require(Profile(host,id).Id==id&&Profile(host,id).Name==profileName,"confirmed reset uses the existing archive owner once");
+                var cleared=Profile(host,id); var clearedBody=(Player)Call(host,"GetBody",id);
+                Require(cleared.Id==id && cleared.OwnerId==customProfile.OwnerId && cleared.Name==profileName &&
+                    clearedBody.hairColor==customBody.hairColor && clearedBody.voiceVariant==customBody.voiceVariant &&
+                    clearedBody.voicePitchOffset==customBody.voicePitchOffset && clearedBody.difficulty==customBody.difficulty &&
+                    clearedBody.inventory[10].IsAir && clearedBody.armor[0].IsAir && clearedBody.statLifeMax==100 && clearedBody.statManaMax==20 &&
+                    cleared.Behavior.Follow && cleared.Behavior.BuffEnabled,
+                    "confirmed clear retains owner, character, look, voice and difficulty while resetting resources, growth and AI settings");
                 NativeCompanionPasswordChecks.WithChallenge(context,_=>{
                     Call(window,"BeforeInput",true);rest();
                     Require((bool)Get(window,"PasswordPromptVisible")&&(bool)Get(window,"OwnsTextToken"),"a real native challenge opens the shared dialog and takes the existing text lease");
@@ -218,8 +235,138 @@ namespace NativeWorldTextProbe
                         GetOptional(text,"prepared")==null&&GetOptional(text,"bound")==null,"cancel clears the challenge and drops its masked draft");
                 });
                 Console.WriteLine("PASS native configuration and password presentation: actual measured controls, independent preferences, 0/1/2 weapon draft, live revision, cancellation, restoration, narrow reset, native challenge and masked input/focus.");
+                if ((bool)Get(window,"Visible")) Call(window,"Close");
+                screen=new Vector2(1280,800);matrix=Matrix.Identity;projected=false;
+                Main.screenWidth=(int)screen.X;Main.screenHeight=(int)screen.Y;PlayerInput.CacheOriginalScreenDimensions();Main.UIScale=1;
+                CheckDeletion(window, host, shell, id, other, click, rest, scrollTo, image);
             }
             finally {Call(window,"Close");imeField.SetValue(text,originalIme);owner.name=ownerName;NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
+        }
+
+        private static int failDeletionHotkey;
+
+        private static void CheckDeletion(object window, object host, object shell, Guid id, Guid other,
+            Action<string> click, Action rest, Action<string> scroll, Action<string> image)
+        {
+            var keys = Get(shell, "hotkeys");
+            var bindings = (HotkeyBindings)Get(keys, "Bindings");
+            var registry = (HotkeyRegistry)Get(keys, "Registry");
+            var profile = Profile(host, id);
+            string prefix = "companions.profile." + profile.OwnerId.ToString("N") + ".";
+            string deletedKeys = prefix + id.ToString("N") + ".";
+            string otherKeys = prefix + other.ToString("N") + ".";
+            string hotkeysPath = Path.Combine(Terraria.Program.SavePath, "composition", "JueMingRData", "config", "hotkeys.json");
+            string ownerFolder = Path.Combine(Terraria.Program.SavePath, "composition", "JueMingRData", "companions", "characters", profile.OwnerId.ToString("N"));
+            string deletedPath = Path.Combine(ownerFolder, id.ToString("N") + ".bin");
+            const string unrelatedAction = "biome-display.toggle";
+            Require(HotkeyChord.TryCreate((int)Keys.F13,HotkeyModifiers.None,out var unrelatedChord,out _) &&
+                bindings.TrySet(unrelatedAction,unrelatedChord,null,out _,out _), "give an existing unrelated feature its own actual saved chord");
+            NativeQuickItemChecks.Until(() => { rest(); return !bindings.Busy; });
+            Require(bindings.Get(unrelatedAction)?.MainKey==(int)Keys.F13, "the unrelated baseline chord really committed");
+            var retainedRows = bindings.StoredEntries.Where(row => !row.Key.StartsWith(deletedKeys, StringComparison.Ordinal)).ToArray();
+            Require(retainedRows.Any(row => row.Key.StartsWith(otherKeys, StringComparison.Ordinal)), "test has another actual companion binding on disk");
+            Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport")); rest();
+            click("profile:"+id+"/"); click("configuration/");
+            Require(bindings.TrySet(deletedKeys+"buff",null,null,out _,out _), "actual deletion includes an explicit empty shortcut row");
+            NativeQuickItemChecks.Until(() => { rest(); return !bindings.Busy; });
+            Require(bindings.StoredEntries.Any(row => row.Key == deletedKeys + "buff" && row.Value == ""), "empty row really persisted");
+            scroll("request-delete/"); click("request-delete/"); scroll("confirm-delete/"); image("companion-config-delete-confirmation");
+            click("profile:"+other+"/");
+            Require(GetOptional(window,"deletionTarget")==null && Profile(host,id).Id==id && Profile(host,other).Id==other,
+                "switching profiles clears the old confirmation and keeps both real characters");
+            click("profile:"+id+"/"); scroll("request-delete/"); click("request-delete/"); scroll("cancel-delete/"); click("cancel-delete/");
+            Require(Profile(host,id).Id==id && File.Exists(deletedPath), "cancel preserves the same character archive");
+
+            Require((bool)Call(host,"Join",id),"real reset identity rejoins for active deletion");
+            var body=(Player)Call(host,"GetBody",id); int slot=body.whoAmI;
+            var oldAction=registry.Find(deletedKeys+"attack");
+            var actor=Call(host,"Owned",body);
+            var hooks=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionHooks");
+            var enter=hooks.GetMethod("Enter",BindingFlags.Static|BindingFlags.NonPublic);
+            scroll("request-delete/"); click("request-delete/"); scroll("confirm-delete/");
+            body.inventory[0].SetDefaults(3541); body.selectedItemState.Select(0); body.channel=true;
+            Projectile controller;
+            using ((IDisposable)enter.Invoke(null,new[]{actor,(object)body.Center,false}))
+                controller=Main.projectile[Projectile.NewProjectile(new EntitySource_ItemUse(body,body.HeldItem),body.Center,Vector2.UnitX,633,10,0f,slot)];
+            Require(controller.active && Call(host,"ProjectileActor",controller)!=null,"real native attached controller owns the selected activation");
+            int items = Main.item.Count(item => item.active);
+            var infrastructure=AppDomain.CurrentDomain.GetAssemblies().Single(assembly=>assembly.GetName().Name=="JueMingR.Infrastructure");
+            var write=AccessTools.Method(infrastructure.GetType("JueMingR.Infrastructure.Storage.AtomicFileDocument"),"Write");
+            var patch=new Harmony("JueMingR.Tests.CompanionDeletionHotkey");
+            patch.Patch(write,prefix:new HarmonyMethod(typeof(NativeCompanionConfigurationChecks),nameof(FailDeletionHotkey)));
+            try
+            {
+                System.Threading.Interlocked.Exchange(ref failDeletionHotkey,1);
+                click("confirm-delete/");
+                Require(!body.active && !body.dead && Main.item.Count(item=>item.active)==items && !ReferenceEquals(Main.player[slot],body) &&
+                    !controller.active && !oldAction.Invoke(HotkeyContext.SinglePlayer) && !(bool)Call(host,"Join",id),
+                    "confirmed deletion retires the active body, controller, slot and keys with no native death or item drop");
+                Require((Guid)Get(window,"selected")==other && Profile(host,other).Id==other,"selected deletion falls through to the remaining real profile");
+                Call(window,"Close");
+                NativeQuickItemChecks.Until(() => { rest(); return ((IEnumerable)Get(host,"Deletions")).Cast<CompanionDeletion>().Any(d=>d.FilesRemoved&&d.Error!=null); });
+                Require(!File.Exists(deletedPath) && !File.Exists(deletedPath+".bak") && File.Exists(deletedPath+".delete") &&
+                    bindings.StoredEntries.Any(row=>row.Key.StartsWith(deletedKeys,StringComparison.Ordinal)),
+                    "injected shortcut write failure leaves a durable exact retry after the real character files are removed and panel closed");
+            }
+            finally { System.Threading.Interlocked.Exchange(ref failDeletionHotkey,0); patch.UnpatchAll(patch.Id); }
+            var originalOwner=Main.ActivePlayerFileData;
+            try
+            {
+                Main.ActivePlayerFileData=new Terraria.IO.PlayerFileData(Path.Combine(Terraria.Program.SavePath,"delete-another-owner.plr"),false)
+                { Player=originalOwner.Player };
+                rest();
+                Require((Guid)Get(host,"DeletionViewOwner")!=profile.OwnerId,"an actual different character file cannot display or resume the original deletion");
+                Call(host,"RetryCompanionDeletion",profile.OwnerId,id);
+                Require(((IEnumerable)Get(host,"Deletions")).Cast<CompanionDeletion>().Single().Error!=null,
+                    "switching owners preserves the original failure without retargeting it");
+            }
+            finally { Main.ActivePlayerFileData=originalOwner; rest(); }
+            Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport")); rest();
+            click("configuration/"); scroll("retry-delete-"+id); image("companion-config-delete-retry"); click("retry-delete-"+id);
+            Call(window,"Close");
+            bool menu=Main.gameMenu;
+            try
+            {
+                Main.gameMenu=true;
+                NativeQuickItemChecks.Until(() => { rest(); return !((IEnumerable)Get(host,"Deletions")).Cast<CompanionDeletion>().Any(); });
+            }
+            finally { Main.gameMenu=menu; rest(); }
+            string savedHotkeys=File.ReadAllText(hotkeysPath);
+            Require(!savedHotkeys.Contains(deletedKeys) && retainedRows.SequenceEqual(bindings.StoredEntries) && !File.Exists(deletedPath+".delete"),
+                "actual document retry removes all nine selected rows including empty mappings and preserves other bindings");
+            Require((bool)Call(host,"Create",profile.Name),"the same name can create a genuinely new character after confirmed deletion");
+            Guid replacement=(Guid)Get(host,"LastCreatedId");
+            var archive=Get(host,"profiles");
+            NativeQuickItemChecks.Until(() => { rest(); return (bool)Call(archive,"IsSaved",replacement); });
+            Require(replacement!=id && Profile(host,replacement).OwnerId==profile.OwnerId && !oldAction.Invoke(HotkeyContext.SinglePlayer),
+                "fresh identity and old action cannot cross even with the same name");
+            // The real WithChallenge sample above leaves its own archived AI
+            // after closing the secondary connection in this same fixture.
+            var challenge=((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Single(p=>p.Name=="密码界面原生角色");
+            Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport")); rest();
+            foreach (Guid target in new[]{challenge.Id,other,replacement})
+            {
+                click("profile:"+target+"/"); click("configuration/");
+                scroll("request-delete/"); click("request-delete/"); scroll("confirm-delete/"); click("confirm-delete/");
+                NativeQuickItemChecks.Until(() => { rest(); return !((IEnumerable)Get(host,"Deletions")).Cast<CompanionDeletion>().Any(); });
+            }
+            Require(!((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Any() && (Guid)Get(window,"selected")==Guid.Empty,
+                "deleting the last offline character clears the actual roster and selection");
+            Require((bool)Get(Control(window,"create/"),"Enabled"),"the empty roster keeps the add entry available");
+            Require(Main.ActivePlayerFileData.Player==Main.LocalPlayer && Main.LocalPlayer.active,"the actual human body stays intact");
+            Require(retainedRows.Where(row=>!row.Key.StartsWith(prefix,StringComparison.Ordinal)).SequenceEqual(bindings.StoredEntries) &&
+                bindings.Get(unrelatedAction)?.MainKey==(int)Keys.F13 &&
+                File.ReadAllText(hotkeysPath).Contains(unrelatedAction), "the unrelated real feature is still bound after all companion rows are removed");
+            Console.WriteLine("PASS native companion deletion: physical cancel/selection/confirmation, online controller and slot retirement without death, real shortcut retry and file cleanup, same-name new ID, final offline roster.");
+        }
+
+        private static bool FailDeletionHotkey(object __instance, ref PreferenceWriteResult __result)
+        {
+            string path=(string)Get(__instance,"path");
+            if (!path.EndsWith("hotkeys.json",StringComparison.OrdinalIgnoreCase) ||
+                System.Threading.Interlocked.Exchange(ref failDeletionHotkey,0)==0) return true;
+            __result = new PreferenceWriteResult(PreferenceWriteStatus.IoFailure, null, "isolated shortcut cleanup failure");
+            return false;
         }
 
         private static void CheckWorldNames(ProbeGraphics graphics, string output, Player body)

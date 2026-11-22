@@ -1136,6 +1136,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (deaths != null) State.Layout.SetDeathInformation(deaths.CountText, deaths.DaysText);
                 if (worldObjects != null) State.Layout.SetWorldObjectSettings(worldObjects.Preferences.Value);
                 hotkeys?.Bindings.Poll();
+                hotkeys?.CompanionSettings?.PollDeletions(companions, hotkeys.Bindings, CompanionUi?.HotkeyProfile ?? Guid.Empty);
                 SubmitPosition();
                 // Do not consume a required alert while normal game text is hidden.
                 if (!Main.gameMenu && !Main.hideUI)

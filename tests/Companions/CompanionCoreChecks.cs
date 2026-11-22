@@ -19,13 +19,224 @@ namespace JueMingR.ArchitectureTests
             string parent = Path.GetFullPath(Path.GetTempPath());
             string root = Path.GetFullPath(Path.Combine(parent, "JueMingR-companion-checks-" + Guid.NewGuid().ToString("N")));
             Directory.CreateDirectory(root);
-            try { ArchiveRoundTrip(root); PreferenceRoundTrip(root); FailedCreation(root); CoalescedReset(root); CorruptIsolation(root); RetryRead(root); RetireOwner(root); MenuMigration(root); TerminalArchive(root); LegacyArchive(root); ContinuousJump(); RejectedTakeoff(); }
+            try { ArchiveRoundTrip(root); PreferenceRoundTrip(root); FailedCreation(root); CoalescedReset(root); CorruptIsolation(root); RetryRead(root); RetireOwner(root); MenuMigration(root); TerminalArchive(root); LegacyArchive(root); DeletionOrdering(root); DeletionRecovery(root); DeletionAfterArchiveConflict(root); ContinuousJump(); RejectedTakeoff(); }
             catch (Exception exception) { failures.Add("companion core: " + exception); }
             finally
             {
                 if (!root.StartsWith(parent, StringComparison.OrdinalIgnoreCase) || Path.GetFileName(root).IndexOf("JueMingR-companion-checks-", StringComparison.Ordinal) != 0)
                     throw new InvalidOperationException("Unsafe isolated test cleanup path.");
                 Directory.Delete(root, true);
+            }
+        }
+        private static void DeletionOrdering(string root)
+        {
+            string game = Path.Combine(root, "deletion-order"), ownerKey = "deletion-order-owner";
+            Guid id = Guid.NewGuid();
+            using (var files = new FileCompanionArchive(game))
+            {
+                Guid owner = files.LoadOwner(ownerKey).OwnerId;
+                files.Save(new CompanionProfile(id, owner, "排序目标", 1, 1, new CompanionBehavior(), new byte[] { 1 }));
+            }
+            var gate = new GatedArchive(new FileCompanionArchive(game));
+            using (var manager = new CompanionProfileManager(gate))
+            {
+                manager.SetOwner(ownerKey);
+                Wait(manager, () => manager.Profiles.Count == 1);
+                var original = manager.Find(id);
+                manager.Update(original.Revise(new byte[] { 2 }));
+                try
+                {
+                    Require(gate.Entered.Wait(5000) && manager.RequestDeletion(original.OwnerId, id), "confirm while an original write is inside the real archive worker");
+                    manager.RetrySave(id);
+                    Require(manager.Profiles.Count == 0 && manager.Find(id) == null, "accepted deletion retires immediately before in-flight settlement");
+                }
+                finally { gate.Allow.Set(); }
+                Wait(manager, () => manager.Deletions.Single().FilesRemoved);
+                Require(manager.Profiles.Count == 0 && manager.Find(id) == null && gate.Writes == 1,
+                    "earlier original write finishes without publishing the retired character or scheduling a second write");
+                manager.FinishDeletion(original.OwnerId, id);
+                Wait(manager, () => manager.IsDeletionComplete(id));
+            }
+            using (var files = new FileCompanionArchive(game))
+                Require(files.LoadOwner(ownerKey).Profiles.Count == 0, "a new archive load has neither the old character nor a new recovery candidate");
+        }
+
+        private static void DeletionRecovery(string root)
+        {
+            string game = Path.Combine(root, "deletion"), key = "delete-owner";
+            Guid id = Guid.NewGuid(), neighbor = Guid.NewGuid(), owner;
+            string path;
+            byte[] primary, backup;
+            using (var archive = new FileCompanionArchive(game))
+            {
+                owner = archive.LoadOwner(key).OwnerId;
+                var first = new CompanionProfile(id, owner, "删除对象", 1, 1, new CompanionBehavior(), new byte[] { 1 });
+                archive.Save(first);
+                archive.Save(first.Revise(new byte[] { 2 }));
+                archive.Save(new CompanionProfile(neighbor, owner, "保留对象", 1, 1, new CompanionBehavior(), new byte[] { 31 }));
+                path = Path.Combine(game, "JueMingRData", "companions", "characters", owner.ToString("N"), id.ToString("N") + ".bin");
+                primary = File.ReadAllBytes(path);
+                backup = File.ReadAllBytes(path + ".bak");
+                File.Copy(path, path + ".tmp");
+            }
+            using (var manager = new CompanionProfileManager(new FileCompanionArchive(game)))
+            {
+                manager.SetOwner(key);
+                Wait(manager, () => manager.Profiles.Count == 2);
+                Require(manager.TryReserve(id, out long generation), "deletion has an active original generation");
+                var latest = manager.Find(id).Revise(new byte[] { 3 });
+                using (var backupReader = new FileStream(path + ".bak", FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    Require(manager.RequestDeletion(owner, id) && manager.Find(id) == null && !manager.OwnsActivation(id, generation) &&
+                        !manager.TryReserve(id, out _), "acceptance fences the exact actor and old UI immediately");
+                    bool stale = false;
+                    try { manager.Update(latest, generation); } catch (InvalidOperationException) { stale = true; }
+                    Require(stale, "stale activation cannot enqueue a save after acceptance");
+                    Wait(manager, () => manager.Deletions.Single().Error != null);
+                    Require(!File.Exists(path) && File.Exists(path + ".bak") && File.Exists(path + ".tmp") && File.Exists(path + ".delete"),
+                        "a real sharing failure leaves protected recovery material and a durable receipt after primary removal");
+                    manager.SetOwner("another-delete-owner");
+                    Wait(manager, () => manager.Ready);
+                    Require(!manager.RetryDeletion(owner, id) && manager.Profiles.Count == 0, "only the original owner may explicitly retry");
+                }
+            }
+            // Reconstruct the exact pre-Move cut with the real candidate bytes;
+            // an uncommitted marker must neither hide nor remove the live archive.
+            byte[] intent = File.ReadAllBytes(path + ".delete");
+            File.Move(path + ".delete", path + ".delete.tmp");
+            File.WriteAllBytes(path, primary);
+            // Remove the fixture's other staged file so the normal archive
+            // writer can create its own candidate during this gameplay save.
+            File.Delete(path + ".tmp");
+            using (var manager = new CompanionProfileManager(new FileCompanionArchive(game)))
+            {
+                manager.SetOwner(key);
+                Wait(manager, () => manager.Ready);
+                Require(manager.LoadError == null && manager.Profiles.Count == 2 && manager.Deletions.Count == 0,
+                    "a fresh load at the actual pre-commit cut leaves both legitimate characters published");
+                var changed = manager.Find(id).Revise(new byte[] { 42 }, new CompanionBehavior { Follow = false });
+                manager.Update(changed);
+                Wait(manager, () => manager.IsSaved(id));
+                byte[] latest = File.ReadAllBytes(path);
+                backup = File.ReadAllBytes(path + ".bak");
+                Require(!latest.SequenceEqual(primary) && backup.SequenceEqual(primary) &&
+                    File.ReadAllBytes(path + ".delete.tmp").SequenceEqual(intent),
+                    "an ordinary post-restart save changes the body and backup without consuming an uncommitted deletion");
+                File.Copy(path, path + ".tmp");
+
+                File.WriteAllBytes(path + ".delete.tmp", new byte[] { 88 });
+                Require(manager.RequestDeletion(owner, id), "new explicit confirmation encounters a staged journal");
+                Wait(manager, () => manager.Deletions.Single().Error != null);
+                Require(File.ReadAllBytes(path + ".delete.tmp").SequenceEqual(new byte[] { 88 }) && File.ReadAllBytes(path).SequenceEqual(latest),
+                    "an unconfirmed changed journal cannot delete or hide the live disk profile");
+                foreach (byte[] foreign in new[] { ReplaceDeletionOwner(intent, Guid.NewGuid(), id), ReplaceDeletionOwner(intent, owner, neighbor) })
+                {
+                    File.WriteAllBytes(path + ".delete.tmp", foreign);
+                    Require(manager.RetryDeletion(owner, id), "retry verifies any staged record against its actual owner and profile");
+                    Wait(manager, () => manager.Deletions.Single().Error != null);
+                    Require(File.ReadAllBytes(path + ".delete.tmp").SequenceEqual(foreign) && File.ReadAllBytes(path).SequenceEqual(latest) &&
+                        !File.Exists(path + ".delete"), "a valid record for a different owner or profile preserves itself and the newer live archive");
+                }
+                File.WriteAllBytes(path + ".delete.tmp", intent);
+                using (var backupReader = new FileStream(path + ".bak", FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    Require(manager.RetryDeletion(owner, id), "a confirmed older staged journal for the exact character can safely recommit");
+                    Wait(manager, () => manager.Deletions.Single().Error != null);
+                    Require(!File.Exists(path) && !File.Exists(path + ".delete.tmp") && File.Exists(path + ".delete"),
+                        "recommit retires the older verified journal and leaves a usable committed receipt at the later cut");
+                }
+            }
+            File.WriteAllBytes(path + ".bak", new byte[] { 57 });
+            using (var manager = new CompanionProfileManager(new FileCompanionArchive(game)))
+            {
+                manager.SetOwner(key);
+                Wait(manager, () => manager.Ready && manager.Deletions.Single().Error != null);
+                Require(manager.Profiles.Single().Id == neighbor && !manager.Deletions.Single().FilesRemoved &&
+                    File.ReadAllBytes(path + ".bak").SequenceEqual(new byte[] { 57 }) && File.Exists(path + ".tmp"),
+                    "fresh owner load hides the interrupted deletion and refuses external replacement before deleting another file");
+                File.WriteAllBytes(path + ".bak", backup);
+                Require(manager.RetryDeletion(owner, id), "the original owner can retry the exact failed deletion");
+                Wait(manager, () => manager.Deletions.Single().FilesRemoved);
+                Require(!File.Exists(path + ".bak") && !File.Exists(path + ".tmp") && File.Exists(path + ".delete") && File.Exists(path + ".lock"),
+                    "retry cleans both recovery variants and retains intent until shortcuts acknowledge");
+                manager.FailDeletionBindings(owner, id);
+                Require(manager.Deletions.Single().Error.Contains("快捷键") && manager.NameInUse("删除对象"),
+                    "shortcut failure has its own stage and reserves the original name while pending");
+            }
+            using (var manager = new CompanionProfileManager(new FileCompanionArchive(game)))
+            {
+                manager.SetOwner(key);
+                Wait(manager, () => manager.Ready && manager.Deletions.Single().FilesRemoved);
+                manager.FinishDeletion(owner, id);
+                Wait(manager, () => manager.Deletions.Count == 0);
+                Require(!File.Exists(path + ".delete") && manager.Profiles.Single().Id == neighbor && !manager.NameInUse("删除对象"),
+                    "confirmed persistent cleanup preserves the neighbor and releases the exact name");
+                var replacement = new CompanionProfile(Guid.NewGuid(), owner, "删除对象", 1, 1, new CompanionBehavior(), new byte[] { 55 });
+                manager.Add(replacement);
+                Wait(manager, () => manager.Profiles.Count == 2);
+                Require(manager.Find(id) == null && manager.Find(replacement.Id) != null, "same-name reconstruction owns a new identity");
+            }
+        }
+
+        private static byte[] ReplaceDeletionOwner(byte[] intent, Guid owner, Guid profile)
+        {
+            // Keep a trustworthy checksum so the fixture exercises identity,
+            // not the earlier rejection of corrupt or truncated bytes.
+            byte[] bytes = (byte[])intent.Clone();
+            using (var reader = new BinaryReader(new MemoryStream(bytes)))
+            {
+                reader.ReadString();
+                int ownerOffset = checked((int)reader.BaseStream.Position);
+                Buffer.BlockCopy(owner.ToByteArray(), 0, bytes, ownerOffset, 16);
+                Buffer.BlockCopy(profile.ToByteArray(), 0, bytes, ownerOffset + 16, 16);
+            }
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                int checksumOffset = bytes.Length - 32;
+                Buffer.BlockCopy(sha.ComputeHash(bytes, 0, checksumOffset), 0, bytes, checksumOffset, 32);
+            }
+            return bytes;
+        }
+
+        private static void DeletionAfterArchiveConflict(string root)
+        {
+            const string key = "replace-owner", name = "同身份的外部替换";
+            string game = Path.Combine(root, "delete-after-replace"), alternateGame = Path.Combine(root, "delete-replacement-source");
+            Guid id = Guid.NewGuid(), owner;
+            using (var archive = new FileCompanionArchive(game))
+            {
+                owner = archive.LoadOwner(key).OwnerId;
+                archive.Save(new CompanionProfile(id, owner, name, 1, 1, new CompanionBehavior(), new byte[] { 51 }));
+            }
+            using (var alternate = new FileCompanionArchive(alternateGame))
+                alternate.Save(new CompanionProfile(id, owner, name, 1, 1, new CompanionBehavior(), new byte[] { 99 }));
+            string leaf = Path.Combine("JueMingRData", "companions", "characters", owner.ToString("N"), id.ToString("N") + ".bin");
+            string path = Path.Combine(game, leaf), external = path + ".external-test";
+            byte[] original = File.ReadAllBytes(path), replacement = File.ReadAllBytes(Path.Combine(alternateGame, leaf));
+            using (var manager = new CompanionProfileManager(new FileCompanionArchive(game)))
+            {
+                manager.SetOwner(key);
+                Wait(manager, () => manager.Profiles.Count == 1);
+                var current = manager.Find(id);
+                File.WriteAllBytes(external, replacement);
+                File.Replace(external, path, null);
+                manager.Update(current.Revise(new byte[] { 52 }));
+                Wait(manager, () => manager.SaveFailed(id));
+                Require(manager.SaveError(id).Contains("external-document-change") && File.ReadAllBytes(path).SequenceEqual(replacement),
+                    "the real atomic save detected the outside replacement and released its cached document");
+
+                Require(manager.RequestDeletion(owner, id), "the exact owned character can request deletion after its failed save");
+                Wait(manager, () => manager.Deletions.Single().Error != null);
+                Require(!manager.Deletions.Single().FilesRemoved && !File.Exists(path + ".delete") && File.ReadAllBytes(path).SequenceEqual(replacement),
+                    "deletion preserves the previously rejected replacement even with a legitimate owner, profile, and revision");
+
+                File.WriteAllBytes(external, original);
+                File.Replace(external, path, null);
+                Require(manager.RetryDeletion(owner, id), "the same operation may retry once the trusted source is restored");
+                Wait(manager, () => manager.Deletions.Single().FilesRemoved);
+                manager.FinishDeletion(owner, id);
+                Wait(manager, () => manager.IsDeletionComplete(id));
+                Require(!File.Exists(path), "the original trusted archive becomes deletable after repair");
             }
         }
         private static void ArchiveRoundTrip(string root)
@@ -394,6 +605,8 @@ namespace JueMingR.ArchitectureTests
             internal FailOnceArchive(ICompanionArchive inner) { this.inner = inner; }
             public CompanionOwnerArchive LoadOwner(string key) { return inner.LoadOwner(key); }
             public void LinkOwner(string key, Guid owner) { inner.LinkOwner(key, owner); }
+            public void DeleteFiles(CompanionDeletion deletion, long revision) { inner.DeleteFiles(deletion, revision); }
+            public void FinishDeletion(CompanionDeletion deletion) { inner.FinishDeletion(deletion); }
             public void Save(CompanionProfile profile) { if (!failed) { failed = true; throw new IOException("isolated first save failure"); } inner.Save(profile); }
             public void Dispose() { inner.Dispose(); }
         }
@@ -405,6 +618,8 @@ namespace JueMingR.ArchitectureTests
             internal GatedArchive(ICompanionArchive inner) { this.inner = inner; }
             public CompanionOwnerArchive LoadOwner(string key) { return inner.LoadOwner(key); }
             public void LinkOwner(string key, Guid owner) { inner.LinkOwner(key, owner); }
+            public void DeleteFiles(CompanionDeletion deletion, long revision) { inner.DeleteFiles(deletion, revision); }
+            public void FinishDeletion(CompanionDeletion deletion) { inner.FinishDeletion(deletion); }
             public void Save(CompanionProfile profile)
             { if (Interlocked.Increment(ref Writes) == 1) { Entered.Set(); if (!Allow.Wait(5000)) throw new IOException("isolated write gate timed out"); } inner.Save(profile); }
             public void Dispose() { Allow.Set(); inner.Dispose(); Entered.Dispose(); Allow.Dispose(); }
@@ -423,6 +638,8 @@ namespace JueMingR.ArchitectureTests
                 return snapshot;
             }
             public void LinkOwner(string key, Guid owner) { inner.LinkOwner(key, owner); }
+            public void DeleteFiles(CompanionDeletion deletion, long revision) { inner.DeleteFiles(deletion, revision); }
+            public void FinishDeletion(CompanionDeletion deletion) { inner.FinishDeletion(deletion); }
             public void Save(CompanionProfile profile) { inner.Save(profile); }
             public void Dispose() { if (disposed) return; disposed = true; Continue.Set(); inner.Dispose(); Loaded.Dispose(); Continue.Dispose(); }
         }

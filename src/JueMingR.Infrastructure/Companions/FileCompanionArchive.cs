@@ -9,7 +9,7 @@ using JueMingR.Platform.Settings;
 
 namespace JueMingR.Infrastructure.Companions
 {
-    public sealed class FileCompanionArchive : ICompanionArchive
+    public sealed partial class FileCompanionArchive : ICompanionArchive
     {
         // Full native character data has its own bound; the preference-only
         // 64 KiB limit does not apply to banks, loadouts and Journey research.
@@ -47,17 +47,30 @@ namespace JueMingR.Infrastructure.Companions
             }
             string directory = Path.Combine(root, "characters", owner.ToString("N"));
             var profiles = new List<CompanionProfile>();
+            var deletions = new List<CompanionDeletion>();
+            var retiring = new HashSet<Guid>();
             var errors = new List<string>();
             var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             try
             {
                 paths.UnionWith(Directory.GetFiles(directory, "*.bin"));
                 foreach (string material in Directory.GetFiles(directory, "*.bin.*"))
-                    if (material.EndsWith(".bak", StringComparison.OrdinalIgnoreCase) || material.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) paths.Add(material.Substring(0, material.Length - 4));
+                    if (material.EndsWith(".bin.bak", StringComparison.OrdinalIgnoreCase) || material.EndsWith(".bin.tmp", StringComparison.OrdinalIgnoreCase))
+                        paths.Add(material.Substring(0, material.Length - 4));
+                foreach (string marker in Directory.GetFiles(directory, "*.bin.delete"))
+                {
+                    string file = Path.GetFileName(marker);
+                    if (file.Length != 32 + ".bin.delete".Length || !file.EndsWith(".bin.delete", StringComparison.OrdinalIgnoreCase) ||
+                        !Guid.TryParseExact(file.Substring(0, 32), "N", out var id)) continue;
+                    retiring.Add(id);
+                    try { deletions.Add(ReadDeletion(marker, owner, id).Deletion); }
+                    catch (Exception error) when (ArchiveError(error)) { errors.Add(file + "：" + error.Message); }
+                }
             }
             catch (DirectoryNotFoundException) when (paths.Count == 0) { }
             foreach (string path in paths)
             {
+                if (Guid.TryParseExact(Path.GetFileNameWithoutExtension(path), "N", out var id) && retiring.Contains(id)) continue;
                 Document document = null;
                 try
                 {
@@ -76,7 +89,7 @@ namespace JueMingR.Infrastructure.Companions
                 }
             }
             profiles.Sort((a, b) => StringComparer.Ordinal.Compare(a.Name, b.Name));
-            return new CompanionOwnerArchive(owner, profiles.AsReadOnly(), errors.Count == 0 ? null : String.Join("；", errors));
+            return new CompanionOwnerArchive(owner, profiles.AsReadOnly(), errors.Count == 0 ? null : String.Join("；", errors), deletions.AsReadOnly());
         }
 
         public void LinkOwner(string characterKey, Guid ownerId)
@@ -104,6 +117,7 @@ namespace JueMingR.Infrastructure.Companions
             if (profile == null) throw new ArgumentNullException(nameof(profile));
             string path = Path.Combine(root, "characters", profile.OwnerId.ToString("N"), profile.Id.ToString("N") + ".bin");
             var document = Open(path);
+            if (HasOrdinaryFile(path + ".delete")) { Release(document); throw new InvalidOperationException("该人物正在删除，未写回旧档案。"); }
             if (document.Contents != null)
             {
                 var previous = Decode(document.Contents);
@@ -118,7 +132,7 @@ namespace JueMingR.Infrastructure.Companions
                     throw new InvalidDataException("同一队友修订包含不同资源。");
                 }
             }
-            Write(document, Encode(profile));
+            Write(document, Encode(profile), character: true);
         }
 
         private static bool EqualBytes(byte[] first, byte[] second)
@@ -140,14 +154,22 @@ namespace JueMingR.Infrastructure.Companions
             document = new Document { Storage = storage, Path = path, Identity = result.Identity, Contents = result.Contents };
             documents.Add(path, document); return document;
         }
-        private void Write(Document document, byte[] bytes)
+        private void Write(Document document, byte[] bytes, bool character = false)
         {
             var result = document.Storage.Write(document.Identity, bytes);
             if (result.Status != PreferenceWriteStatus.Saved)
             {
+                if (character && (result.Status == PreferenceWriteStatus.Conflict || result.CommitUnconfirmed) &&
+                    !deletionSourceConflicts.ContainsKey(document.Path))
+                    deletionSourceConflicts.Add(document.Path, document.Contents == null ? null : Hash(document.Contents));
                 Release(document);
                 throw new IOException("队友档案保存失败：" + result.Error + (result.CommitUnconfirmed ? "（提交结果未确认）" : ""));
             }
+            // Only a confirmed write from the previously trusted source reclaims its
+            // deletion proof. Reopening replacement bytes alone establishes no proof.
+            if (character && deletionSourceConflicts.TryGetValue(document.Path, out var expected) &&
+                MatchKnownHash(expected, document.Contents == null ? null : Hash(document.Contents)))
+                deletionSourceConflicts.Remove(document.Path);
             document.Identity = result.Identity; document.Contents = bytes;
         }
         private void Release(Document document)
@@ -273,6 +295,6 @@ namespace JueMingR.Infrastructure.Companions
         private static bool ReadBoolean(BinaryReader reader)
         { byte value = reader.ReadByte(); if (value > 1) throw new InvalidDataException("无效的队友设置。"); return value == 1; }
         public void Dispose()
-        { foreach (var document in documents.Values) document.Storage.Dispose(); documents.Clear(); }
+        { foreach (var document in documents.Values) document.Storage.Dispose(); documents.Clear(); deletionSourceConflicts.Clear(); }
     }
 }
