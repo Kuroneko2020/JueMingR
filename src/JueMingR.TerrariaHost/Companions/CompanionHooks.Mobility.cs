@@ -16,8 +16,6 @@ namespace JueMingR.TerrariaHost.Companions
     {
         [ThreadStatic] private static Player mobilityQuickGrapple;
         [ThreadStatic] private static Player mobilityQuickMount;
-        [ThreadStatic] private static DoorOpeningHelper mobilityDoor;
-        [ThreadStatic] private static Point mobilityDoorTile;
         [ThreadStatic] private static bool mobilityPortal;
         [ThreadStatic] private static Vector2 mobilityPortalStart, mobilityPortalEnd;
         private static readonly AccessTools.FieldRef<int> wireUser = AccessTools.StaticFieldRefAccess<int>(AccessTools.Field(typeof(Wiring), "CurrentUser"));
@@ -29,7 +27,6 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player), "QuickMinecartSnap", prefix: nameof(AllowQuickCart));
             Patch(typeof(Player), "DoCommonDashHandle", transpiler: nameof(ActorDashInput));
             Patch(typeof(Player), nameof(Player.Teleport), postfix: nameof(MobilityTeleportAfter));
-            Patch(typeof(DoorOpeningHelper), "TryAutoOpeningDoor", prefix: nameof(AllowDoorTile));
             Patch(typeof(PortalHelper), nameof(PortalHelper.TryGoingThroughPortals), transpiler: nameof(ActorPortalEntry));
             Patch(typeof(TeleportPylonsSystem), nameof(TeleportPylonsSystem.HandleTeleportRequest), transpiler: nameof(PylonFailureReceiver));
         }
@@ -160,18 +157,33 @@ namespace JueMingR.TerrariaHost.Companions
         // nearby track, which has its own precise movement request.
         private static bool AllowQuickCart(Player __instance) => !ReferenceEquals(mobilityQuickMount, __instance);
 
-        internal static void MobilityDoor(Player player, Point tile)
+        internal static bool MobilityDoor(CompanionDoor door, int direction, bool close)
         {
-            var previous = mobilityDoor;
-            var point = mobilityDoorTile;
-            mobilityDoor = player.doorHelper;
-            mobilityDoorTile = tile;
-            try { player.doorHelper.LookForDoorsToOpen(player); }
-            finally { mobilityDoor = previous; mobilityDoorTile = point; }
+            Point tile = door.Hinge;
+            // Player.TileInteractionsUse and MessageBuffer 19 share these
+            // outlets. In a client the primary stream owns shared terrain;
+            // let its native decode apply the change after the actor sends.
+            if (Main.netMode == 1)
+            {
+                int action = door.Family == CompanionDoorFamily.Door ? (close ? 1 : 0) :
+                    door.Family == CompanionDoorFamily.Trapdoor ? (close ? 3 : 2) : (close ? 5 : 4);
+                NetMessage.SendData(19, -1, -1, null, action, tile.X, tile.Y, direction);
+                return true;
+            }
+            switch (door.Family)
+            {
+                case CompanionDoorFamily.Door:
+                    return close ? WorldGen.CloseDoor(tile.X, tile.Y) : WorldGen.OpenDoor(tile.X, tile.Y, direction);
+                case CompanionDoorFamily.Gate:
+                    return WorldGen.ShiftTallGate(tile.X, tile.Y, close);
+                case CompanionDoorFamily.Trapdoor:
+                    // The original selector is 1 for opening tile 387 and
+                    // 0 for closing tile 386. Message 19 maps them to 2 and 3.
+                    return WorldGen.ShiftTrapdoor(tile.X, tile.Y, direction > 0, close ? 0 : 1);
+                default:
+                    return false;
+            }
         }
-
-        private static bool AllowDoorTile(DoorOpeningHelper __instance, Point tileCoords) =>
-            !ReferenceEquals(mobilityDoor, __instance) || tileCoords == mobilityDoorTile;
 
         internal static void MobilityPortal(Player player, Vector2 start, Vector2 end)
         {

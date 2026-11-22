@@ -58,7 +58,24 @@ namespace NativeWorldTextProbe
                 CommonMotionSample(host, body, human);
                 if (comparison)
                 {
+                    string focus = Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_NAV_FOCUS");
+                    if (focus == "doors")
+                    {
+                        NativeCompanionDoorFollowChecks.Run(host, actor, body, human);
+                        return;
+                    }
+                    if (focus == "facilities")
+                    {
+                        NativeCompanionFacilityFollowChecks.Run(host, actor, body, human);
+                        return;
+                    }
+                    if (focus == "combat")
+                    {
+                        NativeMovingCombat(host, actor, body, human);
+                        return;
+                    }
                     NativeCompanionPlannedMovementChecks.SampleFastMotion(host, actor, body, human);
+                    NativeCompanionDynamicFollowChecks.Run(host, actor, body, human, comparison: true);
                     return;
                 }
                 var probe=new Player{width=20,height=42,active=true,position=new Vector2(1608,1118),gravity=.4f,gravDir=1,maxRunSpeed=3,runAcceleration=.08f,runSlowdown=.2f,maxFallSpeed=10};
@@ -117,6 +134,25 @@ namespace NativeWorldTextProbe
                 // out of the preceding native combat simulation.
                 NativeCompanionPlannedMovementChecks.Run(host, actor, body, human);
                 NativeCompanionShapeHandChecks.Run(host, actor, body, human);
+                Require(human.active && !human.dead, "normal follow scenarios start with a live owner before the legacy lethal protection test");
+                NativeCompanionDoorFollowChecks.Run(host, actor, body, human);
+                NativeCompanionFacilityFollowChecks.Run(host, actor, body, human);
+                // The facility fixtures finish at the native outcome and can
+                // leave the shared test actor in a genuine death/cooldown
+                // lifecycle. Use a fresh saved actor for continuous follow.
+                Call(host, "Recall", id);
+                Guid retired = id;
+                NativeQuickItemChecks.Until(() => { Call(host,"Update",0UL); return !((IDictionary)Get(host,"actors")).Contains(retired); });
+                Require((bool)Call(host, "Create", "持续跟随原生代表"), "create independent dynamic navigation profile at the normal entry");
+                id = (Guid)Get(host, "LastCreatedId");
+                NativeQuickItemChecks.Until(() => { Call(profiles,"Pump"); return (bool)Call(profiles,"IsSaved",id); });
+                Require((bool)Call(host,"Join",id), "join independently persisted dynamic profile: " + Get(host,"Feedback"));
+                body = (Player)Call(host,"GetBody",id);
+                actor = Call(host,"Owned",body);
+                Require(body.active && !body.dead, "the new real body is alive before measuring dynamic inputs");
+                NativeCompanionDynamicFollowChecks.Run(host, actor, body, human, comparison: false);
+                NativeMovingCombat(host, actor, body, human);
+                NativeClosedRoom(host, actor, body, human);
                 NativePaladinShare(host,body,human);
                 Console.WriteLine("PASS companion navigation: native slope/halfbrick/platform contact, continuous uphill, cliff/drop, scratch/tile identity, bounded dependency cache and actual update landing-direction retirement. No historical exact terrain/Steam/FPS claim.");
             }
@@ -210,6 +246,16 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("NAV_ROUTE detourTicks=" + ticks + " firstAway=" + firstAway + " totalWork=" + (previousWork - work) +
                     " maxSlice=" + largestSlice + FormattableString.Invariant($" nativeStepMs={Milliseconds(elapsed):F2} nativeMaxMs={Milliseconds(maximum):F2}") +
                     " actual=" + body.position + " goal=" + human.position + " status=" + Get(actor, "Status"));
+                if (ticks == 1200)
+                {
+                    var mobility = Get(Get(actor, "Mobility"), "Observed");
+                    var jump = navigation.GetMethod("TryJumpEdge", Flags);
+                    object[] options = { body, mobility, body.position, 0, true, 0, null, Vector2.Zero, 0, 0 };
+                    bool planned = (bool)jump.Invoke(movement, options);
+                    Point feet = body.Bottom.ToTileCoordinates();
+                    string tilesAbove = string.Join(",", Enumerable.Range(2,5).Select(i => Main.tile[feet.X,feet.Y-i].type+"/"+Main.tile[feet.X,feet.Y-i].nactive()));
+                    Console.WriteLine($"NAV DETOUR STALL planned={planned}/{options[7]} hold={options[8]} grounded={Support(body)} vel={body.velocity} pose={body.position} release={body.releaseJump}/{Get(mobility,"ReleaseJump")} probe={Get(movement,"platformProbeAt")}/{Main.GameUpdateCount} at={Get(movement,"platformProbePosition")} tiles={tilesAbove}");
+                }
                 Require(firstAway >= 0 && ticks < 1200 && !(bool)Get(actor, "Faulted"),
                     "real body backtracks to the platforms, reaches the upper owner region, and stays valid");
                 Require(largestSlice <= 160 && previousWork > work, "detour consumes incremental work inside its selected world-step bound");
@@ -268,12 +314,200 @@ namespace NativeWorldTextProbe
                     lastFirst > firstGrant && lastSecond > secondGrant && peak <= 160 && !body.dead && !other.dead,
                     "two blocked real bodies both retain bounded search service: " + body.dead + "/" + other.dead);
                 Require(expectedMotion >= 8 && withoutBudget >= expectedMotion - 1, "ordinary safe controls continue while the other body searches");
+                NativeMovingDetour(host, actor, body, other, human);
             }
             finally
             {
                 Call(host, "Recall", id);
                 for (int x = 15 + origin; x <= 60 + origin; x++) Main.tile[x, 89] = new Tile();
                 for (int y = 73; y < 89; y++) Main.tile[30 + origin, y] = new Tile();
+            }
+        }
+
+        private static void NativeMovingDetour(object host, object actor, Player first, Player second, Player human)
+        {
+            const int origin = 43;
+            var area = new Dictionary<Point, Tile>();
+            var positions = new[] { first.position, second.position, human.position };
+            var velocities = new[] { first.velocity, second.velocity, human.velocity };
+            object firstPlan = Get(Get(actor, "Behavior"), "navigation");
+            object secondPlan = Get(Get(Call(host, "Owned", second), "Behavior"), "navigation");
+            try
+            {
+                for (int x = 14 + origin; x <= 55 + origin; x++)
+                    for (int y = 35; y <= 66; y++)
+                    { area[new Point(x, y)] = Main.tile[x, y]; Main.tile[x, y] = new Tile(); }
+                for (int x = 14 + origin; x <= 55 + origin; x++) TileAt(x, 62, TileID.Stone);
+                for (int x = 34 + origin; x <= 53 + origin; x++)
+                    for (int y = 47; y < 62; y++) TileAt(x, y, TileID.Stone);
+                for (int x = 18 + origin; x <= 22 + origin; x++) TileAt(x, 58, TileID.Platforms);
+                for (int x = 20 + origin; x <= 25 + origin; x++) TileAt(x, 54, TileID.Platforms);
+                for (int x = 24 + origin; x <= 29 + origin; x++) TileAt(x, 50, TileID.Platforms);
+                for (int x = 27 + origin; x <= 34 + origin; x++) TileAt(x, 47, TileID.Platforms);
+                first.position = new Vector2((30 + origin)*16, 62 * 16 - first.height);
+                second.position = first.position + new Vector2(9, 0);
+                first.velocity = second.velocity = Vector2.Zero;
+                var aStart = first.position;
+                var bStart = second.position;
+                Call(firstPlan, "CancelRoute"); Call(secondPlan, "CancelRoute");
+                int firstSearches = (int)Get(firstPlan, "RouteSearchStarts"), secondSearches = (int)Get(secondPlan, "RouteSearchStarts");
+                int aAway = -1, bAway = -1, aNear = -1, bNear = -1, aService = 0, bService = 0, peak = 0, simultaneous = 0, triesAtWall = 0;
+                var samples = new List<string>();
+                int worldSteps = 0;
+                for (; worldSteps < 1500 && (aNear < 0 || bNear < 0); worldSteps++)
+                {
+                    int phase = worldSteps % 120;
+                    float x = (36 + origin) * 16 + (phase <= 60 ? phase : 120 - phase) * 3.25f;
+                    human.position = new Vector2(x, 47 * 16 - human.height);
+                    int aw = (int)Get(firstPlan, "RouteWork"), bw = (int)Get(secondPlan, "RouteWork");
+                    NativeQuickItemChecks.BeginWorldStep(); Call(host, "Update", (ulong)Main.GameUpdateCount);
+                    first.Update(first.whoAmI); second.Update(second.whoAmI);
+                    int da = (int)Get(firstPlan, "RouteWork") - aw, db = (int)Get(secondPlan, "RouteWork") - bw;
+                    if (da > 0) aService++;
+                    if (db > 0) bService++;
+                    if (da != 0 && db != 0) simultaneous++;
+                    peak = Math.Max(peak, da+db);
+                    if (first.controlRight && first.Right.X >= (34 + origin) * 16 - 2 && first.Bottom.Y > 48 * 16) triesAtWall++;
+                    if (aAway < 0 && first.position.X < aStart.X - 12) aAway = worldSteps;
+                    if (bAway < 0 && second.position.X < bStart.X - 12) bAway = worldSteps;
+                    if (aNear < 0 && Vector2.DistanceSquared(first.Center, human.Center) < 56 * 56 && first.Bottom.Y <= 47 * 16 + 4) aNear = worldSteps;
+                    if (bNear < 0 && Vector2.DistanceSquared(second.Center, human.Center) < 56 * 56 && second.Bottom.Y <= 47 * 16 + 4) bNear = worldSteps;
+                    if (worldSteps % 60 == 0)
+                    {
+                        var route = (IList)Get(firstPlan,"route");
+                        int routeIndex = (int)Get(firstPlan, "routeIndex");
+                        string step = routeIndex < route.Count ? Get(route[routeIndex], "Kind") + ":" + Get(route[routeIndex], "To") : "none";
+                        var search = GetOptional(firstPlan, "search");
+                        string frontier = search == null ? "none" : ((IList)Get(search, "Nodes")).Count + "/" + Get(search, "Origin") + "/" + Get(search, "Expanding");
+                        samples.Add($"FOLLOW DETOUR TRACE t={worldSteps} owner={human.position} body={first.position}/{first.velocity} jump={first.controlJump} step={step} search={frontier} status={Get(actor,"Status")}");
+                    }
+                }
+                Console.WriteLine($"FOLLOW MOVING DETOUR steps={worldSteps} away={aAway}/{bAway} near={aNear}/{bNear} shared={peak} simultaneous={simultaneous} services={aService}/{bService} starts={(int)Get(firstPlan, "RouteSearchStarts")-firstSearches}/{(int)Get(secondPlan, "RouteSearchStarts")-secondSearches} wallInput={triesAtWall} first={first.position} second={second.position}");
+                if (aNear < 0 || bNear < 0) foreach (string sample in samples) Console.WriteLine(sample);
+                Require(aAway >= 0 && bAway >= 0 && aNear > aAway && bNear > bAway,
+                    "both ordinary production followers go away first and physically reach the upper moving owner through the staircase");
+                Require(aService > 0 && bService > 0 && peak <= 160 && simultaneous == 0,
+                    "moving detour work is cumulatively finite and fairly shared by both real updates");
+            }
+            finally
+            {
+                foreach (var cell in area) Main.tile[cell.Key.X, cell.Key.Y] = cell.Value;
+                first.position = positions[0]; second.position = positions[1]; human.position = positions[2];
+                first.velocity = velocities[0]; second.velocity = velocities[1]; human.velocity = velocities[2];
+                Call(firstPlan, "CancelRoute"); Call(secondPlan, "CancelRoute");
+            }
+        }
+
+        private static void NativeMovingCombat(object host, object actor, Player body, Player human)
+        {
+            var profile = (CompanionProfile)Get(actor, "Profile");
+            var area = new Dictionary<Point, Tile>();
+            var originalPosition = body.position;
+            var originalOwner = human.position;
+            var originalVelocity = body.velocity;
+            var oldTarget = Main.npc[17];
+            var oldWeapon = body.inventory[41];
+            var oldAmmo = body.inventory[54];
+            var prior = new HashSet<int>(Main.projectile.Where(p => p.active).Select(p => (int)p.key));
+            try
+            {
+                for (int x = 52; x <= 111; x++)
+                    for (int y = 76; y <= 91; y++)
+                    { area[new Point(x, y)] = Main.tile[x, y]; Main.tile[x, y] = new Tile(); }
+                for (int x = 52; x <= 111; x++) TileAt(x, 86, TileID.Stone);
+                body.position = new Vector2(64 * 16, 86 * 16 - body.height);
+                body.velocity = Vector2.Zero;
+                body.ResetFallDamage();
+                human.position = body.position;
+                body.inventory[41] = new Item(ItemID.VenusMagnum);
+                body.inventory[54] = new Item(ItemID.MusketBall) { stack = 40 };
+                body.selectedItemState.Select(41);
+                object navigationPlan = Get(Get(actor, "Behavior"), "navigation");
+                Call(navigationPlan, "CancelRoute");
+                Require((bool)Call(host, "SetBehavior", profile.Id, new CompanionBehavior { Follow = true, AttackEnabled = true,
+                    MainWeapons = new[] { new CompanionWeaponPreference(ItemID.VenusMagnum, 0, 41) } }), "use the real configured follow-and-attack preference");
+                var target = new NPC();
+                InitializeTarget(target, 17, body.Center + new Vector2(225, -4));
+                target.life = target.lifeMax = 100000;
+                target.damage = 0;
+                Main.npc[17] = target;
+                int movingUse = 0, paidOnMove = 0, move = 0;
+                human.position += new Vector2(120, 0);
+                for (int t = 0; t < 85; t++)
+                {
+                    human.position += new Vector2(1.75f, 0);
+                    var before = body.position;
+                    int ammo = body.inventory[54].stack;
+                    NativeCombatStep(host, body);
+                    if (body.position.X - before.X < .4f) continue;
+                    move++;
+                    if (body.controlUseItem) movingUse++;
+                    if (body.inventory[54].stack < ammo) paidOnMove++;
+                }
+                Console.WriteLine($"FOLLOW MOVING COMBAT motion={move} heldDuringMotion={movingUse} paidOnMove={paidOnMove} ammo={body.inventory[54].stack}/40 targetLife={target.life}");
+                Require(move > 40 && movingUse > 15 && paidOnMove > 0 && target.life < target.lifeMax,
+                    "normal Follow and aims both remain in the final input, with real motion, ammunition consumption and an enemy hit");
+                Require(((CompanionProfile)Get(actor, "Profile")).Behavior.MainWeapons.Single().Type == ItemID.VenusMagnum,
+                    "the prior flight and current ordinary attack keep the configured weapon preference");
+            }
+            finally
+            {
+                foreach (var p in Main.projectile)
+                    if (p.active && p.owner == body.whoAmI && !prior.Contains((int)p.key)) p.Kill();
+                foreach (var cell in area) Main.tile[cell.Key.X, cell.Key.Y] = cell.Value;
+                Main.npc[17] = oldTarget;
+                body.inventory[41] = oldWeapon; body.inventory[54] = oldAmmo;
+                body.position = originalPosition; body.velocity = originalVelocity; human.position = originalOwner;
+                Call(host, "SetBehavior", profile.Id, profile.Behavior);
+                Call(Get(Get(actor, "Behavior"), "navigation"), "CancelRoute");
+            }
+        }
+
+        private static void NativeClosedRoom(object host, object actor, Player body, Player human)
+        {
+            var area = new Dictionary<Point,Tile>();
+            var profile = (CompanionProfile)Get(actor, "Profile");
+            var behavior = Get(actor, "Behavior");
+            object navigationPlan = Get(behavior, "navigation");
+            var oldArmor = (Item[])body.armor.Clone();
+            var start = body.position;
+            var ownerStart = human.position;
+            var velocity = body.velocity;
+            try
+            {
+                for(int x=49;x<=101;x++) for(int y=77;y<=92;y++)
+                { area[new Point(x,y)]=Main.tile[x,y]; Main.tile[x,y]=new Tile(); }
+                for(int x=49;x<=101;x++) TileAt(x,89,TileID.Stone);
+                for(int x=58;x<=65;x++) TileAt(x,83,TileID.Stone);
+                for(int y=84;y<89;y++) { TileAt(58,y,TileID.Stone); TileAt(65,y,TileID.Stone); }
+                for(int i=0;i<body.armor.Length;i++) body.armor[i]=new Item();
+                body.position=new Vector2(61*16,89*16-body.height); human.position=body.position;
+                body.velocity=Vector2.Zero;
+                body.ResetFallDamage();
+                Call(host,"SetBehavior",profile.Id,new CompanionBehavior{Follow=true,AttackEnabled=false});
+                Call(navigationPlan,"CancelRoute");
+                for(int i=0;i<5;i++) NativeStep(host,body);
+                human.position=new Vector2(80*16,89*16-human.height);
+                for(int i=0;i<280;i++) NativeStep(host,body);
+                object search = Get(navigationPlan,"search");
+                Require((bool)Get(search,"Exhausted") && (bool)Get(search,"FullyKnownClosure"),"the closed known room genuinely runs its finite frontier to completion");
+                int starts = (int)Get(navigationPlan,"RouteSearchStarts"), work = (int)Get(navigationPlan,"RouteWork");
+                for(int i=0;i<240;i++) NativeStep(host,body);
+                int newStarts=(int)Get(navigationPlan,"RouteSearchStarts")-starts, newWork=(int)Get(navigationPlan,"RouteWork")-work;
+                Require(newStarts==0 && newWork==0,"a known closed local result does not periodically restart an unchanged whole search");
+                for(int y=84;y<89;y++) Main.tile[65,y]=new Tile();
+                int response=-1;
+                for(int i=0;i<150;i++) { NativeStep(host,body); if(response<0 && body.controlRight) response=i; }
+                Console.WriteLine($"FOLLOW CLOSED ROOM waitingStarts={newStarts} waitingWork={newWork} openedResponse={response} body={body.position}");
+                Require(response>=0 && response<10 && body.position.X>66*16,"opening the real relevant obstruction wakes actual follow and the actor leaves its room");
+            }
+            finally
+            {
+                foreach(var cell in area) Main.tile[cell.Key.X,cell.Key.Y]=cell.Value;
+                Array.Copy(oldArmor,body.armor,oldArmor.Length);
+                body.position=start; body.velocity=velocity; human.position=ownerStart;
+                Call(host,"SetBehavior",profile.Id,profile.Behavior);
+                Call(navigationPlan,"CancelRoute");
             }
         }
 
@@ -538,6 +772,21 @@ namespace NativeWorldTextProbe
 
         private static void NativeManaStandstill(object host,Player body,Player human,NPC target,Guid id,CompanionBehavior preferences)
         {
+            // The bow proof ends at the first shot, while the real leap and
+            // its momentum can still be alive. Start this independent no-mana
+            // case after the original body has physically settled.
+            var settle = preferences.Clone();
+            settle.Follow = true; settle.AttackEnabled = false;
+            Call(host,"SetBehavior",id,settle);
+            var incoming = body.velocity;
+            int settling = 0;
+            for (; settling < 140 && (body.velocity != Vector2.Zero || !Support(body)); settling++)
+            {
+                human.position = body.position;
+                NativeCombatStep(host,body);
+            }
+            Require(settling < 140,"the prior actual ranged leap first lands and brakes in a supported pose: "+body.position+" "+body.velocity);
+            Console.WriteLine($"NAV MANA isolated ground setup previousVelocity={incoming} settlingUpdates={settling}");
             var spell=new Item(ItemID.DiamondStaff);
             Require(spell.mana>0,"the locked test spell actually has a mana cost");
             body.inventory[40]=spell;

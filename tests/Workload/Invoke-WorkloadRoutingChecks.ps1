@@ -134,6 +134,9 @@ foreach($helper in @('','Behavior','Continuous','Lifecycle','Persistence','Predi
 }
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs') -join '|') -ceq 'native-CompanionFontVisual|native-CompanionConfigVisual|native-CompanionCreationInputVisual|native-CompanionShowcaseVisual|native-CompanionVisual|native-CompanionNetworkCpu|native-CompanionPasswordCpu|native-CompanionSuppliesCpu|native-CompanionObservationCombatCpu|native-CompanionSessionCpu|native-CompanionNavigationCpu|native-CompanionCpu|native-CompanionCreationCpu|native-CompanionItemsCpu|native-CompanionExitVisual') 'native companion preparation retains each actual caller'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionExitChecks.cs') -join '|') -ceq 'native-CompanionExitVisual') 'original save-and-exit body owns the exact restart and drawing scope'
+foreach($leaf in @('DynamicFollow','DoorFollow','FacilityFollow')){
+    Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanion'+$leaf+'Checks.cs')) -join '|') -ceq 'native-CompanionNavigationCpu') ('native Follow scenario uses the actual navigation consumer '+$leaf)
+}
 Assert-Route (@((Get-WorkloadRoute @('tests/NativeWorldTextProbe/ProbeGraphics.cs')).groups) -ccontains 'shared-host') 'common graphics fixture keeps all existing consumers as well as the new exit scope'
 foreach($pair in @(@('Team','Network'),@('Navigation','Navigation'),@('Session','Session'))){
     $expected=@('native-Companion'+$pair[1]+'Cpu');if($pair[0] -ceq 'Session'){$expected+='native-CompanionVisual'}

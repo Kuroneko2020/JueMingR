@@ -12,7 +12,6 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal sealed partial class HostCompanions
     {
-        private enum DoorContactResult { Approaching, Blocked, Ready }
         private static readonly Action<Player, int, int> launchCart = AccessTools.MethodDelegate<Action<Player, int, int>>(
             AccessTools.Method(typeof(Player), "LaunchMinecartHook"));
 
@@ -194,6 +193,11 @@ namespace JueMingR.TerrariaHost.Companions
             state.Action = frame.Activation;
             state.ShapeHandExit = shapeExit;
             state.Target = shapeExit ? p.position : new Vector2(frame.WorldX, frame.WorldY);
+            if (state.Action == CompanionMovementActivation.Door)
+            {
+                state.DoorFamily = frame.DoorFamily;
+                state.DoorPass = frame.DoorPass != 0 ? frame.DoorPass : frame.Move;
+            }
             state.Result = CompanionMobilityResult.Deferred;
             if (!SupplyActorReady(actor) || Main.netMode == 1 && actor.Connection?.Finished != false || p.ghost || p.spectating >= 0 ||
                 p.CCed || p.tongued || p.shimmering || p.isLockedToATile) return false;
@@ -310,14 +314,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var state = actor.Mobility;
             var body = actor.Body;
-            if (state.DoorNeedsClose && Vector2.DistanceSquared(state.DoorPoint, body.Center) > 64f * 64f)
-            {
-                state.DoorNeedsClose = false;
-                // DoorOpeningHelper owns the earlier touched door. Do not
-                // let its close reframe a partially unloaded neighborhood.
-                if (CompanionMobilityGeometry.KnownBox(state.DoorPoint - new Vector2(56f, 104f), state.DoorPoint + new Vector2(56f, 104f)))
-                    using (CompanionHooks.Enter(actor, state.DoorPoint)) body.doorHelper.LookForDoorsToClose(body);
-            }
+            if (state.DoorNeedsClose && state.Generation == actor.Generation) ClosePassedDoor(actor);
             if (!state.Prepared || state.Generation != actor.Generation) return;
             state.Prepared = false;
             if (!SupplyActorReady(actor) || body.CCed || body.tongued || body.shimmering || Main.netMode == 1 && actor.Connection?.Finished != false)
@@ -351,20 +348,7 @@ namespace JueMingR.TerrariaHost.Companions
                         if (body.mount.TryDismountWithResult(body) != Mount.DismountCheckResult.Succeeded) RejectMobility(state);
                     break;
                 case CompanionMovementActivation.Door:
-                    if (!CompanionMobilityGeometry.Known(tile.X, tile.Y)) { RejectMobility(state); break; }
-                    var door = Main.tile[tile.X, tile.Y];
-                    if (!ClosedDoor(door)) { RejectMobility(state); break; }
-                    var contact = DoorContact(body, tile, door);
-                    if (contact == DoorContactResult.Approaching) { state.Result = CompanionMobilityResult.Deferred; break; }
-                    if (contact == DoorContactResult.Blocked) { RejectMobility(state); break; }
-                    using (CompanionHooks.Enter(actor, state.Target)) CompanionHooks.MobilityDoor(body, tile);
-                    if (ClosedDoor(Main.tile[tile.X, tile.Y])) RejectMobility(state);
-                    else
-                    {
-                        state.DoorNeedsClose = true;
-                        state.DoorPoint = state.Target;
-                        state.Result = CompanionMobilityResult.Completed;
-                    }
+                    OpenRouteDoor(actor, tile);
                     break;
                 case CompanionMovementActivation.Pylon:
                     if (!CompanionMobilityGeometry.PylonAt(body, state.Target, out var info)) { RejectMobility(state); break; }
@@ -399,35 +383,61 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
 
-        private static bool ClosedDoor(Tile tile) => tile.nactive() && (tile.type == TileID.ClosedDoor || tile.type == TileID.TallGateClosed);
-
-        private static DoorContactResult DoorContact(Player body, Point point, Tile tile)
+        private void OpenRouteDoor(Actor actor, Point tile)
         {
-            int rows = tile.type == TileID.ClosedDoor ? 3 : 5;
-            int y = point.Y - tile.frameY % (rows * 18) / 18;
-            int direction = (body.controlRight ? 1 : 0) - (body.controlLeft ? 1 : 0);
-            if (direction == 0) return DoorContactResult.Approaching;
-            float ahead = direction + body.GetAutoDoorVelocityContribution();
-            var box = body.Hitbox;
-            box.X += Math.Sign(ahead) * (int)Math.Ceiling(Math.Abs(ahead));
-            box.Y++;
-            box.Height -= 2;
-            var area = new Rectangle(point.X * 16, (body.gravDir < 0 ? y - 1 : y) * 16, 16, (rows + 1) * 16);
-            if (!area.Intersects(box) || box.Top < area.Top || box.Bottom > area.Bottom) return DoorContactResult.Approaching;
-            // WorldGen reads two tiles above the door and reframes its swing
-            // and immediate neighbors. Native auto opening may try either
-            // direction and cut plants, stalactites and drip tiles as it swings.
-            if (!CompanionMobilityGeometry.KnownBox(new Vector2((point.X - 3) * 16, (y - 2) * 16),
-                new Vector2((point.X + 3) * 16, (y + rows + 1) * 16))) return DoorContactResult.Blocked;
-            if (rows == 3)
-                for (int offset = 0; offset < rows; offset++)
-                    if (CutByDoor(Main.tile[point.X - 1, y + offset]) || CutByDoor(Main.tile[point.X + 1, y + offset]))
-                        return DoorContactResult.Blocked;
-            return DoorContactResult.Ready;
+            var body = actor.Body;
+            var state = actor.Mobility;
+            if (!CompanionDoor.TryRead(tile, out var door) || state.DoorFamily != CompanionDoorFamily.None && state.DoorFamily != door.Family)
+            { RejectMobility(state); return; }
+            if (door.Open) { state.Result = CompanionMobilityResult.Completed; return; }
+            if (state.DoorPass == 0 || !door.AtApproach(body, state.DoorPass))
+            { state.Result = CompanionMobilityResult.Deferred; return; }
+            if (!door.InReach(body, ActorTileReach(body))) { RejectMobility(state); return; }
+            state.DoorFamily = door.Family;
+            state.Target = door.Target;
+            int direction = state.DoorPass;
+            if (!door.SwingClear(direction)) direction = -direction;
+            if (!door.SwingClear(direction)) { RejectMobility(state); return; }
+            if (door.Family == CompanionDoorFamily.Gate && !DoorApertureEmpty(door)) { RejectMobility(state); return; }
+
+            using (var scope = CompanionHooks.Enter(actor, door.Target))
+            {
+                bool sent = scope.TileInteractionReady && CompanionHooks.MobilityDoor(door, direction, close: false);
+                if (!sent || Main.netMode == 1 && !scope.PacketAccepted) RejectMobility(state);
+            }
         }
 
-        private static bool CutByDoor(Tile tile) => tile.active() && (Main.tileCut[tile.type] || tile.type == TileID.Stalactite ||
-            TileID.Sets.IsADripTile[tile.type]);
+        private static bool DoorApertureEmpty(CompanionDoor door)
+        {
+            Rectangle aperture = door.Aperture;
+            for (int x = aperture.Left / 16; x < aperture.Right / 16; x++)
+                for (int y = aperture.Top / 16; y < aperture.Bottom / 16; y++)
+                    if (!Collision.EmptyTile(x, y, ignoreTiles: true)) return false;
+            return true;
+        }
+
+        private void ClosePassedDoor(Actor actor)
+        {
+            var body = actor.Body;
+            var state = actor.Mobility;
+            var opened = state.DoorOpened;
+            if (Main.GameUpdateCount - state.DoorOpenedAt > 120 || !SupplyActorReady(actor) || body.CCed || body.tongued ||
+                body.shimmering || body.isLockedToATile || Main.netMode == 1 && actor.Connection?.Finished != false ||
+                !CompanionDoor.TryRead(opened.Hinge, out var door) || !door.Open || door.Family != opened.Family || door.Tiles != opened.Tiles)
+            { state.DoorNeedsClose = false; return; }
+
+            // Clear the actual closing footprint and one body step on the
+            // far side before releasing this actor's one close opportunity.
+            Rectangle aperture = door.Aperture;
+            int passage = state.DoorOpenedPass;
+            bool crossed = door.Family == CompanionDoorFamily.Trapdoor ?
+                (passage > 0 ? body.Top.Y > aperture.Bottom + 4 : body.Bottom.Y < aperture.Top - 4) :
+                (passage > 0 ? body.Left.X > aperture.Right + 12 : body.Right.X < aperture.Left - 12);
+            if (!crossed || !door.InReach(body, ActorTileReach(body)) || !DoorApertureEmpty(door)) return;
+            state.DoorNeedsClose = false;
+            using (var scope = CompanionHooks.Enter(actor, door.Target))
+                if (scope.TileInteractionReady) CompanionHooks.MobilityDoor(door, passage, close: true);
+        }
 
         private static bool SendPylon(Actor actor, TeleportPylonInfo info)
         {
@@ -476,6 +486,18 @@ namespace JueMingR.TerrariaHost.Companions
                     allowance = body.mount.Cart || state.LiveHook(body) ? 120 : 0;
                     break;
                 case CompanionMovementActivation.Gravity: done = body.gravDir == state.Target.Y; break;
+                case CompanionMovementActivation.Door:
+                    done = CompanionDoor.TryRead(state.Target.ToTileCoordinates(), out var door) && door.Open &&
+                        door.Family == state.DoorFamily && door.Target == state.Target;
+                    if (done)
+                    {
+                        state.DoorNeedsClose = true;
+                        state.DoorOpened = door;
+                        state.DoorOpenedPass = state.DoorPass;
+                        state.DoorOpenedAt = Main.GameUpdateCount;
+                    }
+                    allowance = Main.netMode == 1 ? 45 : 0;
+                    break;
                 case CompanionMovementActivation.Pylon:
                 case CompanionMovementActivation.Teleporter: done = false; allowance = 120; break;
                 case CompanionMovementActivation.Rod: done = false; allowance = 2; break;

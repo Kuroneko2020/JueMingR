@@ -40,6 +40,9 @@ namespace JueMingR.TerrariaHost.Companions
             // Read its result before selecting the next actual item action.
             if(a.Mobility.Generation!=a.Generation)a.Mobility.Reset(a.Generation);
             a.Mobility.ObserveGrapple(p);
+            // Equipment gestures can commit before this native Update has
+            // recalculated movement. Do not launch on the prior physics.
+            a.Mobility.AwaitingEquipmentObservation=a.TileReachPending;
             if(planning || !a.Mobility.Observed.Ready)RefreshMobilitySources(a);
             bool handless = HandlessShape(p);
             bool manualSupply = mobilityHand || RunCompanionItemOnce(a);

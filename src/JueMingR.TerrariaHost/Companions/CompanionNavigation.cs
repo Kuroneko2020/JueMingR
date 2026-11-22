@@ -39,31 +39,61 @@ namespace JueMingR.TerrariaHost.Companions
             internal readonly HashSet<int> Keys = new HashSet<int>();
             private readonly bool retainUnknown;
             internal bool Known;
+            private bool trackArea;
+            private Rectangle area;
+            private int unknown;
+            private bool unrecordedUnknown;
+            internal bool HasUnknown => unknown != 0 || unrecordedUnknown;
+            internal bool Truncated { get; private set; }
 #if DEBUG
             internal int Moves, VerticalMoves;
 #endif
             private int worldWidth, worldHeight;
             internal ReadSet(bool retainUnknown = false) { this.retainUnknown = retainUnknown; }
-            internal void Clear() { Cells.Clear(); Keys.Clear(); Known=true; worldWidth=Main.maxTilesX; worldHeight=Main.maxTilesY; }
+            internal void Clear() { Cells.Clear(); Keys.Clear(); Known=true; trackArea=false; unknown=0; unrecordedUnknown=Truncated=false; worldWidth=Main.maxTilesX; worldHeight=Main.maxTilesY; }
+            internal void BeginArea() { area = Rectangle.Empty; trackArea = true; }
+            internal Rectangle EndArea() { trackArea = false; return area; }
             internal bool Record(int x, int y)
             {
+                if (trackArea)
+                {
+                    var cell = new Rectangle(x, y, 1, 1);
+                    area = area.Width == 0 ? cell : Rectangle.Union(area, cell);
+                }
                 bool loaded = Loaded(x, y);
                 if (!loaded && !retainUnknown) { Known = false; return false; }
-                if (Cells.Count >= 2048) { if (!retainUnknown) Known = false; return retainUnknown && loaded; }
+                if (!loaded && (x < 1 || y < 1 || x >= worldWidth - 1 || y >= worldHeight - 42)) return false;
+                if (Cells.Count >= 2048)
+                {
+                    if (!retainUnknown) Known = false;
+                    Truncated = true;
+                    unrecordedUnknown |= !loaded;
+                    return retainUnknown && loaded;
+                }
                 if (Keys.Add(x * Main.maxTilesY + y))
+                {
+                    if (!loaded) unknown++;
                     Cells.Add(new Dependency { X = x, Y = y, Value = loaded ? TileValue(Main.tile[x, y]) : int.MinValue });
+                }
                 return loaded;
             }
-            internal bool Changed(ref int cursor, int count)
+            internal Rectangle Changes(ref int cursor, int count)
             {
+                Rectangle changed = Rectangle.Empty;
                 for (int i = 0; i < count && i < Cells.Count; i++)
                 {
                     if (cursor >= Cells.Count) cursor = 0;
                     var cell = Cells[cursor++];
                     int value = Loaded(cell.X, cell.Y) ? TileValue(Main.tile[cell.X, cell.Y]) : int.MinValue;
-                    if (value != cell.Value) return true;
+                    if (value == cell.Value) continue;
+                    if (cell.Value == int.MinValue) unknown--;
+                    if (value == int.MinValue) unknown++;
+                    cell.Value = value;
+                    Cells[cursor - 1] = cell;
+                    var square = new Rectangle(cell.X, cell.Y, 1, 1);
+                    changed = changed.Width == 0 ? square : Rectangle.Union(changed, square);
                 }
-                return false;
+                return changed;
             }
             internal bool Current()
             {

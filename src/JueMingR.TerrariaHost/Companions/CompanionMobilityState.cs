@@ -38,11 +38,15 @@ namespace JueMingR.TerrariaHost.Companions
         internal int Sequence, PositionRevision;
         internal long Generation;
         internal CompanionMovementActivation Action;
-        internal Vector2 Target, Aim, DoorPoint, ExpectedExit;
+        internal Vector2 Target, Aim, ExpectedExit;
+        internal CompanionDoor DoorOpened;
+        internal CompanionDoorFamily DoorFamily;
+        internal int DoorPass, DoorOpenedPass;
+        internal uint DoorOpenedAt;
         internal uint Started, NextSourceScan;
         internal long SourceGestureRevision;
         internal bool SourceChaos;
-        internal bool DoorNeedsClose, Prepared, HandPressed, ShapeHandExit;
+        internal bool DoorNeedsClose, Prepared, HandPressed, ShapeHandExit, AwaitingEquipmentObservation;
         internal Item Source;
         internal Item[] SourceItems;
         internal int SourceSlot = -1, PreviousSelection = -1, SourceType, SourceStack;

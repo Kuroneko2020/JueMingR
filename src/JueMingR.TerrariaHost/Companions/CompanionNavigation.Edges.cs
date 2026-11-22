@@ -85,6 +85,7 @@ namespace JueMingR.TerrariaHost.Companions
                         if (!TryJumpEdge(body, mobility, from, step.Direction, node.Previous < 0, 0, search.Terrain,
                             out step.To, out step.Duration, out _)) return false;
                         step.Kind = motion == RouteMotion.Rope ? RouteKind.RopeExit : RouteKind.Jump;
+                        step.Launch = new JumpInputs(body, mobility);
                         step.Cost = 32 + Vector2.Distance(step.To, from) * 1.05f;
                         motion = RouteMotion.Ground;
                         break;
@@ -92,7 +93,7 @@ namespace JueMingR.TerrariaHost.Companions
                         if (motion != RouteMotion.Ground) return false;
                         step.Direction = candidate == 5 ? 0 : candidate == 6 ? facing : -facing;
                         if (!TryDropEdge(body, from, step.Direction, search.Terrain, out step.To)) return false;
-                        step.Kind = step.Direction == 0 ? RouteKind.Drop : RouteKind.Descend;
+                        step.Kind = step.Direction == 0 ? RouteKind.Drop : RouteKind.LedgeDrop;
                         step.Cost = 26 + Vector2.Distance(step.To, from);
                         break;
                     case 8: case 9: case 10: case 11:
@@ -147,8 +148,13 @@ namespace JueMingR.TerrariaHost.Companions
                             !TryJumpEdge(body, mobility, from, step.Direction, node.Previous < 0, glideFuel, search.Terrain,
                                 out step.To, out step.Duration, out int glideSpend) || glideSpend == 0) return false;
                         step.Kind = RouteKind.GlideJump;
+                        step.Launch = new JumpInputs(body, mobility);
                         step.Cost = 58 + Vector2.Distance(step.To, from) + glideSpend * .3f;
                         glideFuel -= glideSpend;
+                        break;
+                    case 31: case 32:
+                        if (!TryTrapdoorEdge(body, from, candidate == 31 ? -1 : 1, search.Terrain, ref step, out motion)) return false;
+                        observe = true;
                         break;
                 }
             }
@@ -214,6 +220,8 @@ namespace JueMingR.TerrariaHost.Companions
             bool holding = true;
             bool wet = root ? mobility.Wet : WetAt(body, from);
             if (glideFuel > 0 && wet) return false;
+            float worldTop = Main.topWorld + 640;
+            bool useBorders = !Terraria.Testing.DebugOptions.noLimits && Main.rightWorld > Main.leftWorld + 1280;
             for (int tick = 0; tick < 90; tick++)
             {
                 if (direction != 0)
@@ -230,6 +238,16 @@ namespace JueMingR.TerrariaHost.Companions
                 if (velocity.Y * gravity < 0 && step.Velocity.Y * gravity >= 0) holding = false;
                 if (step.Wall && step.Velocity.Y * gravity >= 0) return false;
                 to = step.Position; velocity = step.Velocity;
+                if (useBorders && to.Y < worldTop)
+                {
+                    // The ordinary native upper border cancels upward
+                    // momentum without becoming a solid landing. Low-gravity
+                    // trajectories would otherwise spend the whole horizon
+                    // above the playable sky and miss the actual return.
+                    if (gravity < 0 || Main.remixWorld || body.forcedGravity > 0) return false;
+                    to.Y = worldTop;
+                    velocity.Y = Math.Max(velocity.Y, .11f);
+                }
                 if (step.Ground && tick > 0)
                     return (to.Y - from.Y) * gravity <= 48 &&
                         (direction == 0 ? (to.Y - from.Y) * gravity < -12 : direction * (to.X - from.X) >= 24);
@@ -498,20 +516,6 @@ namespace JueMingR.TerrariaHost.Companions
             return !float.IsPositiveInfinity(best);
         }
 
-        private static bool TryDoorEdge(Player body, Vector2 from, int direction, ReadSet terrain, out Vector2 door, out Vector2 to)
-        {
-            door = default(Vector2);
-            to = from + new Vector2(direction * (body.width + 18), 0);
-            int x = (int)(from.X + (direction > 0 ? body.width + 3 : -3)) / 16;
-            int y = (int)(from.Y + body.height - 12) / 16;
-            if (!terrain.Record(x, y) || !Main.tile[x, y].active()) return false;
-            int type = Main.tile[x, y].type;
-            if (type != TileID.ClosedDoor && type != TileID.TallGateClosed || !Surface(body, to, terrain) ||
-                !Swept(body, from, to - from, terrain, door: true)) return false;
-            door = new Vector2(x * 16 + 8, y * 16 + 8);
-            return true;
-        }
-
         private static bool TryHookEdge(Player body, CompanionMobilitySnapshot mobility, RouteNode node, Vector2 target,
             int direction, ReadSet terrain, ref RouteStep step)
         {
@@ -577,13 +581,20 @@ namespace JueMingR.TerrariaHost.Companions
             }
             else
             {
-                bool flight = mobility.FlightMountType >= 0 && target.Y < body.position.Y - 56 && !mobility.UnlimitedWings;
+                float height = (body.position.Y - target.Y) * body.gravDir;
+                // Native flight from the present form is useful before a tool
+                // switch. Near exhaustion, hand over before dropping back to
+                // the floor when a real remaining ascent still needs thrust.
+                int remainingFlight = FlightBudget(mobility);
+                bool needsMount = motion == RouteMotion.Ground ? !CanPowerAscent(mobility) :
+                    motion == RouteMotion.Air && remainingFlight <= 10 && height > remainingFlight * 4 + 24;
+                bool flight = mobility.FlightMountType >= 0 && body.gravDir > 0 && height > 48 && needsMount;
                 bool water = motion == RouteMotion.Liquid && mobility.WaterMountType >= 0;
                 bool narrow = motion == RouteMotion.Ground && mobility.NarrowMountType >= 0 && direction != 0 &&
                     !TryWalkEdge(body, body.position, direction, null, out _) && NarrowLane(body, mobility, direction);
                 bool running = mobility.DefaultMountType >= 0 && motion == RouteMotion.Ground &&
                     Math.Abs(target.X - body.position.X) >= 270 && SupportedLane(body, direction, 80, steps: false, out _);
-                if (mobility.HandBusy || (!flight || motion != RouteMotion.Ground) && !running && !water && !narrow ||
+                if (mobility.HandBusy || !flight && !running && !water && !narrow ||
                     unchecked(Main.GameUpdateCount - postureChangedAt) < 90 && postureChangedAt != 0) return false;
                 step.Kind = RouteKind.Mount;
                 step.ItemSlot = narrow ? mobility.NarrowMountSlot : water ? mobility.WaterMountSlot : flight ? mobility.FlightMountSlot : mobility.DefaultMountSlot;

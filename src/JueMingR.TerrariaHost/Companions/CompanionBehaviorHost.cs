@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.Companions
         private bool wasFollowing = true, hasStand;
         private Vector2 stand, lastAir, ownerRest, progress;
         private bool hasAir, hadOwner;
+        private Player planningOwner;
         private int stalled, threatStamp;
         private NPC lateralTarget;
         private Item lateralWeapon;
@@ -42,6 +43,8 @@ namespace JueMingR.TerrariaHost.Companions
             if (!hasStand || wasFollowing && !behavior.Follow) { stand = body.Center; hasStand = true; }
             wasFollowing = behavior.Follow;
             bool ownerAvailable = owner != null && owner.active && !owner.dead;
+            bool ownerChanged = hadOwner != ownerAvailable || ownerAvailable && !ReferenceEquals(planningOwner, owner);
+            planningOwner = ownerAvailable ? owner : null;
             if (!ownerAvailable && hadOwner) ownerRest = body.Center;
             if (!hadOwner && !ownerAvailable && ownerRest == Vector2.Zero) ownerRest = body.Center;
             hadOwner = ownerAvailable;
@@ -78,7 +81,7 @@ namespace JueMingR.TerrariaHost.Companions
             int stopDistance = reposition ? 10 : 32, resumeDistance = reposition ? 18 : 56;
             if (mobility != null && mobility.Observed.Ready)
             {
-                if (anchorChanged) navigation.CancelRoute();
+                if (anchorChanged || behavior.Follow && ownerChanged) navigation.CancelRoute();
                 grounded = grounded || CompanionNavigation.HasMobilitySupport(body, mobility.Observed);
                 if (danger || needsAir)
                     return navigation.Escape(body, mobility, target, grounded, needsAir, lavaDanger, threatEscape, jumpClear);
