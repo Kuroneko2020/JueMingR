@@ -69,6 +69,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal RouteMotion OriginMotion;
             internal int OriginFuel, OriginGlideFuel;
             internal bool RodAvailable, AttachedAtRoot;
+            internal JumpInputs OriginJumpInputs;
             private Vector2 priorityGoal, scoreOrigin;
             private int priorityRevision, nextRedirect;
             internal int Expanding, Candidate, Closest, TerrainCursor, Window, Capabilities;
@@ -261,9 +262,10 @@ namespace JueMingR.TerrariaHost.Companions
                 root == RouteMotion.Hooked && mobility.GrappleAttached != search.AttachedAtRoot ||
                 Vector2.DistanceSquared(body.position, search.Origin) > 42 * 42;
             int fuel = FlightBudget(mobility), glide = GlideBudget(mobility);
-            bool newSupply = search.Exhausted && (fuel > search.OriginFuel || glide > search.OriginGlideFuel ||
-                mobility.CanUseRod && !search.RodAvailable);
-            moved |= newSupply;
+            var jumpInputs = new JumpInputs(body, mobility);
+            bool changedAbility = search.Exhausted && (fuel > search.OriginFuel || glide > search.OriginGlideFuel ||
+                mobility.CanUseRod && !search.RodAvailable || !search.OriginJumpInputs.Equals(jumpInputs));
+            moved |= changedAbility;
             search.RodAvailable = mobility.CanUseRod;
             if (search.Exhausted && sameGeometry && !moved && changed.Width == 0 &&
                 Vector2.DistanceSquared(target, search.Goal) < 48 * 48 &&
@@ -275,6 +277,7 @@ namespace JueMingR.TerrariaHost.Companions
                 lastRejectedPublication = -1;
                 int window = sameGeometry && search.Exhausted && !moved ? Math.Min(1024, search.Window * 2) : 256;
                 search.Begin(body.position, target, root, fuel, glide, window, capabilities);
+                search.OriginJumpInputs = jumpInputs;
 #if DEBUG
                 RouteSearchStarts++;
 #endif
@@ -289,6 +292,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if (moved)
                 {
                     search.Join(body.position, root, fuel, glide);
+                    search.OriginJumpInputs = jumpInputs;
                     search.NeedsLiveRoot = false;
                 }
                 search.Active = true; search.Exhausted = false;

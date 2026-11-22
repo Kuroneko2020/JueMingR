@@ -495,10 +495,18 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<240;i++) NativeStep(host,body);
                 int newStarts=(int)Get(navigationPlan,"RouteSearchStarts")-starts, newWork=(int)Get(navigationPlan,"RouteWork")-work;
                 Require(newStarts==0 && newWork==0,"a known closed local result does not periodically restart an unchanged whole search");
+                var mobility = Get(actor,"Mobility");
+                float oldJump = (float)Get(Get(mobility,"Observed"),"JumpSpeed");
+                body.armor[3] = new Item(ItemID.FrogLeg);
+                for(int i=0;i<75;i++) NativeStep(host,body);
+                float strongerJump = (float)Get(Get(mobility,"Observed"),"JumpSpeed");
+                int replacementWork = (int)Get(navigationPlan,"RouteWork")-work;
+                Require(strongerJump > oldJump && replacementWork > 0 && body.position.X < 65*16,
+                    "an actual native jump equipment improvement wakes the settled closed proof with unchanged room and goal");
                 for(int y=84;y<89;y++) Main.tile[65,y]=new Tile();
                 int response=-1;
                 for(int i=0;i<150;i++) { NativeStep(host,body); if(response<0 && body.controlRight) response=i; }
-                Console.WriteLine($"FOLLOW CLOSED ROOM waitingStarts={newStarts} waitingWork={newWork} openedResponse={response} body={body.position}");
+                Console.WriteLine($"FOLLOW CLOSED ROOM waitingStarts={newStarts} waitingWork={newWork} newJump={oldJump:F2}/{strongerJump:F2} newWork={replacementWork} openedResponse={response} body={body.position}");
                 Require(response>=0 && response<10 && body.position.X>66*16,"opening the real relevant obstruction wakes actual follow and the actor leaves its room");
             }
             finally
