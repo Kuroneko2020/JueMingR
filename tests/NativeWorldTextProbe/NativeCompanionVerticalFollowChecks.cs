@@ -20,7 +20,7 @@ namespace NativeWorldTextProbe
         private const int Width = 160;
         private const int Height = 160;
 
-        internal static void Run(object context)
+        internal static void Run(object context, string comparisonFocus = null)
         {
             new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player), "Spawn"),
                 HarmonyPatchType.Prefix, "JueMingR.Tests.QuickItemOutlets");
@@ -44,8 +44,13 @@ namespace NativeWorldTextProbe
                 Main.maxTilesX = Width; Main.maxTilesY = Height;
                 Main.rightWorld = Width * 16; Main.bottomWorld = Height * 16;
                 Terraria.Initializers.WingStatsInitializer.Load();
-                foreach (Action<object, object, Player> scenario in new Action<object, object, Player>[]
-                    { Platform, Ledge, UnsafeLedge, StarboardFlight, Sequence, HoverTransitions, ChangedFallEquipment, ChangedShaftLiquid, ChangedLedgeWall })
+                var existing = new Action<object, object, Player>[]
+                    { Platform, Ledge, UnsafeLedge, StarboardFlight, Sequence, HoverTransitions, ChangedFallEquipment, ChangedShaftLiquid, ChangedLedgeWall };
+                var terrain = new Action<object, object, Player>[]
+                    { NativeCompanionDoorFollowChecks.HalfBrick, LowCeiling, DescendingDetour, RetainedPlan, LiquidEntry, NativeCompanionFacilityFollowChecks.PylonFollow };
+                var scenarios = comparisonFocus == "terrain" ? terrain : comparisonFocus == "vertical" ? existing :
+                    System.Linq.Enumerable.Concat(existing, terrain);
+                foreach (Action<object, object, Player> scenario in scenarios)
                 {
                     try { scenario(host, profiles, human); }
                     catch (BusinessAssertionException failure)
@@ -55,7 +60,7 @@ namespace NativeWorldTextProbe
                     }
                 }
                 firstFailure?.Throw();
-                Console.WriteLine("PASS production Follow: platform, supported ledge, deep-gap guard, real 4954 flight and mixed native transition.");
+                Console.WriteLine("PASS production Follow: observed native exits, search handoff and continuous motion.");
             }
             finally
             {
@@ -513,7 +518,7 @@ namespace NativeWorldTextProbe
             public override string ToString() => FormattableString.Invariant($"[frames={frames} meanY={MeanY:F1} meanX={MeanX:F1} peakX={PeakX:F1} nearRun={LongestNear} neutralRun={LongestNeutral} fastRun={LongestFast} turnsY={Oscillations} turnsInputX={InputTurns} wrongInputX={WrongInputs} right={Right:F1} left={Left:F1}]");
         }
 
-        private sealed class Scenario : IDisposable
+        internal sealed class Scenario : IDisposable
         {
             private readonly object host, profiles;
             private readonly Player human;
@@ -551,10 +556,10 @@ namespace NativeWorldTextProbe
                 catch { Dispose(); throw; }
             }
 
-            internal void StepToward(Vector2 target, Vector2 maximum)
+            internal long StepToward(Vector2 target, Vector2 maximum, bool measure = false)
             {
                 var delta = target - human.Bottom;
-                StepOwner(Vector2.Clamp(delta, -maximum, maximum));
+                return StepOwner(Vector2.Clamp(delta, -maximum, maximum), measure);
             }
 
             internal long StepOwner(Vector2 motion, bool measure = false)

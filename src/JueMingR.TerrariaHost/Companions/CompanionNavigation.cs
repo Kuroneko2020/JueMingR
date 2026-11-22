@@ -160,7 +160,8 @@ namespace JueMingR.TerrariaHost.Companions
             }
             return true;
         }
-        private static bool Move(Player body,Vector2 position,Vector2 velocity,bool platforms,bool steps,out Step result,ReadSet record=null)
+        private static bool Move(Player body,Vector2 position,Vector2 velocity,bool platforms,bool steps,out Step result,ReadSet record=null,
+            bool throughDoor=false)
         {
 #if DEBUG
             if(record!=null)record.Moves++;
@@ -169,22 +170,33 @@ namespace JueMingR.TerrariaHost.Companions
             if(!Footprint(body,position,velocity,record))return false;
             if(steps && platforms)
             {
-                Vector4 down=Collision.WalkDownSlope(position,velocity,body.width,body.height,body.gravity);
+                Vector4 down=throughDoor ? CompanionDoorCollision.WalkDownSlope(position,velocity,body.width,body.height,body.gravity) :
+                    Collision.WalkDownSlope(position,velocity,body.width,body.height,body.gravity);
                 position=new Vector2(down.X,down.Y);velocity=new Vector2(down.Z,down.W);
                 float stepSpeed=0,gfx=0;
-                if(velocity.Y==body.gravity)Collision.StepDown(ref position,ref velocity,body.width,body.height,ref stepSpeed,ref gfx,1,body.waterWalk||body.waterWalk2);
-                if(velocity.Y>=body.gravity && !body.controlDown)Collision.StepUp(ref position,ref velocity,body.width,body.height,ref stepSpeed,ref gfx,1,body.controlUp);
+                bool waterWalk = body.waterWalk || body.waterWalk2;
+                if(velocity.Y==body.gravity)
+                {
+                    if(throughDoor) CompanionDoorCollision.StepDown(ref position,ref velocity,body.width,body.height,ref stepSpeed,ref gfx,1,waterWalk);
+                    else Collision.StepDown(ref position,ref velocity,body.width,body.height,ref stepSpeed,ref gfx,1,waterWalk);
+                }
+                if(velocity.Y>=body.gravity && !body.controlDown)
+                {
+                    if(throughDoor) CompanionDoorCollision.StepUp(ref position,ref velocity,body.width,body.height,ref stepSpeed,ref gfx,1,body.controlUp,0);
+                    else Collision.StepUp(ref position,ref velocity,body.width,body.height,ref stepSpeed,ref gfx,1,body.controlUp);
+                }
                 if(!Footprint(body,position,velocity,record))return false;
             }
-            Vector2 actual=Collision.TileCollision(position,velocity,body.width,body.height,!platforms,!platforms);
+            Vector2 actual=ResolveGroundContact(body,position,velocity,platforms,throughDoor);
             bool ground=velocity.Y>0 && actual.Y<velocity.Y;
             bool wall=Math.Abs(actual.X-velocity.X)>.1f;
             position+=actual; Vector2 advanced=position;
-            Vector4 slope=Collision.SlopeCollision(position,actual,body.width,body.height,body.gravity,!platforms);
+            Vector4 slope=throughDoor ? CompanionDoorCollision.SlopeCollision(position,actual,body.width,body.height,body.gravity,!platforms,false) :
+                Collision.SlopeCollision(position,actual,body.width,body.height,body.gravity,!platforms);
             position=new Vector2(slope.X,slope.Y);
             ground |= velocity.Y>=0 && position.Y<advanced.Y-.001f && slope.W<=0;
             result=new Step{Position=position,Velocity=new Vector2(slope.Z,slope.W),Ground=ground,Wall=wall,Known=Footprint(body,position,Vector2.Zero,record)};
-            return result.Known && ClearBody(body,position) && (body.lavaImmune || !Collision.LavaCollision(position,body.width,body.height));
+            return result.Known && ClearBody(body,position,throughDoor) && (body.lavaImmune || !Collision.LavaCollision(position,body.width,body.height));
         }
         internal static bool Supported(Player body,Vector2 position,bool platforms=true)
         {
@@ -198,19 +210,106 @@ namespace JueMingR.TerrariaHost.Companions
             using(Scratch.Save())return Footprint(body,position,Vector2.Zero) && ClearBody(body,position) &&
                 (body.lavaImmune || !Collision.LavaCollision(position,body.width,body.height));
         }
-        private static bool ClearBody(Player body,Vector2 position)
+        private static bool ClearBody(Player body,Vector2 position,bool throughDoor=false)
         {
-            if(!Collision.SolidCollision(position,body.width,body.height))return true;
+            bool overlaps = throughDoor ? CompanionDoorCollision.SolidCollision(position,body.width,body.height) :
+                Collision.SolidCollision(position,body.width,body.height);
+            if(!overlaps)return true;
             int minX=(int)position.X/16,maxX=(int)(position.X+body.width-.01f)/16;
             int minY=(int)position.Y/16,maxY=(int)(position.Y+body.height-.01f)/16;
             for(int x=minX;x<=maxX;x++)for(int y=minY;y<=maxY;y++)
             {
-                var tile=Main.tile[x,y];
+                var tile=throughDoor ? CompanionDoorCollision.ReadTile(Main.tile,x,y) : Main.tile[x,y];
                 if(!tile.active() || tile.inActive() || !Main.tileSolid[tile.type] || Main.tileSolidTop[tile.type] || tile.slope()!=0)continue;
                 if(position.Y+body.height>y*16+(tile.halfBrick()?8:0) && position.Y<(y+1)*16)return false;
             }
-            Vector4 slope=Collision.SlopeCollision(position,Vector2.Zero,body.width,body.height,body.gravity);
+            Vector4 slope=throughDoor ? CompanionDoorCollision.SlopeCollision(position,Vector2.Zero,body.width,body.height,body.gravity,false,false) :
+                Collision.SlopeCollision(position,Vector2.Zero,body.width,body.height,body.gravity);
             return Vector2.DistanceSquared(position,new Vector2(slope.X,slope.Y))<=4;
+        }
+
+        private static Vector2 ResolveGroundContact(Player body, Vector2 from, Vector2 velocity, bool platforms, bool throughDoor)
+        {
+            int direction = body.gravDir < 0 ? -1 : 1;
+            var actual = throughDoor ? CompanionDoorCollision.TileCollision(from, velocity, body.width, body.height,
+                !platforms, !platforms, direction, false, false, true) :
+                Collision.TileCollision(from, velocity, body.width, body.height, !platforms, !platforms, direction);
+            if (direction < 0 || !platforms || actual.Y <= 0 || body.wet || !(body.waterWalk || body.waterWalk2)) return actual;
+            // DryCollision checks the liquid surface after solid collision.
+            // Limit shared support to the confirmed ordinary-water contact.
+            var liquid = Collision.WaterCollision(from, actual, body.width, body.height, lavaWalk: false);
+            if (liquid.Y == actual.Y) return actual;
+            float bottom = from.Y + liquid.Y + body.height;
+            int row = (int)Math.Floor((bottom + .01f) / 16);
+            int left = (int)Math.Floor((from.X + liquid.X) / 16);
+            int right = (int)Math.Floor((from.X + liquid.X + body.width - .01f) / 16);
+            for (int x = left; x <= right; x++)
+            {
+                Tile tile = Main.tile[x, row];
+                if (tile.liquid > 0 && tile.water() && Math.Abs((row + 1) * 16 - (tile.liquid / 32 * 2 + 2) - bottom) < .1f)
+                    return liquid;
+            }
+            return actual;
+        }
+
+        private static bool HasSurface(Player body, Vector2 from, ReadSet terrain, bool platforms = true, bool throughDoor = false)
+        {
+            var delta = new Vector2(0, body.gravDir < 0 ? -2 : 2);
+            return Footprint(body, from, delta, terrain) && Math.Abs(ResolveGroundContact(body, from, delta, platforms, throughDoor).Y) < 2;
+        }
+
+        private static bool TrySupportedTravel(Player body, Vector2 from, int direction, float distance, ReadSet terrain,
+            out Vector2 to, out bool wall, bool steps = true, bool proveBrakingSurface = false, bool throughDoor = false,
+            bool rejectDangerLiquids = false)
+        {
+            to = from;
+            wall = false;
+            // The same short native steps produce the projected support pose
+            // for local control, graph connections and a horizontal fixture.
+            // A dash or other no-step query has to keep its horizontal
+            // braking lane. StepUp and small falls cannot extend its proof.
+            int stride = steps ? 4 : 8;
+            for (float traveled = 0; traveled < distance; traveled += stride)
+            {
+                float dx = direction * Math.Min(stride, distance - traveled);
+                Vector2 before = to;
+                if (body.gravDir < 0 || !steps)
+                {
+                    var across = new Vector2(dx, 0);
+                    if (throughDoor)
+                    {
+                        if (!Footprint(body, to, across, terrain) ||
+                            Vector2.DistanceSquared(ResolveGroundContact(body, to, across, true, true), across) >= .25f ||
+                            !ClearBody(body, to + across, throughDoor: true)) return false;
+                    }
+                    else if (!Swept(body, to, across, terrain)) return false;
+                    if (!HasSurface(body, to + across, terrain, throughDoor: throughDoor)) return false;
+                    to += across;
+                }
+                else
+                {
+                    if (!Move(body, to, new Vector2(dx, Math.Max(.1f, body.gravity)), true, true, out Step step, terrain, throughDoor)) return false;
+                    if (step.Wall) { wall = true; return false; }
+                    to = step.Position;
+                    if (!step.Ground && !HasSurface(body, to, terrain, throughDoor: throughDoor)) return false;
+                }
+                if (rejectDangerLiquids && !BodyLiquidClear(body, before, to, ordinaryOnly: false)) return false;
+                if (proveBrakingSurface && !SteadyBrakingSurface(body, to)) return false;
+            }
+            return true;
+        }
+
+        private static bool BodyLiquidClear(Player body, Vector2 from, Vector2 to, bool ordinaryOnly)
+        {
+            Vector2 near = Vector2.Min(from, to), far = Vector2.Max(from, to) + body.Size - new Vector2(.01f);
+            Point first = near.ToTileCoordinates(), last = far.ToTileCoordinates();
+            for (int x = first.X; x <= last.X; x++)
+                for (int y = first.Y; y <= last.Y; y++)
+                {
+                    Tile tile = Main.tile[x, y];
+                    if (tile.liquid > 0 && (ordinaryOnly ? !tile.water() : tile.lava() || tile.shimmer())) return false;
+                }
+            return true;
         }
         internal static bool CurrentKnown(Player body)
         { return !Ordinary(body) || Footprint(body,body.position,body.velocity); }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -11,6 +12,76 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCompanionDoorFollowChecks
     {
+        internal static void HalfBrick(object host, object profiles, Player human)
+        {
+            ExceptionDispatchInfo first = null;
+            for (int scene = 0; scene < 3; scene++)
+                try { HalfBrickPassage(host, profiles, human, scene == 1, scene == 2); }
+                catch (Exception error) { Console.WriteLine(error); if (first == null) first = ExceptionDispatchInfo.Capture(error); }
+            first?.Throw();
+        }
+
+        private static void HalfBrickPassage(object host, object profiles, Player human, bool openAtStart, bool lowHeadroom)
+        {
+            const int door = 96, floor = 73, approach = door * 16 - 96;
+            string name = lowHeadroom ? "door-low-roof" : openAtStart ? "door-already-open" : "door-halfbrick";
+            using (var run = new NativeCompanionVerticalFollowChecks.Scenario(host, profiles, human, name, approach, floor, () =>
+            {
+                for (int x = 76; x <= 114; x++)
+                {
+                    TileAt(x, floor, TileID.Stone);
+                    Main.tile[x, floor].halfBrick(x > door);
+                    for (int y = 65; y < floor - 3; y++) TileAt(x, y, TileID.Stone);
+                }
+                for (int row = 0; row < 3; row++)
+                {
+                    TileAt(door, floor - 3 + row, openAtStart ? TileID.OpenDoor : TileID.ClosedDoor, 0, row * 18);
+                    if (openAtStart) TileAt(door + 1, floor - 3 + row, TileID.OpenDoor, 18, row * 18);
+                }
+                if (lowHeadroom)
+                    for (int x = door + 2; x <= door + 8; x++) TileAt(x, floor - 3, TileID.Stone);
+            }))
+            {
+                Player body = run.Body;
+                Vector2 exterior = new Vector2((door + 10) * 16, floor * 16 + 8);
+                human.Bottom = exterior;
+                int opened = -1, crossed = -1, downstep = -1, resumed = -1;
+                for (int tick = 0; tick < 240; tick++)
+                {
+                    run.StepOwner(Vector2.Zero);
+                    if (opened < 0 && Main.tile[door, floor - 2].type == TileID.OpenDoor) opened = tick;
+                    if (crossed < 0 && body.Left.X > (door + 1) * 16 + 3) crossed = tick;
+                    if (downstep < 0 && body.Left.X > (door + 1) * 16 && Math.Abs(body.Bottom.Y - exterior.Y) < .2f && body.velocity.Y == 0)
+                        downstep = tick;
+                    if (downstep >= 0 && body.Center.X > exterior.X - 35) { resumed = tick; break; }
+                }
+                Console.WriteLine($"FOLLOW halfbrick door openStart={openAtStart} blocked={lowHeadroom} opened={opened} crossed={crossed} treadDown={downstep} resumed={resumed} body={body.Bottom} status={Get(run.Actor, "Status")}");
+                if (lowHeadroom)
+                {
+                    Require(opened < 0 && crossed < 0 && body.Right.X <= door * 16 + 1,
+                        "a real near-door ceiling with less than body clearance blocks departure");
+                    return;
+                }
+                Require(opened >= 0 && crossed > opened && downstep >= opened && resumed > crossed,
+                    "ordinary Follow opens or uses the real door and treads down onto the exterior half-brick before continuing");
+                if (openAtStart) return;
+                Require(Main.tile[door, floor - 2].type == TileID.ClosedDoor, "the real closed door is restored after the first passage");
+
+                human.Bottom = new Vector2(approach, floor * 16);
+                int reverse = -1, upstep = -1, returned = -1;
+                for (int tick = 0; tick < 240; tick++)
+                {
+                    run.StepOwner(Vector2.Zero);
+                    if (reverse < 0 && Main.tile[door, floor - 2].type == TileID.OpenDoor) reverse = tick;
+                    if (upstep < 0 && reverse >= 0 && Math.Abs(body.Bottom.Y - floor * 16) < .2f && body.velocity.Y == 0) upstep = tick;
+                    if (upstep >= 0 && body.Center.X < approach + 35) { returned = tick; break; }
+                }
+                Console.WriteLine($"FOLLOW halfbrick reverse reopened={reverse} treadUp={upstep} resumed={returned} body={body.Bottom} status={Get(run.Actor, "Status")}");
+                Require(reverse >= 0 && upstep >= reverse && returned > upstep && Main.tile[door, floor - 2].type == TileID.ClosedDoor,
+                    "the same recovered door reopens as the actual body treads up from half-brick and follows into the interior");
+            }
+        }
+
         internal static void Run(object host, object actor, Player body, Player human)
         {
             const int doorX = 96, floor = 73;

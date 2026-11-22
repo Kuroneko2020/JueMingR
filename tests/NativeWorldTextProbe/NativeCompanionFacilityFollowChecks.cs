@@ -3,14 +3,109 @@ using System.Collections.Generic;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.DataStructures;
 using Terraria.GameContent;
+using Terraria.GameContent.NetModules;
 using Terraria.ID;
+using Terraria.Net;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
 {
     internal static class NativeCompanionFacilityFollowChecks
     {
+        internal static void PylonFollow(object host, object profiles, Player human)
+        {
+            const int source = 46, destination = 108, floor = 73, pylonY = floor - 4;
+            var savedSystem = Main.PylonSystem;
+            double savedSurface = Main.worldSurface;
+            var guide = Main.npc[0];
+            var merchant = Main.npc[1];
+            try
+            {
+                Main.PylonSystem = new TeleportPylonsSystem();
+                Main.worldSurface = pylonY - 12;
+                if (NetManager.Instance.GetModule<NetTeleportPylonModule>() == null) NetManager.Instance.Register<NetTeleportPylonModule>();
+                using (var run = new NativeCompanionVerticalFollowChecks.Scenario(host, profiles, human, "pylon-follow", source * 16 + 8, floor, () =>
+                {
+                    Floor(43, 68, floor);
+                    Floor(101, 118, floor);
+                    Floor(43, 118, floor + 36);
+                }))
+                {
+                    human.Bottom = new Vector2((destination + 2) * 16, floor * 16);
+                    for (int tick = 0; tick < 48; tick++) run.StepOwner(Vector2.Zero);
+                    Require(run.Body.Right.X < 70 * 16 && run.Body.Bottom.Y <= floor * 16 + 1,
+                        "normal Follow has no safe crossing of this deep gap with no registered facilities");
+
+                    var entry = PlacePylon(source, pylonY, TeleportPylonType.Victory);
+                    var exit = PlacePylon(destination, pylonY, TeleportPylonType.Underground);
+                    Main.npc[0] = PylonResident(NPCID.Guide, 0, destination + 5, floor);
+                    Main.npc[1] = PylonResident(NPCID.Merchant, 1, destination + 6, floor);
+                    Vector2 owner = human.Bottom;
+                    int arrived = -1;
+                    Vector2 actualEntry = default, actualExit = default;
+                    var state = Get(run.Actor, "Mobility");
+                    for (int tick = 0; tick < 220; tick++)
+                    {
+                        Vector2 before = run.Body.position;
+                        run.StepOwner(Vector2.Zero);
+                        if (Vector2.DistanceSquared(before, run.Body.position) < 112 * 112) continue;
+                        actualEntry = before; actualExit = run.Body.position;
+                        arrived = tick; break;
+                    }
+                    Vector2 exitPoint = exit.PositionInTiles.ToWorldCoordinates();
+                    string action = Get(state, "Action").ToString(), result = Get(state, "Result").ToString();
+                    Require(arrived >= 0 && action == "Pylon" && result == "Completed" && human.Bottom == owner &&
+                        Math.Abs(actualExit.X - exitPoint.X) < 2 && Math.Abs(actualExit.Y + run.Body.height - floor * 16) < 2,
+                        $"normal Follow uses the registered pylon and reaches solid ground at its authentic exit (entry={actualEntry}, exit={actualExit}, action={action}, result={result}, status={Get(run.Actor, "Status")})");
+
+                    int walked = -1;
+                    for (int tick = 0; tick < 125; tick++)
+                    {
+                        run.StepToward(owner + new Vector2(105, 0), new Vector2(2.5f, 0));
+                        if (run.Body.Center.X > owner.X + 42 && run.Body.Bottom.Y == floor * 16 && run.Body.controlRight)
+                        { walked = tick; break; }
+                    }
+                    Console.WriteLine($"FOLLOW pylon source={entry.PositionInTiles} target={exit.PositionInTiles} arrived={arrived} before={actualEntry} after={actualExit} resumed={walked}");
+                    Require(walked >= 0, "the same actor follows the moving owner on foot from the observed native pylon exit");
+                }
+            }
+            finally
+            {
+                Main.npc[0] = guide; Main.npc[1] = merchant;
+                Main.worldSurface = savedSurface;
+                Main.PylonSystem = savedSystem;
+            }
+        }
+
+        private static TeleportPylonInfo PlacePylon(int x, int y, TeleportPylonType style)
+        {
+            var info = new TeleportPylonInfo { PositionInTiles = new Point16(x, y), TypeOfPylon = style };
+            for (int column = 0; column < 3; column++)
+                for (int row = 0; row < 4; row++)
+                {
+                    Tile tile = TileAt(x + column, y + row, TileID.TeleportationPylon);
+                    tile.frameX = (short)((int)style * 54 + column * 18);
+                    tile.frameY = (short)(row * 18);
+                }
+            Main.PylonSystem.AddForClient(info);
+            return info;
+        }
+
+        private static NPC PylonResident(int type, int slot, int x, int floor)
+        {
+            var npc = new NPC();
+            npc.SetDefaults(type);
+            npc.active = true;
+            npc.whoAmI = slot;
+            npc.homeless = false;
+            npc.homeTileX = x;
+            npc.homeTileY = floor - 1;
+            npc.position = new Vector2(x * 16, floor * 16 - npc.height);
+            return npc;
+        }
+
         internal static void Run(object host, object actor, Player body, Player human)
         {
             var profile = (CompanionProfile)Get(actor, "Profile");

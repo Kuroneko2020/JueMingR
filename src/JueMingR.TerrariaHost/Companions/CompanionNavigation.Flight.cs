@@ -6,6 +6,9 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal sealed partial class CompanionNavigation
     {
+        private bool roofProbeSet;
+        private Vector2 roofProbePosition;
+
         private static bool HasWingThrust(CompanionMobilitySnapshot mobility) =>
             mobility.WingAbilities && (mobility.WingTime > 0 || mobility.UnlimitedWings);
 
@@ -61,6 +64,110 @@ namespace JueMingR.TerrariaHost.Companions
             bool clear = DriveFlight(body, mobility, RouteMotion.Air, goal, targetVelocity, spacing, height, out frame);
             return clear && (frame.Move != 0 || frame.Vertical != 0 || frame.Jump ||
                 Math.Abs(goal.X - body.position.X) <= spacing + 8 && Math.Abs(goal.Y - body.position.Y) <= 32);
+        }
+
+        private bool TryAirRetreat(Player body, CompanionMobilityState state, CompanionMobilitySnapshot mobility,
+            Vector2 goal, bool allowPlanning, out CompanionMobilityFrame frame, out bool spentPlanning)
+        {
+            frame = default;
+            spentPlanning = false;
+            int gravity = body.gravDir < 0 ? -1 : 1;
+            int facing = Math.Sign(goal.X - body.position.X);
+            using (Scratch.Save())
+            {
+                bool ahead = facing != 0 && !NextClear(body, facing, 0);
+                bool above = (goal.Y - body.position.Y) * gravity < 0 && !NextClear(body, 0, -gravity);
+                if (!ahead && !above) return false;
+
+                var step = new RouteStep { From = body.position, To = body.position, Retreat = true, ObserveAfter = true };
+                bool foundSide = false;
+                if (above && !ahead && allowPlanning && (mobility.MountHover || mobility.WingHover && HasWingThrust(mobility)) &&
+                    (!roofProbeSet || Vector2.DistanceSquared(body.position, roofProbePosition) >= 16 * 16))
+                {
+                    roofProbeSet = true;
+                    roofProbePosition = body.position;
+                    foundSide = TryOverheadExit(body, goal, gravity, ref step);
+                    spentPlanning = true;
+                }
+                if (!foundSide && (!ahead || !ProveAirRetreat(body, mobility, facing, ref step)) ||
+                    RecentlyRejected(step)) return false;
+
+                // A verified release is an ordinary short route action. It
+                // keeps owning input until a real pose below the obstruction
+                // is reached, and a selected planning slice can look ahead.
+                ReleaseRoute();
+                route.Add(step);
+                routeGoal = goal;
+                if (ExecuteStep(body, state, mobility, RouteMotion.Air, step, out frame, out _)) return true;
+                RejectStep(step);
+                return false;
+            }
+        }
+
+        private bool TryOverheadExit(Player body, Vector2 goal, int gravity, ref RouteStep step)
+        {
+            int away = goal.X >= body.position.X ? -1 : 1;
+            bool awayClear = true, towardClear = true;
+            const int stride = 16;
+            // Only an actual head obstruction gets this selected slice.
+            // Each side's tests stop at its first blocked native sweep.
+            for (int span = stride; span <= 96 && (awayClear || towardClear); span += stride)
+            {
+                int direction = 0;
+                if (awayClear && ProbeOverheadSide(body, away, gravity, span, ref awayClear)) direction = away;
+                else if (towardClear && ProbeOverheadSide(body, -away, gravity, span, ref towardClear)) direction = -away;
+                if (direction == 0) continue;
+                step.Kind = RouteKind.AirAcross;
+                step.Direction = direction;
+                step.Vertical = -gravity;
+                step.To += new Vector2(direction * span, 0);
+                return true;
+            }
+            return false;
+        }
+
+        private bool ProbeOverheadSide(Player body, int direction, int gravity, int span, ref bool open)
+        {
+#if DEBUG
+            RouteCandidateChecks++;
+            RouteWork += 12;
+#endif
+            var delta = new Vector2(direction * 16, 0);
+            var at = body.position + new Vector2(direction * span, 0);
+            open = Swept(body, at - delta, delta, null);
+            return open && Swept(body, at, new Vector2(0, -20 * gravity), null);
+        }
+
+        private static bool ContinueAirRetreat(Player body, CompanionMobilitySnapshot mobility, Vector2 goal, ref RouteStep step)
+        {
+            int facing = Math.Sign(goal.X - body.position.X);
+            var across = new Vector2(facing * 28, 0);
+            if (facing == 0) return false;
+            step.From = step.To = body.position;
+            if (Swept(body, body.position, across, null))
+            {
+                // Clear the side of the obstruction before pointing up
+                // again. The next leg uses a mode that can actually hold its
+                // altitude; ordinary wings can still search a released arc.
+                if (!mobility.MountHover && !(mobility.WingHover && HasWingThrust(mobility))) return false;
+                step.Kind = RouteKind.AirAcross;
+                step.Direction = facing;
+                step.Vertical = 0;
+                step.To += across;
+                return true;
+            }
+            // A blocked side still owns this descent, even when a momentary
+            // upward input can be issued underneath the same roof. Keep the
+            // next verified short vertical piece rather than returning to it.
+            return ProveAirRetreat(body, mobility, facing, ref step);
+        }
+
+        private static bool ProveAirRetreat(Player body, CompanionMobilitySnapshot mobility, int facing, ref RouteStep step)
+        {
+            var node = new RouteNode { Position = body.position, Motion = RouteMotion.Air, Previous = -1 };
+            int fuel = FlightBudget(mobility), glide = GlideBudget(mobility);
+            return TryAirEdge(body, mobility, node, 33, facing, null, ref step, ref fuel, ref glide, out RouteMotion exit) &&
+                (exit != RouteMotion.Air || CanPowerAscent(mobility) || SafeFreeFlight(body, mobility));
         }
 
         private static bool SurfaceArrival(Player body, Vector2 goal, Vector2 velocity, int spacing)

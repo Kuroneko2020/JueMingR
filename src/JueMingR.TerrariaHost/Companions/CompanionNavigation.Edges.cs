@@ -44,7 +44,7 @@ namespace JueMingR.TerrariaHost.Companions
                 case 0: case 1: return motion == RouteMotion.Ground ? 20 : 1;
                 case 2: case 3: case 4: return motion == RouteMotion.Ground || motion == RouteMotion.Rope ? 94 : 1;
                 case 5: case 6: case 7: return motion == RouteMotion.Ground ? DescentWork : 1;
-                case 8: case 9: case 10: case 11: return 6;
+                case 8: case 9: case 10: case 11: case 33: case 34: return 10;
                 case 12: case 13: return 10;
                 case 14: case 15: return 16;
                 case 16: case 17: case 18: case 19: case 27: return 9;
@@ -100,9 +100,14 @@ namespace JueMingR.TerrariaHost.Companions
                         // The landing or the short controlled-air pose is
                         // confirmed from the live body before the next edge.
                         observe = true;
+                        // The recorded ground contact is conditional. A
+                        // suffix can count native wing refill at that contact,
+                        // but publication stops on this side of the observation.
+                        if (step.DescentLands && !step.DescentEntersLiquid && mobility.WingAbilities)
+                            fuel = Math.Max(fuel, Math.Min(120, mobility.WingTimeMax));
                         break;
-                    case 8: case 9: case 10: case 11:
-                        if (!TryAirEdge(body, mobility, node, candidate, facing, ref step, ref fuel, ref glideFuel, out motion)) return false;
+                    case 8: case 9: case 10: case 11: case 33: case 34:
+                        if (!TryAirEdge(body, mobility, node, candidate, facing, search.Terrain, ref step, ref fuel, ref glideFuel, out motion)) return false;
                         observe = node.Motion == RouteMotion.Liquid && mobility.Lava && !mobility.LavaImmune;
                         break;
                     case 12: case 13:
@@ -163,6 +168,7 @@ namespace JueMingR.TerrariaHost.Companions
                         break;
                 }
             }
+            step.ObserveAfter = observe;
             next = new RouteNode { Position = step.To, Motion = motion, Fuel = fuel, GlideFuel = glideFuel, Step = step, Observe = observe };
             return true;
         }
@@ -182,35 +188,11 @@ namespace JueMingR.TerrariaHost.Companions
             return Vector2.DistanceSquared(delta, actual) < .25f && SolidForBody(body, from + delta, terrain, allowLava);
         }
 
-        private static bool Surface(Player body, Vector2 from, ReadSet terrain, bool platforms = true)
-        {
-            Vector2 delta = new Vector2(0, body.gravDir < 0 ? -2 : 2);
-            if (!Footprint(body, from, delta, terrain)) return false;
-            Vector2 result = Collision.TileCollision(from, delta, body.width, body.height, !platforms, !platforms,
-                body.gravDir < 0 ? -1 : 1);
-            return Math.Abs(result.Y) < 2;
-        }
+        private static bool Surface(Player body, Vector2 from, ReadSet terrain, bool platforms = true) =>
+            HasSurface(body, from, terrain, platforms);
 
-        private static bool TryWalkEdge(Player body, Vector2 from, int direction, ReadSet terrain, out Vector2 to)
-        {
-            to = from;
-            if (body.gravDir < 0)
-            {
-                Vector2 delta = new Vector2(direction * 16, 0);
-                if (!Swept(body, from, delta, terrain) || !Surface(body, from + delta * .5f, terrain) ||
-                    !Surface(body, from + delta, terrain)) return false;
-                to += delta;
-                return true;
-            }
-
-            for (int i = 0; i < 4; i++)
-            {
-                if (!Move(body, to, new Vector2(direction * 4, Math.Max(.1f, body.gravity)), true, true, out var step, terrain) || step.Wall) return false;
-                to = step.Position;
-                if (!step.Ground && !Surface(body, to, terrain)) return false;
-            }
-            return true;
-        }
+        private static bool TryWalkEdge(Player body, Vector2 from, int direction, ReadSet terrain, out Vector2 to) =>
+            TrySupportedTravel(body, from, direction, 16, terrain, out to, out _);
 
         private bool TryJumpEdge(Player body, CompanionMobilitySnapshot mobility, Vector2 from, int direction, bool root,
             int glideFuel, ReadSet terrain, out Vector2 to, out int hold, out int glideSpend)
@@ -342,7 +324,7 @@ namespace JueMingR.TerrariaHost.Companions
             return SolidForBody(body, step.Position, terrain);
         }
 
-        private bool TryAirEdge(Player body, CompanionMobilitySnapshot mobility, RouteNode node, int candidate, int facing,
+        private static bool TryAirEdge(Player body, CompanionMobilitySnapshot mobility, RouteNode node, int candidate, int facing, ReadSet terrain,
             ref RouteStep step, ref int fuel, ref int glideFuel, out RouteMotion motion)
         {
             motion = node.Motion;
@@ -350,38 +332,40 @@ namespace JueMingR.TerrariaHost.Companions
             int gravity = body.gravDir < 0 ? -1 : 1;
             bool wet = motion == RouteMotion.Liquid;
             bool ascent = candidate == 8;
-            bool descent = candidate == 9;
-            bool hold = mobility.UnlimitedWings || mobility.UnlimitedMountHover;
-            bool sustained = mobility.WingTime > 0 || mobility.RocketAvailable || mobility.MountFly;
+            bool descent = candidate == 9 || candidate == 33 || candidate == 34;
+            bool unlimited = mobility.UnlimitedWings || mobility.UnlimitedMountHover;
+            bool wingPower = mobility.WingAbilities && (mobility.UnlimitedWings || fuel > 0);
+            bool sustained = wingPower || mobility.RocketAvailable || mobility.MountFly;
             bool airborne = motion == RouteMotion.Air || (node.Previous < 0 && mobility.Sliding);
             bool advance = !ascent && !descent;
-            step.Direction = candidate == 10 ? facing : candidate == 11 ? -facing :
+            step.Direction = candidate == 33 ? 0 : candidate == 11 || candidate == 34 ? -facing :
                 ascent ? node.Previous < 0 && mobility.Sliding ? -Math.Sign(mobility.WallSide) : 0 : facing;
             step.Vertical = ascent ? -gravity : descent ? gravity : 0;
             step.Duration = mobility.Honey ? 24 : wet ? 16 : 9;
-            bool glide = advance && !wet && !hold && (mobility.CarpetReady || mobility.CarpetAvailable) && glideFuel >= step.Duration;
+            bool hover = mobility.MountHover || mobility.WingHover && wingPower;
+            bool glide = advance && !wet && !hover && (mobility.CarpetReady || mobility.CarpetAvailable) && glideFuel >= step.Duration;
             // Budget is a conservative reachability filter. Native consumers
             // check again and observe the actual burn/edge every update.
             if (wet && ascent && !mobility.CanSwim && !mobility.MountSwim) return false;
-            if (!wet && (ascent || advance) && !hold && !glide &&
+            if (!wet && (ascent || advance) && !unlimited && !glide &&
                 (fuel < step.Duration || !sustained && mobility.ExtraJumps == 0 && !mobility.Sliding)) return false;
             if (!wet && advance && !airborne) return false;
             if (descent && !wet && !airborne) return false;
             int x = step.Direction * (descent ? 8 : 24);
-            int y = ascent ? -24 * gravity : descent ? 24 * gravity : wet || hold || glide ? 0 : -8 * gravity;
+            int y = ascent ? -24 * gravity : descent ? 24 * gravity : wet || hover || glide ? 0 : -8 * gravity;
             Vector2 delta = new Vector2(x, y);
             // Lava protection spends a real update each unsafe contact. Admit
             // only this short observed step while enough reserve remains.
             bool protectedLava = wet && mobility.Lava && node.Previous < 0 && mobility.LavaTime >= step.Duration + 24;
-            if (!Swept(body, node.Position, delta, search.Terrain, passPlatform: !ascent && !wet && gravity == 1, allowLava: protectedLava))
+            if (!Swept(body, node.Position, delta, terrain, passPlatform: advance && !wet && gravity == 1, allowLava: protectedLava))
             {
-                if (!descent || !FindNearSurface(body, node.Position, search.Terrain, out step.To)) return false;
+                if (!descent || step.Direction != 0 || !FindNearSurface(body, node.Position, terrain, out step.To)) return false;
             }
             else step.To += delta;
 
             if (glide) glideFuel -= step.Duration;
-            else if (!wet && !hold && !descent) fuel -= step.Duration;
-            bool ground = !ascent && Surface(body, step.To, search.Terrain, platforms: !descent);
+            else if (!wet && !unlimited && !descent) fuel -= step.Duration;
+            bool ground = !ascent && Surface(body, step.To, terrain, platforms: true);
             motion = ground ? RouteMotion.Ground : wet ? RouteMotion.Liquid : RouteMotion.Air;
             step.Kind = wet ? RouteKind.Swim : ascent ? RouteKind.Ascend : descent ? RouteKind.Descend : RouteKind.AirAcross;
             step.Cost = Math.Abs(x) + Math.Abs(y) + (wet ? 25 : 18);

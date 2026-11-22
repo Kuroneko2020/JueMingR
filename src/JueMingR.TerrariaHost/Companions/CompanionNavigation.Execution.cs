@@ -112,6 +112,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             ReleaseRoute();
             RetirePublication();
+            pendingResult = -1;
+            roofProbeSet = false;
             advancing = false;
             if (search != null) { search.Active = false; search.Exhausted = false; }
         }
@@ -176,7 +178,8 @@ namespace JueMingR.TerrariaHost.Companions
                 Vector2.DistanceSquared(step.From, pylonRejectedAtBody) < 48 * 48 &&
                 FacilityTileValue(step.Operand) == pylonRejectedTile) return true;
             if (blockedAt == 0 || unchecked(Main.GameUpdateCount - blockedAt) > 48 || step.Kind != blockedStep.Kind) return false;
-            return Vector2.DistanceSquared(step.From, blockedStep.From) < 20 * 20 &&
+            return step.DescentEntersLiquid == blockedStep.DescentEntersLiquid &&
+                Vector2.DistanceSquared(step.From, blockedStep.From) < 20 * 20 &&
                 Vector2.DistanceSquared(step.To, blockedStep.To) < 20 * 20 && step.Direction == blockedStep.Direction && step.Launch.Equals(blockedStep.Launch);
         }
 
@@ -274,13 +277,20 @@ namespace JueMingR.TerrariaHost.Companions
                 RouteStep step = route[routeIndex];
                 if (ExecuteStep(body, state, mobility, motion, step, out CompanionMobilityFrame frame, out bool finished, allowPlanning))
                 {
-                    if (allowPlanning && !descentCommitRead && search != null && search.Active && route.Count - routeIndex <= 2)
+                    if (allowPlanning && !descentCommitRead && route.Count - routeIndex <= 2 &&
+                        (step.Retreat || search != null && search.Active))
                         SearchRoute(body, mobility, goal, stopDistance, motion, publish: false);
                     return frame;
                 }
                 if (descentCommitRead) allowPlanning = false;
-                if (finished) { routeIndex++; ResetStep(); }
+                if (finished) CompleteRouteStep(step);
                 else RejectStep(step);
+            }
+
+            if (allowPlanning && routeIndex >= route.Count && pendingResult >= 0 && search != null && search.NeedsLiveRoot)
+            {
+                allowPlanning = false;
+                if (TryPlanRoute(body, state, mobility, motion, goal, stopDistance, out var handoff)) return handoff;
             }
 
             int direction = Math.Sign(goal.X - body.position.X);
@@ -348,25 +358,48 @@ namespace JueMingR.TerrariaHost.Companions
                         return airFallback;
                     }
                 }
-            }
-            if (allowPlanning && routeIndex >= route.Count)
-            {
-                SearchRoute(body, mobility, goal, stopDistance, motion);
-                if (routeIndex < route.Count)
+                if (allowPlanning && routeIndex >= route.Count && (pendingResult >= 0 || publishing >= 0))
                 {
-                    routeGoal = goal;
-                    var step = route[routeIndex];
-                    if (ExecuteStep(body, state, mobility, motion, step, out CompanionMobilityFrame frame, out bool finished)) return frame;
-                    if (finished) { routeIndex++; ResetStep(); }
-                    else RejectStep(step);
+                    allowPlanning = false;
+                    if (TryPlanRoute(body, state, mobility, motion, goal, stopDistance, out var retained)) return retained;
+                }
+                bool retreating = TryAirRetreat(body, state, mobility, goal, allowPlanning, out var retreat, out bool spent);
+                if (spent) allowPlanning = false;
+                if (retreating)
+                {
+                    if (allowPlanning) SearchRoute(body, mobility, goal, stopDistance, motion, publish: false);
+                    return retreat;
                 }
             }
+            if (allowPlanning && routeIndex >= route.Count &&
+                TryPlanRoute(body, state, mobility, motion, goal, stopDistance, out var planned)) return planned;
 
             if (airFallback.Jump || airFallback.Vertical != 0 || airFallback.Move != 0) return airFallback;
             var recovery = LocalRecovery(body, mobility, motion, goal);
             if (recovery.Status == "寻找路线" && search != null && search.Exhausted)
                 recovery.Status = search.Terrain.HasUnknown ? "等待地形就绪" : "暂无可行路线";
             return recovery;
+        }
+
+        private bool TryPlanRoute(Player body, CompanionMobilityState state, CompanionMobilitySnapshot mobility, RouteMotion motion,
+            Vector2 goal, int stopDistance, out CompanionMobilityFrame frame)
+        {
+            frame = default;
+            SearchRoute(body, mobility, goal, stopDistance, motion);
+            if (routeIndex >= route.Count) return false;
+            routeGoal = goal;
+            var step = route[routeIndex];
+            if (ExecuteStep(body, state, mobility, motion, step, out frame, out bool finished)) return true;
+            if (finished) CompleteRouteStep(step);
+            else RejectStep(step);
+            return false;
+        }
+
+        private void CompleteRouteStep(RouteStep step)
+        {
+            routeIndex++;
+            ResetStep();
+            if (step.ObserveAfter && search != null) search.NeedsLiveRoot = true;
         }
 
         private bool TryAttachedHookExit(Player body, CompanionMobilityState state, Vector2 goal, out CompanionMobilityFrame frame)
@@ -504,26 +537,7 @@ namespace JueMingR.TerrariaHost.Companions
             Vector2 position = body.position;
             if (!InPlayableBounds(body, position + new Vector2(direction * distance, 0))) return false;
             if (distance >= 16 && TryFlatLane(body, direction * distance, proveBrakingSurface)) return true;
-            int stride = steps ? WalkProbeDistance : 8;
-            while (distance > 0)
-            {
-                float advance = Math.Min(stride, distance);
-                distance -= advance;
-                if (body.gravDir < 0 || !steps)
-                {
-                    Vector2 delta = new Vector2(direction * advance, 0);
-                    if (!Swept(body, position, delta, null) || !Surface(body, position + delta, null)) return false;
-                    position += delta;
-                    if (proveBrakingSurface && !SteadyBrakingSurface(body, position)) return false;
-                    continue;
-                }
-                if (!Move(body, position, new Vector2(direction * advance, Math.Max(.1f, body.gravity)), true, true, out var step)) return false;
-                if (step.Wall) { wall = true; return false; }
-                position = step.Position;
-                if (!step.Ground && !Surface(body, position, null)) return false;
-                if (proveBrakingSurface && !SteadyBrakingSurface(body, position)) return false;
-            }
-            return true;
+            return TrySupportedTravel(body, position, direction, distance, null, out _, out wall, steps, proveBrakingSurface);
         }
 
         private static bool TryFlatLane(Player body, float delta, bool proveBrakingSurface)
@@ -720,14 +734,47 @@ namespace JueMingR.TerrariaHost.Companions
                     case RouteKind.Drop: case RouteKind.LedgeDrop:
                         return DriveDescentStep(body, state, mobility, motion, step, allowDescentCommit, out frame, out finished);
                     case RouteKind.Descend:
-                        if (age > 1 && vertical <= 4 && body.velocity.Y * body.gravDir >= -.01f)
-                        { finished = true; return false; }
+                        if (age > 1 && vertical <= 4 && (direction == 0 || along <= 5) &&
+                            body.velocity.Y * body.gravDir >= -.01f)
+                        {
+                            if (step.Retreat && motion == RouteMotion.Air &&
+                                ContinueAirRetreat(body, mobility, routeGoal, ref step))
+                            {
+                                route[routeIndex] = step;
+                                return AirInput(body, mobility, motion, step.Direction,
+                                    step.Kind == RouteKind.AirAcross ? 0 : 1, out frame);
+                            }
+                            finished = true;
+                            return false;
+                        }
                         return motion == RouteMotion.Air && DriveFlight(body, mobility, motion, step.To, Vector2.Zero, 3, 1, out frame);
                     case RouteKind.Ascend: case RouteKind.AirAcross:
+                        if (step.Retreat)
+                        {
+                            if (step.Kind == RouteKind.Ascend)
+                            {
+                                if (vertical >= -4) { finished = true; return false; }
+                                return AirInput(body, mobility, motion, 0, -1, out frame, quickAscent: vertical < -64);
+                            }
+                            if (Math.Abs(step.To.X - body.position.X) <= 8 && Math.Abs(body.velocity.X) < 2 ||
+                                motion == RouteMotion.Ground)
+                            {
+                                if (step.Vertical == 0 || !NextClear(body, 0, -(int)body.gravDir))
+                                { finished = true; return false; }
+                                step.Kind = RouteKind.Ascend;
+                                step.To = new Vector2(body.position.X, routeGoal.Y);
+                                step.Direction = 0;
+                                route[routeIndex] = step;
+                                return AirInput(body, mobility, motion, 0, -1, out frame);
+                            }
+                            return motion == RouteMotion.Air &&
+                                DriveFlight(body, mobility, motion, step.To, Vector2.Zero, 2, 0, out frame);
+                        }
                         if (step.Kind == RouteKind.Ascend ? vertical >= -3 : along <= 5 && Math.Abs(vertical) <= 14)
                         { finished = true; return false; }
                         if (step.Kind == RouteKind.AirAcross && (motion != RouteMotion.Air || along < -24)) return false;
-                        int heightIntent = step.Kind == RouteKind.Ascend ? -1 : FlightHeight(body, mobility, step.To.Y, 0, 14);
+                        int heightIntent = step.Kind == RouteKind.Ascend || step.To.Y != step.From.Y && vertical < -3 ?
+                            -1 : FlightHeight(body, mobility, step.To.Y, 0, 10);
                         return DriveFlight(body, mobility, motion, step.To, Vector2.Zero, 3, heightIntent, out frame);
                     case RouteKind.Swim:
                         if (!mobility.Wet || (step.Vertical == 0 ? along <= 5 : Math.Abs(vertical) <= 5)) { finished = true; return false; }

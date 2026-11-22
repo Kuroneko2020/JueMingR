@@ -149,14 +149,25 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     if (!(terrain == null ? Loaded(x, y) : terrain.Record(x, y)) || !CompanionDoor.TryRead(new Point(x, y), out var fixture) || fixture.Open ||
                         fixture.Family == CompanionDoorFamily.Trapdoor) continue;
-                    Rectangle aperture = fixture.Aperture;
-                    if (from.Y < aperture.Top || from.Y + body.height > aperture.Bottom) continue;
-                    to = new Vector2(direction > 0 ? aperture.Right + 4 : aperture.Left - body.width - 4, from.Y);
-                    if (!DoorCorridor(body, from, to, fixture, terrain) || !Surface(body, to, terrain)) continue;
+                    if (!DoorGroundTravel(body, from, direction, fixture, terrain, out to)) continue;
                     door = fixture.Target;
                     return true;
                 }
             return false;
+        }
+
+        private static bool DoorGroundTravel(Player body, Vector2 from, int direction, CompanionDoor door, ReadSet terrain, out Vector2 to)
+        {
+            to = from;
+            Rectangle aperture = door.Aperture;
+            float across = (direction > 0 ? aperture.Right + 6 - from.X : from.X + body.width + 6 - aperture.Left);
+            if (across <= 0 || across > body.width + aperture.Width + 28) return false;
+            // Predict the actual tread instead of requiring equal height.
+            // Ignore only this verified closed fixture inside native queries.
+            using (new CompanionDoorCollision.Fixture(door.Tiles))
+                return TrySupportedTravel(body, from, direction, across, terrain, out to, out _,
+                    throughDoor: true, rejectDangerLiquids: true) &&
+                    (door.SwingClear(direction) || door.SwingClear(-direction));
         }
 
         private static bool TryTrapdoorEdge(Player body, Vector2 from, int vertical, ReadSet terrain, ref RouteStep step, out RouteMotion motion)
@@ -236,7 +247,8 @@ namespace JueMingR.TerrariaHost.Companions
             bool trap = step.Vertical != 0;
             int passage = trap ? step.Vertical : step.Direction;
             float remaining = trap ? (step.To.Y - body.position.Y) * passage : (step.To.X - body.position.X) * passage;
-            if (door.Open && remaining <= 4) { finished = true; return false; }
+            if (door.Open && remaining <= 4 && (trap || HasSurface(body, body.position, null)))
+            { finished = true; return false; }
             if (!door.Open && commandSequence != 0 && state.Sequence == commandSequence && state.Action == CompanionMovementActivation.Door &&
                 (state.Result == CompanionMobilityResult.Rejected || state.Result == CompanionMobilityResult.Completed)) return false;
 
@@ -271,9 +283,15 @@ namespace JueMingR.TerrariaHost.Companions
             }
             else
             {
-                Vector2 advance = body.position + new Vector2(passage * 5, 0);
-                if (!DoorCorridor(body, body.position, advance, door, null)) return false;
-                frame.Move = passage;
+                // When open, the world has the final hinge and floor. All
+                // crossing input is checked against that actual body tread.
+                bool approaching = !door.Open && !door.AtApproach(body, passage);
+                if (door.Open || approaching)
+                {
+                    if (!TrySupportedTravel(body, body.position, passage, 5, null, out _, out _, rejectDangerLiquids: true)) return false;
+                    frame.Move = passage;
+                }
+                else if (commandSequence == 0 && !DoorGroundTravel(body, body.position, passage, door, null, out _)) return false;
             }
 
             if (door.Open) { frame.Status = "正在过门"; return true; }
