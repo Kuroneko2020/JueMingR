@@ -73,6 +73,7 @@ namespace NativeWorldTextProbe
                 if (comparison != null && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT") != null)
                     throw new InvalidOperationException("Explicit navigation comparisons have no formal scope qualification.");
                 NativeQuickItemChecks.Run(context=>{
+                    NativeCombatAimChecks.Initialize();
                     if (comparison != null && Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_NAV_FOCUS") == "vertical")
                         NativeCompanionVerticalFollowChecks.Run(context);
                     else

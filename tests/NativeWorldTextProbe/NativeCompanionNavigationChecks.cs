@@ -30,7 +30,6 @@ namespace NativeWorldTextProbe
         { var tile=new Tile();tile.active(true);tile.type=(ushort)type;tile.slope((byte)slope);tile.halfBrick(half);Main.tile[x,y]=tile; }
         internal static void Run(object context, bool comparison = false)
         {
-            NativeCombatAimChecks.Initialize();
             new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player),"Spawn"),HarmonyPatchType.Prefix,"JueMingR.Tests.QuickItemOutlets");
             Main.spawnTileX=60;Main.spawnTileY=58;Main.leftWorld=Main.topWorld=0;Main.rightWorld=Main.maxTilesX*16;Main.bottomWorld=Main.maxTilesY*16;
             for(int x=2;x<118;x++)TileAt(x,60,TileID.Stone);

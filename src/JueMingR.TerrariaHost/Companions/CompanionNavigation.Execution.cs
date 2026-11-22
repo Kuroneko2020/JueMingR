@@ -192,6 +192,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal CompanionMobilityFrame FollowRoute(Player body, CompanionMobilityState state, Vector2 target, Vector2 targetVelocity, bool allowPlanning,
             bool grounded, int stopDistance, int resumeDistance)
         {
+            descentCommitRead = false;
             var mobility = state.Observed;
             var offset = new Vector2(body.width / 2f, body.height / 2f);
             Vector2 goal = target - offset;
@@ -200,6 +201,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 CancelRoute();
                 blockedAt = 0;
+                descentObstruction = null;
                 pylonRejectedAt = 0;
                 routeWorld = Main.ActiveWorldFileData;
                 positionRevision = state.PositionRevision;
@@ -209,6 +211,9 @@ namespace JueMingR.TerrariaHost.Companions
                 ReleaseRoute();
                 return new CompanionMobilityFrame { Status = "暂时受控" };
             }
+            if (allowPlanning && WakeChangedDescentObstruction(body, motion, goal) && routeIndex < route.Count &&
+                route[routeIndex].Kind == RouteKind.Walk)
+                ReleaseRoute();
 
             int threshold = advancing ? stopDistance : resumeDistance;
             if (motion == RouteMotion.Ground && mobility.DashActive && body.dashDelay < 0)
@@ -247,6 +252,15 @@ namespace JueMingR.TerrariaHost.Companions
                         }
                     }
             }
+            if (routeIndex < route.Count && motion == RouteMotion.Ground && !actionStarted && !body.stairFall &&
+                (route[routeIndex].Kind == RouteKind.Drop || route[routeIndex].Kind == RouteKind.LedgeDrop) &&
+                NearbySupportedGoal(body, goal))
+            {
+                // A live owner back on this clear level no longer needs
+                // this descent. After native release, finish the safe motion.
+                ReleaseRoute();
+                routeGoal = goal;
+            }
             if (routeIndex < route.Count && GoalRedirects(body.position, routeGoal, goal))
             {
                 // Each active segment still checks its next input. Aim changes
@@ -258,12 +272,13 @@ namespace JueMingR.TerrariaHost.Companions
             for (int next = 0; next < 2 && routeIndex < route.Count; next++)
             {
                 RouteStep step = route[routeIndex];
-                if (ExecuteStep(body, state, mobility, motion, step, out CompanionMobilityFrame frame, out bool finished))
+                if (ExecuteStep(body, state, mobility, motion, step, out CompanionMobilityFrame frame, out bool finished, allowPlanning))
                 {
-                    if (allowPlanning && search != null && search.Active && route.Count - routeIndex <= 2)
+                    if (allowPlanning && !descentCommitRead && search != null && search.Active && route.Count - routeIndex <= 2)
                         SearchRoute(body, mobility, goal, stopDistance, motion, publish: false);
                     return frame;
                 }
+                if (descentCommitRead) allowPlanning = false;
                 if (finished) { routeIndex++; ResetStep(); }
                 else RejectStep(step);
             }
@@ -382,6 +397,15 @@ namespace JueMingR.TerrariaHost.Companions
                 Math.Abs(current.Y - previous.Y) > 72 &&
                 (Math.Abs(previous.Y - body.Y) <= 36 || Math.Abs(current.Y - body.Y) <= 36 ||
                     Math.Sign(current.Y - body.Y) != Math.Sign(previous.Y - body.Y));
+        }
+
+        private static bool NearbySupportedGoal(Player body, Vector2 goal)
+        {
+            Vector2 difference = goal - body.position;
+            if (Math.Abs(difference.Y) > 12 || Math.Abs(difference.X) > 48) return false;
+            using (Scratch.Save())
+                return SolidForBody(body, goal, null) && Surface(body, goal, null) &&
+                    SupportedLane(body, Math.Sign(difference.X), Math.Abs(difference.X), steps: true, out _);
         }
 
         private bool WantsPlatformAscent(Player body, CompanionMobilitySnapshot mobility, Vector2 goal)
@@ -619,7 +643,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         private bool ExecuteStep(Player body, CompanionMobilityState state, CompanionMobilitySnapshot mobility,
-            RouteMotion motion, RouteStep step, out CompanionMobilityFrame frame, out bool finished)
+            RouteMotion motion, RouteStep step, out CompanionMobilityFrame frame, out bool finished, bool allowDescentCommit = false)
         {
             frame = new CompanionMobilityFrame { Status = "移动中" };
             finished = false;
@@ -694,7 +718,7 @@ namespace JueMingR.TerrariaHost.Companions
                         }
                         return true;
                     case RouteKind.Drop: case RouteKind.LedgeDrop:
-                        return DriveDescentStep(body, state, mobility, motion, step, out frame, out finished);
+                        return DriveDescentStep(body, state, mobility, motion, step, allowDescentCommit, out frame, out finished);
                     case RouteKind.Descend:
                         if (age > 1 && vertical <= 4 && body.velocity.Y * body.gravDir >= -.01f)
                         { finished = true; return false; }

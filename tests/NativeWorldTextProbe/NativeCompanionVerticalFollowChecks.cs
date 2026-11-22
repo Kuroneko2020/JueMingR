@@ -14,7 +14,7 @@ namespace NativeWorldTextProbe
 {
     // Only the fixture's owner trajectory is driven after native readiness.
     // Each sample owns a saved companion and consumes the normal Follow input.
-    internal static class NativeCompanionVerticalFollowChecks
+    internal static partial class NativeCompanionVerticalFollowChecks
     {
         private const int Starboard = 4954;
         private const int Width = 160;
@@ -22,7 +22,6 @@ namespace NativeWorldTextProbe
 
         internal static void Run(object context)
         {
-            NativeCombatAimChecks.Initialize();
             new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player), "Spawn"),
                 HarmonyPatchType.Prefix, "JueMingR.Tests.QuickItemOutlets");
             Main.spawnTileX = 60; Main.spawnTileY = 58;
@@ -46,7 +45,7 @@ namespace NativeWorldTextProbe
                 Main.rightWorld = Width * 16; Main.bottomWorld = Height * 16;
                 Terraria.Initializers.WingStatsInitializer.Load();
                 foreach (Action<object, object, Player> scenario in new Action<object, object, Player>[]
-                    { Platform, Ledge, UnsafeLedge, StarboardFlight, Sequence })
+                    { Platform, Ledge, UnsafeLedge, StarboardFlight, Sequence, HoverTransitions, ChangedFallEquipment, ChangedShaftLiquid })
                 {
                     try { scenario(host, profiles, human); }
                     catch (BusinessAssertionException failure)
@@ -98,6 +97,118 @@ namespace NativeWorldTextProbe
                 Require(input >= 0 && crossed > input && landed > crossed && longestStable >= 20 && resumed >= 108 &&
                     OnFloor(run.Body, low) && Math.Abs(run.Body.Center.X - human.Center.X) <= 28,
                     "A: an aligned owner 96 pixels below gets a native platform crossing, a stable lower landing and resumed lower-floor Follow");
+            }
+        }
+
+        private static void ChangedFallEquipment(object host, object profiles, Player human)
+        {
+            const int high = 70, low = 114, column = 60, x = column * 16 + 8, storeSlot = 41;
+            Action terrain = () =>
+            {
+                Fill(45, 83, high, TileID.Platforms);
+                Fill(45, 83, low, TileID.Stone);
+            };
+            var destination = new Vector2(x, low * 16);
+            var approach = new Vector2(0, 4);
+            int down = -1, landed = -1;
+            using (var protectedFall = new Scenario(host, profiles, human, "drop-horseshoe", x, high, terrain, ItemID.LuckyHorseshoe))
+            {
+                Require(protectedFall.Body.noFallDmg && protectedFall.Body.wingsLogic == 0, "the deep drop uses an actual horseshoe and ordinary gravity");
+                int life = protectedFall.Body.statLife;
+                for (int tick = 0; tick < 245 && landed < 0; tick++)
+                {
+                    protectedFall.StepToward(destination, approach);
+                    if (down < 0 && protectedFall.Body.controlDown) down = tick;
+                    if (down >= 0 && OnFloor(protectedFall.Body, low)) landed = tick;
+                }
+                Require(down >= 0 && landed > down && protectedFall.Body.statLife == life,
+                    "shared descent planning reaches a real protected landing over 512 px below the start");
+            }
+
+            using (var changed = new Scenario(host, profiles, human, "remove-horseshoe", x, high, terrain, ItemID.LuckyHorseshoe))
+            {
+                for (int tick = 0; tick < down; tick++) changed.StepToward(destination, approach);
+                Require(changed.Body.noFallDmg && OnFloor(changed.Body, high) && !changed.Body.controlDown,
+                    "the matching Follow step still stands above the protected shaft before an equipment commit");
+                var id = ((CompanionProfile)Get(changed.Actor, "Profile")).Id;
+                var gestureType = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionItemGesture", true);
+                var left = Enum.Parse(gestureType, "Left");
+                Require((bool)Call(host, "ItemGesture", id, false, CompanionInventoryArea.Armor, 3, left) &&
+                    (bool)Call(host, "ItemGesture", id, false, CompanionInventoryArea.Inventory, storeSlot, left) &&
+                    changed.Body.armor[3].IsAir && changed.Body.inventory[storeSlot].type == ItemID.LuckyHorseshoe &&
+                    changed.Body.noFallDmg && (bool)Get(changed.Actor, "TileReachPending"),
+                    "the real equipment gesture commits before the native effect can refresh");
+                changed.StepToward(destination, approach);
+                Require(!changed.Body.controlDown && !changed.Body.noFallDmg && OnFloor(changed.Body, high),
+                    "Follow waits for native equipment observation on the exact former start step");
+                for (int tick = down + 1; tick < 245; tick++)
+                {
+                    changed.StepToward(destination, approach);
+                    Require(!changed.Body.controlDown && OnFloor(changed.Body, high), "the now-ordinary body refuses the deep drop");
+                }
+                Console.WriteLine($"FOLLOW equipment drop={(low - high) * 16} protectedDown={down} protectedLanding={landed} removedDown=False remainingOnPlatform=True");
+            }
+
+            CheckNewShaftLiquid(host, profiles, human, "deep-shaft-liquid", high, low, column, high + 35,
+                down, terrain, ItemID.LuckyHorseshoe);
+        }
+
+        private static void ChangedShaftLiquid(object host, object profiles, Player human)
+        {
+            const int high = 80, low = 86, column = 60;
+            const int x = column * 16 + 8;
+            Action terrain = () =>
+            {
+                Fill(45, 83, high, TileID.Platforms);
+                Fill(45, 83, low, TileID.Stone);
+            };
+            var destination = new Vector2(x, low * 16);
+            var approach = new Vector2(0, 4);
+            int down = 0;
+            using (var dry = new Scenario(host, profiles, human, "dry-drop-commit", x, high, terrain))
+            {
+                for (; down < 120; down++)
+                {
+                    dry.StepToward(destination, approach);
+                    if (dry.Body.controlDown) break;
+                }
+                Require(down < 120 && Math.Abs(dry.Body.Bottom.Y - high * 16) <= 1,
+                    "the real dry Follow route begins with Down from its platform");
+            }
+            CheckNewShaftLiquid(host, profiles, human, "shaft-liquid-commit", high, low, column, high + 3, down, terrain);
+        }
+
+        private static void CheckNewShaftLiquid(object host, object profiles, Player human, string name, int high,
+            int low, int column, int hazardRow, int down, Action terrain, int accessory = 0)
+        {
+            int x = column * 16 + 8;
+            var destination = new Vector2(x, low * 16);
+            var approach = new Vector2(0, 4);
+            using (var edited = new Scenario(host, profiles, human, name, x, high, terrain, accessory))
+            {
+                for (int tick = 0; tick < down; tick++) edited.StepToward(destination, approach);
+                Require(OnFloor(edited.Body, high) && !edited.Body.controlDown, "the second body is still at the same platform release pose");
+                for (int tileX = column - 1; tileX <= column + 1; tileX++)
+                {
+                    Tile hazard = Main.tile[tileX, hazardRow];
+                    hazard.liquid = byte.MaxValue;
+                    hazard.lava(true);
+                }
+                for (int tick = 0; tick < 24; tick++)
+                {
+                    edited.StepToward(destination, approach);
+                    Require(!edited.Body.controlDown && OnFloor(edited.Body, high),
+                        "new lava between unchanged release and landing blocks the exact old Down and its retries");
+                }
+                for (int tileX = column - 1; tileX <= column + 1; tileX++) Main.tile[tileX, hazardRow].liquid = 0;
+                int resumed = 0, clearDown = -1;
+                for (; resumed < 135 && !OnFloor(edited.Body, low); resumed++)
+                {
+                    edited.StepToward(destination, approach);
+                    if (clearDown < 0 && edited.Body.controlDown) clearDown = resumed;
+                }
+                Console.WriteLine($"FOLLOW shaft liquid depth={(low - high) * 16} hazardBelow={(hazardRow - high) * 16} dryDown={down} changedDown=False clearDown={clearDown} clearLanding={resumed} body={edited.Body.Bottom}/{edited.Body.velocity} status={Get(edited.Actor, "Status")} route={RouteStep(edited.Actor)}");
+                Require(resumed < 135, "removing the new liquid restores Follow through the original native drop");
             }
         }
 

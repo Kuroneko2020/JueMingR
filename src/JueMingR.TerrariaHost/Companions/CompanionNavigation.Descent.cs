@@ -12,6 +12,10 @@ namespace JueMingR.TerrariaHost.Companions
         private const int LedgeApproach = 40;
         private const int ProtectedDescentPrefix = 80;
         private const int DescentSlice = 16;
+        private const int LocalDescentCommitDepth = 512;
+        private const int DescentCommitColumns = 12;
+        private bool descentCommitRead;
+        private DescentObstruction? descentObstruction;
 
         private enum DescentResult { Rejected, Pending, Found }
 
@@ -19,6 +23,12 @@ namespace JueMingR.TerrariaHost.Companions
         {
             internal bool Ready;
             internal Vector2 Release, Position, Velocity, Prefix;
+        }
+
+        private struct DescentObstruction
+        {
+            internal Point Tile;
+            internal Vector2 Departure;
         }
 
         private static bool ImmuneToDrop(Player body) => body.noFallDmg || body.hasWings || body.mount.CanFly(body) ||
@@ -29,8 +39,8 @@ namespace JueMingR.TerrariaHost.Companions
         private static int DescentSafetyKey(Player body) => (FallTolerance(body) << 2) |
             (ImmuneToDrop(body) ? 1 : 0) | (body.mount.Active && body.mount.FallDamage <= .001f ? 2 : 0);
 
-        private static bool CanArrestDescent(CompanionMobilitySnapshot mobility) => mobility.UnlimitedWings ||
-            mobility.UnlimitedMountHover || mobility.WingTime >= 40 && mobility.MountUseWings;
+        private static bool CanArrestDescent(CompanionMobilitySnapshot mobility) => mobility.UnlimitedMountHover ||
+            HasWingThrust(mobility) && (mobility.UnlimitedWings || mobility.WingTime >= 40);
 
         private static bool SafeDropLanding(Player body, Vector2 from, Vector2 landing) => !SmartFallDecision.Risk(
             landing.Y, (int)(from.Y / 16), body.gravDir, body.extraFall, body.mount.Active ? body.mount.ExtraFall : 0,
@@ -58,7 +68,7 @@ namespace JueMingR.TerrariaHost.Companions
                 !Collision.WetCollision(contact.Position, body.width, body.height) && SafeDropLanding(body, step.From, contact.Position);
         }
 
-        private static bool DescentMomentumFits(Player body, RouteStep step, Vector2 departure, float speedX)
+        private bool DescentDepartureClear(Player body, RouteStep step, Vector2 departure, float speedX, bool sharedCheck)
         {
             // Project neutral drift using live speed before committing
             // across the lip, then recheck the destination under that pose.
@@ -71,11 +81,82 @@ namespace JueMingR.TerrariaHost.Companions
             float time = firstDepth < depth ? accelerate + (depth - firstDepth) / terminal :
                 ((float)Math.Sqrt(fall * fall + 2 * gravity * depth) - fall) / gravity;
             float friction = Math.Max(.01f, body.runSlowdown * .5f);
-            float movingTime = Math.Min(time + 1, Math.Abs(speedX) / friction);
-            float drift = Math.Sign(speedX) * movingTime * (Math.Abs(speedX) - .5f * friction * movingTime);
+            float speed = Math.Abs(speedX);
+            float stopTime = speed / friction;
+            float movingTime = Math.Min(time + 1, stopTime);
+            float drift = Math.Sign(speedX) * movingTime * (speed - .5f * friction * movingTime);
             float x = departure.X + drift;
-            return x >= (step.DescentArea.Left + 1) * 16 && x + body.width <= (step.DescentArea.Right - 1) * 16 &&
-                DescentDestination(body, step, x);
+            if (x < (step.DescentArea.Left + 1) * 16 || x + body.width > (step.DescentArea.Right - 1) * 16 ||
+                !DescentDestination(body, step, x)) return false;
+
+            // A tile edit can occur after publication and before the rolling
+            // read cursor reaches it. Check the dry body corridor from the
+            // current release pose, covering the whole neutral drift, before
+            // the input that takes support away. Only the selected planning
+            // body can repeat this proof for a long committed descent.
+            float checkedDepth = step.DescentLands ? depth : depth + ProtectedDescentPrefix / 2;
+            float driftSlack = speed * .5f;
+            int left = (int)Math.Floor(Math.Min(departure.X, x - driftSlack) / 16);
+            int right = (int)Math.Floor((Math.Max(departure.X, x + driftSlack) + body.width - .01f) / 16);
+            int top = (int)Math.Floor(departure.Y / 16);
+            int bottom = (int)Math.Floor((departure.Y + checkedDepth + body.height - .01f) / 16);
+            if (right - left + 1 > DescentCommitColumns) return false;
+            descentCommitRead |= sharedCheck;
+
+            // After enough vertical travel that even terminal speed gives
+            // neutral friction time to settle, only the final body width can
+            // meet the remaining rows. Vanilla height bounds the narrow scan.
+            int settledRow = speed == 0 ? top : (int)Math.Ceiling((departure.Y + terminal * (stopTime + 2) + body.height) / 16);
+            for (int row = top; row <= bottom; row++)
+            {
+                if (row == settledRow)
+                {
+                    left = (int)Math.Floor((x - driftSlack) / 16);
+                    right = (int)Math.Floor((x + driftSlack + body.width - .01f) / 16);
+                }
+                for (int column = left; column <= right; column++)
+                    if (!DryDescentTile(column, row))
+                    {
+                        descentObstruction = new DescentObstruction { Tile = new Point(column, row), Departure = departure };
+                        return false;
+                    }
+            }
+            return true;
+        }
+
+        private static bool DryDescentTile(int column, int row) => Loaded(column, row) && Main.tile[column, row].liquid == 0;
+
+        private bool WakeChangedDescentObstruction(Player body, RouteMotion motion, Vector2 goal)
+        {
+            // The blocking cell can be much deeper than the normal read
+            // cursor has reached. One read on the shared grant wakes its
+            // existing route frontier as soon as the real cell clears.
+            if (!descentObstruction.HasValue) return false;
+            var obstruction = descentObstruction.Value;
+            Point tile = obstruction.Tile;
+            if (!DryDescentTile(tile.X, tile.Y)) return false;
+            descentObstruction = null;
+            if ((blockedStep.Kind == RouteKind.Drop || blockedStep.Kind == RouteKind.LedgeDrop) &&
+                blockedStep.DescentArea.Contains(tile)) blockedAt = 0;
+            if (search != null)
+            {
+                search.Dirty(new Rectangle(tile.X, tile.Y, 1, 1));
+                search.NeedsLiveRoot = true;
+            }
+            lastRejectedPublication = -1;
+            RetirePublication();
+            // A nearby body on the same upper level may still be following
+            // a lateral route that was useful only while the drop was blocked.
+            return motion == RouteMotion.Ground && goal.Y > body.position.Y + 38 &&
+                Math.Abs(body.position.Y - obstruction.Departure.Y) <= 12 &&
+                Math.Abs(body.position.X - obstruction.Departure.X) <= LedgeApproach + body.width;
+        }
+
+        private static void HoldDescent(Player body, ref CompanionMobilityFrame frame)
+        {
+            int brake = -Math.Sign(body.velocity.X);
+            if (brake != 0 && NextClear(body, brake, 0) &&
+                DescentSupport(body, body.position + new Vector2(brake * 4, 0), null)) frame.Move = brake;
         }
 
         private static bool DescentSupport(Player body, Vector2 position, ReadSet terrain, bool platforms = true) =>
@@ -171,7 +252,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         private bool DriveDescentStep(Player body, CompanionMobilityState state, CompanionMobilitySnapshot mobility,
-            RouteMotion motion, RouteStep step, out CompanionMobilityFrame frame, out bool finished)
+            RouteMotion motion, RouteStep step, bool allowDescentCommit, out CompanionMobilityFrame frame, out bool finished)
         {
             frame = new CompanionMobilityFrame { Status = "下降中" };
             finished = false;
@@ -189,6 +270,14 @@ namespace JueMingR.TerrariaHost.Companions
 
             float descended = body.position.Y - actionOrigin.Y;
             actionStarted |= motion == RouteMotion.Air && body.velocity.Y > 0 && descended > 1;
+            if (state.AwaitingEquipmentObservation && !actionStarted && !body.stairFall && motion == RouteMotion.Ground)
+            {
+                // An equipped item changed before this Player.Update has
+                // refreshed its own fall protection. Wait on the existing
+                // support and brake existing motion through native input.
+                HoldDescent(body, ref frame);
+                return true;
+            }
             if (actionStarted && noProgress > 24) return false;
             if (actionStarted && motion == RouteMotion.Ground && descended > 10 &&
                 body.velocity.Y >= 0 && !body.stairFall)
@@ -197,6 +286,7 @@ namespace JueMingR.TerrariaHost.Companions
             { finished = true; return false; }
             if (body.position.Y > step.To.Y + 16) return false;
 
+            bool sharedCheck = step.DescentLands && step.To.Y - body.position.Y > LocalDescentCommitDepth;
             if (!actionStarted && step.Kind == RouteKind.LedgeDrop && motion == RouteMotion.Ground)
             {
                 float remaining = (step.Operand.X - body.position.X) * step.Direction;
@@ -204,19 +294,42 @@ namespace JueMingR.TerrariaHost.Companions
                 // This step owns an intentional loss of support. The ordinary
                 // walking/braking rule keeps its existing continuous support.
                 float reach = Math.Max(4, Math.Abs(body.velocity.X) + body.runAcceleration);
-                if (!Move(body, body.position, new Vector2(step.Direction * reach, 0), true, false, out Step at, null) || at.Wall)
+                if (!Move(body, body.position, new Vector2(step.Direction * reach, 0), true, false, out Step at, null) || at.Wall ||
+                    Collision.WetCollision(at.Position, body.width, body.height))
                     return false;
-                if (!DescentSupport(body, at.Position, null) &&
-                    !DescentMomentumFits(body, step, at.Position, body.velocity.X + step.Direction * body.runAcceleration))
-                    return false;
+                bool releases = !DescentSupport(body, at.Position, null);
+                if (sharedCheck && !allowDescentCommit)
+                {
+                    float speed = Math.Max(0, body.velocity.X * step.Direction);
+                    float brake = Math.Max(.01f, Math.Min(body.runAcceleration, body.runSlowdown));
+                    if (releases || remaining <= reach + speed * speed / (2 * brake))
+                    {
+                        HoldDescent(body, ref frame);
+                        return true;
+                    }
+                }
+                if (releases && !DescentDepartureClear(body, step, at.Position,
+                    body.velocity.X + step.Direction * body.runAcceleration, sharedCheck))
+                {
+                    if (body.velocity.X == 0) return false;
+                    HoldDescent(body, ref frame);
+                    return true;
+                }
                 frame.Move = step.Direction;
                 return true;
             }
 
             bool throughPlatform = step.Kind == RouteKind.Drop && body.position.Y < step.Operand.Y + 16;
-            if (throughPlatform && !actionStarted && !body.stairFall &&
-                (!DescentSupport(body, body.position, null) || DescentSupport(body, body.position, null, false) ||
-                 !DescentMomentumFits(body, step, body.position, body.velocity.X))) return false;
+            if (throughPlatform && !actionStarted && !body.stairFall)
+            {
+                if (sharedCheck && !allowDescentCommit)
+                {
+                    HoldDescent(body, ref frame);
+                    return true;
+                }
+                if (!DescentSupport(body, body.position, null) || DescentSupport(body, body.position, null, false) ||
+                    !DescentDepartureClear(body, step, body.position, body.velocity.X, sharedCheck)) return false;
+            }
             var delta = new Vector2(body.velocity.X, Math.Max(2, body.velocity.Y + mobility.Gravity));
             if (!Move(body, body.position, delta, !throughPlatform && !body.stairFall, false, out Step next, null) ||
                 Collision.WetCollision(next.Position, body.width, body.height)) return false;

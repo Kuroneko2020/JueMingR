@@ -100,12 +100,9 @@ namespace JueMingR.TerrariaHost.Companions
                 bool hoverRun = height == 0 && mobility.WingHover && mobility.WingHoverRun && HasWingThrust(mobility);
                 speed = Math.Max(body.maxRunSpeed, hoverRun ? mobility.WingHoverSpeed : mobility.WingSpeed);
                 acceleration = hoverRun ? mobility.WingHoverAcceleration : mobility.WingAcceleration;
-                // Beyond ordinary run speed the native wing branch only
-                // accelerates by 2 × .2 per update. Opposite braking still
-                // uses full acceleration. A released air axis uses half drag.
-                if (Math.Abs(body.velocity.X) >= body.maxRunSpeed &&
-                    Math.Sign(body.velocity.X) == Math.Sign(goal.X - body.position.X))
-                    acceleration *= .4f;
+                // Brake with the native opposite-direction acceleration.
+                // Beyond running speed the .4 scale only limits accelerating
+                // farther in the same direction. A released air axis uses half drag.
                 neutral = mobility.WingSlowdown;
             }
             int horizontal = FollowHorizontal(body, goal.X, targetVelocity.X, speed, acceleration, neutral * .5f, spacing);
