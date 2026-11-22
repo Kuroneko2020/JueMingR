@@ -117,6 +117,8 @@ namespace NativeWorldTextProbe
                 Main.tile[104,67]=new Tile();
                 for(int x=80;x<125;x++){Main.tile[x,72]=new Tile();TileAt(x,75,TileID.Stone);}
                 TileAt(100,72,TileID.Platforms,1);probe.position=new Vector2(1608,1118);
+                // Low-level contact/landing geometry only. The separate
+                // vertical Follow fixture tests the production input chain.
                 Require(Query("DropSafe",probe),"drop-through requires actual platform support and bounded lower landing");
                 for(int x=80;x<125;x++)Main.tile[x,75]=new Tile();
                 Require(!Query("WalkSafe",probe,1),"real cliff has no fabricated support route");

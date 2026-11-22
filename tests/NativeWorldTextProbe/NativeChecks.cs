@@ -72,7 +72,15 @@ namespace NativeWorldTextProbe
                 string comparison = Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_NAV_COMPARISON");
                 if (comparison != null && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT") != null)
                     throw new InvalidOperationException("Explicit navigation comparisons have no formal scope qualification.");
-                NativeQuickItemChecks.Run(context=>{NativeCompanionNavigationChecks.Run(context, comparison != null);NativeScopeDispatch.Enter("companions-navigation");},processing:true,shortFeedback:true,
+                NativeQuickItemChecks.Run(context=>{
+                    if (comparison != null && Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_NAV_FOCUS") == "vertical")
+                        NativeCompanionVerticalFollowChecks.Run(context);
+                    else
+                    {
+                        if (comparison == null) NativeCompanionVerticalFollowChecks.Run(context);
+                        NativeCompanionNavigationChecks.Run(context, comparison != null);
+                    }
+                    NativeScopeDispatch.Enter("companions-navigation");},processing:true,shortFeedback:true,
                     candidateAssembly:comparison);return 0;
             }
             if(scope=="CompanionItemsCpu")

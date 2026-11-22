@@ -38,6 +38,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionSupplyWireChecks.cs'=@('native-CompanionSuppliesCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNavigationChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionDynamicFollowChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionDoorFollowChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFacilityFollowChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionPlannedMovementChecks.cs'=@('native-CompanionNavigationCpu')
