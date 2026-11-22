@@ -549,9 +549,13 @@ namespace NativeWorldTextProbe
             var plan=Get(behavior,"navigation");
             Require((int)Get(plan,"DropBuilds")==0,"same-height target never requests the lower-landing search");
             owner.position=probe.position+new Vector2(0,100);
-            Call(behavior,"Decide",probe,owner,new CompanionBehavior(),true);
+            var noLanding=(CompanionControlFrame)Call(behavior,"Decide",probe,owner,new CompanionBehavior(),true);
             int dropBuilds=(int)Get(plan,"DropBuilds"),dropMoves=(int)Get(plan,"DropGeometryMoves");
-            Require(dropBuilds==1 && dropMoves>100,"ordinary known no-landing case really enters the long native drop query once");
+            // Two support probes precede up to four slices of sixteen native
+            // fall updates. A real empty shaft traverses beyond the probes.
+            Console.WriteLine($"NAV DROP emptyBuilds={dropBuilds} emptyGeometryMoves={dropMoves}");
+            Require(!noLanding.Drop && dropBuilds==1 && dropMoves>2 && dropMoves<=66,
+                "one bounded native descent traverses the empty shaft and refuses the missing landing");
             for(int tick=0;tick<20;tick++)
             { NativeQuickItemChecks.BeginWorldStep();Call(behavior,"Decide",probe,owner,new CompanionBehavior(),tick%2==0); }
             Require((int)Get(plan,"DropBuilds")==dropBuilds && (int)Get(plan,"DropGeometryMoves")==dropMoves,

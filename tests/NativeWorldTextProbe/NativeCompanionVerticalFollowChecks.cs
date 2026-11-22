@@ -45,7 +45,7 @@ namespace NativeWorldTextProbe
                 Main.rightWorld = Width * 16; Main.bottomWorld = Height * 16;
                 Terraria.Initializers.WingStatsInitializer.Load();
                 foreach (Action<object, object, Player> scenario in new Action<object, object, Player>[]
-                    { Platform, Ledge, UnsafeLedge, StarboardFlight, Sequence, HoverTransitions, ChangedFallEquipment, ChangedShaftLiquid })
+                    { Platform, Ledge, UnsafeLedge, StarboardFlight, Sequence, HoverTransitions, ChangedFallEquipment, ChangedShaftLiquid, ChangedLedgeWall })
                 {
                     try { scenario(host, profiles, human); }
                     catch (BusinessAssertionException failure)
@@ -208,7 +208,64 @@ namespace NativeWorldTextProbe
                     if (clearDown < 0 && edited.Body.controlDown) clearDown = resumed;
                 }
                 Console.WriteLine($"FOLLOW shaft liquid depth={(low - high) * 16} hazardBelow={(hazardRow - high) * 16} dryDown={down} changedDown=False clearDown={clearDown} clearLanding={resumed} body={edited.Body.Bottom}/{edited.Body.velocity} status={Get(edited.Actor, "Status")} route={RouteStep(edited.Actor)}");
-                Require(resumed < 135, "removing the new liquid restores Follow through the original native drop");
+                Require(clearDown >= 0 && resumed > clearDown && resumed < 135,
+                    "removing the new liquid restores native Down followed by the lower landing");
+            }
+        }
+
+        private static void ChangedLedgeWall(object host, object profiles, Player human)
+        {
+            const int high = 80, lower = 86, deep = 115, edgeColumn = 65, edge = edgeColumn * 16;
+            const int wallColumn = edgeColumn + 2, start = edge - 53, target = edge + 55;
+            Action terrain = () =>
+            {
+                Fill(47, edgeColumn - 1, high, TileID.Stone);
+                Fill(wallColumn, wallColumn + 2, lower, TileID.Stone);
+                Fill(47, 90, deep, TileID.Stone);
+            };
+            Action<Scenario> step = run => run.StepToward(new Vector2(target, (human.Left.X < edge ? high : lower) * 16), new Vector2(3.2f, 4));
+            const int updates = 180;
+            int release = -1, landing = -1;
+            float dryLeft = 0;
+            using (var dry = new Scenario(host, profiles, human, "dry-ledge-side", start, high, terrain))
+            {
+                for (int tick = 0; tick < updates; tick++)
+                {
+                    step(dry);
+                    if (release < 0 && dry.Body.Left.X >= edge && dry.Body.Bottom.Y > high * 16 + .1f) release = tick;
+                    if (release >= 0 && OnFloor(dry.Body, lower)) { landing = tick; dryLeft = dry.Body.Left.X; break; }
+                }
+                Require(release >= 7 && landing > release && dryLeft + dry.Body.width > wallColumn * 16,
+                    $"the moving body actually lands on the narrow dry shelf (release={release}, landing={landing}, left={dryLeft})");
+            }
+
+            using (var edited = new Scenario(host, profiles, human, "ledge-side-wall", start, high, terrain))
+            {
+                for (int tick = 0; tick < release - 7; tick++) step(edited);
+                Vector2 before = edited.Body.Bottom;
+                float speed = edited.Body.velocity.X;
+                string route = RouteStep(edited.Actor);
+                Require(OnFloor(edited.Body, high) && edge - edited.Body.Left.X > 8 && speed > 1 && route.StartsWith("LedgeDrop:", StringComparison.Ordinal),
+                    $"the published ledge route still has enough original braking room (body={before}, speed={speed}, route={route})");
+                for (int row = high; row <= high + 2; row++) Fill(wallColumn, wallColumn, row, TileID.Stone);
+                Main.tile[wallColumn, high].halfBrick(true);
+                float maxDrop = 0;
+                bool braked = false;
+                for (int tick = 0; tick < 32; tick++)
+                {
+                    step(edited);
+                    braked |= edited.Body.controlLeft;
+                    maxDrop = Math.Max(maxDrop, edited.Body.Bottom.Y - high * 16);
+                }
+                Console.WriteLine(FormattableString.Invariant($"FOLLOW side wall dryRelease={release} dryLanding={landing} dryLeft={dryLeft:F2} before={before} speed={speed:F2} route={route} bottom={edited.Body.Bottom} maxDrop={maxDrop:F2} braked={braked}"));
+                Require(maxDrop < 3 && OnFloor(edited.Body, high) && braked,
+                    "a wall added beside the fall cannot steer the companion past its verified narrow landing");
+
+                for (int row = high; row <= high + 2; row++) Main.tile[wallColumn, row].active(false);
+                int resumed = 0;
+                for (; resumed < updates && !OnFloor(edited.Body, lower); resumed++) step(edited);
+                Require(resumed < updates, "removing the wall restores Follow to the original narrow landing");
+                Console.WriteLine($"FOLLOW side wall clearLanding={resumed}");
             }
         }
 

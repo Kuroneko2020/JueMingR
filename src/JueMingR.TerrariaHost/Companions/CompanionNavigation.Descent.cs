@@ -85,7 +85,24 @@ namespace JueMingR.TerrariaHost.Companions
             float stopTime = speed / friction;
             float movingTime = Math.Min(time + 1, stopTime);
             float drift = Math.Sign(speedX) * movingTime * (speed - .5f * friction * movingTime);
-            float x = departure.X + drift;
+            if (Math.Abs(drift) + body.width > DescentCommitColumns * 16) return false;
+            descentCommitRead |= sharedCheck;
+
+            // Replay only while this body still drifts sideways. A dry side
+            // wall can stop the drift before its projected column, leaving
+            // the old destination on a ledge the body cannot actually reach.
+            float launchX = step.Direction == 0 && body.velocity.Y == 0 ?
+                Math.Sign(speedX) * Math.Max(0, speed - friction) : speedX;
+            var probe = new DescentProbe { Release = departure, Position = departure, Velocity = new Vector2(launchX, fall) };
+            int ticks = (int)Math.Ceiling(movingTime) + 2;
+            while (probe.Velocity.X != 0 && probe.Position.Y < step.To.Y)
+            {
+                if (ticks-- == 0 || !AdvanceDescent(body, step.Direction, friction, gravity, terminal, null, ref probe, out Step contact)) return false;
+                if (!contact.Ground) continue;
+                if (!step.DescentLands || Math.Abs(contact.Position.Y - step.To.Y) > 4) return false;
+                break;
+            }
+            float x = probe.Position.X;
             if (x < (step.DescentArea.Left + 1) * 16 || x + body.width > (step.DescentArea.Right - 1) * 16 ||
                 !DescentDestination(body, step, x)) return false;
 
@@ -101,8 +118,6 @@ namespace JueMingR.TerrariaHost.Companions
             int top = (int)Math.Floor(departure.Y / 16);
             int bottom = (int)Math.Floor((departure.Y + checkedDepth + body.height - .01f) / 16);
             if (right - left + 1 > DescentCommitColumns) return false;
-            descentCommitRead |= sharedCheck;
-
             // After enough vertical travel that even terminal speed gives
             // neutral friction time to settle, only the final body width can
             // meet the remaining rows. Vanilla height bounds the narrow scan.
@@ -162,6 +177,20 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool DescentSupport(Player body, Vector2 position, ReadSet terrain, bool platforms = true) =>
             Move(body, position, Vector2.UnitY, platforms, false, out Step contact, terrain) && contact.Ground;
 
+        private static bool AdvanceDescent(Player body, int direction, float friction, float gravity, float terminal,
+            ReadSet terrain, ref DescentProbe probe, out Step step)
+        {
+            bool platforms = direction != 0 || probe.Position.Y >= probe.Release.Y + 16;
+            float speed = probe.Velocity.X;
+            float x = Math.Sign(speed) * Math.Max(0, Math.Abs(speed) - friction);
+            var next = new Vector2(x, Math.Min(terminal, probe.Velocity.Y + gravity));
+            if (!Move(body, probe.Position, next, platforms, false, out step, terrain) ||
+                Collision.WetCollision(step.Position, body.width, body.height)) return false;
+            probe.Position = step.Position;
+            probe.Velocity = new Vector2(step.Wall ? 0 : x, next.Y);
+            return true;
+        }
+
         private static bool BeginDescent(Player body, CompanionMobilitySnapshot mobility, Vector2 from, int direction,
             Vector2 velocity, ReadSet terrain, ref DescentProbe probe)
         {
@@ -214,14 +243,8 @@ namespace JueMingR.TerrariaHost.Companions
             // pose and its tile dependencies available for the next slice.
             for (int work = 0; work < DescentSlice; work++)
             {
-                bool platforms = direction != 0 || probe.Position.Y >= probe.Release.Y + 16;
-                float velocityX = probe.Velocity.X;
-                velocityX = Math.Sign(velocityX) * Math.Max(0, Math.Abs(velocityX) - friction);
-                var next = new Vector2(velocityX, Math.Min(fallLimit, probe.Velocity.Y + gravity));
-                if (!Move(body, probe.Position, next, platforms, false, out Step fall, terrain) ||
-                    Collision.WetCollision(fall.Position, body.width, body.height)) return DescentResult.Rejected;
-                probe.Position = fall.Position;
-                probe.Velocity = new Vector2(fall.Wall ? 0 : velocityX, next.Y);
+                if (!AdvanceDescent(body, direction, friction, gravity, fallLimit, terrain, ref probe, out Step fall))
+                    return DescentResult.Rejected;
                 float depth = probe.Position.Y - probe.Release.Y;
                 if (fall.Ground)
                 {
@@ -298,22 +321,33 @@ namespace JueMingR.TerrariaHost.Companions
                     Collision.WetCollision(at.Position, body.width, body.height))
                     return false;
                 bool releases = !DescentSupport(body, at.Position, null);
-                if (sharedCheck && !allowDescentCommit)
+                float speed = Math.Max(0, body.velocity.X * step.Direction);
+                float brake = Math.Max(.01f, body.runAcceleration + body.runSlowdown);
+                // Once another forward input would use the remaining native
+                // stopping room, a rejection must still be able to hold the lip.
+                bool committing = releases || remaining <= reach + speed + speed * speed / (2 * brake);
+                if (committing)
                 {
-                    float speed = Math.Max(0, body.velocity.X * step.Direction);
-                    float brake = Math.Max(.01f, Math.Min(body.runAcceleration, body.runSlowdown));
-                    if (releases || remaining <= reach + speed * speed / (2 * brake))
+                    if (sharedCheck && !allowDescentCommit)
                     {
                         HoldDescent(body, ref frame);
                         return true;
                     }
-                }
-                if (releases && !DescentDepartureClear(body, step, at.Position,
-                    body.velocity.X + step.Direction * body.runAcceleration, sharedCheck))
-                {
-                    if (body.velocity.X == 0) return false;
-                    HoldDescent(body, ref frame);
-                    return true;
+                    Vector2 launch = at.Position;
+                    float launchX = body.velocity.X + step.Direction * body.runAcceleration;
+                    if (!releases)
+                    {
+                        DescentProbe outlet = default;
+                        if (!BeginDescent(body, mobility, body.position, step.Direction, body.velocity, null, ref outlet)) return false;
+                        launch = outlet.Release;
+                        launchX = outlet.Velocity.X;
+                    }
+                    if (!DescentDepartureClear(body, step, launch, launchX, sharedCheck))
+                    {
+                        if (body.velocity.X == 0) return false;
+                        HoldDescent(body, ref frame);
+                        return true;
+                    }
                 }
                 frame.Move = step.Direction;
                 return true;
