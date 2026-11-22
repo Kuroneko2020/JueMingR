@@ -29,6 +29,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             internal Point Tile;
             internal Vector2 Departure;
+            internal bool SideWall;
+            internal int Shape;
         }
 
         private static bool ImmuneToDrop(Player body) => body.noFallDmg || body.hasWings || body.mount.CanFly(body) ||
@@ -95,16 +97,28 @@ namespace JueMingR.TerrariaHost.Companions
                 Math.Sign(speedX) * Math.Max(0, speed - friction) : speedX;
             var probe = new DescentProbe { Release = departure, Position = departure, Velocity = new Vector2(launchX, fall) };
             int ticks = (int)Math.Ceiling(movingTime) + 2;
+            Point? wall = null;
             while (probe.Velocity.X != 0 && probe.Position.Y < step.To.Y)
             {
+                int heading = Math.Sign(probe.Velocity.X);
                 if (ticks-- == 0 || !AdvanceDescent(body, step.Direction, friction, gravity, terminal, null, ref probe, out Step contact)) return false;
+                if (contact.Wall) wall = DescentWallTile(body, contact.Position, heading);
                 if (!contact.Ground) continue;
                 if (!step.DescentLands || Math.Abs(contact.Position.Y - step.To.Y) > 4) return false;
                 break;
             }
             float x = probe.Position.X;
             if (x < (step.DescentArea.Left + 1) * 16 || x + body.width > (step.DescentArea.Right - 1) * 16 ||
-                !DescentDestination(body, step, x)) return false;
+                !DescentDestination(body, step, x))
+            {
+                if (wall.HasValue)
+                {
+                    Point tile = wall.Value;
+                    descentObstruction = new DescentObstruction
+                    { Tile = tile, Departure = departure, SideWall = true, Shape = TileValue(Main.tile[tile.X, tile.Y]) };
+                }
+                return false;
+            }
 
             // A tile edit can occur after publication and before the rolling
             // read cursor reaches it. Check the dry body corridor from the
@@ -141,6 +155,20 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static bool DryDescentTile(int column, int row) => Loaded(column, row) && Main.tile[column, row].liquid == 0;
 
+        private static Point? DescentWallTile(Player body, Vector2 position, int heading)
+        {
+            int column = (int)Math.Floor((heading < 0 ? position.X - .01f : position.X + body.width + .01f) / 16);
+            int first = (int)Math.Floor(position.Y / 16), last = (int)Math.Floor((position.Y + body.height - .01f) / 16);
+            for (int row = first; row <= last; row++)
+            {
+                if (!Loaded(column, row)) continue;
+                Tile tile = Main.tile[column, row];
+                if (tile.active() && !tile.inActive() && Main.tileSolid[tile.type] && !Main.tileSolidTop[tile.type])
+                    return new Point(column, row);
+            }
+            return null;
+        }
+
         private bool WakeChangedDescentObstruction(Player body, RouteMotion motion, Vector2 goal)
         {
             // The blocking cell can be much deeper than the normal read
@@ -149,7 +177,8 @@ namespace JueMingR.TerrariaHost.Companions
             if (!descentObstruction.HasValue) return false;
             var obstruction = descentObstruction.Value;
             Point tile = obstruction.Tile;
-            if (!DryDescentTile(tile.X, tile.Y)) return false;
+            if (!Loaded(tile.X, tile.Y) || (obstruction.SideWall ?
+                TileValue(Main.tile[tile.X, tile.Y]) == obstruction.Shape : Main.tile[tile.X, tile.Y].liquid != 0)) return false;
             descentObstruction = null;
             if ((blockedStep.Kind == RouteKind.Drop || blockedStep.Kind == RouteKind.LedgeDrop) &&
                 blockedStep.DescentArea.Contains(tile)) blockedAt = 0;

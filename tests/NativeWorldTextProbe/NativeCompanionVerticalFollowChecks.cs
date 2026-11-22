@@ -247,8 +247,10 @@ namespace NativeWorldTextProbe
                 string route = RouteStep(edited.Actor);
                 Require(OnFloor(edited.Body, high) && edge - edited.Body.Left.X > 8 && speed > 1 && route.StartsWith("LedgeDrop:", StringComparison.Ordinal),
                     $"the published ledge route still has enough original braking room (body={before}, speed={speed}, route={route})");
-                for (int row = high; row <= high + 2; row++) Fill(wallColumn, wallColumn, row, TileID.Stone);
-                Main.tile[wallColumn, high].halfBrick(true);
+                // The face is beyond this update's horizontal reach. Its
+                // roof is above the source body and its base is above the
+                // original shelf, so it cannot supply a replacement landing.
+                for (int row = high - 4; row <= high + 2; row++) Fill(wallColumn, wallColumn, row, TileID.Stone);
                 float maxDrop = 0;
                 bool braked = false;
                 for (int tick = 0; tick < 32; tick++)
@@ -261,11 +263,11 @@ namespace NativeWorldTextProbe
                 Require(maxDrop < 3 && OnFloor(edited.Body, high) && braked,
                     "a wall added beside the fall cannot steer the companion past its verified narrow landing");
 
-                for (int row = high; row <= high + 2; row++) Main.tile[wallColumn, row].active(false);
+                for (int row = high - 4; row <= high + 2; row++) Main.tile[wallColumn, row].active(false);
                 int resumed = 0;
                 for (; resumed < updates && !OnFloor(edited.Body, lower); resumed++) step(edited);
+                Console.WriteLine($"FOLLOW side wall clearLanding={resumed} body={edited.Body.Bottom}/{edited.Body.velocity} route={RouteStep(edited.Actor)}");
                 Require(resumed < updates, "removing the wall restores Follow to the original narrow landing");
-                Console.WriteLine($"FOLLOW side wall clearLanding={resumed}");
             }
         }
 
