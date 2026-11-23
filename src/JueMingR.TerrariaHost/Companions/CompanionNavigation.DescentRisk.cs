@@ -80,9 +80,9 @@ namespace JueMingR.TerrariaHost.Companions
             int fallStart = body.fallStart;
             if (NativeFallLoss(body, body.position.Y + body.gravDir * body.maxFallSpeed * horizon, fallStart) < body.statLife) return false;
 
-            if (routeIndex < route.Count && body.gravDir == 1f)
+            if (actions.HasStep && body.gravDir == 1f)
             {
-                var action = route[routeIndex];
+                var action = actions.Current;
                 if ((action.Kind == RouteKind.Drop || action.Kind == RouteKind.LedgeDrop) &&
                     DescentContactRisk(body, mobility, action, horizon, out bool threatened)) return threatened;
             }

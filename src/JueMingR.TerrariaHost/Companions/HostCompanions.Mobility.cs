@@ -147,10 +147,20 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
 
-        private bool StageMobility(Actor actor, CompanionMobilityFrame frame, bool maintenance, bool handNeedsShapeExit, bool attackReady)
+        private bool StageMobility(Actor actor, CompanionMobilityFrame frame, bool maintenance, bool handNeedsShapeExit, bool attackReady,
+            out CompanionMovementDelivery delivery)
+        {
+            bool occupiesHand = StageMobilityInputs(actor, frame, maintenance, handNeedsShapeExit, attackReady, out var deferral);
+            delivery = new CompanionMovementDelivery(actor.Body, actor.Mobility, frame, deferral);
+            return occupiesHand;
+        }
+
+        private bool StageMobilityInputs(Actor actor, CompanionMobilityFrame frame, bool maintenance, bool handNeedsShapeExit, bool attackReady,
+            out CompanionMovementDeferral deferral)
         {
             var p = actor.Body;
             var state = actor.Mobility;
+            deferral = CompanionMovementDeferral.None;
             // AI keys do not run through TriggersSet.CopyInto. Only the real
             // unpressed frame arms the next native hotkey edge.
             p.releaseDash |= !p.controlDash;
@@ -162,7 +172,11 @@ namespace JueMingR.TerrariaHost.Companions
             p.controlDown = frame.Drop || frame.Vertical > 0;
 
             state.Prepared = false;
-            if (state.PreviousSelection >= 0) return true;
+            if (state.PreviousSelection >= 0)
+            {
+                if (frame.Activation != CompanionMovementActivation.None) deferral = CompanionMovementDeferral.HandBusy;
+                return true;
+            }
             if (state.Result == CompanionMobilityResult.Started)
             {
                 // Mount.SetMount expands the cart's hitbox upward after the
@@ -170,7 +184,12 @@ namespace JueMingR.TerrariaHost.Companions
                 // gravity steps to settle; an initial left/right edge while
                 // on the wrong ground would immediately dismount it again.
                 if (state.Action == CompanionMovementActivation.QuickCart && p.mount.Cart && !p.onTrack)
+                {
                     p.controlLeft = p.controlRight = p.controlUp = p.controlDown = p.controlJump = false;
+                    deferral = CompanionMovementDeferral.NativeTransition;
+                }
+                else if (frame.Activation != CompanionMovementActivation.None && frame.Sequence != state.Sequence)
+                    deferral = CompanionMovementDeferral.NativeTransition;
                 return false;
             }
             bool shapeExit = handNeedsShapeExit && !frame.EmergencyHand && !frame.Jump && !frame.Drop && frame.Dash == 0 &&
@@ -200,13 +219,24 @@ namespace JueMingR.TerrariaHost.Companions
             }
             state.Result = CompanionMobilityResult.Deferred;
             if (!SupplyActorReady(actor) || Main.netMode == 1 && actor.Connection?.Finished != false || p.ghost || p.spectating >= 0 ||
-                p.CCed || p.tongued || p.shimmering || p.isLockedToATile) return false;
+                p.CCed || p.tongued || p.shimmering || p.isLockedToATile)
+            {
+                deferral = CompanionMovementDeferral.NativeCondition;
+                return false;
+            }
             bool hand = IsMobilityHand(state.Action);
             // The queued manual use remains the hand owner, including the
             // native dismount it needs. Other movement actions still defer.
-            if (hand && maintenance && !shapeExit) return false;
+            if (hand && maintenance && !shapeExit)
+            {
+                deferral = CompanionMovementDeferral.HandBusy;
+                return false;
+            }
             if (hand && (!FreeHand(p) || !p.releaseUseItem))
+            {
+                deferral = CompanionMovementDeferral.ReleaseInput;
                 return true; // Take a real release step without cancelling the native animation.
+            }
 
             switch (state.Action)
             {
@@ -221,7 +251,11 @@ namespace JueMingR.TerrariaHost.Companions
                 case CompanionMovementActivation.QuickMount:
                     if (p.mount.Active || p.gravDir < 0 || p.noItems || p.cursed) return RejectMobility(state);
                     var mount = frame.ItemSlot >= 0 && frame.ItemSlot < CompanionBehavior.MainInventorySlots ? p.inventory[frame.ItemSlot] : p.QuickMount_GetItemToUse();
-                    if (attackReady && mount != null && HandlessMount(mount.mountType)) return false;
+                    if (attackReady && mount != null && HandlessMount(mount.mountType))
+                    {
+                        deferral = CompanionMovementDeferral.HandBusy;
+                        return false;
+                    }
                     if (!ValidMountItem(mount) || frame.MountTypePlusOne != 0 && frame.MountTypePlusOne != mount.mountType + 1 ||
                         !KnownMountSpace(p, mount.mountType) || !BindMobilitySource(actor, mount, frame.ItemSlot)) return RejectMobility(state);
                     break;
@@ -245,13 +279,13 @@ namespace JueMingR.TerrariaHost.Companions
                         return false;
                     }
                     p.controlJump = true;
-                    if (!p.releaseJump) { p.controlJump = false; return false; }
+                    if (!p.releaseJump) { p.controlJump = false; deferral = CompanionMovementDeferral.ReleaseInput; return false; }
                     break;
                 case CompanionMovementActivation.Gravity:
                     if (p.gravDir == state.Target.Y) { state.Result = CompanionMobilityResult.Completed; return false; }
                     if (!state.Observed.CanChangeGravity) return RejectMobility(state);
                     p.controlUp = p.releaseUp;
-                    if (!p.controlUp) return false;
+                    if (!p.controlUp) { deferral = CompanionMovementDeferral.ReleaseInput; return false; }
                     break;
             }
 

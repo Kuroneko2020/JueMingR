@@ -183,11 +183,15 @@ namespace NativeWorldTextProbe
             Place(host, actor, body, human, 82 * 16 + 8, floor);
             human.Bottom = new Vector2(112 * 16, floor * 16);
             bool ride = false, driving = false, brake = false, dismounted = false;
+            int waitingForNativeTrack = 0;
             float initialRailX = 0, topSpeed = 0;
             int stable = 0;
             float farthest = 0;
             Vector2 nearbyGoal = new Vector2(94 * 16, floor * 16);
             var mobility = Get(actor, "Mobility");
+            var navigation = Get(Get(actor, "Behavior"), "navigation");
+            var coordinator = GetOptional(navigation, "coordinator");
+            var executor = coordinator == null ? null : Get(coordinator, "Actions");
             int priorHook = (int)Get(mobility, "HookKey");
             int railHookKey = priorHook;
             Projectile railHook = null;
@@ -208,7 +212,25 @@ namespace NativeWorldTextProbe
                         try { Main.ProjectileUpdateLoopIndex = railHook.whoAmI; railHook.Update(railHook.whoAmI); }
                         finally { Main.ProjectileUpdateLoopIndex = previous; }
                     }
-                    Step(host, body);
+                    bool settling = body.mount.Cart && !body.onTrack && Get(mobility, "Action").ToString() == "QuickCart" &&
+                        Get(mobility, "Result").ToString() == "Started";
+                    int ageBefore = settling && executor != null ? (int)Get(executor, "age") : 0;
+                    // Control/AfterBody surrounds the native movement first.
+                    // The real Host tail observes it for the next world step.
+                    NativeQuickItemChecks.BeginWorldStep();
+                    body.Update(body.whoAmI);
+                    Call(host, "Update", (ulong)Main.GameUpdateCount);
+                    if (settling && executor != null)
+                    {
+                        var outcome = Get(executor, "Outcome");
+                        var delivery = Get(executor, "delivery");
+                        Require(Get(outcome, "Deferral").ToString() == "NativeTransition" &&
+                            (long)Get(delivery, "ActionId") == (long)Get(outcome, "ActionId") &&
+                            (int)Get(delivery, "Move") == 0 && (int)Get(delivery, "Vertical") == 0 && !(bool)Get(delivery, "Jump") &&
+                            (int)Get(executor, "age") == ageBefore,
+                            "an actual unsettled cart receives neutral controls and no movement failure opportunity while it attaches");
+                        waitingForNativeTrack++;
+                    }
                     if (body.mount.Cart && body.onTrack)
                     {
                         if (!ride) { ride = true; initialRailX = body.Center.X; }
@@ -238,6 +260,8 @@ namespace NativeWorldTextProbe
             }
             Require(ride && driving && brake && dismounted && body.Center.X > 107 * 16,
                 $"Follow rides the existing track, brakes and resumes on foot: ride={ride} drive={driving} speed={topSpeed} brake={brake} dismount={dismounted} body={body.position} status={Get(actor, "Status")}");
+            if (executor != null) Require(waitingForNativeTrack > 0, "the native cart really enters the unsettled contact phase");
+            Console.WriteLine($"NAV FACILITY real cart settling updates={waitingForNativeTrack}");
             Console.WriteLine("PASS native companion Follow minecart: track attachment, sustained travel, native braking, dismount and continued ground Follow.");
         }
 
@@ -342,8 +366,10 @@ namespace NativeWorldTextProbe
         private static void TraceFollow(object actor, Player body, string caseName, int tick)
         {
             var navigation = Get(Get(actor, "Behavior"), "navigation");
-            var steps = (System.Collections.IList)Get(navigation, "route");
-            int current = (int)Get(navigation, "routeIndex");
+            var coordinator = GetOptional(navigation, "coordinator");
+            var routeOwner = coordinator == null ? navigation : Get(coordinator, "Actions");
+            var steps = (System.Collections.IList)Get(routeOwner, "route");
+            int current = (int)Get(routeOwner, "routeIndex");
             object action = current < steps.Count ? steps[current] : null;
             var search = GetOptional(navigation, "search");
             string route = action == null ? "local" : $"{Get(action,"Kind")}:{Get(action,"From")}→{Get(action,"To")}";

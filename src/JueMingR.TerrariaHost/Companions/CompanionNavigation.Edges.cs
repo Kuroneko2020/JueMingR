@@ -52,6 +52,7 @@ namespace JueMingR.TerrariaHost.Companions
                 case 18: case 19: case 27: return 9;
                 case 20: case 22: case 23: case 24: case 26: return 32;
                 case 29: case 30: return 152;
+                case 39: case 40: return HoikWork;
                 default: return 4;
             }
         }
@@ -78,7 +79,7 @@ namespace JueMingR.TerrariaHost.Companions
                         bool extended = candidate >= 35;
                         if (extended) step.Direction = direction = candidate == 35 ? facing : -facing;
                         if (motion != RouteMotion.Ground || !TryWalkEdge(body, from, direction, search.Terrain, out step.To,
-                            extended ? 32 : 16)) return false;
+                            extended ? 32 : 16) || !StopWalkAtHoik(body, mobility, from, direction, search.Terrain, ref step.To)) return false;
                         step.Kind = RouteKind.Walk;
                         step.Cost = Math.Abs(step.To.X - from.X);
                         step.ExitVelocityX = RunToDistance(body, mobility, node.VelocityX, direction, Math.Max(0, step.Cost - 3));
@@ -187,6 +188,12 @@ namespace JueMingR.TerrariaHost.Companions
                         break;
                     case 31: case 32:
                         if (!TryTrapdoorEdge(body, from, candidate == 31 ? -1 : 1, search.Terrain, ref step, out motion)) return false;
+                        observe = true;
+                        break;
+                    case 39: case 40:
+                        direction = candidate == 39 ? facing : -facing;
+                        if (!TryHoikEdge(body, mobility, node, direction, search.Terrain, ref step)) return false;
+                        step.Kind = RouteKind.Hoik;
                         observe = true;
                         break;
                 }

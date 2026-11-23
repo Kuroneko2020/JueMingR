@@ -278,7 +278,9 @@ namespace NativeWorldTextProbe
             human.position = AtGround(human, 93, BankFloor);
             object movement = Get(Get(actor, "Behavior"), "navigation");
             var observer = new Harmony("JueMingR.Tests.PlannedCarpetBank");
-            var execute = AccessTools.Method(movement.GetType(), "ExecuteStep");
+            var executor = GetOptional(movement, "actions");
+            var execute = executor != null ? AccessTools.Method(executor.GetType(), "Step") : AccessTools.Method(movement.GetType(), "ExecuteStep");
+            Require(execute != null, "the selected glide action is visible at the production executor's original input boundary");
             bankProbeBody = body;
             bankRemovalTick = -1;
             bool jumped = false;

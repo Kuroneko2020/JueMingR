@@ -262,8 +262,9 @@ namespace NativeWorldTextProbe
                         jumping = tick;
                         actualSpeed = speed;
                         object nav = Navigator(run.Actor);
-                        var route = (IList)Get(nav, "route");
-                        int index = (int)Get(nav, "routeIndex");
+                        object routeOwner = GetOptional(nav, "actions") ?? nav;
+                        var route = (IList)Get(routeOwner, "route");
+                        int index = (int)Get(routeOwner, "routeIndex");
                         if (index < route.Count)
                         {
                             object edge = route[index];

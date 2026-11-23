@@ -153,7 +153,7 @@ namespace NativeWorldTextProbe
                 var navigation = Navigator(run.Actor);
                 var state = Get(run.Actor, "Mobility");
                 var root = Enum.Parse(AccessTools.Inner(navigation.GetType(), "RouteMotion"), "Ground");
-                var route = (IList)Get(navigation, "route");
+                var route = (IList)Get(GetOptional(navigation, "actions") ?? navigation, "route");
                 Call(navigation, "CancelRoute");
                 using (var work = new TerrainSearchWork(navigation))
                 {
@@ -219,6 +219,7 @@ namespace NativeWorldTextProbe
                     long previous = 0, consumed = 0, observedAtArrival = 0;
                     bool together = false;
                     var navigation = Navigator(run.Actor);
+                    var goals = GetOptional(navigation, "goals") ?? navigation;
                     var peerNavigation = Navigator(secondActor);
                     bool debugWork = GetOptional(navigation, "RouteWork") != null;
                     for (int tick = 0; tick < 470; tick++)
@@ -252,9 +253,9 @@ namespace NativeWorldTextProbe
                             together |= ReferenceEquals(GetOptional(Get(run.Actor, "Behavior"), "OwnerTrail"),
                                 GetOptional(Get(secondActor, "Behavior"), "OwnerTrail")) && latest > 3;
                         }
-                        long anchor = (long)(GetOptional(navigation, "trailJoined") ?? 0L);
+                        long anchor = (long)(GetOptional(goals, "trailJoined") ?? 0L);
                         if (anchor > 0 && joined < 0) joined = tick;
-                        consumed = Math.Max(consumed, (long)(GetOptional(navigation, "trailConsumed") ?? 0L));
+                        consumed = Math.Max(consumed, (long)(GetOptional(goals, "trailConsumed") ?? 0L));
                         leftmost = Math.Min(leftmost, run.Body.Bottom.X);
                         if (lowerLanding < 0 && OnFloor(run.Body, lower)) lowerLanding = tick;
                         stable = OnFloor(run.Body, lower) && Math.Abs(run.Body.Bottom.X - human.Bottom.X) < 34 &&
@@ -281,7 +282,7 @@ namespace NativeWorldTextProbe
                     Console.WriteLine($"FOLLOW owner warp oldSegment={segment} newSegment={Get(shared, "Segment")} ownerDisplacement={human.position.X-oldHuman.X:F1} actorDisplacement={Vector2.Distance(run.Body.position,oldBody):F1}");
                     Require(human.position.X >= oldHuman.X + 188 && (int)Get(shared, "Segment") != segment &&
                         Vector2.DistanceSquared(run.Body.position, oldBody) < 12 * 12 &&
-                        (long)Get(navigation, "trailJoined") == 0,
+                        (long)Get(goals, "trailJoined") == 0,
                         "an actual owner teleport splits the shared trail and retires only guide progress without relocating the follower");
                     int guidedOnOpenGround = 0, shortcutStable = 0;
                     float peakSpeed = 0;
@@ -289,7 +290,7 @@ namespace NativeWorldTextProbe
                     {
                         run.StepToward(new Vector2(94 * 16, lower * 16), new Vector2(1.15f, 0));
                         second.Update(second.whoAmI);
-                        if ((long)Get(navigation, "trailJoined") != 0) guidedOnOpenGround++;
+                        if ((long)Get(goals, "trailJoined") != 0) guidedOnOpenGround++;
                         peakSpeed = Math.Max(peakSpeed, Math.Abs(run.Body.velocity.X));
                         shortcutStable = OnFloor(run.Body, lower) && Math.Abs(run.Body.Bottom.X-human.Bottom.X) < 32 ?
                             shortcutStable + 1 : 0;

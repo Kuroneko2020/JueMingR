@@ -2,6 +2,7 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal struct CompanionMobilityFrame
     {
+        internal long ActionId;
         internal int Move, Vertical, Dash;
         internal bool Jump, Drop, EmergencyHand;
         internal CompanionMovementActivation Activation;

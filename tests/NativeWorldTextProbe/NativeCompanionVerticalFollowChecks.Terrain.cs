@@ -275,8 +275,12 @@ namespace NativeWorldTextProbe
                 var navigation = Navigator(run.Actor);
                 var state = Get(run.Actor, "Mobility");
                 var root = Enum.Parse(AccessTools.Inner(navigation.GetType(), "RouteMotion"), "Ground");
-                var route = (IList)Get(navigation, "route");
+                var executor = GetOptional(navigation, "actions");
+                IList ActivePrefix() => (IList)Get(executor ?? navigation, "route");
                 human.Bottom = new Vector2(68 * 16, floor * 16);
+                // Bind the new owner pose before taking a background proof.
+                // The later native follow updates keep the same goal epoch.
+                run.StepOwner(Vector2.Zero);
                 var goal = human.Center - new Vector2(body.width * .5f, body.height * .5f);
                 int candidate = -1, pending = -1, grants = 0, publications = 0;
                 bool backgroundExhausted = false;
@@ -289,6 +293,7 @@ namespace NativeWorldTextProbe
                         // A bounded state-level slice exercises the real caller's
                         // publication gate without emitting or substituting input.
                         NativeQuickItemChecks.BeginWorldStep();
+                        Call(host, "Update", (ulong)Main.GameUpdateCount);
                         Call(navigation, "SearchRoute", body, Get(state, "Observed"), goal, 22, root, false);
                         search = Get(navigation, "search");
                         var nodes = (IList)Get(search, "Nodes");
@@ -300,7 +305,7 @@ namespace NativeWorldTextProbe
                         if (candidate >= 0 && pending >= 0 || backgroundExhausted) break;
                     }
                     long elapsed = Stopwatch.GetTimestamp() - begin;
-                    Require(candidate >= 0 && route.Count == 0, "E fixture actually discovered a reachable candidate behind the closed publication gate");
+                    Require(candidate >= 0 && ActivePrefix().Count == 0, "E fixture actually discovered a reachable candidate behind the closed publication gate");
                     var from = body.position;
                     int starts = work.Starts;
                     int candidateId = pending >= 0 ? pending : candidate;
@@ -309,11 +314,13 @@ namespace NativeWorldTextProbe
                     // opens. It must connect to the old result from today's body.
                     for (int tick = 0; tick < 19; tick++) run.StepOwner(Vector2.Zero);
                     var live = body.position;
-                    for (; publications < 10 && route.Count == 0; publications++)
+                    for (; publications < 10 && ActivePrefix().Count == 0; publications++)
                     {
                         NativeQuickItemChecks.BeginWorldStep();
-                        Call(navigation, "SearchRoute", body, Get(state, "Observed"), goal, 22, root, true);
+                        if (executor == null) Call(navigation, "SearchRoute", body, Get(state, "Observed"), goal, 22, root, true);
+                        else Call(navigation, "TryPlanRoute", body, state, Get(state, "Observed"), root, goal, 22, null);
                     }
+                    var route = ActivePrefix();
                     bool published = route.Count > 0;
                     int startsAfter = work.Starts;
                     float reconnect = published ? Vector2.Distance(live, (Vector2)Get(route[0], "From")) : -1;

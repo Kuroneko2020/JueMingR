@@ -52,12 +52,17 @@ namespace NativeWorldTextProbe
                     { AdjacentPlatforms, ControlledDrop, TolerableFalls, TrailFollow };
                 var longerFollow = new Action<object, object, Player>[] { LongAutonomousDetour, BoundedTerrainDependencies };
                 var contact = new Action<object, object, Player>[] { NativeContactAndDescent, RunUpJumpAndHighExit };
+                var hoik = new Action<object, object, Player>[] { (h, p, owner) => NativeHoikBaseline(context, owner) };
+                var structure = new Action<object, object, Player>[] { (h, p, owner) => HoikFollow(context, h, p, owner),
+                    (h, p, owner) => MixedNativeFollow(context, h, p, owner), (h, p, owner) => TriangleProxyFollow(context, h, p, owner) };
                 var full = System.Linq.Enumerable.Concat(
                     System.Linq.Enumerable.Concat(existing, terrain),
-                    System.Linq.Enumerable.Concat(practicalFollow, System.Linq.Enumerable.Concat(contact, longerFollow)));
+                    System.Linq.Enumerable.Concat(practicalFollow, System.Linq.Enumerable.Concat(contact,
+                        System.Linq.Enumerable.Concat(longerFollow, System.Linq.Enumerable.Concat(hoik, structure)))));
                 var scenarios = comparisonFocus == "terrain" ? terrain : comparisonFocus == "vertical" ? existing :
                     comparisonFocus == "wormhole-follow" ? practicalFollow :
-                    comparisonFocus == "detour-descent" ? longerFollow : comparisonFocus == "contact-descent" ? contact : full;
+                    comparisonFocus == "detour-descent" ? longerFollow : comparisonFocus == "contact-descent" ? contact :
+                    comparisonFocus == "hoik-baseline" ? hoik : comparisonFocus == "movement-structure" ? structure : full;
                 foreach (Action<object, object, Player> scenario in scenarios)
                 {
                     try { scenario(host, profiles, human); }
@@ -535,11 +540,12 @@ namespace NativeWorldTextProbe
         private static string RouteStep(object actor)
         {
             var navigator = Get(Get(actor, "Behavior"), "navigation");
-            var route = (IList)Get(navigator, "route");
-            int index = (int)Get(navigator, "routeIndex");
+            var routeOwner = GetOptional(navigator, "actions") ?? navigator;
+            var route = (IList)Get(routeOwner, "route");
+            int index = (int)Get(routeOwner, "routeIndex");
             if (index >= route.Count) return "local";
             var step = route[index];
-            return FormattableString.Invariant($"{Get(step, "Kind")}:{Get(step, "From")}→{Get(step, "To")} age={Get(navigator, "age")}");
+            return FormattableString.Invariant($"{Get(step, "Kind")}:{Get(step, "From")}→{Get(step, "To")} age={Get(routeOwner, "age")}");
         }
 
         private sealed class FlightWindow

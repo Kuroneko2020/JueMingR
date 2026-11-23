@@ -90,10 +90,17 @@ namespace NativeWorldTextProbe
                     second.Report("second");
                     Console.WriteLine(FormattableString.Invariant($"DETOUR team steps={steps} ownerMoved={resume} maxWork={teamWork} nativeTotalMs={1000d * elapsed / Stopwatch.Frequency:F3} nativeMaxMs={1000d * peak / Stopwatch.Frequency:F3}"));
                     Console.WriteLine(FormattableString.Invariant($"DETOUR matched initialSteps=400 nativeTotalMs={1000d * pairedElapsed / Stopwatch.Frequency:F3} nativeMaxMs={1000d * pairedPeak / Stopwatch.Frequency:F3}"));
+                    int passages = (int)(GetOptional(first.Navigation, "RoutePassageConnections") ?? -1);
+                    int peerPassages = (int)(GetOptional(second.Navigation, "RoutePassageConnections") ?? -1);
+                    int transitions = (int)(GetOptional(first.Navigation, "RoutePassageTransitions") ?? 0) +
+                        (int)(GetOptional(second.Navigation, "RoutePassageTransitions") ?? 0);
                     Require(first.Result(upper, lower, resume) && second.Result(upper, lower, resume) && first.Anchors == 0 && second.Anchors == 0,
                         "two autonomous native bodies retreat along the upper floor, take the far exit, descend, settle below, and follow the owner's next movement");
                     Require(first.WithoutGrant > 30 && second.WithoutGrant > 30 && (!debugWork || teamWork > 0 && teamWork <= 160),
                         "both bodies execute real movement while the other actor owns the shared planning slice");
+                    Console.WriteLine($"DETOUR connected using chained passage witnesses first={passages} second={peerPassages} transitions={transitions}");
+                    Require(passages < 0 || passages > 0 && peerPassages > 0 && transitions > 0,
+                        "the real routes use persistent passage witnesses including an observed contact change");
                 }
                 finally
                 {
@@ -127,7 +134,7 @@ namespace NativeWorldTextProbe
                 maxStep = Math.Max(maxStep, moved);
                 farthestRetreat = Math.Max(farthestRetreat, originX - body.Bottom.X);
                 if (!ReferenceEquals(granted, actor) && moved > .5f) WithoutGrant++;
-                if ((long)(GetOptional(Navigation, "trailJoined") ?? 0L) != 0) Anchors++;
+                if ((long)(GetOptional(GetOptional(Navigation, "goals") ?? Navigation, "trailJoined") ?? 0L) != 0) Anchors++;
                 if ((bool)Get(actor, "Faulted")) Faults++;
                 if (Reverse < 0 && body.Bottom.X < originX - 16 && body.controlLeft && OnFloor(body, upper)) Reverse = tick;
                 if (Exit < 0 && Reverse >= 0 && body.position.X + body.width <= lip * 16 + 1 && body.Bottom.Y > upper * 16 + 4 && body.velocity.Y > 0)
@@ -170,8 +177,9 @@ namespace NativeWorldTextProbe
             internal string ActionState()
             {
                 var blocked = Get(Navigation, "blockedStep");
-                var steps = (IList)Get(Navigation, "route");
-                int next = (int)Get(Navigation, "routeIndex") + 1;
+                var executor = GetOptional(Navigation, "actions") ?? Navigation;
+                var steps = (IList)Get(executor, "route");
+                int next = (int)Get(executor, "routeIndex") + 1;
                 object action = next < steps.Count ? steps[next] : null;
                 string suffix = action == null ? "none" : $"{Get(action,"Kind")}:{Get(action,"From")}→{Get(action,"To")}";
                 return $"status={Get(actor, "Status")},next={suffix},lastRejected={Get(blocked,"Kind")}:{Get(blocked,"From")}→{Get(blocked,"To")}@{Get(Navigation,"blockedAt")},tick={Main.GameUpdateCount},advancing={Get(Navigation,"advancing")}";
@@ -210,12 +218,13 @@ namespace NativeWorldTextProbe
                 Require(intervening == new Rectangle(41, 45, 1, 1),
                     "a sampled intermediate edit retires older route proof even when the cell is restored before a rolling read");
                 Console.WriteLine($"DETOUR native read boundary watched=2048 retired={retired} changed={changed} intermediate={intervening}");
-                VerifyFrontierPressure(nav, run.Body.position, retired);
+                VerifyFrontierPressure(nav, run.Body, retired);
             }
         }
 
-        private static void VerifyFrontierPressure(Type nav, Vector2 root, Rectangle lostDependency)
+        private static void VerifyFrontierPressure(Type nav, Player body, Rectangle lostDependency)
         {
+            Vector2 root = body.position;
             Type searchType = nav.GetNestedType("RouteSearch", BindingFlags.NonPublic);
             Type nodeType = nav.GetNestedType("RouteNode", BindingFlags.NonPublic);
             var ground = Enum.Parse(nav.GetNestedType("RouteMotion", BindingFlags.NonPublic), "Ground");
@@ -290,6 +299,74 @@ namespace NativeWorldTextProbe
             Require((bool)Get(search, "Active") && (bool)Get(search, "CanExpand") && (Vector2)Get(nodes[0], "Position") == root,
                 "requested live-root recheck wakes the same retained frontier");
             Console.WriteLine($"DETOUR frontier capacity={nodes.Count} live={Get(search,"LiveCount")} equivalents={Get(search,"DominatedCount")} resumed=True pausedAfterDrain=True");
+
+            if (GetOptional(search, "Passages") == null) return; // frozen pre-restructure comparator
+            Call(search, "Begin", root, root + new Vector2(720, 160), ground, 0, 0, 0f, 1f, 256, 0);
+            int original = Add(Node(projected, 0, 2, 28, lostDependency));
+            object originalProof = Call(search, "Reference", original);
+            for (int i = 2; i < 768; i++)
+                Require(Add(Node(root + new Vector2(i * .25f + 24, 0), 0, 0, i, Rectangle.Empty)) >= 0,
+                    "the exact arena admits all of the live competing leaves");
+            int better = Add(Node(projected, 0, 8, 16, lostDependency));
+            object[] prior = { originalProof, null };
+            object[] replacement = { Call(search, "Reference", better), null };
+            Require(better == original && !(bool)Call(search, "TryRead", prior) && (bool)Call(search, "TryRead", replacement) &&
+                (int)Get(search, "LiveCount") == 768, "a dominating candidate replaces a full live leaf and the old reference cannot read the reused slot");
+            Call(search, "DeferCapacity", better);
+            object[] prune = { 24, better, -1, -1 };
+            Call(search, "Reclaim", prune);
+            Require((int)Get(search, "LiveCount") < 768 && (bool)Call(search, "TryRead", replacement),
+                "the same arena creates room from all-pending branches while preserving the protected connection leaf");
+
+            Call(search, "Begin", root, root + new Vector2(720, 160), ground, 0, 0, 0f, 1f, 256, 0);
+            for (int i = 1; i < 768; i++)
+            {
+                object[] stepBudget = { 160 };
+                Require((int)Call(search, "Next", stepBudget) == i - 1, "the actual pending leaf gives way to its single discovered successor");
+                Require(Add(Node(root + new Vector2(i * .25f, 0), i - 1, 0, i, lostDependency)) == i,
+                    "every ancestor remains referenced when the sole frontier leaf advances to capacity");
+            }
+            object[] opening = { 160 };
+            int leaf = (int)Call(search, "Next", opening);
+            Set(search, "Expanding", leaf);
+            Require(Add(Node(root + new Vector2(768 * .25f, 0), leaf, 0, 768, lostDependency)) < 0,
+                "the entire route spine reaches the actual finite pose limit");
+            Call(search, "DeferCapacity", leaf);
+            for (int i = 0; i < 34; i++)
+            {
+                object[] noClosedLeaves = { 24, -1, -1, -1 };
+                Call(search, "Reclaim", noClosedLeaves);
+            }
+            object[] checkpoint = { Get(search, "CapacityOutlet"), null };
+            Require(leaf == 767 && (bool)Call(search, "TryRead", checkpoint) && (bool)Get(search, "CanExpand") &&
+                !(bool)Get(search, "FullyKnownClosure") && (int)Get(search, "LiveCount") == 768,
+                "with every ancestor pinned, the real planner can offer the terminal as a versioned checkpoint without replacing a parent or claiming closure");
+            object planner = Activator.CreateInstance(nav, nonPublic: true);
+            Set(planner, "search", search);
+            Set(planner, "checkpointPlan", 17L);
+            Set(planner, "checkpointProof", checkpoint[0]);
+            var step = Get(nodes[leaf], "Step");
+            Set(planner, "checkpointEnd", step);
+            var outcomeType = nav.GetNestedType("ActionOutcome", BindingFlags.NonPublic);
+            var result = Enum.Parse(nav.GetNestedType("ActionResult", BindingFlags.NonPublic), "Reached");
+            var none = Enum.Parse(nav.Assembly.GetType(nav.Namespace + ".CompanionMovementDeferral", throwOnError: true), "None");
+            object Receipt(bool lastStep) => Activator.CreateInstance(outcomeType, BindingFlags.Instance | BindingFlags.NonPublic, null,
+                new object[] { 1L, 17L, step, result, body, true, false, none, lastStep, true }, null);
+            Call(planner, "ReportActionOutcome", Receipt(lastStep: false));
+            Require((long)Get(planner, "checkpointPlan") == 17L && (bool)Call(search, "TryRead", checkpoint),
+                "an intermediate native completion keeps the checkpoint until the remaining safe action has ended");
+            Call(planner, "ReportActionOutcome", Receipt(lastStep: true));
+            Require((long)Get(planner, "checkpointPlan") == 0L && !(bool)Get(planner, "compactAfterContact"),
+                "finishing a trimmed prefix retires the abandoned checkpoint without announcing that its outlet was reached");
+            for (int i = 0; i < 34 && (bool)Call(search, "TryRead", checkpoint); i++)
+            {
+                object[] reclaim = { 24, -1, -1, -1 };
+                Call(search, "Reclaim", reclaim);
+            }
+            object[] resumeParent = { 160 };
+            Require(!(bool)Call(search, "TryRead", checkpoint) && (int)Call(search, "Next", resumeParent) == leaf - 1,
+                "the planner consumes the actual outcome type, releases the abandoned leaf and resumes the retained parent");
+            Console.WriteLine($"DETOUR storage replacementSlot={better} staleRejected=True activeBranchesReclaimed=True soleCheckpoint={leaf} protectedAncestors=767 rejectedCheckpointResumed=True");
         }
     }
 }

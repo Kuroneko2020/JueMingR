@@ -139,13 +139,10 @@ namespace JueMingR.TerrariaHost.Companions
     internal sealed partial class CompanionNavigation
     {
         private const int DoorWork = 64, DoorProbeReach = 18, MaxDoorProofTiles = 256;
-        private bool doorCommitRead;
         private ReadSet doorQueryTerrain;
         private RouteStep doorQuery;
         private object doorQueryWorld;
         private bool doorQueryPass;
-        private DoorPassageProof doorActivationProof;
-        private int doorActivationSequence;
 #if DEBUG
         internal int DoorPassageProbes { get; private set; }
 #endif
@@ -340,93 +337,97 @@ namespace JueMingR.TerrariaHost.Companions
             return true;
         }
 
-        private bool DriveDoorStep(Player body, CompanionMobilityState state, RouteStep step, bool allowPlanning,
-            out CompanionMobilityFrame frame, out bool finished)
+        private sealed partial class ActionExecutor
         {
-            frame = new CompanionMobilityFrame { Status = "接近门口" };
-            finished = false;
-            if (!CompanionDoor.TryRead(step.Operand.ToTileCoordinates(), out var door) || door.Target != step.Operand ||
-                (door.Family == CompanionDoorFamily.Trapdoor) != (step.Vertical != 0)) return false;
-            bool trap = step.Vertical != 0;
-            int passage = trap ? step.Vertical : step.Direction;
-            float remaining = trap ? (step.To.Y - body.position.Y) * passage : (step.To.X - body.position.X) * passage;
-            if (door.Open && remaining <= 4 && (trap || HasSurface(body, body.position, null)))
-            { finished = true; return false; }
-            if (!door.Open && commandSequence != 0 && state.Sequence == commandSequence && state.Action == CompanionMovementActivation.Door &&
-                (state.Result == CompanionMobilityResult.Rejected || state.Result == CompanionMobilityResult.Completed)) return false;
-
-            if (trap)
+            private bool DriveDoorStep(Player body, CompanionMobilityState state, RouteStep step, bool allowPlanning,
+                out CompanionMobilityFrame frame, out bool finished)
             {
-                float dx = step.To.X - body.position.X;
-                if (Math.Abs(dx) > 3 && (DoorCorridor(body, body.position, body.position + new Vector2(Math.Sign(dx) * 4, 0), door, null)))
-                    frame.Move = Math.Sign(dx);
-                if (door.Open && !DoorCorridor(body, body.position, body.position + new Vector2(0, passage * 4), door, null)) return false;
-                if (passage < 0)
+                frame = new CompanionMobilityFrame { Status = "接近门口" };
+                finished = false;
+                if (!CompanionDoor.TryRead(step.Operand.ToTileCoordinates(), out var door) || door.Target != step.Operand ||
+                    (door.Family == CompanionDoorFamily.Trapdoor) != (step.Vertical != 0)) return false;
+                bool trap = step.Vertical != 0;
+                int passage = trap ? step.Vertical : step.Direction;
+                float remaining = trap ? (step.To.Y - body.position.Y) * passage : (step.To.X - body.position.X) * passage;
+                if (door.Open && remaining <= 4 && (trap || HasSurface(body, body.position, null)))
+                { finished = true; return false; }
+                if (!door.Open && commandSequence != 0 && state.Sequence == commandSequence && state.Action == CompanionMovementActivation.Door &&
+                    (state.Result == CompanionMobilityResult.Rejected || state.Result == CompanionMobilityResult.Completed)) return false;
+
+                if (trap)
                 {
-                    var mobility = state.Observed;
-                    bool grounded = body.velocity.Y == 0f && Surface(body, body.position, null);
-                    var motion = CurrentMotion(body, mobility, grounded);
-                    if (door.Open)
+                    float dx = step.To.X - body.position.X;
+                    if (Math.Abs(dx) > 3 && (DoorCorridor(body, body.position, body.position + new Vector2(Math.Sign(dx) * 4, 0), door, null)))
+                        frame.Move = Math.Sign(dx);
+                    if (door.Open && !DoorCorridor(body, body.position, body.position + new Vector2(0, passage * 4), door, null)) return false;
+                    if (passage < 0)
                     {
-                        if (!jumpStarted && (motion == RouteMotion.Ground || body.sliding) && body.releaseJump)
-                            jumpStarted = frame.Jump = true;
-                        else if (motion == RouteMotion.Air && AirInput(body, mobility, motion, frame.Move, -1, out var ascent))
+                        var mobility = state.Observed;
+                        bool grounded = body.velocity.Y == 0f && Surface(body, body.position, null);
+                        var motion = CurrentMotion(body, mobility, grounded);
+                        if (door.Open)
                         {
-                            // The door transition can start in the middle of
-                            // legitimate wing flight or a powered ascent.
-                            frame.Move = ascent.Move;
-                            frame.Jump = ascent.Jump;
-                            frame.Vertical = ascent.Vertical;
+                            if (!jumpStarted && (motion == RouteMotion.Ground || body.sliding) && body.releaseJump)
+                                { frame.Jump = true; awaitingJumpDelivery = true; }
+                            else if (motion == RouteMotion.Air && AirInput(body, mobility, motion, frame.Move, -1, out var ascent))
+                            {
+                                // The door transition can start in the middle of
+                                // legitimate wing flight or a powered ascent.
+                                frame.Move = ascent.Move;
+                                frame.Jump = ascent.Jump;
+                                frame.Vertical = ascent.Vertical;
+                            }
                         }
+                        else if (motion == RouteMotion.Air && mobility.JumpTime <= 0 && body.velocity.Y >= 0 && !CanPowerAscent(mobility))
+                            return false;
                     }
-                    else if (motion == RouteMotion.Air && mobility.JumpTime <= 0 && body.velocity.Y >= 0 && !CanPowerAscent(mobility))
-                        return false;
+                    if (!door.Open && Math.Abs(dx) > 5) return frame.Move != 0;
                 }
-                if (!door.Open && Math.Abs(dx) > 5) return frame.Move != 0;
-            }
-            else
-            {
-                // When open, the world has the final hinge and floor. All
-                // crossing input is checked against that actual body tread.
-                bool approaching = !door.Open && !door.AtApproach(body, passage);
-                if (door.Open || approaching)
+                else
                 {
-                    if (!TrySupportedTravel(body, body.position, passage, 5, null, out _, out _, rejectDangerLiquids: true)) return false;
-                    frame.Move = passage;
-                }
-                else if (commandSequence == 0 || state.Sequence != commandSequence || state.Result != CompanionMobilityResult.Started)
-                {
-                    var proof = commandSequence != 0 && doorActivationSequence == commandSequence ? doorActivationProof : step.DoorProof;
-                    if (!DoorProofApplies(body, passage, proof))
+                    // When open, the world has the final hinge and floor. All
+                    // crossing input is checked against that actual body tread.
+                    bool approaching = !door.Open && !door.AtApproach(body, passage);
+                    if (door.Open || approaching)
                     {
-                        // A stale forecast cannot open a new route. Wait on
-                        // the known approach until this body has the grant.
-                        if (!allowPlanning || doorCommitRead || state.AwaitingEquipmentObservation) return true;
-                        doorCommitRead = true;
-                        doorQueryTerrain = doorQueryTerrain ?? new ReadSet();
-                        doorQueryTerrain.Clear();
-                        if (!ProveDoorPassage(body, body.position, passage, door, doorQueryTerrain, ref step)) return false;
-                        proof = step.DoorProof;
+                        if (!TrySupportedTravel(body, body.position, passage, 5, null, out _, out _, rejectDangerLiquids: true)) return false;
+                        frame.Move = passage;
                     }
-                    if (state.AwaitingEquipmentObservation) return true;
-                    if (commandSequence == 0) commandSequence = ++sequence;
-                    doorActivationSequence = commandSequence;
-                    doorActivationProof = proof;
+                    else if (commandSequence == 0 || state.Sequence != commandSequence || state.Result != CompanionMobilityResult.Started)
+                    {
+                        var proof = commandSequence != 0 && doorActivationSequence == commandSequence ? doorActivationProof : step.DoorProof;
+                        if (!DoorProofApplies(body, passage, proof))
+                        {
+                            // A stale forecast cannot open a new route. Wait on
+                            // the known approach until this body has the grant.
+                            if (state.AwaitingEquipmentObservation) { deferral = CompanionMovementDeferral.EquipmentObservation; return true; }
+                            if (!allowPlanning || navigation.coordinator.ProofGrantUsed)
+                            { deferral = CompanionMovementDeferral.PlanningSlice; return true; }
+                            navigation.coordinator.ConsumeProofGrant();
+                            navigation.doorQueryTerrain = navigation.doorQueryTerrain ?? new ReadSet();
+                            navigation.doorQueryTerrain.Clear();
+                            if (!navigation.ProveDoorPassage(body, body.position, passage, door, navigation.doorQueryTerrain, ref step)) return false;
+                            proof = step.DoorProof;
+                        }
+                        if (state.AwaitingEquipmentObservation) { deferral = CompanionMovementDeferral.EquipmentObservation; return true; }
+                        if (commandSequence == 0) commandSequence = ++sequence;
+                        doorActivationSequence = commandSequence;
+                        doorActivationProof = proof;
+                    }
                 }
-            }
 
-            if (door.Open) { frame.Status = "正在过门"; return true; }
-            if (!door.AtApproach(body, passage)) return !trap;
-            if (commandSequence == 0) commandSequence = ++sequence;
-            actionStarted = true;
-            frame.Activation = CompanionMovementActivation.Door;
-            frame.WorldX = step.Operand.X;
-            frame.WorldY = step.Operand.Y;
-            frame.Sequence = commandSequence;
-            frame.DoorFamily = door.Family;
-            frame.DoorPass = passage;
-            frame.Status = "等待开门";
-            return true;
+                if (door.Open) { frame.Status = "正在过门"; return true; }
+                if (!door.AtApproach(body, passage)) return !trap;
+                if (commandSequence == 0) commandSequence = ++sequence;
+                frame.Activation = CompanionMovementActivation.Door;
+                frame.WorldX = step.Operand.X;
+                frame.WorldY = step.Operand.Y;
+                frame.Sequence = commandSequence;
+                frame.DoorFamily = door.Family;
+                frame.DoorPass = passage;
+                frame.Status = "等待开门";
+                return true;
+            }
         }
     }
 }

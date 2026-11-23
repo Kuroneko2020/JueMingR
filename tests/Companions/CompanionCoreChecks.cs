@@ -19,7 +19,7 @@ namespace JueMingR.ArchitectureTests
             string parent = Path.GetFullPath(Path.GetTempPath());
             string root = Path.GetFullPath(Path.Combine(parent, "JueMingR-companion-checks-" + Guid.NewGuid().ToString("N")));
             Directory.CreateDirectory(root);
-            try { ArchiveRoundTrip(root); PreferenceRoundTrip(root); FailedCreation(root); CoalescedReset(root); CorruptIsolation(root); RetryRead(root); RetireOwner(root); MenuMigration(root); TerminalArchive(root); LegacyArchive(root); DeletionOrdering(root); DeletionRecovery(root); DeletionAfterArchiveConflict(root); ContinuousJump(); RejectedTakeoff(); }
+            try { ArchiveRoundTrip(root); PreferenceRoundTrip(root); FailedCreation(root); CoalescedReset(root); CorruptIsolation(root); RetryRead(root); RetireOwner(root); MenuMigration(root); TerminalArchive(root); LegacyArchive(root); DeletionOrdering(root); DeletionRecovery(root); DeletionAfterArchiveConflict(root); }
             catch (Exception exception) { failures.Add("companion core: " + exception); }
             finally
             {
@@ -447,36 +447,6 @@ namespace JueMingR.ArchitectureTests
                 Require(loaded.Profiles.Count == 1 && loaded.Profiles[0].Id == good && loaded.Error != null, "one corrupt character reports its error without disabling another");
                 Require(File.ReadAllBytes(path).SequenceEqual(new byte[] { 255, 255 }), "corrupt source is not silently replaced by a starter character");
             }
-        }
-        private static void ContinuousJump()
-        {
-            var brain = new CompanionBehaviorBrain();
-            var observation = new CompanionMovementObservation { X = 0, Y = 0, TargetX = 200, TargetY = 0, Grounded = true, CanTakeOff = true, WalkSafe = false, Wall = true, JumpSafe = true, JumpHoldTicks = 15 };
-            var start = brain.Decide(observation); Require(start.Jump && start.Move == 1, "reachable obstacle starts a jump");
-            observation.Grounded = false; observation.Y = -4; observation.VelocityY = -4; observation.JumpSafe = false; observation.TargetX = -200;
-            var movingOwner = brain.Decide(observation);
-            Require(movingOwner.Jump && movingOwner.Move == 1, "owner turn and deferred planning preserve the launched jump prefix");
-            for (int n = 0; n < 20; n++)
-            {
-                var airborne = brain.Decide(observation);
-                Require(airborne.Move == 1, "exhausted jump hold does not retire an actually airborne movement prefix");
-            }
-            observation.Grounded = true; observation.VelocityY = 0; observation.Wall = false; observation.WalkSafe = true;
-            Require(brain.Decide(observation).Move == -1, "actual landing retires the old jump and accepts the new target");
-            observation.Dead = true; Require(!brain.Decide(observation).Jump, "death cancels old movement intent");
-        }
-        private static void RejectedTakeoff()
-        {
-            var observation = new CompanionMovementObservation { X = 0, Y = 0, TargetX = 200, Grounded = true, WalkSafe = false, Wall = true, JumpSafe = true, JumpHoldTicks = 3 };
-            var brain = new CompanionBehaviorBrain();
-            Require(!brain.Decide(observation).Jump, "route feasibility does not supply native takeoff admission");
-            observation.CanTakeOff = true;
-            Require(brain.Decide(observation).Jump, "native takeoff request is issued");
-            Require(!brain.Decide(observation).Jump, "unchanged demand after rejected takeoff gets a real release frame");
-            Require(brain.Decide(observation).Jump, "persistent obstacle retries after release and a legal observation");
-            observation.Danger = true; observation.EscapeDirection = -1;
-            var recovered = brain.Decide(observation);
-            Require(!recovered.Jump && recovered.Move == -1 && recovered.Status == "避险中", "release frame still permits current danger movement");
         }
         private static void MenuMigration(string root)
         {

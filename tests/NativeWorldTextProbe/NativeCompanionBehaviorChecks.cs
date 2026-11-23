@@ -21,6 +21,14 @@ namespace NativeWorldTextProbe
         private static Player jumpBody;
         private static bool jumpHeld, moveRight;
 
+        internal static object DecideObserved(object behavior, Player body, Player owner, CompanionBehavior preferences, bool planning)
+        {
+            var native = Activator.CreateInstance(behavior.GetType().Assembly.GetType(
+                "JueMingR.TerrariaHost.Companions.CompanionMobilityState", true), true);
+            Call(native, "ObserveBody", body, false);
+            return Call(behavior, "DecideMobility", body, owner, preferences, planning, null, false, false, null, native);
+        }
+
         internal static void RunJumpReachability(object host)
         {
             Require(Main.netMode == 0, "jump A/B uses the existing isolated single-player native fixture");
@@ -183,14 +191,14 @@ namespace NativeWorldTextProbe
                 object brainA = Activator.CreateInstance(brainType, true), brainB = Activator.CreateInstance(brainType, true);
                 reset.Invoke(null, null); clock.SetValue(null, tick + 1);
                 long before = (long)builds.GetValue(null);
-                var a = (CompanionControlFrame)Call(brainA, "Decide", first, owner, new CompanionBehavior(), true);
-                var b = (CompanionControlFrame)Call(brainB, "Decide", second, owner, new CompanionBehavior(), false);
+                var a = DecideObserved(brainA, first, owner, new CompanionBehavior(), true);
+                var b = DecideObserved(brainB, second, owner, new CompanionBehavior(), false);
                 Require((long)builds.GetValue(null) == before + 1, "two bodies share one native threat scan in the same tick");
-                Require(a.Move == 1 && b.Move == 1, "budget-deferred body still follows on a safe existing ground prefix");
+                Require((int)Get(a,"Move") == 1 && (int)Get(b,"Move") == 1, "budget-deferred body still follows on a safe existing ground prefix");
                 Main.projectile[0] = new Projectile { active = true, hostile = true, damage = 10, width = 16, height = 16, position = first.position + new Vector2(10, 8), velocity = Vector2.Zero };
                 clock.SetValue(null, tick + 2);
-                var avoid = (CompanionControlFrame)Call(brainA, "Decide", first, owner, new CompanionBehavior { AttackEnabled = false }, true);
-                Require(avoid.Move < 0 || avoid.Jump, "ceasefire still emits local evasion intent for a real hostile projectile hitbox");
+                var avoid = DecideObserved(brainA, first, owner, new CompanionBehavior { AttackEnabled = false }, true);
+                Require((int)Get(avoid,"Move") < 0 || (bool)Get(avoid,"Jump"), "ceasefire still emits local evasion intent for a real hostile projectile hitbox");
             }
             finally
             {

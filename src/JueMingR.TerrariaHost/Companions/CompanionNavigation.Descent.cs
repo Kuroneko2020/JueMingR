@@ -13,10 +13,10 @@ namespace JueMingR.TerrariaHost.Companions
         private const int DescentSlice = 16;
         private const int LocalDescentCommitDepth = 512;
         private const int DescentCommitColumns = 12;
-        private bool descentCommitRead;
         private DescentObstruction? descentObstruction;
         private GroundQuery localDescent;
         private DescentProbe localDescentProbe;
+        private RouteStep localDescentFound;
         private Vector2 localDescentOrigin, localDescentGoal;
         private int localDescentKey, localDescentSlices, localDescentRequiredLife;
 
@@ -112,7 +112,7 @@ namespace JueMingR.TerrariaHost.Companions
             var projected = ProjectDescent(body, mobility, depth, speedX);
             float speed = Math.Abs(speedX);
             if (Math.Abs(projected.Drift) + body.width > DescentCommitColumns * 16) return false;
-            descentCommitRead |= sharedCheck;
+            if (sharedCheck) coordinator.ConsumeProofGrant();
 
             // Replay only while this body still drifts sideways. A dry side
             // wall can stop the drift before its projected column, leaving
@@ -292,19 +292,7 @@ namespace JueMingR.TerrariaHost.Companions
             bool nearby = motion == RouteMotion.Ground && goal.Y > body.position.Y + 38 &&
                 Math.Abs(body.position.Y - obstruction.Departure.Y) <= 12 &&
                 Math.Abs(body.position.X - obstruction.Departure.X) <= LedgeApproach + body.width;
-            if ((blockedStep.Kind == RouteKind.Drop || blockedStep.Kind == RouteKind.LedgeDrop) &&
-                blockedStep.DescentArea.Contains(tile)) blockedAt = 0;
-            if (search != null)
-            {
-                search.Dirty(new Rectangle(tile.X, tile.Y, 1, 1));
-                search.NeedsLiveRoot = true;
-                search.PrioritizeDescentWake |= nearby;
-            }
-            lastRejectedPublication = -1;
-            RetirePublication();
-            if (nearby) pendingResult = -1;
-            // A nearby body on the same upper level may still be following
-            // a lateral route that was useful only while the drop was blocked.
+            ReportDescentObstructionChanged(tile, nearby);
             return nearby;
         }
 
@@ -577,10 +565,18 @@ namespace JueMingR.TerrariaHost.Companions
                     localDescentGoal = goal;
                     localDescentKey = key;
                     localDescentProbe = default;
+                    localDescentFound = default;
                     localDescentSlices = 0;
                     localDescentRequiredLife = 0;
                 }
-                if (localDescentSlices >= 3) return false;
+                if (localDescentSlices >= 3)
+                {
+                    // A live matching proof remains an available proposal
+                    // after a temporarily rejected handoff. Its exact
+                    // motion and read set still belong to this local query.
+                    step = localDescentFound;
+                    return step.Kind == RouteKind.Drop || step.Kind == RouteKind.LedgeDrop;
+                }
                 spent = true;
                 localDescentSlices++;
                 step.From = body.position;
@@ -595,135 +591,9 @@ namespace JueMingR.TerrariaHost.Companions
                 if (result != DescentResult.Found || (step.To.Y - goal.Y) > 48) return false;
                 step.DescentArea = localDescent.Reads.EndArea();
                 step.ObserveAfter = true;
+                localDescentFound = step;
                 return true;
             }
-        }
-
-        private bool DriveDescentStep(Player body, CompanionMobilityState state, CompanionMobilitySnapshot mobility,
-            RouteMotion motion, RouteStep step, bool allowDescentCommit, out CompanionMobilityFrame frame,
-            out DescentOutcome outcome)
-        {
-            frame = new CompanionMobilityFrame { Status = "下降中" };
-            outcome = DescentOutcome.Blocked;
-            bool ordinaryWater = step.DescentEntersLiquid && mobility.Wet && !mobility.Lava && !mobility.Shimmer && !mobility.Honey;
-            if (motion != RouteMotion.Ground && motion != RouteMotion.Air && !(motion == RouteMotion.Liquid && ordinaryWater) || body.gravDir != 1 ||
-                mobility.Controlled || !step.DescentLands && !CanArrestDescent(mobility)) return false;
-            if (age == 1 && !DescentDestination(body, step, step.To.X)) return false;
-            if (search != null)
-            {
-                // Share the graph's read cursor and repairs. An executing
-                // descent samples a fixed number of facts each body update.
-                var edits = search.Terrain.Changes(ref search.TerrainCursor, 12);
-                search.Dirty(edits);
-                // The committed-action check below uses the live sweep. It
-                // can name the exact blocked cell, unlike a batched read edit.
-            }
-
-            float descended = body.position.Y - actionOrigin.Y;
-            actionStarted |= descended > .125f && (motion == RouteMotion.Air || motion == RouteMotion.Liquid || body.stairFall);
-            if (actionStarted && descended > 1 && !body.stairFall && body.velocity.Y >= 0 &&
-                body.velocity.Y <= Math.Max(.25f, body.gravity) &&
-                (motion == RouteMotion.Ground || motion == RouteMotion.Liquid) && DescentSupport(body, body.position, null))
-            {
-                // A safe but different contact restarts from the real body.
-                // The old suffix still depends on its own landing support.
-                outcome = MatchesDescentSurface(body, step, motion) ? DescentOutcome.Reached : DescentOutcome.LandedElsewhere;
-                return false;
-            }
-            if (actionStarted && step.DescentLands && NativeFallLoss(body, step.To.Y, body.fallStart) >= body.statLife &&
-                !DescentDestination(body, step, step.To.X, airborne: true)) return false;
-            if (state.AwaitingEquipmentObservation && !actionStarted && !body.stairFall && motion == RouteMotion.Ground)
-            {
-                // An equipped item changed before this Player.Update has
-                // refreshed its own fall protection. Wait on the existing
-                // support and brake existing motion through native input.
-                HoldDescent(body, ref frame);
-                outcome = DescentOutcome.Running;
-                return true;
-            }
-            if (actionStarted && noProgress > 24) return false;
-            if (actionStarted && !step.DescentLands && body.position.Y >= step.To.Y - 4 && body.velocity.Y >= 0)
-            { outcome = DescentOutcome.Reached; return false; }
-            if (body.position.Y > step.To.Y + 16) return false;
-
-            bool sharedCheck = step.DescentLands && step.To.Y - body.position.Y > LocalDescentCommitDepth;
-            if (!actionStarted && step.Kind == RouteKind.LedgeDrop && motion == RouteMotion.Ground)
-            {
-                float remaining = (step.Operand.X - body.position.X) * step.Direction;
-                if (remaining < -12) return false;
-                // This step owns an intentional loss of support. The ordinary
-                // walking/braking rule keeps its existing continuous support.
-                var groundRun = MovementRun(body, mobility, airborne: false);
-                float launchX = groundRun.Advance(body.velocity.X, step.Direction);
-                float reach = Math.Max(4, Math.Abs(launchX));
-                if (!Move(body, body.position, new Vector2(step.Direction * reach, 0), true, false, out Step at, null) || at.Wall ||
-                    Collision.WetCollision(at.Position, body.width, body.height))
-                    return false;
-                bool releases = !DescentSupport(body, at.Position, null);
-                float speed = Math.Max(0, body.velocity.X * step.Direction);
-                float brake = Math.Max(.01f, groundRun.Acceleration + groundRun.Slowdown);
-                // Once another forward input would use the remaining native
-                // stopping room, a rejection must still be able to hold the lip.
-                bool committing = releases || remaining <= reach + speed + speed * speed / (2 * brake);
-                if (committing)
-                {
-                    if (sharedCheck && !allowDescentCommit)
-                    {
-                        HoldDescent(body, ref frame);
-                        outcome = DescentOutcome.Running;
-                        return true;
-                    }
-                    Vector2 launch = at.Position;
-                    if (!releases || reach > Math.Abs(launchX))
-                    {
-                        DescentProbe outlet = default;
-                        if (!BeginDescent(body, mobility, body.position, step.Direction, body.velocity, null, ref outlet)) return false;
-                        launch = outlet.Release;
-                        launchX = outlet.Velocity.X;
-                    }
-                    if (!DescentDepartureClear(body, mobility, step, launch, launchX, sharedCheck))
-                    {
-                        if (body.velocity.X == 0) return false;
-                        HoldDescent(body, ref frame);
-                        outcome = DescentOutcome.Running;
-                        return true;
-                    }
-                }
-                frame.Move = step.Direction;
-                outcome = DescentOutcome.Running;
-                return true;
-            }
-
-            bool throughPlatform = DescentDown(step.Direction, body.position, step.Operand);
-            if (throughPlatform && !actionStarted && !body.stairFall)
-            {
-                if (sharedCheck && !allowDescentCommit)
-                {
-                    HoldDescent(body, ref frame);
-                    outcome = DescentOutcome.Running;
-                    return true;
-                }
-                if (!DescentSupport(body, body.position, null) || DescentSupport(body, body.position, null, false) ||
-                    !DescentDepartureClear(body, mobility, step, body.position, body.velocity.X, sharedCheck)) return false;
-            }
-            var live = new DescentProbe { Release = step.Operand, Position = body.position, Velocity = body.velocity,
-                StairFall = body.stairFall, FallStart = body.fallStart, AimX = step.DescentAimX, Steer = step.DescentSteer };
-            int steering = DescentMove(body, mobility, live);
-            if (ordinaryWater)
-            {
-                // The native liquid consumer owns drag and sinking. Wait for
-                // its supported bottom instead of declaring success on entry.
-                frame.Move = steering;
-                outcome = DescentOutcome.Running;
-                return true;
-            }
-            if (!AdvanceDescent(body, mobility, step.Direction, body.gravity, body.maxFallSpeed, null, ref live, out Step next) ||
-                Collision.WetCollision(next.Position, body.width, body.height) &&
-                (!step.DescentEntersLiquid || !BreathableWater(body, next.Position))) return false;
-            frame.Drop = throughPlatform;
-            frame.Move = steering;
-            outcome = DescentOutcome.Running;
-            return true;
         }
 
         private static bool MatchesDescentSurface(Player body, RouteStep step, RouteMotion motion)
@@ -734,6 +604,133 @@ namespace JueMingR.TerrariaHost.Companions
             if (Math.Abs(gap.X) < 1) return true;
             return TrySupportedTravel(body, body.position, Math.Sign(gap.X), Math.Abs(gap.X), null,
                 out Vector2 connected, out _) && Math.Abs(connected.Y - step.To.Y) <= 4;
+        }
+
+        private sealed partial class ActionExecutor
+        {
+            private bool DriveDescentStep(Player body, CompanionMobilityState state, CompanionMobilitySnapshot mobility,
+                RouteMotion motion, RouteStep step, bool allowDescentCommit, out CompanionMobilityFrame frame,
+                out DescentOutcome outcome)
+            {
+                frame = new CompanionMobilityFrame { Status = "下降中" };
+                outcome = DescentOutcome.Blocked;
+                bool ordinaryWater = step.DescentEntersLiquid && mobility.Wet && !mobility.Lava && !mobility.Shimmer && !mobility.Honey;
+                if (motion != RouteMotion.Ground && motion != RouteMotion.Air && !(motion == RouteMotion.Liquid && ordinaryWater) || body.gravDir != 1 ||
+                    mobility.Controlled || !step.DescentLands && !CanArrestDescent(mobility)) return false;
+                if (!descentValidated)
+                {
+                    if (!DescentDestination(body, step, step.To.X)) return false;
+                    descentValidated = true;
+                }
+
+                float descended = body.position.Y - actionOrigin.Y;
+                if (actionStarted && descended > 1 && !body.stairFall && body.velocity.Y >= 0 &&
+                    body.velocity.Y <= Math.Max(.25f, body.gravity) &&
+                    (motion == RouteMotion.Ground || motion == RouteMotion.Liquid) && DescentSupport(body, body.position, null))
+                {
+                    // A safe but different contact restarts from the real body.
+                    // The old suffix still depends on its own landing support.
+                    outcome = MatchesDescentSurface(body, step, motion) ? DescentOutcome.Reached : DescentOutcome.LandedElsewhere;
+                    return false;
+                }
+                if (actionStarted && step.DescentLands && NativeFallLoss(body, step.To.Y, body.fallStart) >= body.statLife &&
+                    !DescentDestination(body, step, step.To.X, airborne: true)) return false;
+                if (state.AwaitingEquipmentObservation && !actionStarted && !body.stairFall && motion == RouteMotion.Ground)
+                {
+                    // An equipped item changed before this Player.Update has
+                    // refreshed its own fall protection. Wait on the existing
+                    // support and brake existing motion through native input.
+                    deferral = CompanionMovementDeferral.EquipmentObservation;
+                    HoldDescent(body, ref frame);
+                    outcome = DescentOutcome.Running;
+                    return true;
+                }
+                if (actionStarted && noProgress > 24) return false;
+                if (actionStarted && !step.DescentLands && body.position.Y >= step.To.Y - 4 && body.velocity.Y >= 0)
+                { outcome = DescentOutcome.Reached; return false; }
+                if (body.position.Y > step.To.Y + 16) return false;
+
+                bool sharedCheck = step.DescentLands && step.To.Y - body.position.Y > LocalDescentCommitDepth;
+                if (!actionStarted && step.Kind == RouteKind.LedgeDrop && motion == RouteMotion.Ground)
+                {
+                    float remaining = (step.Operand.X - body.position.X) * step.Direction;
+                    if (remaining < -12) return false;
+                    // This step owns an intentional loss of support. The ordinary
+                    // walking/braking rule keeps its existing continuous support.
+                    var groundRun = MovementRun(body, mobility, airborne: false);
+                    float launchX = groundRun.Advance(body.velocity.X, step.Direction);
+                    float reach = Math.Max(4, Math.Abs(launchX));
+                    if (!Move(body, body.position, new Vector2(step.Direction * reach, 0), true, false, out Step at, null) || at.Wall ||
+                        Collision.WetCollision(at.Position, body.width, body.height))
+                        return false;
+                    bool releases = !DescentSupport(body, at.Position, null);
+                    float speed = Math.Max(0, body.velocity.X * step.Direction);
+                    float brake = Math.Max(.01f, groundRun.Acceleration + groundRun.Slowdown);
+                    // Once another forward input would use the remaining native
+                    // stopping room, a rejection must still be able to hold the lip.
+                    bool committing = releases || remaining <= reach + speed + speed * speed / (2 * brake);
+                    if (committing)
+                    {
+                        if (sharedCheck && !allowDescentCommit)
+                        {
+                            deferral = CompanionMovementDeferral.PlanningSlice;
+                            HoldDescent(body, ref frame);
+                            outcome = DescentOutcome.Running;
+                            return true;
+                        }
+                        Vector2 launch = at.Position;
+                        if (!releases || reach > Math.Abs(launchX))
+                        {
+                            DescentProbe outlet = default;
+                            if (!BeginDescent(body, mobility, body.position, step.Direction, body.velocity, null, ref outlet)) return false;
+                            launch = outlet.Release;
+                            launchX = outlet.Velocity.X;
+                        }
+                        if (!navigation.DescentDepartureClear(body, mobility, step, launch, launchX, sharedCheck))
+                        {
+                            if (body.velocity.X == 0) return false;
+                            HoldDescent(body, ref frame);
+                            outcome = DescentOutcome.Running;
+                            return true;
+                        }
+                    }
+                    frame.Move = step.Direction;
+                    outcome = DescentOutcome.Running;
+                    return true;
+                }
+
+                bool throughPlatform = DescentDown(step.Direction, body.position, step.Operand);
+                if (throughPlatform && !actionStarted && !body.stairFall)
+                {
+                    if (sharedCheck && !allowDescentCommit)
+                    {
+                        deferral = CompanionMovementDeferral.PlanningSlice;
+                        HoldDescent(body, ref frame);
+                        outcome = DescentOutcome.Running;
+                        return true;
+                    }
+                    if (!DescentSupport(body, body.position, null) || DescentSupport(body, body.position, null, false) ||
+                        !navigation.DescentDepartureClear(body, mobility, step, body.position, body.velocity.X, sharedCheck)) return false;
+                }
+                var live = new DescentProbe { Release = step.Operand, Position = body.position, Velocity = body.velocity,
+                    StairFall = body.stairFall, FallStart = body.fallStart, AimX = step.DescentAimX, Steer = step.DescentSteer };
+                int steering = DescentMove(body, mobility, live);
+                if (ordinaryWater)
+                {
+                    // The native liquid consumer owns drag and sinking. Wait for
+                    // its supported bottom instead of declaring success on entry.
+                    frame.Move = steering;
+                    outcome = DescentOutcome.Running;
+                    return true;
+                }
+                if (!AdvanceDescent(body, mobility, step.Direction, body.gravity, body.maxFallSpeed, null, ref live, out Step next) ||
+                    Collision.WetCollision(next.Position, body.width, body.height) &&
+                    (!step.DescentEntersLiquid || !BreathableWater(body, next.Position))) return false;
+                frame.Drop = throughPlatform;
+                frame.Move = steering;
+                outcome = DescentOutcome.Running;
+                return true;
+            }
         }
     }
 }

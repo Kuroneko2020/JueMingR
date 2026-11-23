@@ -87,7 +87,8 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Run(context=>{
                     NativeCombatAimChecks.Initialize();
                     string focus = comparison == null ? null : Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_NAV_FOCUS");
-                    if (focus == "vertical" || focus == "terrain" || focus == "wormhole-follow" || focus == "detour-descent" || focus == "contact-descent")
+                    if (focus == "vertical" || focus == "terrain" || focus == "wormhole-follow" || focus == "detour-descent" ||
+                        focus == "contact-descent" || focus == "hoik-baseline" || focus == "movement-structure")
                         NativeCompanionVerticalFollowChecks.Run(context, focus);
                     else
                     {

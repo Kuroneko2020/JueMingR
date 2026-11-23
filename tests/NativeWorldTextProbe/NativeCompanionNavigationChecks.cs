@@ -96,8 +96,9 @@ namespace NativeWorldTextProbe
                     "null native footprint remains distinct unknown and is never allocated by prediction");
                 var brain=Activator.CreateInstance(host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionBehaviorHost"),true);
                 var unknownOwner=new Player{active=true,position=probe.position+new Vector2(100,0)};
-                var intent=(CompanionControlFrame)Call(brain,"Decide",probe,unknownOwner,new CompanionBehavior(),true);
-                Require(intent.Move==0 && !intent.Jump && !intent.Drop,"unknown body geometry cannot be mistaken for an airborne horizontal route grant");
+                var intent = NativeCompanionBehaviorChecks.DecideObserved(brain, probe, unknownOwner, new CompanionBehavior(), true);
+                Require((int)Get(intent,"Move")==0 && !(bool)Get(intent,"Jump") && !(bool)Get(intent,"Drop"),
+                    "unknown body geometry cannot be mistaken for an airborne horizontal route grant");
                 Main.tile[98,70]=new Tile();
                 for(int x=80;x<125;x++)TileAt(x,72,TileID.Stone);
                 TileAt(101,71,TileID.Stone);probe.position=new Vector2(1592,1110);
@@ -258,8 +259,9 @@ namespace NativeWorldTextProbe
                     if (firstAway < 0 && body.position.X < initial.X - 12) firstAway = ticks;
                     if (ticks % 90 == 0)
                     {
-                        var steps = (System.Collections.IList)Get(movement, "route");
-                        int current = (int)Get(movement, "routeIndex");
+                        var routeOwner = GetOptional(movement, "actions") ?? movement;
+                        var steps = (System.Collections.IList)Get(routeOwner, "route");
+                        int current = (int)Get(routeOwner, "routeIndex");
                         object action = current < steps.Count ? steps[current] : null;
                         string stepName = action == null ? "local" :
                             $"{Get(action,"Kind")}:{Get(action,"From")}→{Get(action,"To")}";
@@ -376,6 +378,7 @@ namespace NativeWorldTextProbe
                 Call(firstPlan, "CancelRoute"); Call(secondPlan, "CancelRoute");
                 int firstSearches = (int)Get(firstPlan, "RouteSearchStarts"), secondSearches = (int)Get(secondPlan, "RouteSearchStarts");
                 int aAway = -1, bAway = -1, aNear = -1, bNear = -1, aService = 0, bService = 0, peak = 0, simultaneous = 0, triesAtWall = 0;
+                float aRetreatStart = aStart.X, bRetreatStart = bStart.X;
                 var samples = new List<string>();
                 int worldSteps = 0;
                 for (; worldSteps < 1500 && (aNear < 0 || bNear < 0); worldSteps++)
@@ -384,6 +387,7 @@ namespace NativeWorldTextProbe
                     float x = (36 + origin) * 16 + (phase <= 60 ? phase : 120 - phase) * 3.25f;
                     human.position = new Vector2(x, 47 * 16 - human.height);
                     int aw = (int)Get(firstPlan, "RouteWork"), bw = (int)Get(secondPlan, "RouteWork");
+                    float beforeFirst = first.position.X, beforeSecond = second.position.X;
                     NativeQuickItemChecks.BeginWorldStep(); Call(host, "Update", (ulong)Main.GameUpdateCount);
                     first.Update(first.whoAmI); second.Update(second.whoAmI);
                     int da = (int)Get(firstPlan, "RouteWork") - aw, db = (int)Get(secondPlan, "RouteWork") - bw;
@@ -392,14 +396,17 @@ namespace NativeWorldTextProbe
                     if (da != 0 && db != 0) simultaneous++;
                     peak = Math.Max(peak, da+db);
                     if (first.controlRight && first.Right.X >= (34 + origin) * 16 - 2 && first.Bottom.Y > 48 * 16) triesAtWall++;
-                    if (aAway < 0 && first.position.X < aStart.X - 12) aAway = worldSteps;
-                    if (bAway < 0 && second.position.X < bStart.X - 12) bAway = worldSteps;
+                    if (first.position.X > beforeFirst + .01f) aRetreatStart = first.position.X;
+                    if (second.position.X > beforeSecond + .01f) bRetreatStart = second.position.X;
+                    if (aAway < 0 && aRetreatStart - first.position.X >= 12 && first.Bottom.Y == 62 * 16 && first.Right.X < human.Left.X) aAway = worldSteps;
+                    if (bAway < 0 && bRetreatStart - second.position.X >= 12 && second.Bottom.Y == 62 * 16 && second.Right.X < human.Left.X) bAway = worldSteps;
                     if (aNear < 0 && Vector2.DistanceSquared(first.Center, human.Center) < 56 * 56 && first.Bottom.Y <= 47 * 16 + 4) aNear = worldSteps;
                     if (bNear < 0 && Vector2.DistanceSquared(second.Center, human.Center) < 56 * 56 && second.Bottom.Y <= 47 * 16 + 4) bNear = worldSteps;
                     if (worldSteps % 60 == 0)
                     {
-                        var route = (IList)Get(firstPlan,"route");
-                        int routeIndex = (int)Get(firstPlan, "routeIndex");
+                        var routeOwner = GetOptional(firstPlan, "actions") ?? firstPlan;
+                        var route = (IList)Get(routeOwner,"route");
+                        int routeIndex = (int)Get(routeOwner, "routeIndex");
                         string step = routeIndex < route.Count ? Get(route[routeIndex], "Kind") + ":" + Get(route[routeIndex], "To") : "none";
                         var search = GetOptional(firstPlan, "search");
                         string frontier = search == null ? "none" : ((IList)Get(search, "Nodes")).Count + "/" + Get(search, "Origin") + "/" + Get(search, "Expanding");
@@ -407,7 +414,7 @@ namespace NativeWorldTextProbe
                     }
                 }
                 Console.WriteLine($"FOLLOW MOVING DETOUR steps={worldSteps} away={aAway}/{bAway} near={aNear}/{bNear} shared={peak} simultaneous={simultaneous} services={aService}/{bService} starts={(int)Get(firstPlan, "RouteSearchStarts")-firstSearches}/{(int)Get(secondPlan, "RouteSearchStarts")-secondSearches} wallInput={triesAtWall} first={first.position} second={second.position}");
-                if (aNear < 0 || bNear < 0) foreach (string sample in samples) Console.WriteLine(sample);
+                if (aAway < 0 || bAway < 0 || aNear < 0 || bNear < 0) foreach (string sample in samples) Console.WriteLine(sample);
                 Require(aAway >= 0 && bAway >= 0 && aNear > aAway && bNear > bAway,
                     "both ordinary production followers go away first and physically reach the upper moving owner through the staircase");
                 Require(aService > 0 && bService > 0 && peak <= 160 && simultaneous == 0,
@@ -560,13 +567,15 @@ namespace NativeWorldTextProbe
                 human.position=body.position+new Vector2(130,0);
                 NativeStep(host,body);
                 Require(!body.controlJump && body.releaseJump,"real obstacle demand allows the initializing jump release");
-                bool rose=false;
+                int takeoff=-1, cleared=-1;
                 for(int tick=0;tick<120 && body.position.X<107*16;tick++)
                 {
                     NativeStep(host,body);
-                    rose|=body.velocity.Y<0 && body.Bottom.Y<73*16-4;
+                    if(takeoff<0 && body.controlJump && body.velocity.Y<0 && body.Bottom.Y<73*16-4)takeoff=tick;
+                    if(body.position.X>=107*16)cleared=tick;
                 }
-                Require(rose && body.position.X>=107*16 && !(bool)Get(actor,"Faulted"),
+                Console.WriteLine($"NAV WALL takeoff={takeoff} cleared={cleared} body={body.position}/{body.velocity}");
+                Require(takeoff>=0 && cleared>takeoff && !(bool)Get(actor,"Faulted"),
                     "a legal native vertical ascent can clip the initial wall face and still physically clear its far side: "+body.position+" "+body.velocity+" "+Get(actor,"Status"));
             }
             finally { for(int y=71;y<73;y++)Main.tile[106,y]=new Tile(); }
@@ -575,19 +584,21 @@ namespace NativeWorldTextProbe
         {
             var brainType=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionBehaviorHost",true);
             var behavior=Activator.CreateInstance(brainType,true);var owner=new Player{active=true,position=probe.position};
-            Call(behavior,"Decide",probe,owner,new CompanionBehavior(),true);
+            NativeCompanionBehaviorChecks.DecideObserved(behavior, probe, owner, new CompanionBehavior(), true);
             var plan=Get(behavior,"navigation");
             Require((int)Get(plan,"DropBuilds")==0,"same-height target never requests the lower-landing search");
             owner.position=probe.position+new Vector2(0,100);
-            var noLanding=(CompanionControlFrame)Call(behavior,"Decide",probe,owner,new CompanionBehavior(),true);
+            // Exercise this bounded geometry query directly. Production
+            // Follow now selects its descent through the movement coordinator.
+            bool noLanding = !(bool)Call(plan,"PlanDrop",probe,true);
             int dropBuilds=(int)Get(plan,"DropBuilds"),dropMoves=(int)Get(plan,"DropGeometryMoves");
             // Two support probes precede up to four slices of sixteen native
             // fall updates. A real empty shaft traverses beyond the probes.
             Console.WriteLine($"NAV DROP emptyBuilds={dropBuilds} emptyGeometryMoves={dropMoves}");
-            Require(!noLanding.Drop && dropBuilds==1 && dropMoves>2 && dropMoves<=66,
+            Require(noLanding && dropBuilds==1 && dropMoves>2 && dropMoves<=66,
                 "one bounded native descent traverses the empty shaft and refuses the missing landing");
             for(int tick=0;tick<20;tick++)
-            { NativeQuickItemChecks.BeginWorldStep();Call(behavior,"Decide",probe,owner,new CompanionBehavior(),tick%2==0); }
+            { NativeQuickItemChecks.BeginWorldStep();Call(plan,"PlanDrop",probe,tick%2==0); }
             Require((int)Get(plan,"DropBuilds")==dropBuilds && (int)Get(plan,"DropGeometryMoves")==dropMoves,
                 "unchanged ordinary failure across real world-step clocks validates its finite reads without rebuilding the drop trajectory");
             TileAt(100,78,TileID.Stone);
@@ -601,8 +612,8 @@ namespace NativeWorldTextProbe
             probe.controlDown=true;probe.SlopingCollision(true,true);probe.controlDown=false;
             Require(probe.stairFall,"native sloping consumer retains accepted fall-through after the input edge");
             var falling=Activator.CreateInstance(brainType,true);
-            var fallingIntent=(CompanionControlFrame)Call(falling,"Decide",probe,owner,new CompanionBehavior(),true);
-            Require((int)Get(Get(falling,"navigation"),"DropBuilds")==0 && !fallingIntent.Drop &&
+            var fallingIntent = NativeCompanionBehaviorChecks.DecideObserved(falling, probe, owner, new CompanionBehavior(), true);
+            Require((int)Get(Get(falling,"navigation"),"DropBuilds")==0 && !(bool)Get(fallingIntent,"Drop") &&
                 !(bool)Call(plan,"PlanDrop",probe,true) && (int)Get(plan,"DropGeometryMoves")==changedDropMoves,
                 "native in-progress fall-through is not reclassified as platform support or a fresh drop plan");
             probe.stairFall=false;
@@ -682,8 +693,9 @@ namespace NativeWorldTextProbe
             if (!body.controlLeft || body.controlRight)
             {
                 var navigation = Get(Get(actor,"Behavior"),"navigation");
-                var route = (System.Collections.IList)Get(navigation,"route");
-                int current = (int)Get(navigation,"routeIndex");
+                var routeOwner = GetOptional(navigation, "actions") ?? navigation;
+                var route = (System.Collections.IList)Get(routeOwner,"route");
+                int current = (int)Get(routeOwner,"routeIndex");
                 object step = current < route.Count ? route[current] : null;
                 Console.WriteLine($"NAV LANDING landed={landedPose}/{landedVelocity} oldStair={carriedStairs} after={body.position}/{body.velocity} stair={body.stairFall} owner={human.position} expectedLeft={body.controlLeft}/{body.controlRight} route={(step == null ? "none" : Get(step,"Kind"))} status={Get(actor,"Status")}");
             }

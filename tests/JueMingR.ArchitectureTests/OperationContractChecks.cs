@@ -130,9 +130,7 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Companions.CompanionSetting",
                 "JueMingR.Platform.Companions.CompanionOwnerArchive",
                 "JueMingR.Platform.Companions.CompanionDeletion",
-                "JueMingR.Platform.Companions.ICompanionArchive",
-                "JueMingR.Platform.Companions.CompanionMovementObservation",
-                "JueMingR.Platform.Companions.CompanionControlFrame"
+                "JueMingR.Platform.Companions.ICompanionArchive"
             };
             var actual = new HashSet<string>(assembly.GetExportedTypes().Select(type => type.FullName), StringComparer.Ordinal);
             if (!expected.SetEquals(actual))

@@ -73,7 +73,8 @@ namespace JueMingR.TerrariaHost.Companions
             // automatic buffs or growth. The manual command keeps its own turn,
             // and StageMobility still waits for any actual native hand tail.
             mobilityHand=StageMobility(a,frame,manualSupply || !frame.EmergencyHand && (heldSlot>=0 || buff),
-                handless && (manualCommand != null || attackAfterExit), valid && !manualSupply) || mobilityHand;
+                handless && (manualCommand != null || attackAfterExit), valid && !manualSupply, out var delivery) || mobilityHand;
+            a.Behavior.RecordMovementDelivery(delivery);
 
             // A pending exclusive maintenance action owns the release edge.
             // ItemCheck and live projectiles finish their normal animation and
@@ -269,6 +270,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(a.Profile.PermanentlyDead || a.PermanentDeathPending)return;
             if(!a.Body.dead)ObserveMobility(a);
+            a.Behavior.ObserveMovement(a.Body, a.Mobility);
             // A completed live update has recomputed effective accessories.
             // Inventory changes must not use the previous accessory result.
             if(!a.Body.dead)a.TileReachPending=false;
