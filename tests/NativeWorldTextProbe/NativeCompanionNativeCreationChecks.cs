@@ -5,7 +5,9 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
+using JueMingR.Platform.Hotkeys;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using Terraria;
 using Terraria.GameContent.UI.Elements;
 using Terraria.GameContent.UI.States;
@@ -27,7 +29,9 @@ namespace NativeWorldTextProbe
         private static bool proveWorldUse;
         private static UIColoredSlider observedSlider;
         private static object observedSession;
+        private static object heldDeletionKeys;
         private static int sliderTraces;
+        private static bool DelayDeletionKeys(object __instance) => !ReferenceEquals(heldDeletionKeys, __instance);
         private static void TraceSlider(UIColoredSlider __instance)
         {
             if(!ReferenceEquals(__instance,observedSlider)||sliderTraces++>=12)return;
@@ -106,7 +110,11 @@ namespace NativeWorldTextProbe
             currentContext=context;proveWorldUse=true;
             try
             {
-                human.name="验证主人";human.inventory[0]=new Item();human.inventory[0].SetDefaults(Terraria.ID.ItemID.CopperShortsword);human.selectedItemState.Select(0);human.itemAnimation=human.itemTime=0;graphics.LoadItemTextures(new int[]{Terraria.ID.ItemID.CopperShortsword});
+                human.name="验证主人";human.inventory[0]=new Item();human.inventory[0].SetDefaults(Terraria.ID.ItemID.CopperShortsword);human.selectedItemState.Select(0);human.itemAnimation=human.itemTime=0;
+                // The full client already has named Asset wrappers for these
+                // slots. The partial probe must provide the original three
+                // textures before a fast save can expose them during release.
+                graphics.LoadItemTextures(new int[]{Terraria.ID.ItemID.CopperShortsword,Terraria.ID.ItemID.CopperPickaxe,Terraria.ID.ItemID.CopperAxe});
                 Main.screenWidth=1366;Main.screenHeight=900;PlayerInput.CacheOriginalScreenDimensions();Main.UIScale=1.25f;Main.GameViewMatrix.Zoom=new Vector2(1.5f);
                 var renderer=Get(shell,"renderer");Call(renderer,"RefreshResources");Call(renderer,"Prepare",Get(shell,"State"),1366f,900f,Main.UIScale);
                 Call(Main.ResourceSetsManager,"SetActive","NewWithText");Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));Call(window,"Prepare",Main.UIScaleMatrix,new Vector2(1366,900));
@@ -151,6 +159,7 @@ namespace NativeWorldTextProbe
                 managerClick("create");creator=(UICharacterCreation)Main.InGameUI.CurrentState;Click(Snap(creator,"Back",0),graphics);Require(Session(host)==null&&(bool)Get(window,"Visible"),"actual native Back exits without world replay");
                 Require(Main.player.SequenceEqual(ownerArray),"after actual recall, native UI keeps all human/other player array identities");
                 CheckDuplicateNaming(context,graphics,managerClick,id);
+                CheckDeleteAndRecreate(context,graphics,output,managerClick,id);
                 CheckBrokenKeyboardReturn(context,graphics,managerClick);
                 Console.WriteLine("PASS true native early-UI -> mapping/final sample -> production context dispatch, physical UI1.25/worldZoom1.5, real plus/category/held-slider/keyboard cancel-submit/Back, world CopyInto+ItemCheck and neutral tails, embedded state/team and feedback; no OS IME/installed-game claim.");
             }
@@ -204,6 +213,127 @@ namespace NativeWorldTextProbe
 
         private static JueMingR.Platform.Companions.CompanionProfile[] ReadProfiles(object host) =>
             ((IEnumerable)Get(host,"Profiles")).Cast<JueMingR.Platform.Companions.CompanionProfile>().ToArray();
+
+        private static void CheckDeleteAndRecreate(object context, ProbeGraphics graphics, string output, Action<string> managerClick, Guid oldId)
+        {
+            var host = Get(context, "Companions");
+            var shell = Get(context, "Shell");
+            var window = Get(shell, "CompanionUi");
+            var state = Get(shell, "State");
+            var archive = Get(host, "profiles");
+            var original = ReadProfiles(host).Single(profile => profile.Id == oldId);
+            var hotkeys = Get(shell, "hotkeys");
+            var bindings = (HotkeyBindings)Get(hotkeys, "Bindings");
+            string oldBinding = "companions.profile." + original.OwnerId.ToString("N") + "." + oldId.ToString("N") + ".wormhole";
+            bool NoDeletions() => !((IEnumerable)Get(host, "Deletions")).Cast<object>().Any();
+            void Neutral() => NativeFrame(context, Vector2.Zero, false, Array.Empty<Keys>());
+            void ClickScreen(Vector2 logical)
+            {
+                foreach (bool left in new[] { false, true, false }) NativeFrame(context, logical * Main.UIScale, left, Array.Empty<Keys>());
+            }
+            void OpenFromF5()
+            {
+                NativeFrame(context, Vector2.Zero, false, new[] { Keys.F5 });
+                Neutral();
+                Require((bool)Get(state, "Visible"), "real F5 edge opens the main window after the former manager closes");
+                if ((int)Get(state, "Page") != 1)
+                {
+                    var nav = Get(state, "Layout");
+                    var origin = new Vector2((float)Get(state, "X"), (float)Get(state, "Y"));
+                    ClickScreen(NativeToolsUiChecks.Point(Call(nav, "Navigation", 1)) + origin);
+                }
+                Require((int)Get(state, "Page") == 1, "the real Misc tab opens by its current navigation bounds");
+                ClickScreen(NativeToolsUiChecks.Point(Get(Get(shell, "MiscUi"), "CompanionAnchor")));
+                Require((bool)Get(window, "Visible") && !(bool)Get(state, "Visible"), "the real Misc management button transfers ownership to the team window");
+            }
+
+            // The remaining name from the preceding duplicate regression is
+            // retired through the same control so this test covers an empty roster.
+            foreach (var other in ReadProfiles(host).Where(profile => profile.Id != oldId))
+            {
+                managerClick("profile:" + other.Id);
+                managerClick("configuration");
+                managerClick("request-delete");
+                managerClick("confirm-delete");
+                NativeQuickItemChecks.Until(() => { Neutral(); return NoDeletions(); });
+            }
+            managerClick("profile:" + oldId);
+            managerClick("inventory");
+            managerClick("actor-state");
+            managerClick("configuration");
+            Neutral();
+            Require(HotkeyChord.TryCreate((int)Keys.NumPad7, HotkeyModifiers.None, out var chord, out _) &&
+                bindings.TrySet(oldBinding, chord, null, out _, out _), "persist exact old companion shortcut before clicking its deletion");
+            NativeQuickItemChecks.Until(() => { Neutral(); return !bindings.Busy && bindings.Get(oldBinding) != null; });
+            var keyOwner = Get(hotkeys, "CompanionSettings");
+            var hold = new Harmony("JueMingR.Tests.DelayCompanionDeletionBindings");
+            heldDeletionKeys = keyOwner;
+            hold.Patch(AccessTools.Method(keyOwner.GetType(), "PollDeletions"),
+                prefix: new HarmonyMethod(typeof(NativeCompanionNativeCreationChecks), nameof(DelayDeletionKeys)));
+            object preservedDraft;
+            try
+            {
+                managerClick("request-delete");
+                managerClick("confirm-delete");
+                Require(ReadProfiles(host).Length == 0, "the final active profile leaves the published roster on confirmed deletion");
+                managerClick("close");
+                NativeQuickItemChecks.Until(() =>
+                {
+                    Neutral();
+                    return ((IEnumerable)Get(host, "Deletions")).Cast<JueMingR.Platform.Companions.CompanionDeletion>()
+                        .Any(receipt => receipt.ProfileId == oldId && receipt.FilesRemoved);
+                });
+                Require(bindings.StoredEntries.Any(entry => entry.Key == oldBinding), "real file retirement has reached its sustained shortcut-cleanup boundary");
+                OpenFromF5();
+                managerClick("create");
+                Click(Snap(Main.InGameUI.CurrentState, "Create", 0), graphics);
+                ((UIVirtualKeyboard)Main.InGameUI.CurrentState).Text = original.Name;
+                DrawEnter(graphics);
+                var session = Session(host);
+                string error = session == null ? "" : ((UIText)Get(session, "error")).Text;
+                Require(session != null && Main.InGameUI.CurrentState is UICharacterCreation &&
+                    error == "同名队友正在删除，请稍后重试创建。" && ReadProfiles(host).Length == 0,
+                    "same name is locally rejected with the pending deletion reason while the exact old identity owns its durable receipt. Actual: " + error);
+                Capture(graphics, output, "companion-deletion-pending-name");
+                preservedDraft = Get(session, "Draft");
+            }
+            finally { heldDeletionKeys = null; hold.UnpatchAll(hold.Id); }
+
+            NativeQuickItemChecks.Until(() =>
+            {
+                Neutral();
+                return NoDeletions() && !bindings.Busy && !bindings.StoredEntries.Any(entry => entry.Key == oldBinding);
+            });
+            Require(ReferenceEquals(Get(Session(host), "Draft"), preservedDraft) && !PlayerInput.WritingText,
+                "real shortcut cleanup completes under the native creator and preserves this draft and independent text ownership");
+            Click(Snap(Main.InGameUI.CurrentState, "Create", 0), graphics);
+            Guid replacement = (Guid)Get(host, "LastCreatedId");
+            Require(replacement != Guid.Empty && replacement != oldId && Session(host) == null && !PlayerInput.WritingText,
+                "actual same-name keyboard submission creates one new identity and releases native text input");
+            NativeQuickItemChecks.Until(() => { Neutral(); return (bool)Call(archive, "IsSaved", replacement); });
+            string newBinding = "companions.profile." + original.OwnerId.ToString("N") + "." + replacement.ToString("N") + ".wormhole";
+            Require(ReadProfiles(host).Single(profile => profile.Name == original.Name).Id == replacement && bindings.Get(newBinding) == null,
+                "same name persists as a different profile without inheriting the original binding");
+            graphics.Render(() => Call(shell, "DrawLayer"), Main.UIScaleMatrix);
+            managerClick("close");
+            OpenFromF5();
+            managerClick("profile:" + replacement);
+            managerClick("actor-state");
+            Require((bool)Call(host, "IsJoined", replacement), "the same-name replacement joins on its own new archive");
+            foreach (string tool in new[] { "拿走全部", "存放全部", "快速堆叠", "补货", "weapon-select", "item-sort", "item-once", "storage-Inventory" })
+                Require(Controls(window).Any(c => ((string)Get(c, "Key")).StartsWith(tool + "/", StringComparison.Ordinal)),
+                    "physical F5 re-entry after same-name creation restores toolbar command " + tool);
+            managerClick("configuration");
+            Neutral();
+            graphics.Image(Path.Combine(output, "companion-deletion-recreated-config.png"), () => Call(shell, "DrawLayer"),
+                Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
+            Require(!(bool)Get(shell, "Failed") && Controls(window).Count(c => GetOptional(c, "HotkeyId") != null) == 10,
+                "healthy F5 still opens the rebuilt character's real configuration and shortcut controls");
+            string reports = Path.Combine((string)Get(context, "gameDirectory"), "JueMingRData", "diagnostics", "f5");
+            Require(!File.Exists(Path.Combine(reports, "first-f5-shell.txt")) && !File.Exists(Path.Combine(reports, "first-companion-creation.txt")),
+                "the successful physical same-name flow does not emit a first failure report");
+            Console.WriteLine("PASS physical final-actor deletion, pending durable shortcut cleanup, same native draft retry, F5/Misc management and repeat F5 after same-name save.");
+        }
 
         private static void DrawEnter(ProbeGraphics graphics)
         {

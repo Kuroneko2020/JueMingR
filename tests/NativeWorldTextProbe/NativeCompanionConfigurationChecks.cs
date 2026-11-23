@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -34,6 +35,101 @@ namespace NativeWorldTextProbe
         private static IEnumerable Controls(object window) {return (IEnumerable)Get(window,"controls");}
         private static object Control(object window,string prefix)
         {return Controls(window).Cast<object>().Single(c=>((string)Get(c,"Key")).StartsWith(prefix,StringComparison.Ordinal));}
+        private static Dictionary<string, (object Rect, object Row, object Pane, bool InRow, bool InPane)> toolbarProbe;
+
+        private static void ObserveNativeTool(object __instance, string key, string text, ref float x, object toolbar, object view, float width)
+        {
+            if (toolbarProbe == null) return;
+            if (width == 0) width = (float)Call(__instance, "ToolWidth", text);
+            var rect = Activator.CreateInstance(toolbar.GetType(), BindingFlags.Instance | BindingFlags.NonPublic,
+                null, new object[] { x, Get(toolbar, "Y"), width, Get(toolbar, "Height") }, null);
+            var visible = __instance.GetType().GetMethod("ActorVisible", BindingFlags.Static | BindingFlags.NonPublic);
+            toolbarProbe[key] = (rect, toolbar, view, (bool)visible.Invoke(null, new[] { rect, toolbar }),
+                (bool)visible.Invoke(null, new[] { rect, view }));
+        }
+
+        private static void TraceReportedToolbar(object context, ProbeGraphics graphics, object window, string output)
+        {
+            var patch = new Harmony("JueMingR.Tests.ReportedToolbarGeometry");
+            var probe = new HarmonyMethod(typeof(NativeCompanionConfigurationChecks), nameof(ObserveNativeTool));
+            patch.Patch(AccessTools.Method(window.GetType(), "AddTool"), prefix: probe);
+            var resourceSet = Main.ResourceSetsManager.ActiveSetKeyName;
+            int width = Main.screenWidth, height = Main.screenHeight;
+            float scale = Main.UIScale;
+            try
+            {
+                Call(Main.ResourceSetsManager, "SetActive", "HorizontalBarsWithFullText");
+                Main.screenWidth = 1920; Main.screenHeight = 1080;
+                PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = 1.15f;
+                toolbarProbe = new Dictionary<string, (object, object, object, bool, bool)>();
+                NativeToolsUiChecks.UiFrame(context, Vector2.Zero, false);
+                NativeToolsUiChecks.UiFrame(context, Vector2.Zero, false);
+                var panel = Get(window, "panel");
+                string Rect(object value) => String.Join(",", new[] { "X", "Y", "Width", "Height" }
+                    .Select(axis => ((float)Get(value, axis)).ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
+                Console.WriteLine($"TOOLBAR REPORT physical={Main.screenWidth}x{Main.screenHeight} transform={Main.UIScaleMatrix.M11:R}, panel={Rect(panel)} ownerOffset={Get(window, "ownerOffset")} aiOffset={Get(window, "bodyOffset")}");
+                var pixels = graphics.Pixels(() => Call(Get(context,"Shell"), "DrawLayer"), Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
+                foreach (var key in new[] { "拿走全部", "存放全部", "快速堆叠", "补货", "weapon-select", "item-sort", "item-once", "storage-Inventory" })
+                {
+                    var item = toolbarProbe[key];
+                    var control = Controls(window).Cast<object>().SingleOrDefault(c => ((string)Get(c, "Key")).StartsWith(key + "/", StringComparison.Ordinal));
+                    int ink = 0;
+                    for (int y = (int)((float)Get(item.Rect, "Y") * Main.UIScale) + 5; y < (float)Get(item.Rect, "Bottom") * Main.UIScale - 5; y++)
+                        for (int x = (int)((float)Get(item.Rect, "X") * Main.UIScale) + 5; x < (float)Get(item.Rect, "Right") * Main.UIScale - 5; x++)
+                        {
+                            var color = pixels[y * Main.screenWidth + x];
+                            if (color.R > 105 && color.G > 105 && color.B > 105 && Math.Abs(color.R - color.B) < 45) ink++;
+                        }
+                    Console.WriteLine($"TOOLBAR REPORT {key} candidate={Rect(item.Rect)} row={Rect(item.Row)} pane={Rect(item.Pane)} inRow={item.InRow} inPane={item.InPane} control={control != null} ink={ink}");
+                    Require(item.InRow && item.InPane && control != null && ink > 5,
+                        "both real culling checks, the actual control and original drawn text survive for " + key + " at scale " + Main.UIScale);
+                }
+                graphics.Image(Path.Combine(output, "reported-toolbar-1920-1.15.png"),
+                    () => Call(Get(context,"Shell"), "DrawLayer"), Main.UIScaleMatrix, Main.screenWidth, Main.screenHeight);
+                CheckToolbarActions(context, graphics, window);
+            }
+            finally
+            {
+                toolbarProbe = null; patch.UnpatchAll(patch.Id);
+                Main.screenWidth = width; Main.screenHeight = height;
+                PlayerInput.CacheOriginalScreenDimensions(); Main.UIScale = scale;
+                Call(Main.ResourceSetsManager, "SetActive", resourceSet);
+                NativeToolsUiChecks.UiFrame(context, Vector2.Zero, false);
+            }
+        }
+
+        private static void CheckToolbarActions(object context, ProbeGraphics graphics, object window)
+        {
+            var host = Get(context, "Companions");
+            var id = (Guid)Get(window, "selected");
+            var owner = Main.LocalPlayer;
+            var body = (Player)Call(host, "GetBody", id);
+            var behavior = Profile(host, id).Behavior;
+            Require(!owner.dead && !body.dead && (string)Get(Control(window, "actor-state/"), "Text") == "点击收回",
+                "the physical 1920x1080 specimen is the same live-owner and joined-actor topology");
+            void Click(string prefix) => NativeToolsUiChecks.Click(context, NativeToolsUiChecks.Point(Get(Control(window, prefix), "Rect")) * Main.UIScale);
+            Click("configuration/"); Click("inventory/");
+            const int sampleSlot = 41;
+            var ownerItem = owner.inventory[sampleSlot]; var actorItem = body.inventory[sampleSlot];
+            graphics.LoadItemTextures(new[] { (int)ItemID.Gel });
+            try
+            {
+                owner.inventory[sampleSlot] = new Item(ItemID.Gel) { stack = 3 };
+                body.inventory[sampleSlot] = new Item(ItemID.Gel) { stack = 7 };
+                Click("快速堆叠/");
+                Require(owner.inventory[sampleSlot].IsAir && body.inventory[sampleSlot].type == ItemID.Gel && body.inventory[sampleSlot].stack == 10,
+                    "the left real visible toolbar consumes a physical click and transfers exactly the matching stack");
+                Click("weapon-select/"); Click("slot:False:Inventory:10/"); Click("weapon-done/");
+                Require(Profile(host, id).Behavior.MainWeapons.Single().SlotHint == 10,
+                    "the right real visible toolbar selects and saves the exact AI weapon from physical input");
+            }
+            finally
+            {
+                owner.inventory[sampleSlot] = ownerItem; body.inventory[sampleSlot] = actorItem;
+                Call(host, "SetBehavior", id, behavior);
+            }
+            Console.WriteLine("PASS after switching actual pages at 1920x1080 scale 1.15, the left and right controls take physical clicks, run quick stack and save a weapon.");
+        }
         internal static CompanionProfile Profile(object host,Guid id)
         {return ((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Single(p=>p.Id==id);}
         private static void Queue(string value)
@@ -98,6 +194,7 @@ namespace NativeWorldTextProbe
                 CheckWorldNames(graphics, output, body);
                 var renderer=Get(shell,"renderer");Call(renderer,"RefreshResources");Call(renderer,"Prepare",Get(shell,"State"),screen.X,screen.Y,1f);
                 Set(window,"selected",id);Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));rest();rest();
+                TraceReportedToolbar(context, graphics, window, output);
                 var panel=Get(window,"panel");
                 var leftTools=new[]{"拿走全部","存放全部","快速堆叠","补货"};
                 var toolbar=Get(Control(window,"weapon-select/"),"Rect");

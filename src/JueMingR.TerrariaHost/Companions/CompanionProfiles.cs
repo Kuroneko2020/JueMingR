@@ -92,7 +92,21 @@ namespace JueMingR.TerrariaHost.Companions
             if (rejection!=null) return false;
             string name = draft.name.Trim();
             if (!CanCreate) { rejection=LoadError??"队友档案尚未就绪。"; return false; }
-            if (manager.NameInUse(name)) { rejection="该名字已被你的另一名队友使用，请修改名字。"; return false; }
+            if (manager.NameInUse(name))
+            {
+                // A deleted card disappears before its durable cleanup ends.
+                // Identify that owner's pending name so this draft can retry
+                // after its receipt settles instead of unnecessarily renaming.
+                foreach (var deletion in manager.Deletions)
+                    if (deletion.OwnerId == OwnerId && String.Equals(deletion.Name, name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        rejection = deletion.Error == null ? "同名队友正在删除，请稍后重试创建。" :
+                            "同名队友删除尚未完成，请返回队友配置页重试删除。";
+                        return false;
+                    }
+                rejection = "该名字已被你的另一名队友使用，请修改名字。";
+                return false;
+            }
             Player body = NewCharacter(name, draft.difficulty);
             CompanionCreation.CopyAppearance(draft, body);
             profile = new CompanionProfile(Guid.NewGuid(), OwnerId, name, 1, 1, new CompanionBehavior(), Capture(body));
