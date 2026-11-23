@@ -420,6 +420,7 @@ leaf	CompanionItemsCpu	companions-items
 leaf	CompanionNavigationCpu	companions-navigation
 leaf	CompanionSessionCpu	companions-session
 leaf	CompanionNetworkCpu	companions-network
+leaf	CompanionWormholeCpu	companions-wormhole
 leaf	CompanionPasswordCpu	companions-password
 leaf	CompanionSuppliesCpu	companions-supplies
 leaf	CompanionObservationCombatCpu	companions-observation-combat

@@ -22,7 +22,10 @@ namespace NativeWorldTextProbe
             if(scope=="CompanionConfigVisual")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionConfigurationChecks.Run(context,graphics,output);NativeScopeDispatch.Enter("companions-config");},processing:true,shortFeedback:true);return 0;
+                string comparison=Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_WORMHOLE_COMPARISON");
+                if(comparison!=null && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT")!=null)
+                    throw new InvalidOperationException("Explicit configuration comparisons have no formal scope qualification.");
+                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionConfigurationChecks.Run(context,graphics,output);NativeScopeDispatch.Enter("companions-config");},processing:true,shortFeedback:true,candidateAssembly:comparison);return 0;
             }
             if(scope=="CompanionExitVisual")
             {
@@ -50,6 +53,15 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context=>{NativeCompanionTeamChecks.Run(context);NativeScopeDispatch.Enter("companions-network");},processing:true,shortFeedback:true);return 0;
             }
+            if(scope=="CompanionWormholeCpu")
+            {
+                Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                string comparison=Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_WORMHOLE_COMPARISON");
+                if(comparison!=null && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT")!=null)
+                    throw new InvalidOperationException("Explicit wormhole comparisons have no formal scope qualification.");
+                NativeQuickItemChecks.Run(context=>{NativeCompanionWormholeChecks.Run(context);NativeScopeDispatch.Enter("companions-wormhole");},
+                    processing:true,shortFeedback:true,candidateAssembly:comparison);return 0;
+            }
             if(scope=="CompanionPasswordCpu" || scope=="CompanionSuppliesCpu" || scope=="CompanionObservationCombatCpu")
             {
                 Directory.CreateDirectory(output);
@@ -75,7 +87,7 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Run(context=>{
                     NativeCombatAimChecks.Initialize();
                     string focus = comparison == null ? null : Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_NAV_FOCUS");
-                    if (focus == "vertical" || focus == "terrain") NativeCompanionVerticalFollowChecks.Run(context, focus);
+                    if (focus == "vertical" || focus == "terrain" || focus == "wormhole-follow") NativeCompanionVerticalFollowChecks.Run(context, focus);
                     else
                     {
                         if (comparison == null) NativeCompanionVerticalFollowChecks.Run(context);

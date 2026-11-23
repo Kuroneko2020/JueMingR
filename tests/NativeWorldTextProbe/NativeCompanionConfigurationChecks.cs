@@ -118,9 +118,9 @@ namespace NativeWorldTextProbe
                 click("once-cancel/");
                 click("configuration/");
                 Require(Get(window,"panel").Equals(panel) &&
-                    Controls(window).Cast<object>().Count(c=>GetOptional(c,"HotkeyId")!=null)==9 &&
+                    Controls(window).Cast<object>().Count(c=>GetOptional(c,"HotkeyId")!=null)==10 &&
                     !Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith("config-tab:",StringComparison.Ordinal)),
-                    "nine real shortcut entries share the fixed backpack envelope without second-level tabs");
+                    "nine toggle shortcut entries and the separate recall shortcut share the fixed backpack envelope");
                 Require(!Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith("actor-state/",StringComparison.Ordinal)||((string)Get(c,"Key")).StartsWith("team:",StringComparison.Ordinal)),"team and membership actions stay on the backpack page");
                 image("companion-config-behavior");
                 int builds=(int)Get(window,"LayoutBuilds");for(int i=0;i<100;i++)prepare();Require((int)Get(window,"LayoutBuilds")==builds,"stable configuration prepares rebuild no controls");
@@ -269,6 +269,8 @@ namespace NativeWorldTextProbe
             click("profile:"+id+"/"); click("configuration/");
             Require(bindings.TrySet(deletedKeys+"buff",null,null,out _,out _), "actual deletion includes an explicit empty shortcut row");
             NativeQuickItemChecks.Until(() => { rest(); return !bindings.Busy; });
+            Require(bindings.Get(deletedKeys+"wormhole")?.MainKey==(int)NativeCompanionHotkeyFeedbackChecks.WormholeKey,
+                "retirement includes the persisted one-shot recall row established by native keyboard checks");
             Require(bindings.StoredEntries.Any(row => row.Key == deletedKeys + "buff" && row.Value == ""), "empty row really persisted");
             scroll("request-delete/"); click("request-delete/"); scroll("confirm-delete/"); image("companion-config-delete-confirmation");
             click("profile:"+other+"/");
@@ -333,7 +335,7 @@ namespace NativeWorldTextProbe
             finally { Main.gameMenu=menu; rest(); }
             string savedHotkeys=File.ReadAllText(hotkeysPath);
             Require(!savedHotkeys.Contains(deletedKeys) && retainedRows.SequenceEqual(bindings.StoredEntries) && !File.Exists(deletedPath+".delete"),
-                "actual document retry removes all nine selected rows including empty mappings and preserves other bindings");
+                "actual document retry removes the nine toggle rows and the one-shot recall including empty mappings, preserving other bindings");
             Require((bool)Call(host,"Create",profile.Name),"the same name can create a genuinely new character after confirmed deletion");
             Guid replacement=(Guid)Get(host,"LastCreatedId");
             var archive=Get(host,"profiles");

@@ -128,7 +128,7 @@ namespace JueMingR.TerrariaHost.Companions
                     }
                 }
                 if (!foundSide && (!ahead || state.AwaitingEquipmentObservation || !ProveAirRetreat(body, mobility, facing, ref step)) ||
-                    RecentlyRejected(step)) return false;
+                    RecentlyRejected(body, step)) return false;
 
                 // A verified release is an ordinary short route action. It
                 // keeps owning input until a real pose below the obstruction
@@ -137,7 +137,7 @@ namespace JueMingR.TerrariaHost.Companions
                 route.Add(step);
                 routeGoal = goal;
                 if (ExecuteStep(body, state, mobility, RouteMotion.Air, step, out frame, out _)) return true;
-                RejectStep(step);
+                RejectStep(body, step);
                 return false;
             }
         }

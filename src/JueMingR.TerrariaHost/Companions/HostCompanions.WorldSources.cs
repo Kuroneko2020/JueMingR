@@ -217,7 +217,12 @@ namespace JueMingR.TerrariaHost.Companions
             CompleteSource(null,marker);return true;
         }
         private void ActorPingReceived(Actor a)
-        {if(a.WorldSource.Pings.Count!=0)CompleteSource(a,a.WorldSource.Pings.Dequeue());}
+        {
+            if (a.WorldSource.Pings.Count == 0) return;
+            long marker = a.WorldSource.Pings.Dequeue();
+            if (marker < 0) WormholeFenceReceived(a, marker);
+            else if (marker > 0) CompleteSource(a, marker);
+        }
         private void CompleteSource(Actor source,long marker)
         {
             var flow=Flow(source);flow.Completed=marker;flow.Outstanding=false;
@@ -265,7 +270,12 @@ namespace JueMingR.TerrariaHost.Companions
         private void FlushSource(Actor a)
         {
             var flow=Flow(a);if(!flow.Requested || flow.Outstanding || flow.Snapshot)return;flow.Requested=false;flow.Outstanding=true;flow.Sent++;
-            if(a!=null){flow.Pings.Enqueue(flow.Sent);a.Connection.Send(CompanionConnection.Packet(154));return;}
+            if (a != null)
+            {
+                if (a.Connection.TrySend(CompanionConnection.Packet(154))) flow.Pings.Enqueue(flow.Sent);
+                else { flow.Sent--; flow.Requested = true; flow.Outstanding = false; }
+                return;
+            }
             issuingPrimaryBarrier=true;try{NetMessage.SendData(154);}finally{issuingPrimaryBarrier=false;}
         }
         private void ClearWorldSources()

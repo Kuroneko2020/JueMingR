@@ -85,6 +85,7 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly NpcPredictionSource prediction=new NpcPredictionSource();
         private readonly JueMingR.Features.Combat.CombatPredictionWork work=new JueMingR.Features.Combat.CombatPredictionWork(2);
         private object world;private Player owner;private long session;private int planningTurn;private uint planningStep=UInt32.MaxValue,aimStep;
+        private CompanionOwnerTrail ownerTrail;
         private Actor planningActor;
         private readonly List<Actor> planningActors = new List<Actor>();
         private long aimAttempt;
@@ -290,6 +291,8 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void RetireArchiveIdentity()
         {
+            ownerTrail?.BreakSegment();
+            ownerTrail=null;
             F5.CompanionCreationSession.DisposeFor(this);
             CancelItemGesture();
             foreach(var actor in actors.Values.ToArray())if(!actor.Closing)CloseActor(actor,null);
@@ -336,14 +339,35 @@ namespace JueMingR.TerrariaHost.Companions
             if(!ArchiveIdentityCurrent())return;
             FlushItemSync();
             FlushSourceRequests();RequestSharedTerrain();
-            if(actors.Count==0)return;
+            if(actors.Count==0)
+            {
+                ownerTrail?.BreakSegment();
+                ownerTrail=null;
+                return;
+            }
             if(planningStep!=Main.GameUpdateCount)
             {
                 planningStep=Main.GameUpdateCount;
                 planningActors.Clear();
+                bool observedOwner=false;
                 foreach (var a in actors.Values)
-                    if (a.Ready && !a.Closing && !a.Faulted && a.Body.active && !a.Body.dead && !a.Body.CCed)
-                        planningActors.Add(a);
+                    if (a.Ready && !a.Closing && !a.Faulted && a.Body.active && !a.Body.dead)
+                    {
+                        if (!a.Body.CCed) planningActors.Add(a);
+                        if (a.Preferences.Follow)
+                        {
+                            if (!observedOwner)
+                            {
+                                ownerTrail=ownerTrail??new CompanionOwnerTrail();
+                                ownerTrail.Observe(owner,planningStep);
+                                observedOwner=true;
+                            }
+                            a.Behavior.OwnerTrail=ownerTrail;
+                        }
+                        else a.Behavior.OwnerTrail=null;
+                    }
+                if (!observedOwner && ownerTrail!=null)
+                { ownerTrail.BreakSegment(); ownerTrail=null; }
                 // One movement/target-refresh slice per real world step,
                 // independent of attacking, channel release or packet phase.
                 // Retained navigation prefixes remain usable by every body;
@@ -365,6 +389,8 @@ namespace JueMingR.TerrariaHost.Companions
                 catch(Exception e){CloseActor(a,e.Message);}
             }
         }
+        internal void ObserveOwnerWarp(Player player)
+        { if (ReferenceEquals(owner, player)) ownerTrail?.BreakSegment(); }
         public void FailClosed(){OnSessionEnded();failed=true;}
         private void Exit(object sender,EventArgs args){Dispose();}
         // CLR shutdown never reads native objects. Normal game-thread leaving

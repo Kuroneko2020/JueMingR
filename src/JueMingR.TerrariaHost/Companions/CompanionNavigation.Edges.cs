@@ -56,10 +56,11 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         private bool TryEdge(Player body, CompanionMobilitySnapshot mobility, RouteNode node, Vector2 target, int candidate,
-            out RouteNode next, out bool observe, out bool pending)
+            out RouteNode next, out bool observe, out bool pending, out int requiredLife)
         {
             next = default(RouteNode);
             observe = pending = false;
+            requiredLife = 0;
             Vector2 from = node.Position;
             int facing = target.X < from.X ? -1 : 1;
             int direction = (candidate & 1) == 0 ? facing : -facing;
@@ -95,7 +96,7 @@ namespace JueMingR.TerrariaHost.Companions
                         var launchVelocity = node.Previous < 0 && Vector2.DistanceSquared(body.position, from) <= 16 * 16 ?
                             body.velocity : Vector2.Zero;
                         var result = ProbeDescent(body, mobility, from, candidate == 5 ? 0 : candidate == 6 ? facing : -facing,
-                            launchVelocity, search.Terrain, ref search.Descent, ref step, out motion);
+                            launchVelocity, search.Terrain, ref search.Descent, ref step, out motion, out requiredLife, target.X);
                         pending = result == DescentResult.Pending;
                         if (result != DescentResult.Found) return false;
                         // The landing or the short controlled-air pose is
@@ -610,13 +611,20 @@ namespace JueMingR.TerrariaHost.Companions
             return Math.Abs(actual.Y) >= 32 && Math.Abs(actual.Y) < 96 && SolidForBody(body, to, terrain);
         }
 
-        private static bool InGoalRegion(Player body, Vector2 position, Vector2 goal, ReadSet terrain)
+        private static bool InGoalRegion(Player body, Vector2 position, Vector2 goal, RouteMotion motion, ReadSet terrain)
         {
             using (Scratch.Save())
             {
-                // A nearby owner at the far side of a solid wall is a distinct
-                // region. Sample toward the goal without requiring an exact pose.
                 var difference = goal - position;
+                if (Surface(body, goal, terrain) && SolidForBody(body, goal, terrain))
+                {
+                    if (motion != RouteMotion.Ground) return false;
+                    // The fall-through sweep below is appropriate for an
+                    // airborne goal, not proof that two floors are connected.
+                    if (Math.Abs(difference.X) < 1) return Math.Abs(difference.Y) <= 4;
+                    return TrySupportedTravel(body, position, Math.Sign(difference.X), Math.Abs(difference.X), terrain,
+                        out Vector2 connected, out _) && Math.Abs(connected.Y - goal.Y) <= 4;
+                }
                 var sample = difference * .65f;
                 if (Math.Abs(sample.Y) < 12) sample.Y = 0;
                 return Swept(body, position, sample, terrain, passPlatform: true);

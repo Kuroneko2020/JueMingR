@@ -49,7 +49,7 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Terraria.DataStructures.MinionRespawner),"CollectMinionsFor",nameof(CollectMinions));
             Patch(typeof(Player),"KillMe",nameof(DeathBefore),finalizer:nameof(DeathFinal));
             Patch(typeof(Player),"KillMeForGood",nameof(PermanentDeath));
-            Patch(typeof(Player),"Spawn",nameof(ItemRecallBefore),transpiler:nameof(SpawnLocals));
+            Patch(typeof(Player),"Spawn",nameof(ItemRecallBefore),postfix:nameof(OwnerSpawnAfter),transpiler:nameof(SpawnLocals));
             Patch(typeof(Player),"Teleport",transpiler:nameof(TeleportPresentation));
             Patch(typeof(Player),"PickupItem",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Player),"GrabItems",nameof(UseBefore),finalizer:nameof(ScopeFinal));
@@ -343,7 +343,9 @@ namespace JueMingR.TerrariaHost.Companions
 
             if(Main.netMode!=1 || current==null || current.Actor.Connection==null)return true;
             int length=data[0]|data[1]<<8;var copy=new byte[length];Buffer.BlockCopy(data,0,copy,0,length);
+            if (copy[2] == 65) host.ObserveWormholeSend(current.Actor, copy, null);
             current.PacketAccepted=current.Actor.Connection.TrySend(copy);
+            if (copy[2] == 65) host.ObserveWormholeSend(current.Actor, copy, current.PacketAccepted);
             if(current.PacketAccepted)host.RecordActorPacket(current.Actor,copy);
             return false;
         }
@@ -444,6 +446,14 @@ namespace JueMingR.TerrariaHost.Companions
             else p.GrappleMovement();
         }
         private static Player SpawnLocal(){return Spawning??Main.LocalPlayer;}
+        private static void OwnerSpawnAfter(Player __instance, PlayerSpawnContext context, bool __runOriginal)
+        {
+            // An original recall/revival may place the owner at the very
+            // same coordinates. It still starts a new observed trail segment.
+            if (__runOriginal && !__instance.dead && (context == PlayerSpawnContext.RecallFromItem ||
+                context == PlayerSpawnContext.ReviveFromDeath || context == PlayerSpawnContext.TeamSwap))
+                host?.ObserveOwnerWarp(__instance);
+        }
         private static bool ItemRecallBefore(Player __instance,PlayerSpawnContext context)
         {
             var actor=current?.Actor;

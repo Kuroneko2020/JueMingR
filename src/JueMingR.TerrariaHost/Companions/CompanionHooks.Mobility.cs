@@ -27,7 +27,7 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player), "QuickMinecartSnap", prefix: nameof(AllowQuickCart));
             Patch(typeof(Player), "DoCommonDashHandle", transpiler: nameof(ActorDashInput));
             Patch(typeof(Player), "WingAirLogicTweaks", prefix: nameof(ObserveWingRunInputs));
-            Patch(typeof(Player), nameof(Player.Teleport), postfix: nameof(MobilityTeleportAfter));
+            Patch(typeof(Player), nameof(Player.Teleport), prefix: nameof(MobilityTeleportBefore), postfix: nameof(MobilityTeleportAfter));
             Patch(typeof(PortalHelper), nameof(PortalHelper.TryGoingThroughPortals), transpiler: nameof(ActorPortalEntry));
             Patch(typeof(TeleportPylonsSystem), nameof(TeleportPylonsSystem.HandleTeleportRequest), transpiler: nameof(PylonFailureReceiver));
         }
@@ -257,12 +257,22 @@ namespace JueMingR.TerrariaHost.Companions
             ChatHelper.SendChatMessageToClient(text, color, playerIndex);
         }
 
-        private static void MobilityTeleportAfter(Player __instance, int Style, Vector2 newPos)
+        private static bool MobilityTeleportBefore(Player __instance, int Style, Vector2 newPos, out Vector2 __state)
         {
+            __state = __instance.position;
+            return host?.AllowWormholeDisplacement(__instance, Style, newPos) != false;
+        }
+
+        private static void MobilityTeleportAfter(Player __instance, int Style, Vector2 newPos, Vector2 __state, bool __runOriginal)
+        {
+            if (!__runOriginal || __instance.position != newPos) return;
+            bool moved = __state != newPos;
+            if (moved) host?.ObserveOwnerWarp(__instance);
             var actor = host?.Owned(__instance);
-            if (actor == null || __instance.position != newPos) return;
+            if (actor == null || Style == 3 && !moved) return;
             var state = actor.Mobility;
             state.PositionRevision++;
+            if (Style == 3 && moved) host.ObserveWormholeArrival(actor, newPos);
             // Movement has truly occurred here. Merely animating a rod or
             // submitting a packet does not retire any route as successful.
             if (state.Result != CompanionMobilityResult.Started || state.Generation != actor.Generation) return;

@@ -12,6 +12,9 @@ namespace JueMingR.TerrariaHost.F5
         private static readonly string[] SwitchActions = { "开启", "关闭", "键" };
         private static readonly string[] ConfigurableActions = { "开启", "关闭", "配置", "键" };
         private static readonly string[] LifeActions = { "智能", "快速", "关闭", "配置", "键" };
+        private static readonly string[] RecallActions = { "传送", "键" };
+        private static readonly string[] RecallButtonOnly = { "传送" };
+        private const string ManualRecallControl = "manual-wormhole";
         private F5Rect configurationViewport, configurationNameRect;
         private string configurationName;
         private CompanionProfile deletionTarget;
@@ -48,7 +51,7 @@ namespace JueMingR.TerrariaHost.F5
             ConfigurationPair(profile, behavior, CompanionSetting.Life, CompanionSetting.Mana);
             ConfigurationPair(profile, behavior, CompanionSetting.Buff, CompanionSetting.Growth);
             ConfigurationPair(profile, behavior, CompanionSetting.Nurse, CompanionSetting.Furniture);
-            ConfigurationPair(profile, behavior, CompanionSetting.Respawn, null);
+            ConfigurationPair(profile, behavior, CompanionSetting.Respawn, null, recall: true);
 
             if (host.SaveFailed(selected))
                 ConfigurationAction("retry-save", "保存失败 · 重试保存", () => Command(() => host.RetrySave(selected)), row);
@@ -137,13 +140,49 @@ namespace JueMingR.TerrariaHost.F5
             if (bodyOffset > bodyMaximum) { bodyOffset = bodyMaximum; bodyOffsetClamped = true; Invalidate(); }
         }
 
-        private void ConfigurationPair(CompanionProfile profile, CompanionBehavior behavior, CompanionSetting left, CompanionSetting? right)
+        private void ConfigurationPair(CompanionProfile profile, CompanionBehavior behavior, CompanionSetting left, CompanionSetting? right, bool recall = false)
         {
             float x = configurationViewport.X, width = (configurationViewport.Width - 8) / 2;
             float leftEnd = contentY, rightEnd = contentY;
             ConfigurationRow(profile, behavior, left, x, width, ref leftEnd);
             if (right.HasValue) ConfigurationRow(profile, behavior, right.Value, x + width + 8, width, ref rightEnd);
+            if (recall) ConfigurationRecall(profile, x + width + 8, width, ref rightEnd);
             contentY = Math.Max(leftEnd, rightEnd);
+        }
+
+        private void ConfigurationRecall(CompanionProfile profile, float x, float width, ref float y)
+        {
+            rowElements.Clear();
+            new F5RowLayout(rowElements, measure).Row(ref y, x, width, CompanionHotkeys.RecallName,
+                HotkeyClicked == null ? RecallButtonOnly : RecallActions);
+            foreach (var element in rowElements)
+            {
+                var bounds = element.Rect;
+                if (element.Kind == F5ElementKind.Panel) AddActorHeader(bounds, configurationViewport);
+                else if (ConfigurationVisible(bounds))
+                {
+                    if (element.Kind == F5ElementKind.Text) labels.Add(element);
+                    else if (element.Kind == F5ElementKind.Hotkey)
+                        ConfigurationBinding(CompanionHotkeys.RecallId(profile), bounds, F5HotkeyHints.CompanionRecall);
+                    else
+                    {
+                        var control = ConfigurationButton(ManualRecallControl, "传送", bounds,
+                            () => host.TryManualRecall(profile.Id));
+                        control.ManualRecall = true;
+                        control.Element = element;
+                    }
+                }
+            }
+        }
+
+        private void ConfigurationBinding(string id, F5Rect rect, string hint)
+        {
+            var control = Button("binding-" + id, "", rect, null);
+            control.HotkeyId = id;
+            // The shared popup uses the final visible control rectangle after
+            // moving and scrolling the window, including the one-shot action.
+            control.Execute = () => { CloseSupplyPopup(); HotkeyClicked(id, control.Rect); };
+            control.Hint = hint;
         }
 
         private void ConfigurationRow(CompanionProfile profile, CompanionBehavior behavior, CompanionSetting setting,
@@ -174,13 +213,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (!ConfigurationVisible(r)) continue;
                 if (action == "键")
                 {
-                    string id = CompanionHotkeys.Id(profile, setting);
-                    var control = Button("binding-" + id, "", r, null);
-                    control.HotkeyId = id;
-                    // Read the translated control on release, which is the
-                    // same rectangle the shared popup's anchor checks.
-                    control.Execute = () => { CloseSupplyPopup(); HotkeyClicked(id, control.Rect); };
-                    control.Hint = F5HotkeyHints.Toggle;
+                    ConfigurationBinding(CompanionHotkeys.Id(profile, setting), r, F5HotkeyHints.Toggle);
                     continue;
                 }
                 int value = action == "关闭" ? 0 : action == "智能" ? 2 : 1;

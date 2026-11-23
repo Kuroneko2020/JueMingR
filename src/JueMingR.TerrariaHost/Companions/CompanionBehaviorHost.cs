@@ -25,6 +25,20 @@ namespace JueMingR.TerrariaHost.Companions
         private bool lateralJump;
         private PredictionTerrain.CellLease lateralTerrain;
         private readonly int[] seenThreats = new int[Main.projectile.Length + Main.npc.Length];
+        internal CompanionOwnerTrail OwnerTrail { private get; set; }
+
+        internal void PositionChanged(Player body)
+        {
+            stand = ownerRest = progress = body.Center;
+            hasStand = true;
+            hasAir = false;
+            stalled = 0;
+            lateralTarget = null;
+            lateralTerrain = null;
+            lateralJump = false;
+            sight.Reset();
+            navigation.RetirePosition();
+        }
         internal void ObserveCapabilities(Player body) { navigation.ObserveCapabilities(body); }
         internal CompanionControlFrame Decide(Player body, Player owner, CompanionBehavior behavior, bool allowPlanning)
         { return DecideMovement(body, owner, behavior, allowPlanning, null, false, false, null); }
@@ -96,8 +110,12 @@ namespace JueMingR.TerrariaHost.Companions
                         navigation.JumpSafe(body, target, toward, true);
                     if (leap && navigation.TryCombatJump(body, mobility, target, out var jump)) return jump;
                 }
-                Vector2 targetVelocity = behavior.Follow && ownerAvailable && !reposition ? owner.velocity : Vector2.Zero;
-                return navigation.FollowRoute(body, mobility, target, targetVelocity, allowPlanning, grounded, stopDistance, resumeDistance);
+                bool regularFollow = behavior.Follow && ownerAvailable && !reposition;
+                Vector2 targetVelocity = regularFollow ? owner.velocity : Vector2.Zero;
+                var trail = regularFollow ? OwnerTrail : null;
+                if (trail != null && trail.RecentlyGrounded && body.gravDir == owner.gravDir)
+                    target.Y = owner.gravDir > 0 ? owner.Bottom.Y - body.height * .5f : owner.Top.Y + body.height * .5f;
+                return navigation.FollowRoute(body, mobility, target, targetVelocity, allowPlanning, grounded, stopDistance, resumeDistance, trail);
             }
             int direction = brain.DirectionTo(target.X - body.Center.X, stopDistance, resumeDistance);
             var route = navigation.PlanWalk(body, direction, allowPlanning);

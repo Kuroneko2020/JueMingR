@@ -33,7 +33,7 @@ namespace JueMingR.TerrariaHost.F5
             internal int LoadoutIcon = -1;
             internal bool IsSlot, Owner;
             internal bool WeaponCandidate, ActiveWeapon;
-            internal bool ActorOverlay,ActorState;
+            internal bool ActorOverlay,ActorState,ManualRecall;
             internal int TeamIcon=-1;
             internal CompanionInventoryArea Area;
             internal int Slot;

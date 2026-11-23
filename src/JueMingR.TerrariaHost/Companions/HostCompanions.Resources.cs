@@ -293,7 +293,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void FlushItemSync(bool immediate = false)
         {
-            if (pendingItemSync.Count == 0 || !immediate && Main.GameUpdateCount < nextItemSync) return;
+            if (pendingItemSync.Count == 0 || CompanionHooks.CurrentActor != null || !immediate && Main.GameUpdateCount < nextItemSync) return;
             nextItemSync = Main.GameUpdateCount + 60;
             for (int i = pendingItemSync.Count - 1; i >= 0; i--)
             {
@@ -314,7 +314,11 @@ namespace JueMingR.TerrariaHost.Companions
                 try
                 {
                     if (pending.Actor == null) NetMessage.SendData(5, -1, -1, null, pending.Body.whoAmI, pending.Slot);
-                    else using (CompanionHooks.Enter(pending.Actor, pending.Actor.Aim)) NetMessage.SendData(5, -1, -1, null, pending.Body.whoAmI, pending.Slot);
+                    else using (var scope = CompanionHooks.Enter(pending.Actor, pending.Actor.Aim))
+                    {
+                        NetMessage.SendData(5, -1, -1, null, pending.Body.whoAmI, pending.Slot);
+                        if (!scope.PacketAccepted) continue;
+                    }
                     pendingItemSync.RemoveAt(i);
                 }
                 catch (Exception) { /* Latest real slots remain authoritative for the bounded retry. */ }

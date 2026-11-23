@@ -20,6 +20,11 @@ namespace JueMingR.TerrariaHost.F5
                     c.Enabled = host.CanChangeCompanionPresence(selected, recall, out string reason);
                     c.Hint = reason ?? (recall ? "收回人物" : "加入当前世界");
                 }
+                if (c.ManualRecall)
+                {
+                    c.Enabled = host.QueryManualRecall(selected, out string reason);
+                    c.Hint = reason ?? "消耗一瓶虫洞药水，将队友传送到玩家身边。";
+                }
                 if(c.TeamIcon>=0)c.Selected=body!=null&&body.team==c.TeamIcon;
             }
             UpdateLabel(selectedStatusLabel,host.Status(selected));

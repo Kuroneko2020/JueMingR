@@ -57,6 +57,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var connection = a.Connection;
             if (connection == null) return;
+            RetireWormholes(a);
             string deathFailure = null;
             bool unconfirmedDeath = connection.HasUnconfirmedDeath;
             if (unconfirmedDeath && !connection.Finished)
@@ -229,9 +230,18 @@ namespace JueMingR.TerrariaHost.Companions
                     if(!WorldPacket(a,packet))continue;
                     if(packet.Length>decoder.readBuffer.Length)throw new InvalidDataException("队友世界数据帧过大。");
                     Buffer.BlockCopy(packet,0,decoder.readBuffer,0,packet.Length);decoder.ResetReader();Decoding=a;
-                    try{int type;if(id==39 || id==65)using(CompanionHooks.Enter(a,a.Aim))decoder.GetData(0,packet.Length,out type);else decoder.GetData(0,packet.Length,out type);}finally{Decoding=null;}
+                    try
+                    {
+                        if (id == 65) decodingWormhole = MatchWormholeReply(a, packet);
+                        int type;
+                        if (id == 39 || id == 65)
+                            using (CompanionHooks.Enter(a, a.Aim)) decoder.GetData(0, packet.Length, out type);
+                        else decoder.GetData(0, packet.Length, out type);
+                    }
+                    finally { Decoding = null; decodingWormhole = null; }
                 }
             }
+            PumpWormholes(a);
         }
         private Actor Observer(Vector2 position)
         {

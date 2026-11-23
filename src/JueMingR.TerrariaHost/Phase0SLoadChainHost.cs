@@ -997,6 +997,9 @@ namespace JueMingR.TerrariaHost
                 notes = new Notes.HostNotes(gameDirectory);
                 if (PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage) Browser = new ItemBrowser.HostItemBrowser(gameDirectory, worldTiles, Input);
                 if (hotkeyPackage) ShortFeedback = new Feedback.LocalShortFeedback(runtime.SharedRuntime, Input);
+                if (Companions != null && ShortFeedback != null)
+                    Companions.ManualRecallFeedback = (id, text, succeeded) =>
+                        ShortFeedback.Show("companions.wormhole." + id.ToString("N"), text, succeeded, () => true, ShortFeedback.Capture());
                 if (PackageId.StartsWith("continuous-processing-", StringComparison.Ordinal))
                 {
                     Journey = new Journey.JourneySession(runtime.SharedRuntime, hiddenAccess, () => Input.CanPrepareText);

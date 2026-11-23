@@ -9,6 +9,8 @@ namespace JueMingR.TerrariaHost.Hotkeys
     internal sealed class CompanionHotkeys
     {
         private const string Prefix = "companions.profile.";
+        private const string RecallKey = "wormhole";
+        internal const string RecallName = "传送AI到玩家";
         private static readonly string[] Keys = { "follow", "attack", "life", "mana", "buff", "growth", "respawn", "nurse", "furniture" };
         private static readonly string[] Names = { "跟随主人", "允许攻击", "主动回血", "主动回蓝", "使用增益物品", "使用成长物品", "自动复活", "护士治疗", "家具增益" };
         private readonly DynamicHotkeyOwner owner;
@@ -25,7 +27,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
         {
             // The profile roster is unbounded. Only persisted binds and the
             // controls currently offered by the window need registry entries.
-            owner = registry.CreateDynamicOwner(Prefix, HotkeyDocument.MaximumEntries + Keys.Length);
+            owner = registry.CreateDynamicOwner(Prefix, HotkeyDocument.MaximumEntries + Keys.Length + 1);
             this.feedback = feedback;
         }
 
@@ -33,7 +35,12 @@ namespace JueMingR.TerrariaHost.Hotkeys
             Id(profile.OwnerId, profile.Id, (int)setting);
 
         private static string Id(Guid ownerId, Guid profileId, int setting) =>
-            Prefix + ownerId.ToString("N") + "." + profileId.ToString("N") + "." + Keys[setting];
+            Id(ownerId, profileId, Keys[setting]);
+
+        private static string Id(Guid ownerId, Guid profileId, string key) =>
+            Prefix + ownerId.ToString("N") + "." + profileId.ToString("N") + "." + key;
+
+        internal static string RecallId(CompanionProfile profile) => Id(profile.OwnerId, profile.Id, RecallKey);
 
         internal static string Name(CompanionSetting setting) => Names[(int)setting];
 
@@ -57,9 +64,9 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 if (!refreshed) { Refresh(host, bindings, selectedProfile); refreshed = true; }
                 if (bindings.Protected) { host.FailDeletionBindings(deletion); continue; }
                 string row = null;
-                for (int i = 0; row == null && i < Keys.Length; i++)
+                for (int i = 0; row == null && i <= Keys.Length; i++)
                 {
-                    string id = Id(deletion.OwnerId, deletion.ProfileId, i);
+                    string id = Id(deletion.OwnerId, deletion.ProfileId, i == Keys.Length ? RecallKey : Keys[i]);
                     foreach (var entry in bindings.StoredEntries)
                         if (entry.Key == id) { row = id; break; }
                 }
@@ -92,6 +99,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
             var ordered = new List<HotkeyAction>();
             if (profiles != null && (bound.Count > 0 || selectedProfile != Guid.Empty))
                 foreach (var profile in profiles)
+                {
                     for (int index = 0; index < Keys.Length; index++)
                     {
                         var setting = (CompanionSetting)index;
@@ -105,6 +113,15 @@ namespace JueMingR.TerrariaHost.Hotkeys
                         next.Add(id, action);
                         ordered.Add(action);
                     }
+                    string recallId = RecallId(profile);
+                    if (profile.Id != selectedProfile && !bound.Contains(recallId)) continue;
+                    string recallName = profile.Name + " · " + RecallName;
+                    if (!ReferenceEquals(host, observedHost) || !actions.TryGetValue(recallId, out var recall) || recall.Name != recallName)
+                        recall = new HotkeyAction(recallId, recallName, HotkeyContext.Gameplay,
+                            () => host.SettingProfile(profile.OwnerId, profile.Id) != null, () => host.TryManualRecall(profile.Id));
+                    next.Add(recallId, recall);
+                    ordered.Add(recall);
+                }
             if (!owner.TryReplace(ordered, out _)) return;
             actions = next;
             observedHost = host; observedProfiles = profiles; observedEntries = entries; selected = selectedProfile;

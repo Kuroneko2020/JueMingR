@@ -48,8 +48,11 @@ namespace NativeWorldTextProbe
                     { Platform, Ledge, UnsafeLedge, StarboardFlight, Sequence, HoverTransitions, ChangedFallEquipment, ChangedShaftLiquid, ChangedLedgeWall };
                 var terrain = new Action<object, object, Player>[]
                     { NativeCompanionDoorFollowChecks.HalfBrick, LowCeiling, DescendingDetour, RetainedPlan, LiquidEntry, NativeCompanionFacilityFollowChecks.PylonFollow };
+                var practicalFollow = new Action<object, object, Player>[]
+                    { AdjacentPlatforms, ControlledDrop, TolerableFalls, TrailFollow };
                 var scenarios = comparisonFocus == "terrain" ? terrain : comparisonFocus == "vertical" ? existing :
-                    System.Linq.Enumerable.Concat(existing, terrain);
+                    comparisonFocus == "wormhole-follow" ? practicalFollow :
+                    System.Linq.Enumerable.Concat(System.Linq.Enumerable.Concat(existing, terrain), practicalFollow);
                 foreach (Action<object, object, Player> scenario in scenarios)
                 {
                     try { scenario(host, profiles, human); }
