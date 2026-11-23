@@ -24,6 +24,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal float GravityDirection, Gravity, Speed, RunAcceleration, RunSlowdown, MaxFallSpeed,
             JumpSpeed, WingTime, MountFatigue, MountFatigueMax, HookRange, FlightMountBudget, WaterMountSpeed;
         internal float WingSpeed, WingAcceleration, WingHoverSpeed, WingHoverAcceleration, WingSlowdown;
+        internal float WingBaseSpeed, WingBaseAcceleration, WingBaseSlowdown;
     }
 
     internal sealed class CompanionMobilityState
@@ -167,6 +168,10 @@ namespace JueMingR.TerrariaHost.Companions
             float acceleration = WingRunSampled && active > 0 ? body.runAcceleration / active :
                 WingRunSampled ? wingBaseAcceleration : body.runAcceleration;
             float speed = WingRunSampled ? wingBaseSpeed : body.accRunSpeed;
+            Observed.WingBaseSpeed = speed;
+            Observed.WingBaseAcceleration = acceleration;
+            var wingBrake = wings == 45 && body.timeSinceLastDashStarted >= 60 ? 6f : 1f;
+            Observed.WingBaseSlowdown = WingRunSampled ? body.runSlowdown / wingBrake : body.runSlowdown;
             Observed.WingSpeed = System.Math.Max(speed, stats.AccRunSpeedOverride);
             Observed.WingAcceleration = acceleration * ordinary;
             Observed.WingHoverRun = stats.HasDownHoverStats;
@@ -174,8 +179,7 @@ namespace JueMingR.TerrariaHost.Companions
             Observed.WingHoverAcceleration = acceleration * stats.DownHoverAccelerationMult;
             // 45's fast brake is native state, not a property of Down-hover.
             // When grounded the wing modifier has not run on this observation.
-            Observed.WingSlowdown = body.runSlowdown *
-                (!WingRunSampled && wings == 45 && body.timeSinceLastDashStarted >= 60 ? 6f : 1f);
+            Observed.WingSlowdown = Observed.WingBaseSlowdown * wingBrake;
         }
 
         internal void ObserveBody(Player body, bool busy)

@@ -80,6 +80,7 @@ namespace JueMingR.TerrariaHost.Companions
             trailJoined = 0;
             RetirePublication();
             pendingResult = -1;
+            followingOutlet = false;
             RetireTrailSuffix(body, state, motion);
         }
 
@@ -102,7 +103,7 @@ namespace JueMingR.TerrariaHost.Companions
                         (state.Result == CompanionMobilityResult.Started || state.Result == CompanionMobilityResult.Completed);
                     break;
             }
-            if (!committed) { ReleaseRoute(); return; }
+            if (!committed) { ReleaseRoute(); followingOutlet = false; return; }
             if (routeIndex + 1 < route.Count) route.RemoveRange(routeIndex + 1, route.Count - routeIndex - 1);
         }
 
@@ -156,7 +157,7 @@ namespace JueMingR.TerrariaHost.Companions
 
         private void RejectExhaustedTrail()
         {
-            if (trailJoined == 0 || search == null || !search.Exhausted || search.Active || pendingResult >= 0 || publishing >= 0) return;
+            if (trailJoined == 0 || search == null || !search.Initialized || search.Active || pendingResult >= 0 || publishing >= 0) return;
             // A failed owner waypoint is not a restriction on the current
             // live destination. Retry near that segment only after progress
             // or the ordinary connection/terrain rules make another join.

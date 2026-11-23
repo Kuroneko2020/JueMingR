@@ -121,7 +121,7 @@ namespace NativeWorldTextProbe
             try
             {
                 Call(host, "SetBehavior", profile.Id, new CompanionBehavior { Follow = true, AttackEnabled = false, HealthRecoveryEnabled = false });
-                foreach (Action<object, object, Player, Player> test in new Action<object, object, Player, Player>[] { Rope, Track, WiredPads, Grapple })
+                foreach (Action<object, object, Player, Player> test in new Action<object, object, Player, Player>[] { Rope, Track, TrackNearOwner, WiredPads, Grapple })
                 {
                     foreach (Point tile in area.Keys) Main.tile[tile.X, tile.Y] = new Tile();
                     try { test(host, actor, body, human); }
@@ -157,13 +157,20 @@ namespace NativeWorldTextProbe
                 rose |= attached && body.pulley && body.Bottom.Y < (lower - 5) * 16;
                 released |= rose && !body.pulley && body.controlJump && body.velocity.Y < 0;
                 reached = released && body.Center.X > 95 * 16 && Math.Abs(body.Bottom.Y - upper * 16) < 2;
+                if (tick % 55 == 0) TraceFollow(actor, body, "rope", tick);
             }
             Require(attached && rose && released && reached,
                 $"Follow climbs the original rope and jumps onto the higher landing: attach={attached} rise={rose} released={released} landed={reached} body={body.position} speed={body.velocity} status={Get(actor, "Status")}");
             Console.WriteLine("PASS native companion Follow rope: attachment, climbing, native jump at the top and upper platform landing.");
         }
 
-        private static void Track(object host, object actor, Player body, Player human)
+        private static void Track(object host, object actor, Player body, Player human) =>
+            FollowTrack(host, actor, body, human, nearbyOwner: false);
+
+        private static void TrackNearOwner(object host, object actor, Player body, Player human) =>
+            FollowTrack(host, actor, body, human, nearbyOwner: true);
+
+        private static void FollowTrack(object host, object actor, Player body, Player human, bool nearbyOwner)
         {
             NativeCombatLiveContextChecks.InitializeMount();
             bool dedicated = Main.dedServ;
@@ -177,13 +184,16 @@ namespace NativeWorldTextProbe
             human.Bottom = new Vector2(112 * 16, floor * 16);
             bool ride = false, driving = false, brake = false, dismounted = false;
             float initialRailX = 0, topSpeed = 0;
+            int stable = 0;
+            float farthest = 0;
+            Vector2 nearbyGoal = new Vector2(94 * 16, floor * 16);
             var mobility = Get(actor, "Mobility");
             int priorHook = (int)Get(mobility, "HookKey");
             int railHookKey = priorHook;
             Projectile railHook = null;
             try
             {
-                for (int tick = 0; tick < 450 && !(dismounted && body.Center.X > 107 * 16); tick++)
+                for (int tick = 0; tick < 450 && (nearbyOwner ? stable < 24 : !(dismounted && body.Center.X > 107 * 16)); tick++)
                 {
                     var next = (Projectile)GetOptional(mobility, "Hook");
                     int key = (int)Get(mobility, "HookKey");
@@ -203,13 +213,29 @@ namespace NativeWorldTextProbe
                     {
                         if (!ride) { ride = true; initialRailX = body.Center.X; }
                         topSpeed = Math.Max(topSpeed, Math.Abs(body.velocity.X));
-                        driving |= body.Center.X > initialRailX + 48;
+                        if (!driving && body.Center.X > initialRailX + 48)
+                        {
+                            driving = true;
+                            if (nearbyOwner) human.Bottom = nearbyGoal;
+                        }
                         brake |= driving && topSpeed > 1.5f && Math.Abs(body.velocity.X) <= 1.5f;
                     }
                     dismounted |= driving && !body.mount.Active;
+                    if (nearbyOwner && driving) farthest = Math.Max(farthest, body.Center.X);
+                    if (nearbyOwner && dismounted && Math.Abs(body.Bottom.Y - floor * 16) < 2 &&
+                        Math.Abs(body.Center.X - nearbyGoal.X) <= 36 && Math.Abs(body.velocity.X) < .5f) stable++;
+                    else stable = 0;
+                    if (tick % 75 == 0) TraceFollow(actor, body, nearbyOwner ? "track-near" : "track", tick);
                 }
             }
             finally { if (railHook?.active == true && (int)railHook.key == railHookKey) railHook.Kill(); }
+            if (nearbyOwner)
+            {
+                Console.WriteLine($"NAV FACILITY track-near ride={ride} drive={driving} brake={brake} dismount={dismounted} stable={stable} farthest={farthest} goal={nearbyGoal.X}");
+                Require(ride && driving && brake && dismounted && stable >= 24 && farthest <= nearbyGoal.X + 36,
+                    "Follow brakes on the actual rail at a new nearby owner, dismounts and settles without riding through the arrival band");
+                return;
+            }
             Require(ride && driving && brake && dismounted && body.Center.X > 107 * 16,
                 $"Follow rides the existing track, brakes and resumes on foot: ride={ride} drive={driving} speed={topSpeed} brake={brake} dismount={dismounted} body={body.position} status={Get(actor, "Status")}");
             Console.WriteLine("PASS native companion Follow minecart: track attachment, sustained travel, native braking, dismount and continued ground Follow.");
@@ -311,6 +337,18 @@ namespace NativeWorldTextProbe
             human.Center = body.Center;
             Call(Get(Get(actor, "Behavior"), "navigation"), "CancelRoute");
             Step(host, body);
+        }
+
+        private static void TraceFollow(object actor, Player body, string caseName, int tick)
+        {
+            var navigation = Get(Get(actor, "Behavior"), "navigation");
+            var steps = (System.Collections.IList)Get(navigation, "route");
+            int current = (int)Get(navigation, "routeIndex");
+            object action = current < steps.Count ? steps[current] : null;
+            var search = GetOptional(navigation, "search");
+            string route = action == null ? "local" : $"{Get(action,"Kind")}:{Get(action,"From")}→{Get(action,"To")}";
+            string frontier = search == null ? "none" : $"{Get(search,"Active")}/{Get(search,"Exhausted")}/{((System.Collections.IList)Get(search,"Nodes")).Count}";
+            Console.WriteLine($"NAV FACILITY {caseName} tick={tick} body={body.Bottom}/{body.velocity} pulley={body.pulley} track={body.onTrack} up={body.controlUp} down={body.controlDown} route={route} frontier={frontier} pending={Get(navigation,"pendingResult")} publishing={Get(navigation,"publishing")} status={Get(actor,"Status")}");
         }
 
         private static void Floor(int left, int right, int y)

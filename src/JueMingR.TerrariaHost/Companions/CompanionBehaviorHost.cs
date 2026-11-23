@@ -73,8 +73,7 @@ namespace JueMingR.TerrariaHost.Companions
             // retain Y velocity. Never retire a jump from zero velocity alone.
             // Native stairFall outlives the down edge while passing a platform;
             // it is not a fresh support/drop-planning opportunity next frame.
-            bool grounded = body.velocity.Y >= 0 && (!body.wet || needsAir) &&
-                CompanionNavigation.Supported(body, body.position, !body.controlDown && !body.stairFall);
+            bool grounded = (!body.wet || needsAir) && CompanionNavigation.ObservedSupport(body);
             // Supported at +1px is a geometry observation. JumpMovement runs
             // before collision and still requires native zero Y (or sliding)
             // and a previously consumed release, unless native auto-jump applies.

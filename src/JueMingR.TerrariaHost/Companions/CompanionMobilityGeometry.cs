@@ -20,6 +20,20 @@ namespace JueMingR.TerrariaHost.Companions
         private static readonly PortalEdges portalEdges = AccessTools.MethodDelegate<PortalEdges>(AccessTools.Method(typeof(PortalHelper), "GetPortalEdges"));
         private static readonly PortalOut portalOut = AccessTools.MethodDelegate<PortalOut>(AccessTools.Method(typeof(PortalHelper), "GetPortalOutingPoint"));
 
+        internal static bool HasActivePortal => anyPortal();
+
+        internal static bool MayReachPylon(Rectangle tileArea)
+        {
+            var pylons = Main.PylonSystem?.Pylons;
+            if (pylons == null || pylons.Count == 0) return false;
+            if (pylons.Count > 24) return true;
+            TileReachCheckSettings.Pylons.GetRanges(out int x, out int y);
+            tileArea.Inflate(x + 1, y + 1);
+            foreach (var pylon in pylons)
+                if (tileArea.Intersects(new Rectangle(pylon.PositionInTiles.X, pylon.PositionInTiles.Y, 3, 4))) return true;
+            return false;
+        }
+
         internal static bool Known(int x, int y) => Main.tile != null && x >= 0 && y >= 0 && x < Main.maxTilesX && y < Main.maxTilesY &&
             (Main.netMode != 1 || Main.sectionManager != null && Main.sectionManager.TileLoaded(x, y)) && Main.tile[x, y] != null;
 

@@ -256,6 +256,16 @@ namespace NativeWorldTextProbe
                     largestSlice = Math.Max(largestSlice, nextWork - previousWork);
                     previousWork = nextWork;
                     if (firstAway < 0 && body.position.X < initial.X - 12) firstAway = ticks;
+                    if (ticks % 90 == 0)
+                    {
+                        var steps = (System.Collections.IList)Get(movement, "route");
+                        int current = (int)Get(movement, "routeIndex");
+                        object action = current < steps.Count ? steps[current] : null;
+                        string stepName = action == null ? "local" :
+                            $"{Get(action,"Kind")}:{Get(action,"From")}→{Get(action,"To")}";
+                        var rejected = Get(movement, "blockedStep");
+                        Console.WriteLine($"NAV DETOUR phase={ticks},body={body.position}/{body.velocity},action={stepName},rejected={Get(rejected,"Kind")}:{Get(rejected,"From")}→{Get(rejected,"To")}@{Get(movement,"blockedAt")},left={body.controlLeft},right={body.controlRight},jump={body.controlJump},status={Get(actor,"Status")}");
+                    }
                 }
                 Console.WriteLine("NAV_ROUTE detourTicks=" + ticks + " firstAway=" + firstAway + " totalWork=" + (previousWork - work) +
                     " maxSlice=" + largestSlice + FormattableString.Invariant($" nativeStepMs={Milliseconds(elapsed):F2} nativeMaxMs={Milliseconds(maximum):F2}") +
@@ -263,7 +273,7 @@ namespace NativeWorldTextProbe
                 if (ticks == 1200)
                 {
                     var mobility = Get(Get(actor, "Mobility"), "Observed");
-                    var jump = navigation.GetMethod("TryJumpEdge", Flags);
+                    var jump = navigation.GetMethods(Flags).Single(method => method.Name == "TryJumpEdge" && method.GetParameters().Length == 10);
                     object[] options = { body, mobility, body.position, 0, true, 0, null, Vector2.Zero, 0, 0 };
                     bool planned = (bool)jump.Invoke(movement, options);
                     Point feet = body.Bottom.ToTileCoordinates();
@@ -504,7 +514,14 @@ namespace NativeWorldTextProbe
                 human.position=new Vector2(80*16,89*16-human.height);
                 for(int i=0;i<280;i++) NativeStep(host,body);
                 object search = Get(navigationPlan,"search");
+                if (!(bool)Get(search, "FullyKnownClosure") || !(bool)Get(search, "Exhausted"))
+                {
+                    var nodes = ((IList)Get(search, "Nodes")).Cast<object>().Where(node => !(bool)Get(node, "Vacant")).ToArray();
+                    var samples = nodes.GroupBy(node => (Vector2)Get(node, "Position")).OrderByDescending(group => group.Count()).Take(10);
+                    Console.WriteLine($"FOLLOW CLOSED ROOM frontier active={Get(search, "Active")} closed={Get(search, "Exhausted")} capacity={Get(search, "CapacityLimited")} window={Get(search, "Window")} truncated={Get(search, "WindowLimited")} conditional={Get(search, "AwaitsNativeChange")} unknown={Get(Get(search, "Terrain"), "HasUnknown")} nodes={nodes.Length} pending={nodes.Count(node => (bool)Get(node, "Pending"))} at={Get(search, "Expanding")}/{Get(search, "Candidate")} poses={string.Join(";", samples.Select(group => $"{group.Key}:{group.Count()} [{string.Join(",",group.Take(14).Select(node => $"{(float)Get(node,"VelocityX"):F2}"))}]"))}");
+                }
                 Require((bool)Get(search,"Exhausted") && (bool)Get(search,"FullyKnownClosure"),"the closed known room genuinely runs its finite frontier to completion");
+                var enclosed = Get(search, "IsolatedInterior");
                 int starts = (int)Get(navigationPlan,"RouteSearchStarts"), work = (int)Get(navigationPlan,"RouteWork");
                 for(int i=0;i<240;i++) NativeStep(host,body);
                 int newStarts=(int)Get(navigationPlan,"RouteSearchStarts")-starts, newWork=(int)Get(navigationPlan,"RouteWork")-work;
@@ -520,7 +537,7 @@ namespace NativeWorldTextProbe
                 for(int y=84;y<89;y++) Main.tile[65,y]=new Tile();
                 int response=-1;
                 for(int i=0;i<150;i++) { NativeStep(host,body); if(response<0 && body.controlRight) response=i; }
-                Console.WriteLine($"FOLLOW CLOSED ROOM waitingStarts={newStarts} waitingWork={newWork} newJump={oldJump:F2}/{strongerJump:F2} newWork={replacementWork} openedResponse={response} body={body.position}");
+                Console.WriteLine($"FOLLOW CLOSED ROOM enclosed={enclosed} waitingStarts={newStarts} waitingWork={newWork} newJump={oldJump:F2}/{strongerJump:F2} newWork={replacementWork} openedResponse={response} body={body.position}");
                 Require(response>=0 && response<10 && body.position.X>66*16,"opening the real relevant obstruction wakes actual follow and the actor leaves its room");
             }
             finally
@@ -658,8 +675,18 @@ namespace NativeWorldTextProbe
                 if(airborne && body.velocity.Y>=0 && Support(body)){landed=true;break;}
             }
             Require(airborne && landed,"continuously elevated goal permits a second real takeoff and landing after pre-landing release");
+            Vector2 landedPose = body.position, landedVelocity = body.velocity;
+            bool carriedStairs = body.stairFall;
             human.position=body.position-new Vector2(100,0);
             NativeStep(host,body);
+            if (!body.controlLeft || body.controlRight)
+            {
+                var navigation = Get(Get(actor,"Behavior"),"navigation");
+                var route = (System.Collections.IList)Get(navigation,"route");
+                int current = (int)Get(navigation,"routeIndex");
+                object step = current < route.Count ? route[current] : null;
+                Console.WriteLine($"NAV LANDING landed={landedPose}/{landedVelocity} oldStair={carriedStairs} after={body.position}/{body.velocity} stair={body.stairFall} owner={human.position} expectedLeft={body.controlLeft}/{body.controlRight} route={(step == null ? "none" : Get(step,"Kind"))} status={Get(actor,"Status")}");
+            }
             Require(body.controlLeft && !body.controlRight && !(bool)Get(actor,"Faulted"),"after genuine slope landing old jump direction retires and new owner direction enters Player.Update");
             var at=body.position;body.Update(body.whoAmI);Require(body.position==at,"same world-step duplicate native body update remains suppressed");
             for (int x = 93; x <= 103; x++) { Main.tile[x, 63] = new Tile(); Main.tile[x, 67] = new Tile(); }

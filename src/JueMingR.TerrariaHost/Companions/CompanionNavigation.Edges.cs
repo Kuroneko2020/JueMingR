@@ -42,8 +42,9 @@ namespace JueMingR.TerrariaHost.Companions
             switch (candidate)
             {
                 case 0: case 1: return motion == RouteMotion.Ground ? 20 : 1;
+                case 35: case 36: return motion == RouteMotion.Ground ? 40 : 1;
                 case 2: case 3: case 4: return motion == RouteMotion.Ground || motion == RouteMotion.Rope ? 94 : 1;
-                case 5: case 6: case 7: return motion == RouteMotion.Ground ? DescentWork : 1;
+                case 5: case 6: case 7: case 37: case 38: return motion == RouteMotion.Ground ? DescentWork : 1;
                 case 8: case 9: case 10: case 11: case 33: case 34: return 10;
                 case 12: case 13: return 10;
                 case 14: case 15: return 16;
@@ -73,30 +74,47 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 switch (candidate)
                 {
-                    case 0: case 1:
-                        if (motion != RouteMotion.Ground || !TryWalkEdge(body, from, direction, search.Terrain, out step.To)) return false;
-                        step.Kind = RouteKind.Walk; step.Cost = 16;
+                    case 0: case 1: case 35: case 36:
+                        bool extended = candidate >= 35;
+                        if (extended) step.Direction = direction = candidate == 35 ? facing : -facing;
+                        if (motion != RouteMotion.Ground || !TryWalkEdge(body, from, direction, search.Terrain, out step.To,
+                            extended ? 32 : 16)) return false;
+                        step.Kind = RouteKind.Walk;
+                        step.Cost = Math.Abs(step.To.X - from.X);
+                        step.ExitVelocityX = RunToDistance(body, mobility, node.VelocityX, direction, Math.Max(0, step.Cost - 3));
+                        step.HasExitVelocity = true;
                         break;
                     case 2: case 3: case 4:
                         if (motion != RouteMotion.Ground && motion != RouteMotion.Rope) return false;
                         if (candidate == 4) step.Direction = 0;
-                        float targetHeight = (target.Y - from.Y) * gravity;
-                        if (motion == RouteMotion.Ground && (step.Direction == 0 && targetHeight >= -36 ||
-                            step.Direction != 0 && targetHeight >= -24 &&
-                            TryWalkEdge(body, from, step.Direction, search.Terrain, out _))) return false;
-                        if (!TryJumpEdge(body, mobility, from, step.Direction, node.Previous < 0, 0, search.Terrain,
-                            out step.To, out step.Duration, out _)) return false;
+                        if (step.Direction == 0 && !VerticalJumpLandingNearby(body, mobility, from, node.VelocityX, search.Terrain))
+                            return false;
+                        step.EntryVelocityX = node.VelocityX;
+                        step.HasEntryVelocity = motion == RouteMotion.Ground;
+                        if (!TryJumpEdge(body, mobility, from, step.Direction, node.Previous < 0, step.EntryVelocityX, 0, search.Terrain,
+                            out step.To, out step.Duration, out _, out step.ExitVelocityX)) return false;
+                        float travel = Math.Abs(step.To.X - from.X);
+                        if (motion == RouteMotion.Ground && step.Direction != 0 && travel <= 160 &&
+                            Math.Abs(step.To.Y - from.Y) <= 2 &&
+                            TrySupportedTravel(body, from, step.Direction, travel, search.Terrain, out _, out _, steps: false))
+                            return false;
+                        // A same-level jump with a continuous walking lane
+                        // duplicates a reachable support. Higher or separated
+                        // contacts keep their edges regardless of owner height.
+                        step.HasExitVelocity = true;
                         step.Kind = motion == RouteMotion.Rope ? RouteKind.RopeExit : RouteKind.Jump;
                         step.Launch = new JumpInputs(body, mobility);
                         step.Cost = 32 + Vector2.Distance(step.To, from) * 1.05f;
                         motion = RouteMotion.Ground;
                         break;
-                    case 5: case 6: case 7:
+                    case 5: case 6: case 7: case 37: case 38:
                         if (motion != RouteMotion.Ground) return false;
-                        var launchVelocity = node.Previous < 0 && Vector2.DistanceSquared(body.position, from) <= 16 * 16 ?
-                            body.velocity : Vector2.Zero;
-                        var result = ProbeDescent(body, mobility, from, candidate == 5 ? 0 : candidate == 6 ? facing : -facing,
-                            launchVelocity, search.Terrain, ref search.Descent, ref step, out motion, out requiredLife, target.X);
+                        int fallDirection = candidate == 6 ? facing : candidate == 7 ? -facing : 0;
+                        int steering = candidate == 37 ? facing : candidate == 38 ? -facing : 0;
+                        var result = ProbeDescent(body, mobility, from, fallDirection, new Vector2(node.VelocityX, 0),
+                            search.Terrain, ref search.Descent, ref step, out motion, out requiredLife, target.X, steering);
+                        if (node.Previous < 0 && Vector2.DistanceSquared(from, body.position) < 16 * 16)
+                            RememberDescentProbe(search.Descent);
                         pending = result == DescentResult.Pending;
                         if (result != DescentResult.Found) return false;
                         // The landing or the short controlled-air pose is
@@ -155,10 +173,13 @@ namespace JueMingR.TerrariaHost.Companions
                         observe = true;
                         break;
                     case 29: case 30:
+                        if (motion != RouteMotion.Ground) return false;
                         step.Direction = candidate == 29 ? facing : -facing;
+                        step.EntryVelocityX = node.VelocityX;
+                        step.HasEntryVelocity = true;
                         if (TryWalkEdge(body, from, step.Direction, search.Terrain, out _) ||
-                            !TryJumpEdge(body, mobility, from, step.Direction, node.Previous < 0, glideFuel, search.Terrain,
-                                out step.To, out step.Duration, out int glideSpend) || glideSpend == 0) return false;
+                            !TryJumpEdge(body, mobility, from, step.Direction, node.Previous < 0, step.EntryVelocityX, glideFuel,
+                                search.Terrain, out step.To, out step.Duration, out int glideSpend, out _) || glideSpend == 0) return false;
                         step.Kind = RouteKind.GlideJump;
                         step.Launch = new JumpInputs(body, mobility);
                         step.Cost = 58 + Vector2.Distance(step.To, from) + glideSpend * .3f;
@@ -193,19 +214,29 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool Surface(Player body, Vector2 from, ReadSet terrain, bool platforms = true) =>
             HasSurface(body, from, terrain, platforms);
 
-        private static bool TryWalkEdge(Player body, Vector2 from, int direction, ReadSet terrain, out Vector2 to) =>
-            TrySupportedTravel(body, from, direction, 16, terrain, out to, out _);
+        private static bool TryWalkEdge(Player body, Vector2 from, int direction, ReadSet terrain, out Vector2 to,
+            float distance = 16)
+        {
+            bool complete = TrySupportedTravel(body, from, direction, distance, terrain, out to, out _);
+            return complete || distance > 16 && Math.Abs(to.X - from.X) >= 20;
+        }
 
         private bool TryJumpEdge(Player body, CompanionMobilitySnapshot mobility, Vector2 from, int direction, bool root,
-            int glideFuel, ReadSet terrain, out Vector2 to, out int hold, out int glideSpend)
+            int glideFuel, ReadSet terrain, out Vector2 to, out int hold, out int glideSpend) =>
+            TryJumpEdge(body, mobility, from, direction, root, root ? body.velocity.X : 0, glideFuel, terrain,
+                out to, out hold, out glideSpend, out _);
+
+        private bool TryJumpEdge(Player body, CompanionMobilitySnapshot mobility, Vector2 from, int direction, bool root,
+            float entrySpeed, int glideFuel, ReadSet terrain, out Vector2 to, out int hold, out int glideSpend, out float exitSpeed)
         {
             to = from;
             glideSpend = 0;
+            exitSpeed = 0;
             hold = mobility.JumpHeight > 0 ? mobility.JumpHeight : jumpHold;
             if (mobility.MountCart || mobility.Shimmer || mobility.Lava && !mobility.LavaImmune) return false;
             int gravity = body.gravDir < 0 ? -1 : 1;
             float speed = mobility.JumpSpeed > 0 ? mobility.JumpSpeed : jumpSpeed;
-            var velocity = new Vector2(root ? body.velocity.X : 0, -speed * gravity);
+            var velocity = new Vector2(entrySpeed, 0);
             bool holding = true;
             bool wet = root ? mobility.Wet : WetAt(body, from);
             if (glideFuel > 0 && wet) return false;
@@ -213,14 +244,9 @@ namespace JueMingR.TerrariaHost.Companions
             bool useBorders = !Terraria.Testing.DebugOptions.noLimits && Main.rightWorld > Main.leftWorld + 1280;
             for (int tick = 0; tick < 90; tick++)
             {
-                if (direction != 0)
-                    velocity.X = MathHelper.Clamp(velocity.X + direction * Math.Max(.01f, body.runAcceleration),
-                        -Math.Max(1, body.maxRunSpeed), Math.Max(1, body.maxRunSpeed));
-                else velocity.X *= Math.Max(0, 1 - body.runSlowdown);
                 float stepGravity = mobility.Wet && !wet ? Math.Max(body.gravity, Player.defaultGravity) : body.gravity;
                 float launchSpeed = mobility.Wet && !wet ? Math.Min(speed, 5.01f) : speed;
-                velocity.Y = (holding && tick < hold ? -launchSpeed :
-                    Math.Min(body.maxFallSpeed, velocity.Y * gravity + Math.Max(.05f, stepGravity))) * gravity;
+                velocity = JumpVelocity(body, mobility, velocity, direction, tick != 0, holding && tick <= hold, launchSpeed, stepGravity);
                 if (glideFuel > 0 && tick >= hold && velocity.Y >= 0)
                     return TryGlideLanding(body, from, to, direction, glideFuel, terrain, out to, out glideSpend);
                 if (!MoveJump(body, to, velocity, wet, out var step, terrain)) return false;
@@ -238,9 +264,134 @@ namespace JueMingR.TerrariaHost.Companions
                     velocity.Y = Math.Max(velocity.Y, .11f);
                 }
                 if (step.Ground && tick > 0)
+                {
+                    exitSpeed = velocity.X;
                     return (to.Y - from.Y) * gravity <= 48 &&
-                        (direction == 0 ? (to.Y - from.Y) * gravity < -12 : direction * (to.X - from.X) >= 24);
+                        (direction == 0 ? (to.Y - from.Y) * gravity < -12 : direction * (to.X - from.X) >= 24) &&
+                        JumpLandingSupported(body, mobility, to, direction, exitSpeed, terrain);
+                }
                 if (wet || mobility.Wet) wet = WetAt(body, to);
+            }
+            return false;
+        }
+
+        private static Vector2 JumpVelocity(Player body, CompanionMobilitySnapshot mobility, Vector2 velocity,
+            int direction, bool afterLaunch, bool hold, float speed, float gravity)
+        {
+            int normal = body.gravDir < 0 ? -1 : 1;
+            var run = MovementRun(body, mobility, afterLaunch && velocity.Y != 0);
+            float vertical = hold ? -speed + gravity : Math.Min(body.maxFallSpeed, velocity.Y * normal + gravity);
+            return new Vector2(run.Advance(velocity.X, direction), vertical * normal);
+        }
+
+        private static bool JumpEntryReady(Player body, CompanionMobilitySnapshot mobility, RouteStep step)
+        {
+            var run = MovementRun(body, mobility, airborne: false);
+            float expected = run.Advance(step.EntryVelocityX, step.Direction);
+            float current = run.Advance(body.velocity.X, step.Direction);
+            // The previous support edge terminates within one original
+            // update's displacement. Do not accept a different runway class.
+            return Math.Abs(current - expected) <= Math.Max(.35f, run.Acceleration * 3) &&
+                (Math.Abs(expected) <= .5f || Math.Sign(current) == Math.Sign(expected));
+        }
+
+        private static bool JumpLandingAtLiveEntry(Player body, CompanionMobilitySnapshot mobility, RouteStep step)
+        {
+            float shift = body.position.X - step.From.X;
+            float upperShift = shift;
+            if (step.Direction == 0 && Math.Abs(body.velocity.X - step.EntryVelocityX) > .005f)
+            {
+                // A vertical jump can miss the last fraction of a platform
+                // even when the departure speeds fit the same class. Include
+                // the native released-axis drift from both launch states.
+                var ground = MovementRun(body, mobility, airborne: false);
+                var air = MovementRun(body, mobility, airborne: true);
+                shift += NeutralJumpDrift(ground, air, body.velocity.X) - NeutralJumpDrift(ground, air, step.EntryVelocityX);
+                if (float.IsNaN(shift)) return false;
+                upperShift = shift;
+            }
+            else if (step.Direction != 0 && Math.Abs(body.velocity.X - step.EntryVelocityX) > .005f)
+            {
+                // Cover the native displacement difference while the
+                // directed input settles onto a comparable horizontal run.
+                var ground = MovementRun(body, mobility, airborne: false);
+                var air = MovementRun(body, mobility, airborne: true);
+                float live = ground.Advance(body.velocity.X, step.Direction);
+                float planned = ground.Advance(step.EntryVelocityX, step.Direction);
+                float offset = body.position.X - step.From.X;
+                for (int tick = 0; tick < 90 && live != planned; tick++)
+                {
+                    offset += live - planned;
+                    shift = Math.Min(shift, offset);
+                    upperShift = Math.Max(upperShift, offset);
+                    live = air.Advance(live, step.Direction);
+                    planned = air.Advance(planned, step.Direction);
+                }
+            }
+            Vector2 landing = step.To + new Vector2(shift, 0);
+            float exit = step.ExitVelocityX;
+            if (exit != 0)
+                exit += Math.Sign(exit) * Math.Abs(body.velocity.X - step.EntryVelocityX);
+            if (!JumpLandingSupported(body, mobility, landing, step.Direction, exit, null)) return false;
+            float width = upperShift - shift;
+            return width <= .01f ||
+                width <= body.width && TrySupportedTravel(body, landing, 1, width, null, out _, out _, steps: false) &&
+                JumpLandingSupported(body, mobility, step.To + new Vector2(upperShift, 0), step.Direction, exit, null);
+        }
+
+        private static bool JumpLandingSupported(Player body, CompanionMobilitySnapshot mobility, Vector2 landing,
+            int direction, float exit, ReadSet terrain)
+        {
+            if (!SolidForBody(body, landing, terrain) || !Surface(body, landing, terrain)) return false;
+            if (direction != 0 && !TrySupportedTravel(body, landing, -direction, 2, terrain, out _, out _, steps: false))
+                return false;
+            if (exit == 0) return true;
+
+            // First contact can keep a clipped Y displacement for an extra
+            // update. Prove the safe release phase using air drag once and
+            // ground drag after that, until a supported successor can begin.
+            float speed = MovementRun(body, mobility, airborne: true).Advance(exit, 0);
+            float distance = Math.Abs(speed);
+            var ground = MovementRun(body, mobility, airborne: false);
+            for (int tick = 0; tick < 48 && speed != 0; tick++)
+            {
+                speed = ground.Advance(speed, 0);
+                distance += Math.Abs(speed);
+            }
+            return speed == 0 && TrySupportedTravel(body, landing, Math.Sign(exit), distance, terrain, out _, out _, steps: false);
+        }
+
+        private static float NeutralJumpDrift(HorizontalRun ground, HorizontalRun air, float speed)
+        {
+            speed = ground.Advance(speed, 0);
+            float distance = speed;
+            for (int step = 0; step < 32 && speed != 0; step++)
+            {
+                speed = air.Advance(speed, 0);
+                distance += speed;
+            }
+            // An unsettled release cannot borrow the old contact certificate.
+            return speed == 0 ? distance : float.NaN;
+        }
+
+        private static bool VerticalJumpLandingNearby(Player body, CompanionMobilitySnapshot mobility, Vector2 from,
+            float speed, ReadSet terrain)
+        {
+            // With a steady axis, a jump in place needs an actual elevated
+            // tile under its sweep. A moving entry still uses the full probe.
+            if (Math.Abs(speed) > .6f) return true;
+            int gravity = body.gravDir < 0 ? -1 : 1;
+            float jump = Math.Max(1, mobility.JumpSpeed);
+            float rise = jump * (mobility.JumpHeight + 1) + jump * jump / (2 * Math.Max(.05f, body.gravity));
+            int rows = Math.Min(14, (int)Math.Ceiling(rise / 16));
+            int firstX = (int)Math.Floor(from.X / 16), lastX = (int)Math.Floor((from.X + body.width - .01f) / 16);
+            int footRow = (int)Math.Floor((from.Y + (gravity > 0 ? body.height : 0)) / 16);
+            for (int offset = 1; offset <= rows; offset++)
+            for (int x = firstX; x <= lastX; x++)
+            {
+                int row = footRow - offset * gravity;
+                if (terrain == null ? !Loaded(x, row) : !terrain.Record(x, row)) return false;
+                if (DescentSolid(x, row)) return true;
             }
             return false;
         }
@@ -309,7 +460,8 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static bool MoveJump(Player body, Vector2 from, Vector2 velocity, bool wet, out Step step, ReadSet terrain)
         {
-            if (!wet && body.gravDir > 0) return Move(body, from, velocity, true, true, out step, terrain);
+            if (!wet) return MoveWithContact(body, from, velocity, PlatformContact.Native(body, false, false),
+                body.gravDir > 0, out step, terrain);
             step = default(Step);
             if (!Footprint(body, from, velocity, terrain)) return false;
             int gravity = body.gravDir < 0 ? -1 : 1;
@@ -376,12 +528,15 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static bool FindNearSurface(Player body, Vector2 from, ReadSet terrain, out Vector2 to)
         {
-            Vector2 gravity = new Vector2(0, body.gravDir < 0 ? -24 : 24);
             to = from;
-            if (!Footprint(body, from, gravity, terrain)) return false;
-            var actual = Collision.TileCollision(from, gravity, body.width, body.height, false, false, body.gravDir < 0 ? -1 : 1);
-            to = from + actual;
-            return Math.Abs(actual.Y) >= 4 && Math.Abs(actual.Y) < 24 && SolidForBody(body, to, terrain);
+            var down = new Vector2(0, body.gravDir < 0 ? -4 : 4);
+            for (int stepIndex = 0; stepIndex < 6; stepIndex++)
+            {
+                if (!Move(body, to, down, true, false, out Step step, terrain)) return false;
+                to = step.Position;
+                if (step.Ground) return Math.Abs(to.Y - from.Y) >= 4;
+            }
+            return false;
         }
 
         private static bool RopeCell(int x, int y, ReadSet terrain)
@@ -616,14 +771,16 @@ namespace JueMingR.TerrariaHost.Companions
             using (Scratch.Save())
             {
                 var difference = goal - position;
-                if (Surface(body, goal, terrain) && SolidForBody(body, goal, terrain))
+                if (!ProbeSurface(body, goal, terrain, PlatformContact.Geometry(true), false, out Step goalContact)) return false;
+                if (goalContact.Ground)
                 {
                     if (motion != RouteMotion.Ground) return false;
                     // The fall-through sweep below is appropriate for an
                     // airborne goal, not proof that two floors are connected.
-                    if (Math.Abs(difference.X) < 1) return Math.Abs(difference.Y) <= 4;
+                    if (Math.Abs(difference.X) < 1)
+                        return Math.Abs(position.Y - goalContact.Position.Y) <= 4 && Surface(body, position, terrain);
                     return TrySupportedTravel(body, position, Math.Sign(difference.X), Math.Abs(difference.X), terrain,
-                        out Vector2 connected, out _) && Math.Abs(connected.Y - goal.Y) <= 4;
+                        out Vector2 connected, out _) && Math.Abs(connected.Y - goalContact.Position.Y) <= 4;
                 }
                 var sample = difference * .65f;
                 if (Math.Abs(sample.Y) < 12) sample.Y = 0;

@@ -36,21 +36,28 @@ namespace JueMingR.TerrariaHost.Companions
         private sealed class ReadSet
         {
             internal readonly List<Dependency> Cells = new List<Dependency>();
-            internal readonly HashSet<int> Keys = new HashSet<int>();
+            private readonly Dictionary<int, int> positions = new Dictionary<int, int>();
+            internal ICollection<int> Keys => positions.Keys;
             private readonly bool retainUnknown;
             internal bool Known;
             private bool trackArea;
-            private Rectangle area;
-            private int unknown;
-            private bool unrecordedUnknown;
-            internal bool HasUnknown => unknown != 0 || unrecordedUnknown;
+            private Rectangle area, evictedArea;
+            private int unknown, nextEviction;
+            internal bool HasUnknown => unknown != 0;
             internal bool Truncated { get; private set; }
 #if DEBUG
             internal int Moves, VerticalMoves;
 #endif
             private int worldWidth, worldHeight;
             internal ReadSet(bool retainUnknown = false) { this.retainUnknown = retainUnknown; }
-            internal void Clear() { Cells.Clear(); Keys.Clear(); Known=true; trackArea=false; unknown=0; unrecordedUnknown=Truncated=false; worldWidth=Main.maxTilesX; worldHeight=Main.maxTilesY; }
+            internal void Clear() { Cells.Clear(); positions.Clear(); Known=true; trackArea=false; unknown=nextEviction=0;
+                evictedArea=Rectangle.Empty; Truncated=false; worldWidth=Main.maxTilesX; worldHeight=Main.maxTilesY; }
+            internal Rectangle TakeEvictedArea()
+            {
+                Rectangle result = evictedArea;
+                evictedArea = Rectangle.Empty;
+                return result;
+            }
             internal void BeginArea() { area = Rectangle.Empty; trackArea = true; }
             internal Rectangle EndArea() { trackArea = false; return area; }
             internal Rectangle BeginNestedArea()
@@ -65,25 +72,65 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 if (trackArea)
                 {
-                    var cell = new Rectangle(x, y, 1, 1);
-                    area = area.Width == 0 ? cell : Rectangle.Union(area, cell);
+                    var readSquare = new Rectangle(x, y, 1, 1);
+                    area = area.Width == 0 ? readSquare : Rectangle.Union(area, readSquare);
                 }
                 bool loaded = Loaded(x, y);
                 if (!loaded && !retainUnknown) { Known = false; return false; }
                 if (!loaded && (x < 1 || y < 1 || x >= worldWidth - 1 || y >= worldHeight - 42)) return false;
-                if (Cells.Count >= 2048)
+                int key = x * worldHeight + y;
+                if (positions.TryGetValue(key, out int index))
                 {
-                    if (!retainUnknown) Known = false;
+                    if (retainUnknown)
+                    {
+                        var previous = Cells[index];
+                        int value = loaded ? TileValue(Main.tile[x, y]) : int.MinValue;
+                        if (value != previous.Value)
+                        {
+                            // Old and newly read proofs cannot share this key
+                            // across an intervening tile edit, even if the
+                            // tile changes back before the rolling cursor.
+                            InvalidateEvidence(x, y);
+                            UpdateDependency(index, previous, value);
+                        }
+                    }
+                    return loaded;
+                }
+                var cell = new Dependency { X = x, Y = y, Value = loaded ? TileValue(Main.tile[x, y]) : int.MinValue };
+                if (Cells.Count < 2048)
+                {
+                    index = Cells.Count;
+                    Cells.Add(cell);
+                }
+                else
+                {
                     Truncated = true;
-                    unrecordedUnknown |= !loaded;
-                    return retainUnknown && loaded;
+                    if (!retainUnknown) { Known = false; return false; }
+                    // A retained frontier may track a new tile only after the
+                    // search is told which old evidence can no longer prove it.
+                    index = nextEviction;
+                    var old = Cells[index];
+                    positions.Remove(old.X * worldHeight + old.Y);
+                    if (old.Value == int.MinValue) unknown--;
+                    InvalidateEvidence(old.X, old.Y);
+                    Cells[index] = cell;
+                    nextEviction = (nextEviction + 1) % Cells.Count;
                 }
-                if (Keys.Add(x * Main.maxTilesY + y))
-                {
-                    if (!loaded) unknown++;
-                    Cells.Add(new Dependency { X = x, Y = y, Value = loaded ? TileValue(Main.tile[x, y]) : int.MinValue });
-                }
+                positions.Add(key, index);
+                if (!loaded) unknown++;
                 return loaded;
+            }
+            private void InvalidateEvidence(int x, int y)
+            {
+                var square = new Rectangle(x, y, 1, 1);
+                evictedArea = evictedArea.Width == 0 ? square : Rectangle.Union(evictedArea, square);
+            }
+            private void UpdateDependency(int index, Dependency previous, int value)
+            {
+                if (previous.Value == int.MinValue) unknown--;
+                if (value == int.MinValue) unknown++;
+                previous.Value = value;
+                Cells[index] = previous;
             }
             internal Rectangle Changes(ref int cursor, int count)
             {
@@ -94,10 +141,7 @@ namespace JueMingR.TerrariaHost.Companions
                     var cell = Cells[cursor++];
                     int value = Loaded(cell.X, cell.Y) ? TileValue(Main.tile[cell.X, cell.Y]) : int.MinValue;
                     if (value == cell.Value) continue;
-                    if (cell.Value == int.MinValue) unknown--;
-                    if (value == int.MinValue) unknown++;
-                    cell.Value = value;
-                    Cells[cursor - 1] = cell;
+                    UpdateDependency(cursor - 1, cell, value);
                     var square = new Rectangle(cell.X, cell.Y, 1, 1);
                     changed = changed.Width == 0 ? square : Rectangle.Union(changed, square);
                 }
@@ -128,7 +172,30 @@ namespace JueMingR.TerrariaHost.Companions
             internal void Prepare(Player current,int cap)
             { Valid=false;body=current;world=Main.ActiveWorldFileData;position=current.position;velocity=current.velocity;capabilities=cap;Reads.Clear(); }
         }
-        private struct Step { internal Vector2 Position, Velocity; internal bool Ground, Wall, Known, WaterSurface; }
+        private struct Step { internal Vector2 Position, Velocity; internal bool Ground, Wall, Known, WaterSurface, StairFall; }
+        private const float NativeSlopeRestSpeed = .0101f;
+        private readonly struct PlatformContact
+        {
+            internal readonly bool FallThrough, IgnorePlatforms, StairFall;
+
+            internal PlatformContact(bool fallThrough, bool ignorePlatforms, bool stairFall)
+            { FallThrough = fallThrough; IgnorePlatforms = ignorePlatforms; StairFall = stairFall; }
+
+            // A geometry query may explicitly omit platforms. That is
+            // stronger than native Down and must not simulate its input.
+            internal static PlatformContact Geometry(bool platforms) => new PlatformContact(!platforms, !platforms, !platforms);
+
+            internal static PlatformContact Native(Player body, bool down, bool stairFall)
+            {
+                int mount = body.mount.Type;
+                bool forcedFall = body.gravDir < 0 || body.GoingDownWithGrapple || body.pulley ||
+                    body.mount.Active && (body.mount.Cart || mount == 7 || mount == 8 || mount == 12 || mount == 23 ||
+                        mount == 44 || mount == 48);
+                bool ignorePlatforms = forcedFall || body.mount.Active && mount == 55 && body.slideDir != 0;
+                return new PlatformContact(down || forcedFall, ignorePlatforms, stairFall || ignorePlatforms || down ||
+                    body.grappling[0] >= 0);
+            }
+        }
         internal struct Scratch : IDisposable
         {
             private bool up, down, stair, fall, slope, honey, shimmer, mine;
@@ -169,14 +236,19 @@ namespace JueMingR.TerrariaHost.Companions
             return true;
         }
         private static bool Move(Player body,Vector2 position,Vector2 velocity,bool platforms,bool steps,out Step result,ReadSet record=null,
-            bool throughDoor=false)
+            bool throughDoor=false) => MoveWithContact(body, position, velocity, PlatformContact.Geometry(platforms),
+                steps, out result, record, throughDoor);
+
+        private static bool MoveWithContact(Player body, Vector2 position, Vector2 velocity, PlatformContact contact,
+            bool steps, out Step result, ReadSet record = null, bool throughDoor = false)
         {
 #if DEBUG
             if(record!=null)record.Moves++;
 #endif
             result=default(Step);
             if(!Footprint(body,position,velocity,record))return false;
-            if(steps && platforms)
+            int direction = body.gravDir < 0 ? -1 : 1;
+            if(steps && !contact.IgnorePlatforms && direction == 1)
             {
                 Vector4 down=throughDoor ? CompanionDoorCollision.WalkDownSlope(position,velocity,body.width,body.height,body.gravity) :
                     Collision.WalkDownSlope(position,velocity,body.width,body.height,body.gravity);
@@ -188,31 +260,54 @@ namespace JueMingR.TerrariaHost.Companions
                     if(throughDoor) CompanionDoorCollision.StepDown(ref position,ref velocity,body.width,body.height,ref stepSpeed,ref gfx,1,waterWalk);
                     else Collision.StepDown(ref position,ref velocity,body.width,body.height,ref stepSpeed,ref gfx,1,waterWalk);
                 }
-                if(velocity.Y>=body.gravity && !body.controlDown)
+                if(velocity.Y>=body.gravity && !contact.FallThrough)
                 {
                     if(throughDoor) CompanionDoorCollision.StepUp(ref position,ref velocity,body.width,body.height,ref stepSpeed,ref gfx,1,body.controlUp,0);
                     else Collision.StepUp(ref position,ref velocity,body.width,body.height,ref stepSpeed,ref gfx,1,body.controlUp);
                 }
                 if(!Footprint(body,position,velocity,record))return false;
             }
-            Vector2 actual=ResolveGroundContact(body,position,velocity,platforms,throughDoor,out bool waterSurface);
-            bool ground=velocity.Y>0 && actual.Y<velocity.Y;
+            Vector2 actual=ResolveGroundContact(body,position,velocity,contact,throughDoor,out bool waterSurface);
+            bool ground=velocity.Y * direction > 0 && actual.Y * direction < velocity.Y * direction;
             bool wall=Math.Abs(actual.X-velocity.X)>.1f;
             position+=actual; Vector2 advanced=position;
-            Vector4 slope=throughDoor ? CompanionDoorCollision.SlopeCollision(position,actual,body.width,body.height,body.gravity,!platforms,false) :
-                Collision.SlopeCollision(position,actual,body.width,body.height,body.gravity,!platforms);
+            Vector4 slope=throughDoor ? CompanionDoorCollision.SlopeCollision(position,actual,body.width,body.height,body.gravity,contact.StairFall,false) :
+                Collision.SlopeCollision(position,actual,body.width,body.height,body.gravity,contact.StairFall);
+            bool stairFall = Collision.stairFall || contact.FallThrough && contact.StairFall;
             position=new Vector2(slope.X,slope.Y);
-            ground |= velocity.Y>=0 && position.Y<advanced.Y-.001f && slope.W<=0;
+            ground |= velocity.Y * direction >= 0 && (position.Y - advanced.Y) * direction < -.001f &&
+                slope.W * direction <= NativeSlopeRestSpeed;
             result=new Step{Position=position,Velocity=new Vector2(slope.Z,slope.W),Ground=ground,Wall=wall,
-                Known=Footprint(body,position,Vector2.Zero,record),WaterSurface=waterSurface && position.Y == advanced.Y};
+                Known=Footprint(body,position,Vector2.Zero,record),WaterSurface=waterSurface && position.Y == advanced.Y,StairFall=stairFall};
             return result.Known && ClearBody(body,position,throughDoor) && (body.lavaImmune || !Collision.LavaCollision(position,body.width,body.height));
         }
         internal static bool Supported(Player body,Vector2 position,bool platforms=true)
         {
             // Liquid forbids a dry trajectory prediction, but still permits
             // native bottom support and a normal released jump input.
-            if(!GroundContactBody(body))return false;
-            using(Scratch.Save()) { Step step; return Move(body,position,new Vector2(0,1),platforms,false,out step) && step.Ground; }
+            if (body == null || body.shimmering || body.grappling[0] >= 0 || body.carpetFrame != -1 || body.IsRidingTracks)
+                return false;
+            using (Scratch.Save()) return HasSurface(body, position, null, platforms);
+        }
+
+        internal static bool ObservedSupport(Player body)
+        {
+            if (body == null || body.shimmering || body.grappling[0] >= 0 || body.carpetFrame != -1 || body.IsRidingTracks)
+                return false;
+            float vertical = body.velocity.Y * body.gravDir;
+            if (vertical < -NativeSlopeRestSpeed) return false;
+            using (Scratch.Save())
+            {
+                var contact = PlatformContact.Native(body, body.controlDown, body.stairFall);
+                float stepY = MathHelper.Clamp(body.gravity + Math.Max(0, vertical), .05f,
+                    Math.Max(.05f, body.maxFallSpeed)) * body.gravDir;
+                if (!MoveWithContact(body, body.position, new Vector2(0, stepY), contact, false, out Step step) || !step.Ground)
+                    return false;
+                // Native Y velocity can still be the previous clipped
+                // displacement in the first frame on a floor. Admit that
+                // precise contact, never an approaching sweep's endpoint.
+                return vertical <= 1 || Vector2.DistanceSquared(step.Position, body.position) <= .0001f;
+            }
         }
         internal static bool SafeBody(Player body,Vector2 position)
         {
@@ -237,17 +332,20 @@ namespace JueMingR.TerrariaHost.Companions
             return Vector2.DistanceSquared(position,new Vector2(slope.X,slope.Y))<=4;
         }
 
-        private static Vector2 ResolveGroundContact(Player body, Vector2 from, Vector2 velocity, bool platforms, bool throughDoor, out bool waterSurface)
+        private static Vector2 ResolveGroundContact(Player body, Vector2 from, Vector2 velocity, PlatformContact contact,
+            bool throughDoor, out bool waterSurface)
         {
             waterSurface = false;
             int direction = body.gravDir < 0 ? -1 : 1;
+            bool hoik = body.width > 16 && body.height > 16;
             var actual = throughDoor ? CompanionDoorCollision.TileCollision(from, velocity, body.width, body.height,
-                !platforms, !platforms, direction, false, false, true) :
-                Collision.TileCollision(from, velocity, body.width, body.height, !platforms, !platforms, direction);
-            if (direction < 0 || !platforms || actual.Y <= 0 || body.wet || !(body.waterWalk || body.waterWalk2)) return actual;
+                contact.FallThrough, contact.IgnorePlatforms, direction, false, false, hoik) :
+                Collision.TileCollision(from, velocity, body.width, body.height, contact.FallThrough, contact.IgnorePlatforms,
+                    direction, hoik: hoik);
+            if (direction < 0 || actual.Y <= 0 || body.wet || !(body.waterWalk || body.waterWalk2)) return actual;
             // DryCollision checks the liquid surface after solid collision.
             // Limit shared support to the confirmed ordinary-water contact.
-            var liquid = Collision.WaterCollision(from, actual, body.width, body.height, lavaWalk: false);
+            var liquid = Collision.WaterCollision(from, actual, body.width, body.height, contact.FallThrough, lavaWalk: false);
             if (liquid.Y == actual.Y) return actual;
             float bottom = from.Y + liquid.Y + body.height;
             int row = (int)Math.Floor((bottom + .01f) / 16);
@@ -263,10 +361,14 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         private static bool HasSurface(Player body, Vector2 from, ReadSet terrain, bool platforms = true, bool throughDoor = false)
-        {
-            var delta = new Vector2(0, body.gravDir < 0 ? -2 : 2);
-            return Footprint(body, from, delta, terrain) && Math.Abs(ResolveGroundContact(body, from, delta, platforms, throughDoor, out _).Y) < 2;
-        }
+            => ProbeSurface(body, from, terrain, PlatformContact.Geometry(platforms), throughDoor, out Step step) && step.Ground;
+
+        private static bool ProbeSurface(Player body, Vector2 from, ReadSet terrain, PlatformContact contact, bool throughDoor,
+            out Step step) => MoveWithContact(body, from, new Vector2(0, body.gravDir < 0 ? -2 : 2), contact, false,
+                out step, terrain, throughDoor);
+
+        private static bool UnsupportedAt(Player body, Vector2 from, ReadSet terrain)
+            => ProbeSurface(body, from, terrain, PlatformContact.Geometry(true), false, out Step step) && !step.Ground;
 
         private static bool TrySupportedTravel(Player body, Vector2 from, int direction, float distance, ReadSet terrain,
             out Vector2 to, out bool wall, bool steps = true, bool proveBrakingSurface = false, bool throughDoor = false,
@@ -289,7 +391,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if (throughDoor)
                     {
                         if (!Footprint(body, to, across, terrain) ||
-                            Vector2.DistanceSquared(ResolveGroundContact(body, to, across, true, true, out _), across) >= .25f ||
+                            Vector2.DistanceSquared(ResolveGroundContact(body, to, across, PlatformContact.Geometry(true), true, out _), across) >= .25f ||
                             !ClearBody(body, to + across, throughDoor: true)) return false;
                     }
                     else if (!Swept(body, to, across, terrain)) return false;
@@ -300,8 +402,8 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     if (!Move(body, to, new Vector2(dx, Math.Max(.1f, body.gravity)), true, true, out Step step, terrain, throughDoor)) return false;
                     if (step.Wall) { wall = true; return false; }
+                    if (!step.Ground && !HasSurface(body, step.Position, terrain, throughDoor: throughDoor)) return false;
                     to = step.Position;
-                    if (!step.Ground && !HasSurface(body, to, terrain, throughDoor: throughDoor)) return false;
                 }
                 if (rejectDangerLiquids && !BodyLiquidClear(body, before, to, ordinaryOnly: false)) return false;
                 if (proveBrakingSurface && !SteadyBrakingSurface(body, to)) return false;
@@ -347,13 +449,16 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 float braking=body.velocity.X*body.velocity.X/Math.Max(.08f,2*body.runSlowdown);
                 float ahead=Math.Min(128,Math.Max(16,braking+12)); Vector2 position=body.position;
-                bool platforms=!body.controlDown && !body.stairFall;
+                bool stairFall = body.stairFall;
                 for(float distance=0;distance<ahead;distance+=4)
                 {
                     Step step;
-                    if(!Move(body,position,new Vector2(direction*4,body.gravity),platforms,true,out step,record))return step.Known?WalkOutcome.Unsafe:WalkOutcome.Unknown;
+                    if(!MoveWithContact(body,position,new Vector2(direction*4,body.gravity),
+                        PlatformContact.Native(body, false, stairFall),true,out step,record))
+                        return step.Known?WalkOutcome.Unsafe:WalkOutcome.Unknown;
                     if(step.Wall)return WalkOutcome.Wall;
                     position=step.Position;
+                    stairFall=step.StairFall;
                     if(!step.Ground)
                     {
                         // A normal immediate walking prefix stays available to
@@ -366,7 +471,9 @@ namespace JueMingR.TerrariaHost.Companions
 #if DEBUG
                             if(record!=null)record.VerticalMoves++;
 #endif
-                            if(!Move(body,position,new Vector2(0,1),platforms,false,out step,record))return step.Known?WalkOutcome.Unsafe:WalkOutcome.Unknown;
+                            if(!MoveWithContact(body,position,Vector2.UnitY,PlatformContact.Native(body, false, stairFall),
+                                false,out step,record))return step.Known?WalkOutcome.Unsafe:WalkOutcome.Unknown;
+                            stairFall=step.StairFall;
                             position=step.Position;if(step.Ground){found=true;break;}
                         }
                         if(!found)return WalkOutcome.Unsafe;
@@ -380,7 +487,8 @@ namespace JueMingR.TerrariaHost.Companions
         internal static bool Wall(Player body,int direction)
         {
             if(direction==0 || !Ordinary(body))return false;
-            using(Scratch.Save()) { Step step; return Move(body,body.position,new Vector2(direction*WalkProbeDistance,body.gravity),!body.controlDown && !body.stairFall,true,out step) && step.Wall; }
+            using(Scratch.Save()) return MoveWithContact(body,body.position,new Vector2(direction*WalkProbeDistance,body.gravity),
+                PlatformContact.Native(body, false, body.stairFall),true,out Step step) && step.Wall;
         }
         private int Capabilities(Player body)
         {
@@ -409,14 +517,12 @@ namespace JueMingR.TerrariaHost.Companions
 #endif
             using(Scratch.Save())
             {
-                Vector2 position=body.position,velocity=body.velocity;velocity.Y=-jumpSpeed;bool holding=true;
+                Vector2 position=body.position,velocity=body.velocity;bool holding=true;
                 for(int tick=0;tick<90;tick++)
                 {
-                    if(direction!=0)velocity.X=MathHelper.Clamp(velocity.X+direction*Math.Max(.01f,body.runAcceleration),-Math.Max(body.maxRunSpeed,Math.Abs(initialVelocity.X)),Math.Max(body.maxRunSpeed,Math.Abs(initialVelocity.X)));
-                    else velocity.X*=Math.Max(0,1-body.runSlowdown);
-                    if(holding && tick<jumpHold)velocity.Y=-jumpSpeed;else velocity.Y=Math.Min(body.maxFallSpeed,velocity.Y+Math.Max(.05f,body.gravity));
+                    velocity = JumpVelocity(body, default, velocity, direction, tick != 0, holding && tick <= jumpHold, jumpSpeed, body.gravity);
                     bool falling=velocity.Y>0;Step step;
-                    if(!Move(body,position,velocity,!body.controlDown && !body.stairFall,true,out step,jumpReads))return false; // unknown is never a stable negative cache
+                    if(!MoveJump(body,position,velocity,false,out step,jumpReads))return false; // unknown is never a stable negative cache
                     // Native horizontal clipping against the face of a step
                     // can coexist with upward motion along it. Continue that
                     // ascent from the clipped pose; descending into a wall

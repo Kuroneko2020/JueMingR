@@ -84,7 +84,7 @@ namespace NativeWorldTextProbe
                     var before = body.position;
                     run.StepToward(new Vector2(75 * 16, ownerFloor * 16), new Vector2(turned < 0 ? 0 : 3.5f, 0));
                     var reads = GetOptional(navigation, "roofReads");
-                    if (obstructed < 0 && reads != null && ((ISet<int>)Get(reads, "Keys")).Contains(blockerX * Height + blockerY) &&
+                    if (obstructed < 0 && reads != null && ((ICollection<int>)Get(reads, "Keys")).Contains(blockerX * Height + blockerY) &&
                         !RouteStep(run.Actor).StartsWith("AirAcross:", StringComparison.Ordinal))
                     {
                         obstructed = tick;

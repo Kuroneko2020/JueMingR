@@ -15,6 +15,63 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool HasWingThrust(CompanionMobilitySnapshot mobility) =>
             mobility.WingAbilities && (mobility.WingTime > 0 || mobility.UnlimitedWings);
 
+        private readonly struct HorizontalRun
+        {
+            internal readonly float Speed, Maximum, Acceleration, Slowdown;
+            private readonly bool airborne, wings, canFly, portal, sprint, wrongGround;
+
+            internal HorizontalRun(Player body, float speed, float acceleration, float slowdown, bool airborne)
+            {
+                Speed = body.chilled && body.oldStyleParkour ? body.maxRunSpeed : speed;
+                Maximum = body.maxRunSpeed;
+                Acceleration = acceleration;
+                Slowdown = slowdown;
+                this.airborne = airborne;
+                wings = body.wingsLogic > 0;
+                canFly = body.mount.CanFly(body);
+                portal = body.PortalPhysicsEnabled;
+                sprint = body.dashDelay >= 0;
+                wrongGround = body.onWrongGround;
+            }
+
+            internal float NeutralDrag => airborne ? portal ? 0 : Slowdown * .5f : Slowdown;
+
+            internal float Advance(float velocity, int direction)
+            {
+                // Player.HorizontalMovement runs before JumpMovement. Its
+                // acceleration, reversal and axis release are phase dependent.
+                if (direction == 0) return Math.Sign(velocity) * Math.Max(0, Math.Abs(velocity) - NeutralDrag);
+                float along = velocity * direction;
+                if (along < Maximum)
+                    along = (along < -Slowdown ? along + Slowdown : along) + Acceleration;
+                else if (along < Speed && sprint)
+                {
+                    if (airborne && !wings && !canFly) return velocity;
+                    along += Acceleration * (wings ? .4f : .2f);
+                }
+                else
+                    return Math.Sign(velocity) * Math.Max(0, Math.Abs(velocity) - NeutralDrag);
+                if (wrongGround) along = Math.Max(0, along - Slowdown);
+                return direction * along;
+            }
+        }
+
+        private static HorizontalRun MovementRun(Player body, CompanionMobilitySnapshot mobility, bool airborne, bool hover = false)
+        {
+            if (mobility.WingAbilities && mobility.WingSpeed > 0 && !mobility.MountHover)
+            {
+                // The snapshot contains native ground/base and wing-phase
+                // facts. A transition never multiplies the previous effective
+                // run acceleration or Starboard braking a second time.
+                if (!airborne)
+                    return new HorizontalRun(body, mobility.WingBaseSpeed, mobility.WingBaseAcceleration, mobility.WingBaseSlowdown, false);
+                bool hoverRun = hover && mobility.WingHoverRun && HasWingThrust(mobility);
+                return new HorizontalRun(body, hoverRun ? mobility.WingHoverSpeed : mobility.WingSpeed,
+                    hoverRun ? mobility.WingHoverAcceleration : mobility.WingAcceleration, mobility.WingSlowdown, true);
+            }
+            return new HorizontalRun(body, body.accRunSpeed, body.runAcceleration, body.runSlowdown, airborne);
+        }
+
         private static int FollowHorizontal(Player body, float targetX, float targetSpeed, float speedLimit,
             float acceleration, float neutralDeceleration, int spacing)
         {
@@ -269,26 +326,15 @@ namespace JueMingR.TerrariaHost.Companions
             return HasWingThrust(mobility) && airSpeed > groundSpeed + .5f && Math.Abs(offset) > 48 &&
                 velocity.X * Math.Sign(offset) > catchSpeed && Math.Abs(velocity.Y) <= 1f &&
                 height > -44 && height <= 12 &&
-                Footprint(body, goal, Vector2.Zero) && !Surface(body, goal, null);
+                UnsupportedAt(body, goal, null);
         }
 
         private static bool DriveFlight(Player body, CompanionMobilitySnapshot mobility, RouteMotion motion, Vector2 goal,
             Vector2 targetVelocity, int spacing, int height, out CompanionMobilityFrame frame)
         {
-            float speed = body.accRunSpeed;
-            float acceleration = body.runAcceleration;
-            float neutral = body.runSlowdown;
-            if (!mobility.MountHover && mobility.WingAbilities && mobility.WingSpeed > 0)
-            {
-                bool hoverRun = height == 0 && mobility.WingHover && mobility.WingHoverRun && HasWingThrust(mobility);
-                speed = Math.Max(body.maxRunSpeed, hoverRun ? mobility.WingHoverSpeed : mobility.WingSpeed);
-                acceleration = hoverRun ? mobility.WingHoverAcceleration : mobility.WingAcceleration;
-                // Brake with the native opposite-direction acceleration.
-                // Beyond running speed the .4 scale only limits accelerating
-                // farther in the same direction. A released air axis uses half drag.
-                neutral = mobility.WingSlowdown;
-            }
-            int horizontal = FollowHorizontal(body, goal.X, targetVelocity.X, speed, acceleration, neutral * .5f, spacing);
+            var run = MovementRun(body, mobility, motion != RouteMotion.Ground, height == 0 && mobility.WingHover);
+            int horizontal = FollowHorizontal(body, goal.X, targetVelocity.X, Math.Max(run.Maximum, run.Speed),
+                run.Acceleration, run.NeutralDrag, spacing);
             if (horizontal != 0 && !SafeFreeFlight(body, mobility) && !mobility.CarpetReady &&
                 !FindNearSurface(body, body.position + new Vector2(horizontal * 12, 0), null, out _))
             {

@@ -73,7 +73,7 @@ namespace JueMingR.TerrariaHost.Companions
             return loss;
         }
 
-        private bool ShouldRescueFall(Player body)
+        private bool ShouldRescueFall(Player body, CompanionMobilitySnapshot mobility)
         {
             if (body.grapCount != 0 || body.velocity.Y * body.gravDir <= 0 || body.slowFall || LowGravityFallReset(body.position.Y)) return false;
             const int horizon = 12;
@@ -84,7 +84,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 var action = route[routeIndex];
                 if ((action.Kind == RouteKind.Drop || action.Kind == RouteKind.LedgeDrop) &&
-                    DescentContactRisk(body, action, horizon, out bool threatened)) return threatened;
+                    DescentContactRisk(body, mobility, action, horizon, out bool threatened)) return threatened;
             }
 
             long reads = 0;
@@ -94,11 +94,12 @@ namespace JueMingR.TerrariaHost.Companions
                 LandingFallLoss(body, new Vector2(contact.X, contact.Y), fallStart) >= body.statLife;
         }
 
-        private static bool DescentContactRisk(Player body, RouteStep action, int horizon, out bool threatened)
+        private static bool DescentContactRisk(Player body, CompanionMobilitySnapshot mobility, RouteStep action, int horizon, out bool threatened)
         {
             threatened = false;
             var probe = new DescentProbe { Position = body.position, Release = action.Operand,
-                Velocity = body.velocity, FallStart = body.fallStart, Steer = action.DescentSteer, AimX = action.DescentAimX };
+                Velocity = body.velocity, FallStart = body.fallStart, Steer = action.DescentSteer, AimX = action.DescentAimX,
+                StairFall = body.stairFall };
             using (Scratch.Save())
             {
                 // A live descent can be intentionally about to steer onto a
@@ -106,7 +107,7 @@ namespace JueMingR.TerrariaHost.Companions
                 // native input, including the real accumulated fall-start.
                 for (int tick = 0; tick < horizon; tick++)
                 {
-                    if (!AdvanceDescent(body, action.Direction, body.runSlowdown * .5f, body.gravity, body.maxFallSpeed,
+                    if (!AdvanceDescent(body, mobility, action.Direction, body.gravity, body.maxFallSpeed,
                         null, ref probe, out Step contact)) return false;
                     if (!contact.Ground) continue;
                     threatened = LandingFallLoss(body, contact.Position, probe.FallStart) >= body.statLife;

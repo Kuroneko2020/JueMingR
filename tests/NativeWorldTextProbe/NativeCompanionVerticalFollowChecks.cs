@@ -50,9 +50,14 @@ namespace NativeWorldTextProbe
                     { NativeCompanionDoorFollowChecks.HalfBrick, LowCeiling, DescendingDetour, RetainedPlan, LiquidEntry, NativeCompanionFacilityFollowChecks.PylonFollow };
                 var practicalFollow = new Action<object, object, Player>[]
                     { AdjacentPlatforms, ControlledDrop, TolerableFalls, TrailFollow };
+                var longerFollow = new Action<object, object, Player>[] { LongAutonomousDetour, BoundedTerrainDependencies };
+                var contact = new Action<object, object, Player>[] { NativeContactAndDescent, RunUpJumpAndHighExit };
+                var full = System.Linq.Enumerable.Concat(
+                    System.Linq.Enumerable.Concat(existing, terrain),
+                    System.Linq.Enumerable.Concat(practicalFollow, System.Linq.Enumerable.Concat(contact, longerFollow)));
                 var scenarios = comparisonFocus == "terrain" ? terrain : comparisonFocus == "vertical" ? existing :
                     comparisonFocus == "wormhole-follow" ? practicalFollow :
-                    System.Linq.Enumerable.Concat(System.Linq.Enumerable.Concat(existing, terrain), practicalFollow);
+                    comparisonFocus == "detour-descent" ? longerFollow : comparisonFocus == "contact-descent" ? contact : full;
                 foreach (Action<object, object, Player> scenario in scenarios)
                 {
                     try { scenario(host, profiles, human); }

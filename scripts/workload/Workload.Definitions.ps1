@@ -44,6 +44,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Liquid.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Descent.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Trail.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Detour.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Contact.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionWormholeChecks.cs'=@('native-CompanionWormholeCpu')
         'tests/NativeWorldTextProbe/NativeCompanionDoorFollowChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFacilityFollowChecks.cs'=@('native-CompanionNavigationCpu')

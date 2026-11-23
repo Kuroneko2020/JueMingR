@@ -111,9 +111,9 @@ namespace NativeWorldTextProbe
                     crossedWall |= body.position.X >= 71 * 16 && body.Bottom.Y <= 82 * 16 + 4;
                     ownerTop = Math.Min(ownerTop, human.position.Y);
                     bodyTop = Math.Min(bodyTop, body.position.Y);
-                    if (t >= 235 && Math.Abs(human.Center.X - body.Center.X) < 32 && Math.Abs(human.Center.Y - body.Center.Y) < 34 &&
-                        Math.Abs(body.velocity.X) < .65f && Math.Abs(body.velocity.Y) < .65f)
-                    { if (firstSettled < 0) firstSettled = t; stable++; }
+                    if (t >= 235 && SettledNearOwner(body, human))
+                    { if (stable == 0) firstSettled = t; stable = SettledStep(stable, true); }
+                    else { stable = SettledStep(stable, false); firstSettled = -1; }
                     if (comparison && (t % 24 == 0 || t == 339))
                         Console.WriteLine($"FOLLOW TRACE t={t} owner={human.position}/{human.velocity} actor={body.position}/{body.velocity} jump={body.controlJump} wing={body.wingTime:F1}/{full:F1} mount={body.mount.Type} starts={searchStarts}");
                 }
@@ -127,7 +127,9 @@ namespace NativeWorldTextProbe
                         "production follows a moving human by taking off and passing the real wall using its own capabilities");
                     Require(mounted > firstWing && mountedInAir && firstDown > mounted && firstReverse >= 99,
                         "native finite wing flight continues through legal airborne mount, descent and turn");
-                    Require(firstSettled >= 235 && stable >= 20,
+                    Require(SettledStep(SettledStep(19, false), true) == 1,
+                        "one nonqualifying update interrupts the continuous settled window");
+                    Require(firstSettled >= 235 && stable >= 20 && SettledNearOwner(body, human),
                         "after the moving owner stops, the native body brakes into the latest reachable region and stays close");
                     Require(flyingHeal > firstWing && flyingHeal < mounted, "a real manual potion consumes and heals while the production follow input remains in ascending wing flight");
                     var current = ((CompanionProfile)Get(actor, "Profile")).Behavior.MainWeapons;
@@ -154,6 +156,18 @@ namespace NativeWorldTextProbe
                 Call(host, "SetBehavior", profile.Id, profile.Behavior);
                 Set(actor, "Behavior", previousBehavior);
             }
+        }
+
+        private static int SettledStep(int consecutive, bool inRegion) => inRegion ? consecutive + 1 : 0;
+
+        private static bool SettledNearOwner(Player body, Player human)
+        {
+            if (!body.active || body.dead || Math.Abs(human.Center.X - body.Center.X) >= 32 ||
+                Math.Abs(human.Center.Y - body.Center.Y) >= 34 || Math.Abs(body.velocity.X) >= .65f || Math.Abs(body.velocity.Y) >= .65f)
+                return false;
+            // The scripted endpoint is in open air; the matching actor must
+            // still have a native means to hold there at the end of the run.
+            return body.mount.Active && body.mount.CanHover();
         }
 
         private static void CountStart() => searchStarts++;
