@@ -239,7 +239,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             Vector2 ownerGoal = goal;
             Vector2 ownerVelocity = targetVelocity;
-            if (RetainTrailGoal(body, trail, motion, ownerGoal, ref goal)) targetVelocity = Vector2.Zero;
+            if (RetainTrailGoal(body, state, trail, motion, ownerGoal, ref goal)) targetVelocity = Vector2.Zero;
             if (allowPlanning && WakeChangedDescentObstruction(body, motion, goal) && routeIndex < route.Count &&
                 route[routeIndex].Kind == RouteKind.Walk)
                 ReleaseRoute();
@@ -316,7 +316,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (trail != null && trailJoined != 0 && routeIndex >= route.Count)
             {
                 goal = ownerGoal;
-                targetVelocity = RetainTrailGoal(body, trail, motion, ownerGoal, ref goal) ? Vector2.Zero : ownerVelocity;
+                targetVelocity = RetainTrailGoal(body, state, trail, motion, ownerGoal, ref goal) ? Vector2.Zero : ownerVelocity;
             }
             int direction = Math.Sign(goal.X - body.position.X);
             bool movingWithOwner = motion == RouteMotion.Ground && Math.Abs(targetVelocity.X) >= 1f;

@@ -9,6 +9,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using HarmonyLib;
 using JueMingR.Platform.Companions;
+using JueMingR.Testing;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
@@ -23,8 +24,15 @@ namespace NativeWorldTextProbe
         private const BindingFlags Fields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         private const int PotionSlot = 44;
         private static int rejectKind;
+        private static Player interruptedLocalBody;
 
         private static bool SkipCosmetic() => false;
+        private static bool SkipLocalTeleport(Player __instance, int Style) =>
+            Style != 3 || !ReferenceEquals(__instance, interruptedLocalBody);
+        private static void InterruptLocalTeleport(Player player)
+        {
+            if (ReferenceEquals(player, interruptedLocalBody)) throw new IOException("fixture interruption before original position write");
+        }
         private static bool RefuseOneNativeFrame(byte[] packet, ref bool __result)
         {
             if (packet[2] != rejectKind) return true;
@@ -70,8 +78,16 @@ namespace NativeWorldTextProbe
                 var actor = Call(host, "Owned", body);
                 var feedback = new List<(Guid Id, string Text, bool Result)>();
                 Set(host, "ManualRecallFeedback", new Action<Guid, string, bool>((id, text, ok) => feedback.Add((id, text, ok))));
-                Local(host, actor, first, second, human, body, other, feedback);
-                Wire(host, actor, first, human, body, feedback);
+                // The wire scene supplies fresh positions and inventory. A
+                // local assertion can report its first failure without hiding
+                // a separate pre-write transport regression in the same run.
+                var failed = new List<BusinessAssertionException>();
+                try { Local(host, actor, first, second, human, body, other, feedback); }
+                catch (BusinessAssertionException error) { failed.Add(error); }
+                try { Wire(host, actor, first, human, body, feedback); }
+                catch (BusinessAssertionException error) { failed.Add(error); }
+                if (failed.Count == 1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failed[0]).Throw();
+                if (failed.Count != 0) throw new BusinessAssertionException(String.Join(Environment.NewLine, failed));
             }
             finally
             {
@@ -115,7 +131,92 @@ namespace NativeWorldTextProbe
             Put(body.inventory, PotionSlot, 1);
             Require(!Recall(host, first) && body.inventory[PotionSlot].stack == 1, "a dead target cannot be assigned a paid recall");
             human.dead = false;
+            var position = body.position;
+            var pot = body.inventory[PotionSlot];
+            int localRevision = (int)Get(mobility, "PositionRevision");
+            body.environmentBuffImmunityTimer = 0;
+            body.shimmering = body.shimmerWet = body.wet = true;
+            interruptedLocalBody = body;
+            var patch = new Harmony("JueMingR.Tests.WormholeLocalBoundary");
+            try
+            {
+                var teleport = AccessTools.Method(typeof(Player), nameof(Player.Teleport));
+                patch.Patch(teleport, prefix: new HarmonyMethod(typeof(NativeCompanionWormholeChecks), nameof(SkipLocalTeleport)) { priority = Priority.First });
+                Require(!Recall(host, first) && ReferenceEquals(body.inventory[PotionSlot], pot) && body.environmentBuffImmunityTimer == 0 &&
+                    body.shimmering && feedback.Last().Text == "未能提交传送。", "an actual Harmony skip before the native body releases the exact provisional slot");
+                patch.Unpatch(teleport, HarmonyPatchType.Prefix, patch.Id);
+                patch.Patch(AccessTools.Method(typeof(Terraria.GameContent.PressurePlateHelper), "UpdatePlayerPosition"),
+                    prefix: new HarmonyMethod(typeof(NativeCompanionWormholeChecks), nameof(InterruptLocalTeleport)));
+                bool accepted = Recall(host, first);
+                Require(accepted && body.position == position && body.inventory[PotionSlot].IsAir &&
+                    body.environmentBuffImmunityTimer == 4 && !body.shimmering && !body.shimmerWet && !body.wet &&
+                    (int)Get(mobility, "PositionRevision") == localRevision && feedback.Last().Text == "传送结果未确认，已消耗 1 瓶虫洞药水。",
+                    "an original caught failure before position preserves prior original environment effects and the debit, with an immediate unconfirmed result; " +
+                    "accepted=" + accepted + ", immunity=" + body.environmentBuffImmunityTimer + ", count=" + body.inventory[PotionSlot].stack +
+                    ", result=" + feedback.Last().Text);
+            }
+            finally { interruptedLocalBody = null; patch.UnpatchAll(patch.Id); }
             Console.WriteLine("PASS local original style 3, exact AI then human payer, no duplicate or void bag, dead owner, standby anchor and actual motion state.");
+            Console.WriteLine("PASS original SP skip restores the exact bottle, while a later native fault preserves actual environmental side effects and the charge.");
+        }
+
+        private static void TransportBoundary(object host, object actor, Guid id, Player body, Type connectionType,
+            List<(Guid Id, string Text, bool Result)> feedback)
+        {
+            var original = Get(actor, "Connection");
+            var position = body.position;
+            var potion = body.inventory[PotionSlot];
+            // Keep the TCP worker unstarted so the real production queue
+            // stays at its physical capacity boundary deterministically.
+            using (var blocked = (IDisposable)Activator.CreateInstance(connectionType, Fields, null, new object[] { "127.0.0.1", 1 }, null))
+            try
+            {
+                Set(actor, "Connection", blocked);
+                for (int remaining = 4 * 1024 * 1024 - 8; remaining > 0;)
+                {
+                    int size = Math.Min(remaining, ushort.MaxValue);
+                    var frame = new byte[size]; frame[0] = (byte)size; frame[1] = (byte)(size >> 8); frame[2] = 10;
+                    Require((bool)Call(blocked, "TrySend", frame), "fill real direct TCP queue through native-format framed admission");
+                    remaining -= size;
+                }
+                bool accepted = Recall(host, id);
+                Require(!accepted && ReferenceEquals(body.inventory[PotionSlot], potion) && body.position == position &&
+                    (long)Get(blocked, "sentPings") == 2 && (int)Get(blocked, "outgoingBytes") == 4 * 1024 * 1024 - 2 &&
+                    feedback.Last().Text == "未能提交传送。",
+                    "real capacity accepts both three-byte fences but rejects the native mode 2 before TCP enqueue and restores its exact source; " +
+                    "accepted=" + accepted + ", count=" + body.inventory[PotionSlot].stack + ", bytes=" + Get(blocked, "outgoingBytes") +
+                    ", result=" + feedback.Last().Text);
+            }
+            finally
+            {
+                Call(host, "RetireWormholes", actor);
+                ((Queue<long>)Get(Get(actor, "WorldSource"), "Pings")).Clear();
+                Set(actor, "Connection", original);
+            }
+
+            var relayed = new List<byte[]>();
+            Action<byte[]> forward = frame =>
+            {
+                relayed.Add(frame);
+                if (frame[2] == 65) throw new IOException("fixture failure after handing mode 2 to the relay");
+            };
+            using (var relay = (IDisposable)Activator.CreateInstance(connectionType, Fields, null, new object[] { forward, (Action)(() => { }) }, null))
+            try
+            {
+                Set(actor, "Connection", relay);
+                Require(Recall(host, id) && body.inventory[PotionSlot].stack == potion.stack - 1 && body.position == position &&
+                    relayed.Select(frame => frame[2]).Take(3).SequenceEqual(new byte[] { 154, 65, 154 }) &&
+                    feedback.Last().Text == "正在等待传送结果。",
+                    "an exception after the relay sees the real mode 2 leaves the payer charged and the position unconfirmed");
+            }
+            finally
+            {
+                Call(host, "RetireWormholes", actor);
+                ((Queue<long>)Get(Get(actor, "WorldSource"), "Pings")).Clear();
+                Set(actor, "Connection", original);
+                body.inventory[PotionSlot] = potion;
+            }
+            Console.WriteLine("PASS actual TCP capacity pre-write rejection restores the exact bottle and relay failure after acceptance cannot refund it.");
         }
 
         private static void Wire(object host, object actor, Guid id, Player human, Player body,
@@ -176,6 +277,7 @@ namespace NativeWorldTextProbe
                         void Client(Player[] table, int index) { Main.netMode = 1; Main.dedServ = false; Main.player = table; Main.myPlayer = index; }
                         void Server() { Main.netMode = 2; Main.dedServ = true; Main.player = serverPlayers; Main.myPlayer = 255; }
                         Client(clientPlayers, clientIndex);
+                        TransportBoundary(host, actor, id, body, connectionType, feedback);
                         feedback.Clear();
                         var reject = new Harmony("JueMingR.Tests.WormholeQueueRefusal");
                         reject.Patch(AccessTools.Method(connectionType, "TrySend"),

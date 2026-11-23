@@ -24,7 +24,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal int PayerSlot;
             internal Vector2 Destination;
             internal RecallSend Send;
-            internal bool Paid, OwnerPaid, Waiting = true, Open, EndQueued, ReplySeen, Moved, AckQueued;
+            internal bool Paid, OwnerPaid, Waiting = true, Open, EndQueued, ReplySeen, LocalEntered, Moved, AckQueued;
         }
 
         // At most one live command per activation. Timed-out windows keep only
@@ -64,7 +64,7 @@ namespace JueMingR.TerrariaHost.Companions
                 reason = "队友已在目标位置。";
             else if (wormholeWindows.TryGetValue(actor, out var windows) &&
                 (windows.Count >= MaxRecallWindows || !windows[windows.Count - 1].EndQueued))
-                reason = "队友连接尚未同步，请稍后手动传送。";
+                reason = "队友连接尚未同步，可收回队友后重新加入。";
             else reason = null;
             return reason == null;
         }
@@ -180,7 +180,7 @@ namespace JueMingR.TerrariaHost.Companions
             finally
             {
                 submittingWormhole = null;
-                if (!attempt.Moved && attempt.Send == RecallSend.None && attempt.Paid &&
+                if (!attempt.LocalEntered && !attempt.Moved && attempt.Send == RecallSend.None && attempt.Paid &&
                     ReferenceEquals(source.Items, source.Player.inventory) && ReferenceEquals(source.Items[source.Slot], debit))
                 {
                     source.Items[source.Slot] = source.Item;
@@ -191,10 +191,11 @@ namespace JueMingR.TerrariaHost.Companions
                 if (attempt.Connection != null && attempt.Before != 0) QueueWormholeEnd(attempt);
                 if (attempt.Paid) RecordWormholePayment(attempt, source, debit);
                 if (attempt.Moved) CompleteWormhole(attempt, true);
+                else if (attempt.LocalEntered) CompleteWormhole(attempt, false, "传送结果未确认，已消耗 1 瓶虫洞药水。");
                 else if (attempt.Send == RecallSend.None) CompleteWormhole(attempt, false, "未能提交传送。");
                 else ShowWormholeResult(profileId, "正在等待传送结果。", true);
             }
-            return attempt.Moved || attempt.Send != RecallSend.None;
+            return attempt.LocalEntered || attempt.Moved || attempt.Send != RecallSend.None;
         }
 
         private void RecordWormholePayment(WormholeRecall attempt, RecoverySource source, Item debit)
@@ -305,6 +306,16 @@ namespace JueMingR.TerrariaHost.Companions
                 WormholeActivationCurrent(attempt);
         }
 
+        internal void ObserveLocalWormholeEntry(Player body, Vector2 destination)
+        {
+            var attempt = submittingWormhole;
+            // Vanilla can change buffs, grapple or pressure-plate state and
+            // catch an error before writing position. Entry and arrival are
+            // separate facts; an entered call cannot safely refund the debit.
+            if (attempt != null && attempt.Connection == null && ReferenceEquals(attempt.Body, body) &&
+                ReferenceEquals(attempt.Actor, CompanionHooks.CurrentActor) && attempt.Destination == destination) attempt.LocalEntered = true;
+        }
+
         internal void ObserveWormholeArrival(Actor actor, Vector2 destination)
         {
             var attempt = decodingWormhole ?? submittingWormhole;
@@ -361,8 +372,9 @@ namespace JueMingR.TerrariaHost.Companions
             if (!moved && attempt.Actor.Generation != attempt.Generation) return;
             string payer = attempt.OwnerPaid ? "玩家" : "队友";
             if (!moved && attempt.Paid)
-                Trace.TraceInformation("Companion wormhole {0}/{1} paid from {2} inventory slot {3}; wire submission {4}, moved {5}, ACK queued {6}.",
-                    attempt.Profile, attempt.Generation, attempt.OwnerPaid ? "owner" : "actor", attempt.PayerSlot, attempt.Send, attempt.Moved, attempt.AckQueued);
+                Trace.TraceInformation("Companion wormhole {0}/{1} paid from {2} inventory slot {3}; local entry {4}, wire submission {5}, moved {6}, ACK queued {7}.",
+                    attempt.Profile, attempt.Generation, attempt.OwnerPaid ? "owner" : "actor", attempt.PayerSlot,
+                    attempt.LocalEntered, attempt.Send, attempt.Moved, attempt.AckQueued);
             ShowWormholeResult(attempt.Profile, moved ? attempt.Body.name + " · 已传送，消耗" + payer + "虫洞药水 1 瓶" : failure, moved);
         }
 

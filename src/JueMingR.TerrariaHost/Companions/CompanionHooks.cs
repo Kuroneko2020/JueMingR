@@ -343,9 +343,16 @@ namespace JueMingR.TerrariaHost.Companions
 
             if(Main.netMode!=1 || current==null || current.Actor.Connection==null)return true;
             int length=data[0]|data[1]<<8;var copy=new byte[length];Buffer.BlockCopy(data,0,copy,0,length);
-            if (copy[2] == 65) host.ObserveWormholeSend(current.Actor, copy, null);
-            current.PacketAccepted=current.Actor.Connection.TrySend(copy);
-            if (copy[2] == 65) host.ObserveWormholeSend(current.Actor, copy, current.PacketAccepted);
+            var connection = current.Actor.Connection;
+            bool teleport = copy[2] == 65;
+            if (teleport) host.ObserveWormholeSend(current.Actor, copy, null);
+            try { current.PacketAccepted = connection.TrySend(copy); }
+            catch (CompanionConnection.SendQueueFullException) when (teleport && !connection.IsRelay)
+            {
+                host.ObserveWormholeSend(current.Actor, copy, false);
+                throw;
+            }
+            if (teleport) host.ObserveWormholeSend(current.Actor, copy, current.PacketAccepted);
             if(current.PacketAccepted)host.RecordActorPacket(current.Actor,copy);
             return false;
         }

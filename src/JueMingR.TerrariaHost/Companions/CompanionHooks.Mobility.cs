@@ -265,7 +265,9 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static void MobilityTeleportAfter(Player __instance, int Style, Vector2 newPos, Vector2 __state, bool __runOriginal)
         {
-            if (!__runOriginal || __instance.position != newPos) return;
+            if (!__runOriginal) return;
+            if (Style == 3 && Main.netMode == 0) host?.ObserveLocalWormholeEntry(__instance, newPos);
+            if (__instance.position != newPos) return;
             bool moved = __state != newPos;
             if (moved) host?.ObserveOwnerWarp(__instance);
             var actor = host?.Owned(__instance);

@@ -250,19 +250,47 @@ namespace NativeWorldTextProbe
                     $"the moving body commits from a still-brakeable ledge and lands on the narrow dry shelf (edit={editAt}, release={release}, landing={landing}, left={dryLeft})");
             }
 
+            void AddWall(Scenario run, int lastRow)
+            {
+                for (int tick = 0; tick < editAt; tick++) step(run);
+                Vector2 before = run.Body.Bottom;
+                float speed = run.Body.velocity.X;
+                string route = RouteStep(run.Actor);
+                Require(OnFloor(run.Body, high) && edge - run.Body.Left.X > OriginalBrakeRoom(run.Body) + 3 &&
+                    speed > 1 && route.StartsWith("LedgeDrop:", StringComparison.Ordinal),
+                    $"the published ledge route still has enough original braking room (body={before}, speed={speed}, route={route})");
+                for (int row = high - 4; row <= lastRow; row++) Fill(wallColumn, wallColumn, row, TileID.Stone);
+            }
+
+            using (var shortWall = new Scenario(host, profiles, human, "ledge-short-wall", start, high, terrain))
+            {
+                // The body can regain horizontal motion once its head
+                // clears this wall, just before reaching the narrow shelf.
+                AddWall(shortWall, high + 2);
+                int life = shortWall.Body.statLife;
+                int leftEdge = -1, steered = -1, landed = -1;
+                for (int tick = 0; tick < updates && landed < 0; tick++)
+                {
+                    step(shortWall);
+                    if (leftEdge < 0 && shortWall.Body.Bottom.Y > high * 16 + .1f) leftEdge = tick;
+                    if (leftEdge >= 0 && steered < 0 && shortWall.Body.controlRight && shortWall.Body.Top.Y >= (high + 3) * 16 &&
+                        shortWall.Body.velocity.X > 0) steered = tick;
+                    if (leftEdge >= 0 && OnFloor(shortWall.Body, lower)) landed = tick;
+                }
+                Console.WriteLine($"FOLLOW side wall with room leftEdge={leftEdge} steeredBelowWall={steered} landing={landed} life={shortWall.Body.statLife}/{life} body={shortWall.Body.Bottom}");
+                Require(leftEdge >= 0 && steered > leftEdge && landed >= steered && shortWall.Body.statLife == life &&
+                    shortWall.Body.Left.X + shortWall.Body.width > wallColumn * 16 && !shortWall.Body.dead,
+                    "the same narrow shelf is safe when real horizontal input can resume underneath the shorter wall");
+            }
+
             using (var edited = new Scenario(host, profiles, human, "ledge-side-wall", start, high, terrain))
             {
-                for (int tick = 0; tick < editAt; tick++) step(edited);
+                // Extending the wall by one tile removes the space to turn
+                // beneath it before the body could contact the same shelf.
+                AddWall(edited, high + 3);
                 Vector2 before = edited.Body.Bottom;
                 float speed = edited.Body.velocity.X;
                 string route = RouteStep(edited.Actor);
-                Require(OnFloor(edited.Body, high) && edge - edited.Body.Left.X > OriginalBrakeRoom(edited.Body) + 3 &&
-                    speed > 1 && route.StartsWith("LedgeDrop:", StringComparison.Ordinal),
-                    $"the published ledge route still has enough original braking room (body={before}, speed={speed}, route={route})");
-                // The face is beyond this update's horizontal reach. Its
-                // roof is above the source body and its base is above the
-                // original shelf, so it cannot supply a replacement landing.
-                for (int row = high - 4; row <= high + 2; row++) Fill(wallColumn, wallColumn, row, TileID.Stone);
                 float maxDrop = 0;
                 bool braked = false, coastBraked = false, supportedThroughout = true;
                 float minimumClearance = edge - edited.Body.Left.X;
@@ -282,7 +310,7 @@ namespace NativeWorldTextProbe
                 Require(maxDrop < 3 && supportedThroughout && (braked || coastBraked),
                     "a wall added beside the fall cannot steer the companion past its verified narrow landing");
 
-                for (int row = high - 4; row <= high + 2; row++) Main.tile[wallColumn, row].active(false);
+                for (int row = high - 4; row <= high + 3; row++) Main.tile[wallColumn, row].active(false);
                 int resumed = 0;
                 for (; resumed < updates && !OnFloor(edited.Body, lower); resumed++) step(edited);
                 Console.WriteLine($"FOLLOW side wall clearLanding={resumed} body={edited.Body.Bottom}/{edited.Body.velocity} route={RouteStep(edited.Actor)}");

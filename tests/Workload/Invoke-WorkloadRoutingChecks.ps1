@@ -117,6 +117,9 @@ foreach($name in @('JUEMINGR_FONT_BASELINE_HOST','JUEMINGR_FONT_BASELINE_FILTER_
     $dispatch=Read-WorkloadNativeDispatch
     Assert-Route ($dispatch.selectors.Contains($name) -and $dispatch.overrides.Contains($name)) ('explicit historical font axis is registered and cleared by formal native admission '+$name)
 }
+$wormholeComparison='JUEMINGR_COMPANION_WORMHOLE_COMPARISON'
+$dispatch=Read-WorkloadNativeDispatch
+Assert-Route ($dispatch.selectors.Contains($wormholeComparison) -and $dispatch.overrides.Contains($wormholeComparison)) 'explicit wormhole candidate is cleared by formal native admission'
 foreach($scope in @('CompanionFontVisual','CompanionConfigVisual','CompanionExitVisual','CompanionCreationInputVisual','CompanionResourceBarsVisual','CompanionShowcaseVisual','CompanionNetworkCpu','CompanionWormholeCpu','CompanionPasswordCpu','CompanionSuppliesCpu','CompanionObservationCombatCpu','CompanionSessionCpu','CompanionNavigationCpu','CompanionCreationCpu','CompanionItemsCpu','CompanionCpu','AfkModeCompletionCpu','AfkModeBorrowCpu','BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
     $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-'+$scope))
     Assert-Route ($plan.Count -eq 1 -and $plan[0].name -ceq ('native-'+$scope) -and $plan[0].arguments[-1] -ceq $scope) ('exact new native scope '+$scope)

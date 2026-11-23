@@ -22,12 +22,28 @@ namespace JueMingR.TerrariaHost.Companions
         private static Vector2 TrailPosition(Player body, CompanionOwnerTrail.Sample sample) =>
             sample.Feet - new Vector2(body.width * .5f, body.gravDir > 0 ? body.height : 0);
 
-        private bool RetainTrailGoal(Player body, CompanionOwnerTrail trail, RouteMotion motion, Vector2 currentOwner, ref Vector2 goal)
+        private bool RetainTrailGoal(Player body, CompanionMobilityState state, CompanionOwnerTrail trail, RouteMotion motion,
+            Vector2 currentOwner, ref Vector2 goal)
         {
             if (trail == null) return false;
             if (!ReferenceEquals(trail, followedTrail) || trail.Segment != trailSegment)
             {
-                if (followedTrail != null) RetireTrailGoal();
+                if (followedTrail != null)
+                {
+                    if (trailJoined != 0) RetireTrailGoal(body, state, motion);
+                    else
+                    {
+                        // A live target already known to the planner can
+                        // precede the owner's discontinuity observation.
+                        // Retire only work that still names the old target.
+                        if (publishing >= 0 && Vector2.DistanceSquared(publicationGoal, currentOwner) > 8 * 8)
+                            RetirePublication();
+                        if (pendingResult >= 0 && Vector2.DistanceSquared(pendingGoal, currentOwner) > 8 * 8)
+                            pendingResult = -1;
+                        if (routeIndex < route.Count && Vector2.DistanceSquared(routeGoal, currentOwner) > 8 * 8)
+                            RetireTrailSuffix(body, state, motion);
+                    }
+                }
                 ClearTrailProgress();
                 followedTrail = trail;
                 trailSegment = trail.Segment;
@@ -36,7 +52,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (!trail.TryRead(trailJoined, Main.GameUpdateCount, out var sample) ||
                 GoalRedirects(body.position, trailOwnerAtJoin, currentOwner))
             {
-                RetireTrailGoal();
+                RetireTrailGoal(body, state, motion);
                 trailConsumed = nextTrailProbe = 0;
                 return false;
             }
@@ -52,21 +68,42 @@ namespace JueMingR.TerrariaHost.Companions
             // shortcut at a safe action boundary instead of replaying turns.
             if (routeIndex >= route.Count && Reached(body.position, currentOwner, 32) &&
                 InGoalRegion(body, body.position, currentOwner, motion, null))
-            { trailConsumed = trail.Latest; RetireTrailGoal(); return false; }
+            { trailConsumed = trail.Latest; RetireTrailGoal(body, state, motion); return false; }
             goal = anchor;
             return true;
         }
 
-        private void RetireTrailGoal()
+        private void RetireTrailGoal(Player body, CompanionMobilityState state, RouteMotion motion)
         {
             // Retire the stale goal and its unissued suffix. The existing
             // real release/landing remains responsible for this body.
             trailJoined = 0;
             RetirePublication();
             pendingResult = -1;
+            RetireTrailSuffix(body, state, motion);
+        }
+
+        private void RetireTrailSuffix(Player body, CompanionMobilityState state, RouteMotion motion)
+        {
+            if (routeIndex >= route.Count) return;
+            var step = route[routeIndex];
+            bool committed;
+            switch (step.Kind)
+            {
+                case RouteKind.Drop: case RouteKind.LedgeDrop:
+                    committed = actionStarted || body.stairFall || motion == RouteMotion.Air &&
+                        body.velocity.Y * body.gravDir > 0 && (body.position.Y - actionOrigin.Y) * body.gravDir > 0;
+                    break;
+                case RouteKind.Jump: case RouteKind.GlideJump: case RouteKind.RopeExit:
+                    committed = jumpAccepted || jumpStarted && body.velocity.Y * body.gravDir < 0;
+                    break;
+                default:
+                    committed = actionStarted && commandSequence != 0 && state.Sequence == commandSequence &&
+                        (state.Result == CompanionMobilityResult.Started || state.Result == CompanionMobilityResult.Completed);
+                    break;
+            }
+            if (!committed) { ReleaseRoute(); return; }
             if (routeIndex + 1 < route.Count) route.RemoveRange(routeIndex + 1, route.Count - routeIndex - 1);
-            if (!actionStarted && routeIndex < route.Count && route[routeIndex].Kind == RouteKind.Walk)
-                ReleaseRoute();
         }
 
         private bool OfferTrailGoal(Player body, CompanionOwnerTrail trail, RouteMotion motion, Vector2 ownerGoal, out Vector2 goal)

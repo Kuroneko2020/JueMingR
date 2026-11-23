@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Diagnostics;
+using HarmonyLib;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -37,6 +38,8 @@ namespace NativeWorldTextProbe
                     "a nearby stationary owner on the next platform is reached through the real support transition and stable landing");
             }
             TrailFlightMismatch(host, profiles, human);
+            OwnerWarpBeforeDeparture(host, profiles, human);
+            FailedMovingRoot(host, profiles, human);
         }
 
         private static void TrailFlightMismatch(object host, object profiles, Player human)
@@ -78,6 +81,109 @@ namespace NativeWorldTextProbe
                 Require(ownerCleared >= 0 && opened >= 0 && crossed > opened && highestBody > wallTop * 16 + 80 &&
                     stable > 30 && run.Body.wingsLogic == 0 && !run.Body.mount.Active,
                     "the ground-only body chooses its actual door after the owner flies over a wall it cannot fly over");
+            }
+        }
+
+        private static void OwnerWarpBeforeDeparture(object host, object profiles, Player human)
+        {
+            const int upper = 80, lower = 86, edge = 65, lip = edge * 16, start = lip - 53, target = lip + 55;
+            using (var run = new Scenario(host, profiles, human, "follow-warp-at-lip", start, upper, () =>
+            {
+                Fill(47, edge - 1, upper, TileID.Stone);
+                Fill(edge + 2, edge + 4, lower, TileID.Stone);
+                Fill(47, 90, 115, TileID.Stone);
+            }))
+            {
+                int planned = -1;
+                for (int tick = 0; tick < 150 && planned < 0; tick++)
+                {
+                    run.StepToward(new Vector2(target, (human.Left.X < lip ? upper : lower) * 16), new Vector2(3.2f, 4));
+                    Player body = run.Body;
+                    float room = lip - body.Left.X;
+                    if (OnFloor(body, upper) && body.velocity.X > 1 && room > OriginalBrakeRoom(body) + 3 &&
+                        RouteStep(run.Actor).StartsWith("LedgeDrop:", StringComparison.Ordinal))
+                        planned = tick;
+                }
+                Require(planned >= 0, "real Follow has an unissued drop at a still-brakeable upper ledge before the owner moves");
+                Player companion = run.Body;
+                Vector2 ownerTarget = new Vector2(54 * 16 - human.width * .5f, upper * 16 - human.height);
+                human.Teleport(ownerTarget, 0);
+                int firstAway = -1, stable = 0;
+                float maxDrop = 0;
+                bool retainedOldDrop = false;
+                for (int tick = 0; tick < 175; tick++)
+                {
+                    run.StepOwner(Vector2.Zero);
+                    if (tick == 0) retainedOldDrop = RouteStep(run.Actor).StartsWith("LedgeDrop:", StringComparison.Ordinal);
+                    if (firstAway < 0 && companion.velocity.X < -.1f) firstAway = tick;
+                    maxDrop = Math.Max(maxDrop, companion.Bottom.Y - upper * 16);
+                    stable = OnFloor(companion, upper) && Math.Abs(companion.Bottom.X - human.Bottom.X) < 32 ? stable + 1 : 0;
+                }
+                Console.WriteLine($"FOLLOW owner warp before lip planned={planned} oldDropAfterWarp={retainedOldDrop} reversed={firstAway} maxDrop={maxDrop:F2} stable={stable}");
+                Require(human.position == ownerTarget && !retainedOldDrop && firstAway >= 0 && firstAway <= 24 && maxDrop <= 1 && stable >= 20,
+                    "a real owner warp retires an unstarted old ledge plan before it commits to the wrong layer");
+            }
+        }
+
+        private static void FailedMovingRoot(object host, object profiles, Player human)
+        {
+            const int floor = 80, wall = 66, start = 59 * 16, targetX = 77 * 16;
+            using (var run = new Scenario(host, profiles, human, "follow-brake-root", start, floor, () =>
+            {
+                Fill(51, 90, floor, TileID.Stone);
+                Fill(55, wall, floor - 4, TileID.Stone);
+                for (int y = floor - 3; y < floor; y++)
+                {
+                    StoneVertical(55, y);
+                    StoneVertical(wall, y);
+                }
+            }))
+            {
+                int running = -1;
+                Player body = run.Body;
+                for (int tick = 0; tick < 100 && running < 0; tick++)
+                {
+                    run.StepToward(new Vector2(targetX, floor * 16), new Vector2(6, 0));
+                    if (body.Left.X > wall * 16 - 48 && body.velocity.X >= 2.2f) running = tick;
+                }
+                Require(running >= 0, "the follower actually reaches normal high running speed with the obstacle still ahead");
+                Vector2 origin = body.position;
+                float initialSpeed = body.velocity.X;
+                human.Bottom = new Vector2(targetX, floor * 16);
+                var navigation = Navigator(run.Actor);
+                var state = Get(run.Actor, "Mobility");
+                var root = Enum.Parse(AccessTools.Inner(navigation.GetType(), "RouteMotion"), "Ground");
+                var route = (IList)Get(navigation, "route");
+                Call(navigation, "CancelRoute");
+                using (var work = new TerrainSearchWork(navigation))
+                {
+                    var goal = human.Center - body.Size * .5f;
+                    int firstBand = -1;
+                    for (int t = 0; t < 12 && firstBand < 0; t++)
+                    {
+                        // Study the failed outgoing candidates at the
+                        // observed fast pose without applying a planner frame.
+                        NativeQuickItemChecks.BeginWorldStep();
+                        Call(navigation, "SearchRoute", body, Get(state, "Observed"), goal, 22, root, false);
+                        var initial = Get(navigation, "search");
+                        if ((bool)(GetOptional(initial, "RootVelocityRead") ?? false) && route.Count == 0)
+                            firstBand = (int)Get(initial, "RootVelocityBand");
+                    }
+                    int checksBefore = work.Candidates, speedWake = -1;
+                    for (int t = 0; t < 55 && speedWake < 0; t++)
+                    {
+                        run.StepOwner(Vector2.Zero);
+                        var current = Get(navigation, "search");
+                        if (firstBand > 0 && Math.Abs(body.velocity.X) < .3f &&
+                            (int)Get(current, "RootVelocityBand") == 0 && (bool)Get(current, "RootVelocityRead") &&
+                            work.Candidates > checksBefore) speedWake = t;
+                    }
+                    float distance = Vector2.Distance(origin, body.position);
+                    Console.WriteLine($"FOLLOW brake root initialSpeed={initialSpeed:F2} band={firstBand} wake={speedWake} walked={distance:F1} starts={work.Starts} candidates={checksBefore}->{work.Candidates}");
+                    Require(firstBand > 0 && speedWake >= 0 && distance < 42 && work.Starts == 1 &&
+                        body.Right.X <= wall * 16 && !body.dead,
+                        "braking alone reopens the actual movement-dependent root before 42 pixels, preserving the prior graph and blocking the unchanged solid wall");
+                }
             }
         }
 

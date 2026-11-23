@@ -270,7 +270,10 @@ namespace NativeWorldTextProbe
             Setup(host, actor, body, human, area, 66, BankFloor, ItemID.FlyingCarpet);
             Fill(54, lip - 1, BankFloor);
             Fill(RemovableBank, 109, BankFloor);
-            Fill(lip, RemovableBank - 1, 110);
+            // Losing the glide's destination leaves a genuinely lethal
+            // alternative here. The ordinary survivable descent contract
+            // is tested independently with native health and impact.
+            Fill(lip, RemovableBank - 1, 114);
             Warm(host, body);
             human.position = AtGround(human, 93, BankFloor);
             object movement = Get(Get(actor, "Behavior"), "navigation");
