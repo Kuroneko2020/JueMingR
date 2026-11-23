@@ -23,8 +23,9 @@ namespace JueMingR.TerrariaHost.Companions
         private bool PlannerHasCandidate => pending.End.IsSet || connector.Active || ready.PlanId != 0;
         private bool PlannerConnecting => connector.Active;
         private bool PlannerTrailClosed => search != null && search.Initialized && search.Exhausted && !PlannerHasCandidate;
+        private bool PlannerHasKnownClosure => search != null && search.Exhausted && search.FullyKnownClosure && !recoveryPending;
         private string PlannerStopStatus => search != null && search.Terrain.HasUnknown ? "等待地形就绪" :
-            search != null && search.Exhausted && search.FullyKnownClosure && !recoveryPending ? "暂无可行路线" : "寻找路线";
+            PlannerHasKnownClosure ? "暂无可行路线" : "寻找路线";
         private bool PlannerShouldConnectEarly(RouteMotion motion) => search != null &&
             (pending.End.IsSet && search.NeedsLiveRoot || motion == RouteMotion.Ground &&
                 (connector.Active || pending.End.IsSet && pending.Kind >= RouteResultKind.Corridor));

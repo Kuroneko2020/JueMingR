@@ -330,7 +330,8 @@ namespace JueMingR.TerrariaHost.Companions
                 if (nearbyTier && (!clear || wall) && allowPlanning && !state.AwaitingEquipmentObservation && CanHoik(body, mobility) && groundMove != 0 &&
                     HasHoikMouth(body, body.position, groundMove) &&
                     TryLocalHoik(body, state, mobility, goal, groundMove, out var hoik)) return hoik;
-                if (nearbyTier && (!clear || wall) && allowPlanning && localPlanningWork == 0 && !state.AwaitingEquipmentObservation &&
+                if (nearbyTier && (!clear || wall) && allowPlanning && !PlannerHasKnownClosure &&
+                    localPlanningWork == 0 && !state.AwaitingEquipmentObservation &&
                     groundMove != 0 && groundMove == direction && (body.velocity.Y == 0 || mobility.Sliding) &&
                     (body.releaseJump || body.autoJump) && MayProbeImmediateJump(body) && Wall(body, direction) &&
                     !FindClosedHorizontalDoor(body, body.position, direction, null, out _))
@@ -338,6 +339,7 @@ namespace JueMingR.TerrariaHost.Companions
                     // An imminent wall may already have a complete native
                     // jump-and-landing proof at this live pose. Give that
                     // proof the granted slice before waiting on remote exits.
+                    // A known closure keeps its slice for dependency checks.
                     allowPlanning = false;
                     if (TryImmediateJump(body, state, mobility, goal, direction, out var cross)) return cross;
                 }

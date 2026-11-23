@@ -113,8 +113,11 @@ namespace NativeWorldTextProbe
             Require(Recall(host, first) && body.Bottom == human.Bottom && body.teleportStyle == 3 && body.inventory[PotionSlot].stack == 1 &&
                 human.inventory[PotionSlot].stack == 1 && Main.screenPosition == oldCamera && human.team == 4 && body.team == 2,
                 "singleplayer applies original style 3, charges AI first, and leaves human camera and teams unchanged");
+            var behavior = Get(actor, "Behavior");
+            var goals = GetOptional(Get(behavior, "navigation"), "goals");
+            Vector2 anchor = (Vector2)(goals != null ? Get(goals, "anchor") : Get(behavior, "stand"));
             Require((int)Get(mobility, "PositionRevision") == (int)previous + 1 && (string)Get(mobility, "Result").ToString() == "Idle" &&
-                !(bool)Get(mobility, "DoorNeedsClose") && (Vector2)Get(Get(actor, "Behavior"), "stand") == body.Center &&
+                !(bool)Get(mobility, "DoorNeedsClose") && anchor == body.Center &&
                 !((CompanionProfile)Get(actor, "Profile")).Behavior.Follow,
                 "real landing retires position action and reanchors the still-disabled Follow");
             Require(!Recall(host, first) && body.inventory[PotionSlot].stack == 1, "same landing cannot be charged twice");
