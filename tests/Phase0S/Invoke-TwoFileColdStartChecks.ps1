@@ -31,7 +31,9 @@ foreach($project in @('JueMingR.Platform','JueMingR.Features','JueMingR.Infrastr
 [IO.File]::Copy((Join-Path $RepositoryRoot 'external/Harmony/0Harmony.dll'),(Join-Path $internal '0Harmony.dll'))
 [IO.File]::Copy((Join-Path $RepositoryRoot 'external/Harmony/LICENSE'),(Join-Path $internal 'Harmony-2.4.2-LICENSE.txt'))
 [IO.File]::Copy((Join-Path $RepositoryRoot 'THIRD-PARTY-NOTICES.md'),(Join-Path $internal 'THIRD-PARTY-NOTICES.md'))
-Write-JmrRuntimeManifest -Internal $internal -SourceCommit $source -PackageId ('cold-start-'+$source)
+# The optional native Update must hand off to the ordinary full runtime.
+# A test-only package ID would boot the core without feature composition.
+Write-JmrRuntimeManifest -Internal $internal -SourceCommit $source -PackageId ('continuous-processing-'+$source)
 $standard=Join-Path $root 'standard'
 $bundle=New-JmrTwoFileBundle -RepositoryRoot $RepositoryRoot -InputDirectory $internal -WorkDirectory (Join-Path $root 'bundle') -StandardDirectory $standard -SourceCommit $source
 $poisonSource=Join-Path $root 'poison.cs'

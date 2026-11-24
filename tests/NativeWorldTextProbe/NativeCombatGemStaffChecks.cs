@@ -281,7 +281,7 @@ namespace NativeWorldTextProbe
                     for(int frame=0;frame<3;frame++){NativeCombatSelectionPreviewChecks.Step(context,target.Center,false,true);preview=(AttackContact)GetOptional(attack,"ExpectedPreview");Require(preview==null && !Main.projectile.Any(q=>q.active),"withdrawn idle gem preview creates no projectile or contact");}
                     var rawMouse=target.Center-new Vector2(390,0);
                     NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));
-                    NativeToolExecutionChecks.Sample(context,Get(context,"Input"),rawMouse,true);Call(combat,"Sample");
+                    NativeToolExecutionChecks.Sample(context,Get(context,"Input"),rawMouse,true);Call(combat,"Sample");Call(host,"SampleMouse");
                     NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);preview=(AttackContact)GetOptional(attack,"ExpectedImpact");
                     Require(blocked || preview!=null,"actual pressed gem/robe component has its full prepared contact "+weapon+"/"+robe+"/"+blocked);
                     if(preview!=null)Call(attack,"BindPresentation",preview);
