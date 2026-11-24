@@ -269,7 +269,7 @@ namespace NativeWorldTextProbe
                         NetMessage.buffer = Enumerable.Range(0, 257).Select(index => new MessageBuffer { whoAmI = index }).ToArray();
                         foreach (var endpoint in new[] { (player, ownerWire.Peer), (ai, aiPeer), (observer, remoteWire.Peer) })
                         {
-                            Netplay.Clients[endpoint.Item1] = new RemoteClient { Id = endpoint.Item1, State = 10, Socket = new TcpSocket(endpoint.Item2) };
+                            Netplay.Clients[endpoint.Item1] = Program.CreateRemoteClient(endpoint.Item1, 10, new TcpSocket(endpoint.Item2));
                             Netplay.Clients[endpoint.Item1].TileSections[0, 0] = true;
                             NetMessage.buffer[endpoint.Item1].broadcast = true;
                         }

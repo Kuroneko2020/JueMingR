@@ -751,7 +751,17 @@ namespace NativeWorldTextProbe
                 human.UpdateBuffs(human.whoAmI);
                 human.statLife=100;human.statDefense=0;human.immune=false;human.immuneTime=0;
                 int defenderLife=body.statLife;
-                human.Hurt(PlayerDeathReason.ByOther(0),40,0,dodgeable:false);
+                // Terraria 1.4.6+ admits sharing only for a dodgeable primary
+                // hit. The native secondary hit remains undodgeable.
+                if (typeof(Player).Assembly.GetName().Version >= new Version(1, 4, 6, 0))
+                {
+                    human.Hurt(PlayerDeathReason.ByOther(0),40,0,dodgeable:false);
+                    Require(human.statLife==60 && body.statLife==defenderLife &&
+                        body.hurtCooldowns[ImmunityCooldownID.PaladinsShield]==0,
+                        "native undodgeable damage does not charge a nearby teammate with the Paladin shield");
+                    human.statLife=100;human.immune=false;human.immuneTime=0;
+                }
+                human.Hurt(PlayerDeathReason.ByOther(0),40,0,dodgeable:true);
                 Require(human.statLife==70 && body.statLife<defenderLife &&
                     body.hurtCooldowns[ImmunityCooldownID.PaladinsShield]>0,
                     "native human takes 75 percent and charges the single selected AI through its shield Hurt cooldown: human="+
@@ -768,7 +778,7 @@ namespace NativeWorldTextProbe
                 int patientLife=body.statLife;
                 Main.mapFullscreen=true;
                 var cursor=Main.mouseItem;Main.mouseItem=new Item(ItemID.Wood){stack=3};
-                body.Hurt(PlayerDeathReason.ByOther(0),160,0,dodgeable:false);
+                body.Hurt(PlayerDeathReason.ByOther(0),160,0,dodgeable:true);
                 Require(body.statLife==patientLife-120 && human.dead && !Main.mapFullscreen &&
                     ReferenceEquals(Main.mouseItem,human.inventory[58]) && ReferenceEquals(Main.LocalPlayer,human),
                     "AI takes native 75 percent; lethal recipient preserves real human death cursor and map changes after scope restoration");
