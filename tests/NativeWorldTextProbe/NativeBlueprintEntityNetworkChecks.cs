@@ -130,7 +130,7 @@ namespace NativeWorldTextProbe
                 Netplay.Connection=current;NetMessage.buffer=(MessageBuffer[])oldBuffers.Clone();
                 for(int i=0;i<NetMessage.buffer.Length;i++)if(NetMessage.buffer[i]==null)NetMessage.buffer[i]=new MessageBuffer{whoAmI=i};
                 NetMessage.buffer[256]=new MessageBuffer{whoAmI=256};Main.netMode=1;Main.dedServ=false;Netplay.Disconnect=false;
-                for(int i=0;i<Netplay.Clients.Length;i++)Netplay.Clients[i]=new RemoteClient{Id=i,State=10,PendingTermination=true};
+                for(int i=0;i<Netplay.Clients.Length;i++)Netplay.Clients[i]=new RemoteClient{Id=i,State=10};
                 PayloadClientSession(context,host);
                 audit.Patch(AccessTools.Method(typeof(NetMessage),"SendData"),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(EntityNetworkSent)));
                 foreach(var method in typeof(NetManager).GetMethods(F).Where(m=>m.Name=="Broadcast"))audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(EntityNetworkBroadcast)));

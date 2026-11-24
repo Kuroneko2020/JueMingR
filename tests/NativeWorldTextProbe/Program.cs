@@ -13,6 +13,24 @@ namespace NativeWorldTextProbe
         internal static string OutputDirectory { get; private set; }
         internal static string ProductionConfiguration { get; private set; } = "Debug";
         internal static bool TestSoundRequested { get; private set; }
+        internal static Terraria.RemoteClient CreateRemoteClient(int id, int state, Terraria.Net.Sockets.ISocket socket)
+        {
+            var client = new Terraria.RemoteClient { Id = id, State = state };
+            client.Activate(socket);
+            return client;
+        }
+
+        internal static void RequireOriginalGame(Assembly assembly, bool historical = false)
+        {
+            // Historical precise worker tests keep their original input lock.
+            var mvid = historical ? new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083") : new Guid("e493f9b5-ffed-4b63-a1bb-eb91bbbaee71");
+            string expected = historical ? "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3" :
+                "E92176BA3828662638ABFE24B06517BE4D64877C45A9EA86005F62F00AA22F12";
+            using (var file = File.OpenRead(assembly.Location))
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+                if (assembly.ManifestModule.ModuleVersionId != mvid || BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "") != expected)
+                    throw new InvalidDataException("Unexpected original Terraria input for this scope.");
+        }
         private static int Main(string[] args)
         {
             try

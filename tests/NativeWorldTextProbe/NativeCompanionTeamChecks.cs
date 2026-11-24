@@ -148,7 +148,7 @@ namespace NativeWorldTextProbe
                 Netplay.Clients=new RemoteClient[256];for(int i=0;i<256;i++)Netplay.Clients[i]=new RemoteClient{Id=i};
                 NetMessage.buffer=new MessageBuffer[257];for(int i=0;i<257;i++)NetMessage.buffer[i]=new MessageBuffer{whoAmI=i};
                 foreach(var pair in new[]{Tuple.Create(humanSlot,ownerWire.Peer),Tuple.Create(actorSlot,aiPeer),Tuple.Create(observerSlot,observerWire.Peer)})
-                {Netplay.Clients[pair.Item1]=new RemoteClient{Id=pair.Item1,State=10,Socket=new TcpSocket(pair.Item2)};NetMessage.buffer[pair.Item1].broadcast=true;}
+                {Netplay.Clients[pair.Item1]=Program.CreateRemoteClient(pair.Item1,10,new TcpSocket(pair.Item2));NetMessage.buffer[pair.Item1].broadcast=true;}
                 Main.netMode=2;Main.dedServ=true;Main.myPlayer=255;Main.player=server;
                 foreach(var packet in primaryFrames.Where(p=>p[2]==5))Apply(packet,humanSlot);
                 foreach(var packet in actorFrames.Where(p=>p[2]==5 || p[2]==45))Apply(packet,actorSlot);
@@ -175,7 +175,7 @@ namespace NativeWorldTextProbe
                     using (var ordinaryPeer = listener.AcceptTcpClient())
                     {
                         ordinaryPeer.GetStream().ReadTimeout = 5000;
-                        Netplay.Clients[otherSlot] = new RemoteClient { Id = otherSlot, State = 10, Socket = new TcpSocket(ordinaryPeer) };
+                        Netplay.Clients[otherSlot] = Program.CreateRemoteClient(otherSlot, 10, new TcpSocket(ordinaryPeer));
                         NetMessage.buffer[otherSlot].broadcast = true;
                         Set(ordinaryActor, "Connection", ordinaryConnection);
                         DeathThenRecall(host, ordinaryId, ordinaryActor, other, sourcePlayers, server, ordinaryPeer, false);

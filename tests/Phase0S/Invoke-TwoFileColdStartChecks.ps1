@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([switch]$Run,[string]$RepositoryRoot,[string]$NativeContentDirectory)
+param([switch]$Run,[string]$RepositoryRoot,[string]$NativeContentDirectory,[string]$HistoricalWorkerTerrariaExe)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2
 if(-not $Run){throw 'Use -Run for the isolated real CLR mechanism check.'}
@@ -7,6 +7,12 @@ if(-not $RepositoryRoot){$RepositoryRoot=[IO.Path]::GetFullPath((Join-Path $PSSc
 . (Join-Path $RepositoryRoot 'scripts/phase0s/Phase0S.ScriptSupport.ps1')
 . (Join-Path $RepositoryRoot 'scripts/TwoFileBundle.Support.ps1')
 $source=(& git -C $RepositoryRoot rev-parse HEAD).Trim()
+$currentGame=Join-Path $RepositoryRoot 'external/TerrariaRefs/Terraria.exe'
+$reference=(Get-Phase0SCurrentReferenceIdentity).Game
+if((Get-Phase0SFileSha256 $currentGame) -cne $reference.sha256){throw 'Current cold-start game must match the prepared reference.'}
+if($HistoricalWorkerTerrariaExe -and (Get-Phase0SFileSha256 $HistoricalWorkerTerrariaExe) -cne '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3'){
+    throw 'The historical worker needs the original 1.4.5.8 executable.'
+}
 $root=Join-Path $RepositoryRoot ('artifacts/two-file-cold-start/'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmss')+'-'+[Guid]::NewGuid().ToString('N'))
 $build=Join-Path $root 'build'
 $logs=Join-Path $root 'logs';[IO.Directory]::CreateDirectory($logs)|Out-Null
@@ -33,11 +39,11 @@ $poisonSource=Join-Path $root 'poison.cs'
 $poison=Join-Path $root '0Harmony.dll'
 & (Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe') /nologo /target:library "/out:$poison" $poisonSource
 if($LASTEXITCODE -ne 0){throw 'The conflicting same-simple-name test assembly did not compile.'}
-function New-ColdRoot([string]$Name){
+function New-ColdRoot([string]$Name,[string]$Game=$currentGame){
     $directory=Join-Path $scenarioRoot $Name;[IO.Directory]::CreateDirectory($directory)|Out-Null
     foreach($file in @('JueMingR.dll','Terraria.exe.config')){[IO.File]::Copy((Join-Path $standard $file),(Join-Path $directory $file))}
     [IO.File]::Copy((Join-Path $standard 'Terraria.exe.config'),(Join-Path $directory 'ColdStartDriver.exe.config'))
-    [IO.File]::Copy((Join-Path $RepositoryRoot 'external/TerrariaRefs/Terraria.exe'),(Join-Path $directory 'Terraria.exe'))
+    [IO.File]::Copy($Game,(Join-Path $directory 'Terraria.exe'))
     [IO.File]::Copy((Join-Path $build 'bin/TwoFileColdStart/x86/Release/net472/ColdStartDriver.exe'),(Join-Path $directory 'ColdStartDriver.exe'))
     [IO.File]::Copy($poison,(Join-Path $directory '0Harmony.dll'))
     if(Test-Path -LiteralPath (Join-Path $directory 'JueMingR.Runtime')){throw 'A cold scenario already contains the private runtime.'}
@@ -66,7 +72,11 @@ $blocked=New-ColdRoot 'blocked'
 [IO.File]::WriteAllText((Join-Path $blocked 'JueMingR.Runtime'),'owned test obstruction')
 Invoke-ColdDriver $blocked 'blocked-preparation' '--binding-only' 'bundle directory is a file'
 $cold=New-ColdRoot 'cold'
-Invoke-ColdDriver $cold 'cold-worker' '--worker'
+Invoke-ColdDriver $cold 'cold-current-client' '--binding-only'
+if($HistoricalWorkerTerrariaExe){
+    $historical=New-ColdRoot 'historical-worker' ([IO.Path]::GetFullPath($HistoricalWorkerTerrariaExe))
+    Invoke-ColdDriver $historical 'cold-historical-worker' '--worker'
+}
 $differentCwd=Join-Path $scenarioRoot 'different-working-directory';[IO.Directory]::CreateDirectory($differentCwd)|Out-Null
 $cwdCold=New-ColdRoot 'application-with-other-cwd'
 Invoke-ColdDriver $cwdCold 'different-cwd-cold-bootstrap' '--binding-only' '' $differentCwd
@@ -98,4 +108,4 @@ if($NativeContentDirectory){
     [IO.File]::Copy($nativeLibrary,(Join-Path $native 'ReLogic.Native.dll'))
     Invoke-ColdDriver $native 'native-original-update' '--native'
 }
-[ordered]@{status='PASS';scope='production-clr-cold-bootstrap';sourceCommit=$source;workspaceDirty=([bool](& git -C $RepositoryRoot status --porcelain));payloadId=$bundle.payloadId;evidenceRoot=$root;scenarioRoot=$scenarioRoot;rootSameNameForeignDependency='0Harmony, Version=1.0.0.0';differentWorkingDirectory='PASS';cacheReuse='PASS';cacheRepair='PASS';worker='READY_AND_CLOSED';nativeOriginalUpdate=$(if($NativeContentDirectory){'PASS'}else{'NOT_EXECUTED'});ownerGame='NOT_EXECUTED'}|ConvertTo-Json -Depth 4
+[ordered]@{status='PASS';scope='production-clr-cold-bootstrap';sourceCommit=$source;workspaceDirty=([bool](& git -C $RepositoryRoot status --porcelain));payloadId=$bundle.payloadId;evidenceRoot=$root;scenarioRoot=$scenarioRoot;rootSameNameForeignDependency='0Harmony, Version=1.0.0.0';differentWorkingDirectory='PASS';cacheReuse='PASS';cacheRepair='PASS';currentGameVersion=$reference.assemblyVersion;worker=$(if($HistoricalWorkerTerrariaExe){'HISTORICAL_1.4.5.8_READY_AND_CLOSED'}else{'NOT_EXECUTED'});nativeOriginalUpdate=$(if($NativeContentDirectory){'PASS'}else{'NOT_EXECUTED'});ownerGame='NOT_EXECUTED'}|ConvertTo-Json -Depth 4

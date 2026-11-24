@@ -301,7 +301,7 @@ namespace JueMingR.Features.Blueprint
                 for (int i = 0; i < chunk.Count; i++)
                 {
                     CaptureCell cell = chunk.Cells[i]; var selection = SelectProjectionConstruction(owner, cell, catalog, request.View);
-                    if (summary.TargetVersion != catalog.TargetVersion) selection = new BlueprintConstructionSelection(BlueprintConstructionTargets.Layers(cell), BlueprintConstructionTargets.Layers(cell), catalog.Revision);
+                    if (!catalog.CanReadVersion(summary.TargetVersion)) selection = new BlueprintConstructionSelection(BlueprintConstructionTargets.Layers(cell), BlueprintConstructionTargets.Layers(cell), catalog.Revision);
                     total += BlueprintProjectionMask.Count(selection.RequiredBits);
                     ushort remaining = request.Mask.RemainingLayers(cell.X - summary.Left, cell.Y - summary.Top, cell.ObjectId, selection.RequiredBits);
                     effective += BlueprintProjectionMask.Count(remaining); unknown += BlueprintProjectionMask.Count((ushort)(remaining & selection.UnknownBits));

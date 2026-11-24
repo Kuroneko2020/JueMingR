@@ -155,7 +155,7 @@ namespace NativeWorldTextProbe
                 Chest ca=Main.chest[a],cb=Main.chest[b];p.position=new Vector2(42*16,646);p.inventory[12].SetDefaults(ItemID.Chest);p.inventory[12].stack=3;
                 var server=new ContainerRepairServerRealm();Require(server.A==a && server.B==b,"Independent original realms assign matching native chest indices.");
                 NetMessage.buffer=(MessageBuffer[])buffers.Clone();NetMessage.buffer[0]=new MessageBuffer{whoAmI=0};NetMessage.buffer[1]=new MessageBuffer{whoAmI=1};NetMessage.buffer[256]=new MessageBuffer{whoAmI=256};
-                for(int i=0;i<Netplay.Clients.Length;i++)Netplay.Clients[i]=new RemoteClient{Id=i,State=10,PendingTermination=true};
+                for(int i=0;i<Netplay.Clients.Length;i++)Netplay.Clients[i]=new RemoteClient{Id=i,State=10};
                 Netplay.Connection=current;Main.netMode=1;Netplay.Disconnect=false;PayloadClientSession(context,host);
                 audit.Patch(AccessTools.Method(typeof(NetMessage),"SendData"),postfix:new HarmonyMethod(typeof(NativeBlueprintBuildChecks),nameof(ContainerRepairSent)));
                 containerRepairClient.Clear();containerRepairServer.Clear();containerRepairRecording=true;

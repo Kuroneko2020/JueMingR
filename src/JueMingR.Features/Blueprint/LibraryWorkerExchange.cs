@@ -234,7 +234,7 @@ namespace JueMingR.Features.Blueprint
                 uint rootLength = UInt32At(operation.Read, 0); if (rootLength < 1 || rootLength > 65536) throw new InvalidDataException("blueprint-exchange-root-length");
                 foreach (bool step in ReadExchange(operation, (int)rootLength, digest)) yield return step;
                 byte[] rootBytes = operation.Read; LibraryRoot root = LibraryCodec.DecodeRoot(rootBytes);
-                if (!String.Equals(root.Summary.TargetVersion, operation.Request.SupportedTargetVersion, StringComparison.Ordinal) || root.Summary.UnreliableObjectCount != 0) throw new InvalidDataException("blueprint-exchange-target-version-or-unreliable");
+                if (!BlueprintPlacementCatalog.CanReadVersion(root.Summary.TargetVersion, operation.Request.SupportedTargetVersion) || root.Summary.UnreliableObjectCount != 0) throw new InvalidDataException("blueprint-exchange-target-version-or-unreliable");
                 foreach (bool step in ReadExchange(operation, 8, digest)) yield return step;
                 long indexLength = Int64At(operation.Read, 0), indexStart = operation.Position;
                 if (indexLength != checked(root.BlockCount * 32L) || checked(indexLength + checked(root.BlockCount * 20L) + 32L) > operation.SourceLength - operation.Position) throw new InvalidDataException("blueprint-exchange-index-or-minimum-length");
@@ -321,7 +321,7 @@ namespace JueMingR.Features.Blueprint
             if (metadata.Deleted || protectedAssets.Contains(key.AssetId) || metadata.ContentRevision != key.ContentRevision || metadata.ContentHash != key.ContentHash || metadata.Name != request.Name) throw new InvalidDataException("blueprint-exchange-source-changed");
             byte[] rootBytes = files.ReadRoot(key.AssetId, false); LibraryRoot root = ReadAssetRoot(metadata);
             if (LibraryCodec.HashString(rootBytes) != key.ContentHash) throw new InvalidDataException("blueprint-exchange-source-changed");
-            if (!String.Equals(root.Summary.TargetVersion, request.SupportedTargetVersion, StringComparison.Ordinal)) throw new InvalidDataException("blueprint-exchange-target-version");
+            if (!BlueprintPlacementCatalog.CanReadVersion(root.Summary.TargetVersion, request.SupportedTargetVersion)) throw new InvalidDataException("blueprint-exchange-target-version");
             exchangePhase = BlueprintExchangePhase.Validating;
             foreach (bool step in ValidateExchange(operation, key.AssetId, false, root)) yield return step;
             foreach (bool step in Io(operation, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.BeginTarget, Ticket = request.Ticket })) yield return step;

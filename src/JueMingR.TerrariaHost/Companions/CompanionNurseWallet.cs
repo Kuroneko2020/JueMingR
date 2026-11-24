@@ -10,7 +10,7 @@ namespace JueMingR.TerrariaHost.Companions
 {
     // A plan owns only shadow arrays until both real wallets are admitted.
     // All native denomination choices, including impossible change, come from
-    // the same leaf that BuyItem calls in Terraria 1.4.5.8.
+    // the same TryPurchasing leaf that BuyItem calls.
     internal sealed class CompanionNurseWallet
     {
         private delegate bool Purchase(long price, List<Item[]> inventory, List<Point> coins, List<Point> packed,
@@ -70,8 +70,8 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static long Value(Item item)
         {
-            // The pinned CoinsCount denomination table with the same widened
-            // stack product. CoinsCombineStacks' cap cannot validate debits.
+            // Match the native CoinsCount denominations and widened stack
+            // product for an exact debit receipt.
             return CoinRules.TryValue(item.type, item.stack, out long value) ? value : 0;
         }
 

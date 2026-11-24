@@ -45,7 +45,7 @@ namespace NativeWorldTextProbe
             requests.Clear();received.Clear();states.Clear();feedback=0;injectSendFailure=false;ReceivedSection=Point.Zero;
             root=Path.GetFullPath(output);Directory.CreateDirectory(root);
             Terraria.Program.SavePath=Path.Combine(root,"client-user");Directory.CreateDirectory(Terraria.Program.SavePath);
-            Require(Hash(typeof(Main).Assembly.Location)=="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3","locked original .8 client assembly");
+            Program.RequireOriginalGame(typeof(Main).Assembly);
             NativeTestAudio.Install(typeof(Main).Assembly);
             var audit=new Harmony("JueMingR.Tests.ViewNetwork");Process server=null;StreamWriter serverLog=null;
             string oldDirectory=Environment.CurrentDirectory;
