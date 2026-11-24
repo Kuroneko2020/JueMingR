@@ -352,6 +352,15 @@ function Test-Phase0STerrariaIdentity {
     }
 }
 
+function Get-Phase0SCurrentReferenceIdentity {
+    $baselinePath = Join-Path $PSScriptRoot '../../eng/TerrariaReferences.baseline.json'
+    $baseline = Get-Content -LiteralPath $baselinePath -Raw | ConvertFrom-Json
+    $game = @($baseline.files | Where-Object logicalName -CEQ 'Terraria.exe')
+    $reLogic = @($baseline.files | Where-Object logicalName -CEQ 'ReLogic.dll')
+    if ($game.Count -ne 1 -or $reLogic.Count -ne 1) { throw 'Expected exactly one game and one ReLogic reference.' }
+    return [pscustomobject]@{ Game = $game[0]; ReLogic = $reLogic[0] }
+}
+
 function Read-Phase0SRuntimeManifest {
     param([Parameter(Mandatory = $true)][string] $Path)
 
@@ -420,18 +429,30 @@ function Read-Phase0SRuntimeManifest {
         $values[$key] = $value
     }
 
-    if ($values.schemaVersion -cne '2' -or
+    # Existing package verification still accepts the historical reference
+    # metadata. Current packages must carry one consistent reference tuple.
+    $historical = $values.targetAssemblyVersion -ceq '1.4.5.8' -and
+        $values.reLogicAssemblyMvid -ceq 'ee258be9-88a4-423d-b3ce-84b6c35b141a' -and
+        $values.reLogicResourceSha256 -ceq 'E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29'
+    $current = $false
+    if (-not $historical) {
+        $reference = Get-Phase0SCurrentReferenceIdentity
+        $current = $values.targetAssemblyVersion -ceq $reference.Game.assemblyVersion -and
+            $values.targetAssemblyMvid -ceq $reference.Game.mvid -and
+            $values.targetAssemblySha256 -ceq $reference.Game.sha256 -and
+            $values.reLogicAssemblyMvid -ceq $reference.ReLogic.mvid -and
+            $values.reLogicResourceSha256 -ceq $reference.ReLogic.sha256 -and
+            $values.targetMethodMetadataToken -ceq $reference.Game.mainUpdateMetadataToken
+    }
+    if ($values.schemaVersion -cne '2' -or (-not $current -and -not $historical) -or
         $values.packageId -notmatch '^[A-Za-z0-9.-]{1,64}$' -or
         $values.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
         $values.targetAssemblySimpleName -cne 'Terraria' -or
-        $values.targetAssemblyVersion -cne '1.4.5.8' -or
         $values.targetAssemblySha256 -notmatch '^[0-9A-F]{64}$' -or
         $values.reLogicAssemblySimpleName -cne 'ReLogic' -or
         $values.reLogicAssemblyVersion -cne '1.0.0.0' -or
         $values.reLogicAssemblyPublicKeyToken -cne 'null' -or
-        $values.reLogicAssemblyMvid -cne 'ee258be9-88a4-423d-b3ce-84b6c35b141a' -or
         $values.reLogicResourceName -cne 'Terraria.Libraries.ReLogic.ReLogic.dll' -or
-        $values.reLogicResourceSha256 -cne 'E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29' -or
         $values.targetTypeName -cne 'Terraria.Main' -or
         $values.targetMethodName -cne 'Update' -or
         $values.targetMethodMetadataToken -notmatch '^0x[0-9A-F]{8}$' -or

@@ -9,6 +9,9 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatTankPetChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
+        // The historical worker oracle binds 1.4.5.8 even when the shared probe
+        // compiles against the current Terraria reference.
+        private static readonly FieldInfo legacySlots=typeof(Player).GetField("slotsMinions",Flags);
         internal static void Run(Assembly host)
         {
             var players=(Player[])Main.player.Clone();var shots=(Projectile[])Main.projectile.Clone();var npcs=(NPC[])Main.npc.Clone();int local=Main.myPlayer;
@@ -49,7 +52,9 @@ namespace NativeWorldTextProbe
         }
         private static Player Player(string mode)
         {
-            var p=new Player{whoAmI=1,active=true,position=new Vector2(400,600),dead=mode=="dead",ghost=mode=="ghost",respawnTimer=600,statLife=400,statLifeMax=400,statLifeMax2=400,numMinions=3,slotsMinions=2.5f};
+            var p=new Player{whoAmI=1,active=true,position=new Vector2(400,600),dead=mode=="dead",ghost=mode=="ghost",respawnTimer=600,statLife=400,statLifeMax=400,statLifeMax2=400,numMinions=3};
+            if(legacySlots==null)throw new MissingFieldException(typeof(Player).FullName,"slotsMinions");
+            legacySlots.SetValue(p,2.5f);
             if(mode=="outside")p.position=new Vector2(16,16);p.MinionRestTargetPoint=p.Center;return p;
         }
         private static Projectile Guardian(Player p)
@@ -89,14 +94,15 @@ namespace NativeWorldTextProbe
                         for(int slot=0;slot<Main.maxProjectiles;slot++)if(Main.projectile[slot].active){Main.ProjectileUpdateLoopIndex=slot;Main.projectile[slot].Update(slot);}
                         Main.ProjectileUpdateLoopIndex=-1;
                     }
-                    for(int i=0;i<2;i++)if(players[0][i].numMinions!=players[1][i].numMinions || players[0][i].slotsMinions!=players[1][i].slotsMinions)throw new InvalidOperationException("Original minion aggregate differs at tick "+tick);
+                    for(int i=0;i<2;i++)if(players[0][i].numMinions!=players[1][i].numMinions || Slots(players[0][i])!=Slots(players[1][i]))throw new InvalidOperationException("Original minion aggregate differs at tick "+tick);
                     foreach(int slot in new[]{0,3,4,7})if(projectiles[0][slot].active!=projectiles[1][slot].active || projectiles[0][slot].minionPos!=projectiles[1][slot].minionPos)throw new InvalidOperationException("Native minion rank/budget differs at slot "+slot);
                 }
                 if(overBudget && projectiles[0][7].active)throw new InvalidOperationException("Original later minion must exercise over-budget Kill.");
             }
             Console.WriteLine("PASS original minion ordered contributors / other owner / extra updates / exact budget and later Kill / two phases");
         }
+        private static float Slots(Player p){return (float)legacySlots.GetValue(p);}
         private static void Equal(Player[] pair,string stage)
-        {if(pair[0].tankPet!=pair[1].tankPet || pair[0].tankPetReset!=pair[1].tankPetReset || pair[0].numMinions!=pair[1].numMinions || pair[0].slotsMinions!=pair[1].slotsMinions)throw new InvalidOperationException("Tank pet lifetime differs from original: "+stage+" oracle="+pair[0].tankPet+"/"+pair[0].tankPetReset+" count="+pair[0].numMinions+"/"+pair[0].slotsMinions+" predicted="+pair[1].tankPet+"/"+pair[1].tankPetReset+" count="+pair[1].numMinions+"/"+pair[1].slotsMinions);}
+        {if(pair[0].tankPet!=pair[1].tankPet || pair[0].tankPetReset!=pair[1].tankPetReset || pair[0].numMinions!=pair[1].numMinions || Slots(pair[0])!=Slots(pair[1]))throw new InvalidOperationException("Tank pet lifetime differs from original: "+stage+" oracle="+pair[0].tankPet+"/"+pair[0].tankPetReset+" count="+pair[0].numMinions+"/"+Slots(pair[0])+" predicted="+pair[1].tankPet+"/"+pair[1].tankPetReset+" count="+pair[1].numMinions+"/"+Slots(pair[1]));}
     }
 }

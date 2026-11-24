@@ -11,6 +11,7 @@ namespace NativeWorldTextProbe
     internal static class NativeCombatWorkerTagChecks
     {
         private const BindingFlags Flags=BindingFlags.Static|BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
+        private static readonly FieldInfo legacyHighestAddedBaseDamage=typeof(TagDamageChanges).GetField("HighestAddedBaseDamage",Flags);
         internal static void Run(Assembly host)
         {
             NativeCombatWorkerChecks.Scene(false);
@@ -97,7 +98,10 @@ namespace NativeWorldTextProbe
         private static string Damage(Player player,Projectile projectile,NPC target)
         {
             Main.rand=new UnifiedRandom(818);var changes=TagDamageChanges.None;player.TagEffectStack.ModifyHit(projectile,target,ref changes);
-            return changes.AddedBaseDamage+"|"+changes.HighestAddedBaseDamage+"|"+changes.AddProjectileTagDamage+"|"+changes.TotalDamageMultiplier+"|"+changes.Crit+"|"+NativeCombatWorkerChecks.RandomStamp();
+            // This comparison owns the authenticated 1.4.5.8 damage fields.
+            // The shared probe can compile against 1.4.6 without recutting that oracle.
+            if(legacyHighestAddedBaseDamage==null)throw new MissingFieldException(typeof(TagDamageChanges).FullName,"HighestAddedBaseDamage");
+            return changes.AddedBaseDamage+"|"+legacyHighestAddedBaseDamage.GetValue(changes)+"|"+changes.AddProjectileTagDamage+"|"+changes.TotalDamageMultiplier+"|"+changes.Crit+"|"+NativeCombatWorkerChecks.RandomStamp();
         }
         private static string Proc(Player player,Projectile projectile,NPC target)
         {

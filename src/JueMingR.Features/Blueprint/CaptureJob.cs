@@ -10,6 +10,7 @@ namespace JueMingR.Features.Blueprint
     {
         private readonly IBlueprintCaptureSource source;
         private readonly BlueprintSelectionSnapshot selection;
+        private readonly string targetVersion;
         private readonly int threadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
         private readonly Dictionary<long, int> covered = new Dictionary<long, int>();
         private readonly Dictionary<long, CaptureObject> groups = new Dictionary<long, CaptureObject>();
@@ -27,10 +28,11 @@ namespace JueMingR.Features.Blueprint
         private CaptureCell firstCell;
         private int objectRead, objectVerify, objectEmit;
         private bool objectVerified, descriptorEmitted;
-        public CaptureJob(IBlueprintCaptureSource source, BlueprintSelectionSnapshot selection, ulong startTick)
+        public CaptureJob(IBlueprintCaptureSource source, BlueprintSelectionSnapshot selection, ulong startTick, string targetVersion = "1.4.5.8")
         {
             this.source = source ?? throw new ArgumentNullException(nameof(source));
             this.selection = selection ?? throw new ArgumentNullException(nameof(selection));
+            this.targetVersion = targetVersion ?? throw new ArgumentNullException(nameof(targetVersion));
             StartTick = startTick;
             if (selection.SpanCount > 0) x = selection.GetSpan(0).Left;
         }
@@ -217,6 +219,7 @@ namespace JueMingR.Features.Blueprint
             return new CaptureSummary { Left = contentCount == 0 ? 0 : left, Top = contentCount == 0 ? 0 : top,
                 Width = contentCount == 0 ? 0 : right - left, Height = contentCount == 0 ? 0 : bottom - top,
                 ContentCount = contentCount, UnreliableObjectCount = unreliable, StartTick = StartTick, EndTick = endTick,
+                TargetVersion = targetVersion,
                 MissingPayloads = new List<string>(missing).ToArray(), UnreliableReasons = reasons.ToArray() };
         }
     }

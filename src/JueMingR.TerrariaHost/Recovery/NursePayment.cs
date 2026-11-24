@@ -9,23 +9,9 @@ namespace JueMingR.TerrariaHost.Recovery
         private readonly Item[][] arrays=new Item[5][];
         private readonly Item[][] refs=new Item[5][];
         private readonly int[][] types=new int[5][],stacks=new int[5][];
-        private readonly long[] amounts=new long[5];
-        private static readonly int[] Ignored={58,57,56,55,54};
         internal readonly ulong[] Slots=new ulong[5];
         internal NursePayment(HostRecovery host){this.host=host;for(int a=0;a<5;a++){int n=a==0?54:40;refs[a]=new Item[n];types[a]=new int[n];stacks[a]=new int[n];}}
-        internal bool Balance(Player p,out long total)
-        {
-            total=0;bool overflow;
-            for(int a=0;a<5;a++)
-            {
-                var array=RecoverySource.AccountItems(p,a);if(array==null || array.Length!=(a==0?59:40))return false;
-                for(int i=0;i<array.Length;i++)if(array[i]==null || array[i].stack<0)return false;
-                amounts[a]=a==0?Utils.CoinsCount(out overflow,array,Ignored):Utils.CoinsCount(out overflow,array);
-            }
-            // CoinsCombineStacks clamps affordability at 9,999,999,999. A
-            // receipt needs the uncapped sum or a rich player appears unpaid.
-            for(int a=0;a<5;a++)total=checked(total+amounts[a]);return true;
-        }
+        internal bool Balance(Player p,out long total) => RecoverySource.TryCoinBalance(p,out total);
         internal bool Capture(Player p)
         {
             Array.Clear(Slots,0,5);

@@ -7,7 +7,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private BlueprintConstructionSelection SelectProjectionTarget(BlueprintProjectionPlacement item,CaptureCell cell,CaptureObject? obj=null)
         {
             var catalog=MaterialCatalog;
-            if(catalog==null || item.Summary.TargetVersion!=catalog.TargetVersion)
+            if(catalog==null || !catalog.CanReadVersion(item.Summary.TargetVersion))
             {
                 ushort bits=BlueprintConstructionTargets.Layers(cell);
                 return new BlueprintConstructionSelection(bits,bits,catalog?.Revision??0);

@@ -973,9 +973,7 @@ namespace NativeWorldTextProbe
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static int Check(string content, string output, string scope)
         {
-            var actual = typeof(ChatManager).Assembly;
-            string hash; using (var stream = File.OpenRead(actual.Location)) using (var sha = SHA256.Create()) hash = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "");
-            Require(hash == "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3" && actual.ManifestModule.ModuleVersionId == new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"), "actual fixed EXE identity");
+            Program.RequireOriginalGame(typeof(ChatManager).Assembly);
             ChatManager.Register<Terraria.GameContent.UI.Chat.ColorTagHandler>("c", "color");
             ChatManager.Register<Terraria.GameContent.UI.Chat.ItemTagHandler>("i", "item");
             Terraria.Localization.LanguageManager.Instance.SetLanguage("en-US"); Terraria.Lang.InitializeLegacyLocalization();

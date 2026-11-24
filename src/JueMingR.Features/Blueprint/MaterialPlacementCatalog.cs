@@ -95,6 +95,15 @@ namespace JueMingR.Features.Blueprint
         }
         public long Revision { get; }
         public string TargetVersion { get; }
+        public static bool SupportsVersion(string version) => version == "1.4.5.8" || version == "1.4.6.0";
+        public static bool CanReadVersion(string captured, string current)
+        {
+            // The original IDs and frame metadata agree across these two
+            // versions. Older captures retain their identity and are qualified
+            // against the current catalog before any native action.
+            return SupportsVersion(current) && (captured == current || captured == "1.4.5.8");
+        }
+        public bool CanReadVersion(string captured) => CanReadVersion(captured, TargetVersion);
         public BlueprintProducerCoverage Coverage { get; }
         public BlueprintSubstitutionCatalog Substitution { get; }
         public int DeclarationCount { get; }
@@ -129,7 +138,7 @@ namespace JueMingR.Features.Blueprint
         public BlueprintPlacementDescriptor Substrate(CaptureCell cell)
         {
             BlueprintSubstrateRecipe recipe; BlueprintPlacementRule[] rules;
-            if (TargetVersion != "1.4.5.8" || cell.ObjectId > 0 || cell.UnreliableObject || !BlueprintSubstrateRecipe.TryGet(cell.TileType, out recipe) ||
+            if (!SupportsVersion(TargetVersion) || cell.ObjectId > 0 || cell.UnreliableObject || !BlueprintSubstrateRecipe.TryGet(cell.TileType, out recipe) ||
                 !tiles.TryGetValue(cell.TileType, out rules)) return null;
             BlueprintPlacementDeclaration[] declared;
             if (declarations.TryGetValue(cell.TileType, out declared))
@@ -182,7 +191,7 @@ namespace JueMingR.Features.Blueprint
         { return new BlueprintTargetQualification(disposition, resolution, placement, reason, Revision); }
         public BlueprintTargetQualification QualifyTile(CaptureCell cell, CaptureObject? obj = null)
         {
-            if (TargetVersion != "1.4.5.8") return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.None, null, BlueprintTargetReason.VersionMismatch);
+            if (!SupportsVersion(TargetVersion)) return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.None, null, BlueprintTargetReason.VersionMismatch);
             if (cell.UnreliableObject || obj.HasValue && (!obj.Value.Reliable || obj.Value.Type != cell.TileType))
                 return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.None, null, BlueprintTargetReason.UnreliableObject);
             bool ambiguous; var placement = ResolveTile(cell, obj, out ambiguous);
@@ -213,7 +222,7 @@ namespace JueMingR.Features.Blueprint
         }
         public BlueprintTargetQualification QualifyWall(int wall)
         {
-            if (TargetVersion != "1.4.5.8") return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.None, null, BlueprintTargetReason.VersionMismatch);
+            if (!SupportsVersion(TargetVersion)) return Qualification(BlueprintTargetDisposition.Unresolved, BlueprintPlacementResolutionKind.None, null, BlueprintTargetReason.VersionMismatch);
             BlueprintPlacementDescriptor placement;
             if (walls.TryGetValue(wall, out placement)) return Qualification(BlueprintTargetDisposition.Construction,
                 placement == null ? BlueprintPlacementResolutionKind.Ambiguous : BlueprintPlacementResolutionKind.Exact, placement,

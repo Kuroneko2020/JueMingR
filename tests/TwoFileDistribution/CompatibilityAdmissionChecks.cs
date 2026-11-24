@@ -15,7 +15,7 @@ internal static class CompatibilityAdmissionChecks
         string altered=Path.Combine(area,"different-hash");Directory.CreateDirectory(altered);
         string alteredExe=Path.Combine(altered,"Terraria.exe");File.Copy(terraria,alteredExe);
         using(var bytes=new FileStream(alteredExe,FileMode.Append,FileAccess.Write,FileShare.None))bytes.WriteByte(0x52);
-        Require(SetupPayload.FileHash(alteredExe)!=TargetSafety.TerrariaHash,"changed real-client file differs from reference hash");
+        Require(SetupPayload.FileHash(alteredExe)!=SetupPayload.FileHash(terraria),"changed real-client file differs from reference hash");
         InstallAndRemove(altered,payload);
 
         string future=Path.Combine(area,"unverified-version");Directory.CreateDirectory(future);

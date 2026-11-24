@@ -391,8 +391,8 @@ namespace NativeWorldTextProbe
             Func<int,int> count=type=>Main.projectile.Count(p=>p.active && p.owner==body.whoAmI && p.type==type);
             for(int tick=0;tick<120 && count(ProjectileID.BabySlime)==0;tick++)NativeCombatStep(host,body);
             Require(count(ProjectileID.BabySlime)==1 && body.FindBuffIndex(BuffID.BabySlime)>=0,
-                "native .8 Slime Staff fills an available slot and applies its native minion buff: count="+count(ProjectileID.BabySlime)+
-                " held="+body.HeldItem.type+" slots="+body.slotsMinions+"/"+body.maxMinions+" mana="+body.statMana+" status="+Call(host,"Status",id));
+                "native Slime Staff fills an available slot and applies its native minion buff: count="+count(ProjectileID.BabySlime)+
+                " held="+body.HeldItem.type+" capacity="+body.maxMinions+" mana="+body.statMana+" status="+Call(host,"Status",id));
             select.MainWeapons=new[]{new CompanionWeaponPreference(ItemID.QueenSpiderStaff,0,41)};
             Call(host,"SetBehavior",id,select);
             for(int tick=0;tick<180 && count(ProjectileID.SpiderHiver)==0;tick++)NativeCombatStep(host,body);

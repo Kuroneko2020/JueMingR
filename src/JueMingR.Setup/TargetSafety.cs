@@ -6,9 +6,6 @@ namespace JueMingR.Setup
 {
     internal static class TargetSafety
     {
-        // Build/test baseline only. A game update is not an installation veto.
-        internal const string TerrariaHash = "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3";
-
         internal static string Validate(string directory, bool installing)
         {
             string root = ValidateGameDirectory(directory, installing);
