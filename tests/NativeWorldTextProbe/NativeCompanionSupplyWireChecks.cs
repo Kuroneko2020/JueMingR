@@ -309,7 +309,7 @@ namespace NativeWorldTextProbe
             foreach (var pair in new[] { Tuple.Create(slot, actorPeer), Tuple.Create(human.whoAmI, humanPeer) })
             {
                 var client = serverClients[pair.Item1];
-                client.Socket = new TcpSocket(pair.Item2);
+                client.Activate(new TcpSocket(pair.Item2));
                 NetMessage.buffer[pair.Item1].broadcast = true;
                 for (int x = 0; x < client.TileSections.GetLength(0); x++)
                     for (int y = 0; y < client.TileSections.GetLength(1); y++)

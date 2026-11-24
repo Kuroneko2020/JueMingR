@@ -13,6 +13,13 @@ namespace JueMingR.TerrariaHost.Combat
     // Damage at each victim can receive. Later decorative rays have damage0.
     internal static class HostMedusaScanAttack
     {
+        private static readonly Func<Player,int,bool,bool> checkMana=BindMana<Func<Player,int,bool,bool>>(typeof(int),typeof(bool));
+        private static readonly Func<Player,int,bool,bool,bool> checkLegacyMana=BindMana<Func<Player,int,bool,bool,bool>>(typeof(int),typeof(bool),typeof(bool));
+        private static T BindMana<T>(params Type[] signature) where T:Delegate
+        {
+            var method=typeof(Player).GetMethod("CheckMana",signature);
+            return method==null?null:(T)Delegate.CreateDelegate(typeof(T),method);
+        }
         internal static bool Handles(int type){return type==535;}
         internal sealed class State
         {
@@ -55,10 +62,16 @@ namespace JueMingR.TerrariaHost.Combat
                             if(r.Potion)potionWait=int.MaxValue;break;
                         }
                     }
-                    // With quick mana disabled this original path only changes
-                    // fields on our private owner (including ManaV2's2.5 slow
-                    // flag). No live inventory, mount, sound or operation runs.
-                    return privateOwner.CheckMana(privateOwner.HeldItem.mana,true,true);
+                    int amount=privateOwner.HeldItem.mana;
+                    if(checkLegacyMana!=null)return checkLegacyMana(privateOwner,amount,true,true);
+                    if(checkMana==null)return false;
+                    // Our budget already simulates potion use. 1.4.6 removed
+                    // blockQuickMana, and this private owner shares the live
+                    // inventory arrays. Suppress QuickMana while paying mana.
+                    bool flower=privateOwner.manaFlower;
+                    privateOwner.manaFlower=false;
+                    try{return checkMana(privateOwner,amount,true);}
+                    finally{privateOwner.manaFlower=flower;}
                 }
             }
         }

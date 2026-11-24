@@ -474,7 +474,7 @@ namespace NativeWorldTextProbe
                 Main.tile=new Tile[600,150];for(int x=0;x<tile.GetLength(0);x++)for(int y=0;y<tile.GetLength(1);y++)Main.tile[x,y]=tile[x,y];
                 activeTime.SetValue(null,new uint[4,2]);Netplay.Clients=new RemoteClient[256];NetMessage.buffer=new MessageBuffer[257];for(int i=0;i<257;i++)NetMessage.buffer[i]=new MessageBuffer{whoAmI=i};
                 int humanSlot=human.whoAmI,actorSlot=first.whoAmI;
-                foreach(int id in new[]{humanSlot,actorSlot}){var client=new RemoteClient{Id=id,State=10,Socket=Netplay.Connection.Socket};for(int x=0;x<3;x++)client.TileSections[x,0]=true;Netplay.Clients[id]=client;NetMessage.buffer[id].broadcast=true;}
+                foreach(int id in new[]{humanSlot,actorSlot}){var client=Program.CreateRemoteClient(id,10,Netplay.Connection.Socket);for(int x=0;x<3;x++)client.TileSections[x,0]=true;Netplay.Clients[id]=client;NetMessage.buffer[id].broadcast=true;}
                 human.position=first.position;second.position=new Vector2(8700,900);
                 Main.netMode=2;RemoteClient.CheckSection(humanSlot,human.Center);RemoteClient.CheckSection(actorSlot,first.Center);
                 uint start=Main.GameUpdateCount;human.position=new Vector2(7600,900);

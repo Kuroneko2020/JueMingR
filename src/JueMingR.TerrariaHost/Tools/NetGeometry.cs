@@ -2,7 +2,6 @@ using System;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.GameContent;
-using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Tools
 {
@@ -28,7 +27,10 @@ namespace JueMingR.TerrariaHost.Tools
 #endif
         internal static bool IsNet(Item item){return item!=null && item.stack>0 && (item.type==1991 || item.type==3183 || item.type==4821);}
         internal static int Frames(Player p,Item item)
-        {return Math.Max(1,(int)(item.useAnimation*(item.melee && !ItemID.Sets.NoMeleeSpeedBonus[item.type]?p.meleeSpeed:1f)));}
+        {
+            // The three nets use the melee or unscaled branch of ApplyItemAnimation.
+            return Math.Max(1, (int)(item.useAnimation * (item.melee ? p.meleeSpeed : 1f)));
+        }
         internal bool Hits(Player p,Item item,Rectangle target,long update)
         {
             int dir=p.direction;

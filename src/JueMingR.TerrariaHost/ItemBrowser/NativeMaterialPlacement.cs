@@ -47,13 +47,14 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             var wallDomains = MaterialSpecialDomains(typeof(WallID.Sets.Conversion));
             tileDomains.Add(127); // Ice Rod projectile, not createTile.
             tileDomains.Add(51);  // Original projectile 1054 and other web writers.
-            bool version = typeof(Main).Assembly.GetName().Version == new Version(1, 4, 5, 8);
+            string targetVersion = typeof(Main).Assembly.GetName().Version.ToString();
+            bool version = BlueprintPlacementCatalog.SupportsVersion(targetVersion);
             var coverage = new BlueprintProducerCoverage(materialTileSourceComplete && version, materialWallSourceComplete && version,
-                materialAbiValid && version, tileDomains, wallDomains, "Terraria 1.4.5.8; canonical createTile/createWall + tileWand + FlexibleTileWand options; special conversion/projectile domains retained unknown",
+                materialAbiValid && version, tileDomains, wallDomains, "Terraria " + targetVersion + "; canonical createTile/createWall + tileWand + FlexibleTileWand options; special conversion/projectile domains retained unknown",
                 TileID.Count, WallID.Count);
             long revision = ++placementRevision;
             materialCatalog = new BlueprintPlacementCatalog(revision, materialRules, materialWalls, materialPaints, materialCoatings, ItemID.Wire, ItemID.Actuator,
-                declarations: materialDeclarations, coverage: coverage, substitution: CompileBlueprintSubstitution(revision, version));
+                targetVersion: targetVersion, declarations: materialDeclarations, coverage: coverage, substitution: CompileBlueprintSubstitution(revision, version));
         }
         private HashSet<int> MaterialSpecialDomains(Type source)
         {

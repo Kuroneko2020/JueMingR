@@ -378,7 +378,7 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < chest.item.Length; i++) { chest.item[i].SetDefaults(ItemID.StoneBlock); chest.item[i].stack = chest.item[i].maxStack; }
                 chest.item[0].SetDefaults(type); chest.item[0].stack = chest.item[0].maxStack - capacity;
                 int before = chest.item[0].stack;
-                for (int i = 0; i < Netplay.Clients.Length; i++) Netplay.Clients[i] = new RemoteClient { Id = i, State = 10, PendingTermination = true };
+                for (int i = 0; i < Netplay.Clients.Length; i++) Netplay.Clients[i] = new RemoteClient { Id = i, State = 10 };
                 // Normal server dispatch owns the same per-client buffer that
                 // GetData receives. Keep that invariant in this isolated realm.
                 // Server SendData examines every buffer's broadcast flag before

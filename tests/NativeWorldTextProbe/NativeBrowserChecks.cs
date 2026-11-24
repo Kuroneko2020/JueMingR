@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Linq;
-using System.Security.Cryptography;
 using Terraria;
 using Terraria.ID;
 using Terraria.Localization;
@@ -23,9 +22,7 @@ namespace NativeWorldTextProbe
             Console.WriteLine("BROWSER-CANDIDATE " + assembly.Location + " MVID=" + assembly.ManifestModule.ModuleVersionId);
             if (assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeItemCatalog") == null)
                 throw new InvalidOperationException("G04 native item/recipe read-only catalog adapter missing");
-            Require(typeof(Main).Assembly.ManifestModule.ModuleVersionId == new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"), "G04 native MVID");
-            using (var file = File.OpenRead(typeof(Main).Assembly.Location)) using (var sha = SHA256.Create())
-                Require(BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "") == "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3", "G04 fixed native .8 source");
+            Program.RequireOriginalGame(typeof(Main).Assembly);
             LanguageManager.Instance.SetLanguage("en-US"); Lang.InitializeLegacyLocalization();
             Main.netMode = Main.myPlayer = 0; Main.dedServ = false; Main.rand = new UnifiedRandom(123);
             Main.player[0] = new Player { active = true };

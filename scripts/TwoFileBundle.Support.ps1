@@ -87,15 +87,15 @@ function Write-JmrRuntimeManifest {
         $path=Join-Path $Internal $pair[0];$identity=$pair[1]
         if((Get-Phase0SFileSha256 $path) -cne $identity.sha256 -or [Reflection.AssemblyName]::GetAssemblyName($path).FullName -cne $identity.fullName){throw 'Copied runtime bytes differ from their previously inspected identity.'}
     }
+    $reference = Get-Phase0SCurrentReferenceIdentity
 $runtimeLines=@(
     'schemaVersion=2',('packageId='+$packageId),('sourceCommit='+$sourceCommit),
-    'targetAssemblySimpleName=Terraria','targetAssemblyVersion=1.4.5.8',
-    'targetAssemblyMvid=2c29f6c3-4bd9-4add-9c58-da159804e083',
-    'targetAssemblySha256=960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3',
+    'targetAssemblySimpleName=Terraria',('targetAssemblyVersion='+$reference.Game.assemblyVersion),
+    ('targetAssemblyMvid='+$reference.Game.mvid),('targetAssemblySha256='+$reference.Game.sha256),
     'reLogicAssemblySimpleName=ReLogic','reLogicAssemblyVersion=1.0.0.0','reLogicAssemblyPublicKeyToken=null',
-    'reLogicAssemblyMvid=ee258be9-88a4-423d-b3ce-84b6c35b141a','reLogicResourceName=Terraria.Libraries.ReLogic.ReLogic.dll',
-    'reLogicResourceSha256=E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29',
-    'targetTypeName=Terraria.Main','targetMethodName=Update','targetMethodMetadataToken=0x06000D16',
+    ('reLogicAssemblyMvid='+$reference.ReLogic.mvid),('reLogicResourceName='+$reference.ReLogic.embeddedResourceName),
+    ('reLogicResourceSha256='+$reference.ReLogic.sha256),
+    'targetTypeName=Terraria.Main','targetMethodName=Update',('targetMethodMetadataToken='+$reference.Game.mainUpdateMetadataToken),
     'targetMethodIsStatic=false','targetMethodReturnType=System.Void','targetMethodParameterCount=1',
     'targetMethodParameterType=Microsoft.Xna.Framework.GameTime','hostAssemblySimpleName=JueMingR.TerrariaHost',
     'hostAssemblyVersion=0.0.0.0',('hostAssemblyMvid='+$hostIdentity.mvid),('hostAssemblySha256='+$hostIdentity.sha256),

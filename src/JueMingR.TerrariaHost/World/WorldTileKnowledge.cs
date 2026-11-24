@@ -38,9 +38,20 @@ namespace JueMingR.TerrariaHost.World
         internal static WorldTileSource Capture()
         {
             var client=Main.netMode==1?Netplay.Connection:null;
-            return new WorldTileSource(Main.tile,Main.netMode==1?Main.sectionManager:null,client,client?.Socket,Main.ActiveWorldFileData,Main.maxTilesX,Main.maxTilesY,Main.netMode,Main.worldID);
+            // The world owner can be cleared while the retiring tile array
+            // remains installed. Native Main.worldID dereferences that owner.
+            var world = Main.ActiveWorldFileData;
+            return new WorldTileSource(Main.tile,Main.netMode==1?Main.sectionManager:null,client,client?.Socket,world,Main.maxTilesX,Main.maxTilesY,Main.netMode,world?.WorldId ?? 0);
         }
         internal bool Current
-        {get{return tiles!=null && ReferenceEquals(tiles,Main.tile) && width==Main.maxTilesX && height==Main.maxTilesY && mode==Main.netMode && worldId==Main.worldID && ReferenceEquals(world,Main.ActiveWorldFileData) && (mode!=1 || ReferenceEquals(sections,Main.sectionManager) && ReferenceEquals(connection,Netplay.Connection) && ReferenceEquals(socket,Netplay.Connection?.Socket));}}
+        {
+            get
+            {
+                var activeWorld = Main.ActiveWorldFileData;
+                return activeWorld != null && tiles != null && ReferenceEquals(tiles, Main.tile) && width == Main.maxTilesX && height == Main.maxTilesY &&
+                    mode == Main.netMode && ReferenceEquals(world, activeWorld) && worldId == activeWorld.WorldId &&
+                    (mode != 1 || ReferenceEquals(sections, Main.sectionManager) && ReferenceEquals(connection, Netplay.Connection) && ReferenceEquals(socket, Netplay.Connection?.Socket));
+            }
+        }
     }
 }

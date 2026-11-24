@@ -154,7 +154,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (Library == null || Flow.ContentHandle.IsEmpty || Flow.Summary == null || catalog == null) return BlueprintMaterialSnapshot.Pending;
             bool sameKey = materialDraftKey != null && materialDraftKey.Id == Flow.ContentHandle.Id &&
                 materialDraftKey.ExcludeUnreliable == Flow.ExcludeUnreliable && ReferenceEquals(materialDraftExclusions, Flow.ExcludedObjectIds) &&
-                materialDraftKey.PlacementRevision == catalog.Revision && materialDraftKey.TargetVersion == Flow.Summary.TargetVersion;
+                materialDraftKey.PlacementRevision == catalog.Revision && materialDraftKey.TargetVersion == catalog.TargetVersion;
             // A handle is allocated before capture, and Summary already exists
             // during Sealing. Only the completed seal receipt authorizes reads.
             // Accepted Create retires its reader before promotion; Saving may
@@ -165,7 +165,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 materialDraftExclusions = Flow.ExcludedObjectIds;
                 materialDraftKey = new BlueprintMaterialKey(Flow.ContentHandle.Id, true, Guid.Empty, "", Flow.ExcludeUnreliable,
-                    Flow.ExcludedObjectIds, catalog.Revision, Flow.Summary.TargetVersion);
+                    Flow.ExcludedObjectIds, catalog.Revision, catalog.TargetVersion);
                 materialDraftSnapshot = BlueprintMaterialSnapshot.Pending;
             }
             var key = materialDraftKey;
@@ -179,7 +179,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (!materialAssetKeys.TryGetValue(entry.AssetId, out key) || key.ContentRevision != revision || key.ContentHash != entry.ContentHash || key.PlacementRevision != catalog.Revision)
             {
                 if (materialAssetKeys.Count >= 16) materialAssetKeys.Clear();
-                materialAssetKeys[entry.AssetId] = key = new BlueprintMaterialKey(entry.AssetId, false, revision, entry.ContentHash, false, null, catalog.Revision);
+                materialAssetKeys[entry.AssetId] = key = new BlueprintMaterialKey(entry.AssetId, false, revision, entry.ContentHash, false, null, catalog.Revision, catalog.TargetVersion);
             }
             Library.RequestMaterials(key, catalog); return Library.Materials(key);
         }

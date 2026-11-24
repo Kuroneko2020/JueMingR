@@ -28,9 +28,7 @@ namespace NativeWorldTextProbe
         internal static void Run(Action<object> visual=null, bool coins=false, bool about=false, bool recovery=false, bool processing=false, bool shortFeedback=false,string candidateAssembly=null,string predictionHostHash=null,string candidatePackageId=null,bool exactPredictionComparison=false,Action<object> initializeRuntime=null)
         {
             RequireHostIdentity(IntPtr.Size==4,"G05 native fixture must use .NET Framework x86");
-            RequireHostIdentity(typeof(Main).Assembly.ManifestModule.ModuleVersionId==new Guid("2c29f6c3-4bd9-4add-9c58-da159804e083"),"fixed .8 MVID");
-            using(var file=File.OpenRead(typeof(Main).Assembly.Location))using(var sha=System.Security.Cryptography.SHA256.Create())
-                RequireHostIdentity(BitConverter.ToString(sha.ComputeHash(file)).Replace("-","")=="960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3","fixed .8 source");
+            Program.RequireOriginalGame(typeof(Main).Assembly, exactPredictionComparison);
             var assembly=Assembly.LoadFrom(candidateAssembly??Path.Combine(Program.Repository,"artifacts/build/Debug/work/bin/JueMingR.TerrariaHost/x86/Debug/net472/JueMingR.TerrariaHost.dll"));
             using(var bytes=File.OpenRead(assembly.Location))using(var hash=System.Security.Cryptography.SHA256.Create())
                 Console.WriteLine("TESTED-HOST path="+assembly.Location+" sha256="+BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-","")+" invocation="+(Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT")==null?"explicit-specialist":"formal-current"));

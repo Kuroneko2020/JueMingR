@@ -60,6 +60,11 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Projectile),"AI_075",transpiler:nameof(DrillTileGate));
             Patch(typeof(Projectile),"Damage",nameof(ProjectileBefore),nameof(ProjectileDamageAfter),nameof(ScopeFinal));
             Patch(typeof(Projectile),"Kill",nameof(ProjectileBefore),finalizer:nameof(ScopeFinal));
+            // 1.4.6 can reclaim a projectile without Kill effects. Its own
+            // packet 29 still needs the leased actor's native owner scope.
+            var despawn = AccessTools.Method(typeof(Projectile), "Despawn", Type.EmptyTypes);
+            if (despawn != null && !despawn.IsStatic && despawn.ReturnType == typeof(void))
+                Harmony.Patch(despawn, prefix: Hook(nameof(ProjectileBefore)), finalizer: Hook(nameof(ScopeFinal)));
             Patch(typeof(NetMessage),"SendPacketToServer",nameof(Send));
             Patch(typeof(MessageBuffer),"GetData",nameof(Packet),nameof(PacketAfter));
             Patch(typeof(NPC),"GetPendingDamage",nameof(ObservationPending));

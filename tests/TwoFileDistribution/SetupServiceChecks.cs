@@ -292,7 +292,7 @@ internal static class SetupServiceChecks
         var entries = new List<object>();
         foreach (string name in names) { string path = Path.Combine(target, name); Directory.CreateDirectory(Path.GetDirectoryName(path)); byte[] data = Encoding.UTF8.GetBytes("old-owned:" + name); File.WriteAllBytes(path, data); entries.Add(new { installRelativePath = name, length = data.Length, sha256 = SetupPayload.Hash(data) }); }
         string source = new string('a', 40);
-        var manifest = new { schemaVersion = 1, packageId = "continuous-processing-" + source, sourceCommit = source, target = new { simpleName = "Terraria", version = "1.4.5.8", mvid = "2c29f6c3-4bd9-4add-9c58-da159804e083", sha256 = TargetSafety.TerrariaHash }, payload = entries };
+        var manifest = new { schemaVersion = 1, packageId = "continuous-processing-" + source, sourceCommit = source, target = new { simpleName = "Terraria", version = "1.4.5.8", mvid = "2c29f6c3-4bd9-4add-9c58-da159804e083", sha256 = "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3" }, payload = entries };
         File.WriteAllText(Path.Combine(target, "JueMingR.Validation", "phase-0-s-install-manifest.json"), new JavaScriptSerializer().Serialize(manifest));
         File.WriteAllText(Path.Combine(target, "JueMingR.Validation", "unknown.txt"), "leave unknown");
     }

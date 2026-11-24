@@ -15,6 +15,13 @@ namespace JueMingR.TerrariaHost.Combat
     internal static class HostGemStaffAttack
     {
         private static readonly Func<Player,int,float> pack=(Func<Player,int,float>)Delegate.CreateDelegate(typeof(Func<Player,int,float>),typeof(Player).GetMethod("PackGemStaffFeatures",BindingFlags.Instance|BindingFlags.NonPublic));
+        private static readonly Action<Projectile> setSpawnDefaults=BindSpawnDefaults();
+        private static Action<Projectile> BindSpawnDefaults()
+        {
+            var method=typeof(Projectile).GetMethod("SetDefaultsFromSpawnValues",Type.EmptyTypes)
+                ?? typeof(Projectile).GetMethod("FinalizeProjectile",Type.EmptyTypes);
+            return method==null?null:(Action<Projectile>)Delegate.CreateDelegate(typeof(Action<Projectile>),method);
+        }
         internal static bool Handles(int type){return type>=121 && type<=126 || type==597;}
         internal static float Features(Player player,int type)
         {
@@ -100,10 +107,11 @@ namespace JueMingR.TerrariaHost.Combat
         }
         internal static Projectile PrivateBirth(int type,int owner,float bits,int twin,Vector2 center,Vector2 velocity,int damage,PredictionTerrain terrain)
         {
+            if(!Handles(type) || setSpawnDefaults==null)return null;
             var shot=new Projectile();shot.SetDefaults(type);shot.active=true;shot.owner=owner;shot.Center=center;shot.velocity=velocity;shot.damage=damage;shot.ai[0]=bits;shot.ai[1]=twin;
-            // This exact type's Finalize only adjusts penetration, lifetime
-            // and armor penetration. It has no game or random side effect.
-            shot.FinalizeProjectile();bool wet;byte kind;
+            // The gem-staff branch of both native spawn initializers adjusts
+            // only the private projectile's penetration, lifetime and armor penetration.
+            setSpawnDefaults(shot);bool wet;byte kind;
             if(!terrain.ProjectileWet(center.X,center.Y,shot.width,shot.height,out wet,out kind,true))return null;
             shot.wet=wet;shot.honeyWet=wet && kind==2;shot.shimmerWet=wet && kind==3;
             return shot;

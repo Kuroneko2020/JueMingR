@@ -29,8 +29,8 @@ namespace NativeWorldTextProbe
             try
             {
                 Call(host,"ClearWorldSources");globals.Clear();foreach(var actor in actors){((IDictionary)Get(actor,"NpcViews")).Clear();Call(Get(actor,"PendingStrikes"),"Clear");}Main.npc=Enumerable.Range(0,Main.maxNPCs).Select(i=>new NPC{whoAmI=i,active=false}).ToArray();
-                Main.maxSectionsX=Main.maxSectionsY=1;Netplay.Clients=new RemoteClient[256];for(int i=0;i<256;i++)Netplay.Clients[i]=new RemoteClient{Id=i,Socket=new TcpSocket()};NetMessage.buffer=new MessageBuffer[257];for(int i=0;i<257;i++)NetMessage.buffer[i]=new MessageBuffer{whoAmI=i};
-                foreach(int id in new[]{first.whoAmI,second.whoAmI}){Netplay.Clients[id].State=10;Netplay.Clients[id].Socket=Netplay.Connection.Socket;Netplay.Clients[id].TileSections[0,0]=true;NetMessage.buffer[id].broadcast=true;}
+                Main.maxSectionsX=Main.maxSectionsY=1;Netplay.Clients=new RemoteClient[256];for(int i=0;i<256;i++)Netplay.Clients[i]=new RemoteClient{Id=i};NetMessage.buffer=new MessageBuffer[257];for(int i=0;i<257;i++)NetMessage.buffer[i]=new MessageBuffer{whoAmI=i};
+                foreach(int id in new[]{first.whoAmI,second.whoAmI}){Netplay.Clients[id].State=10;Netplay.Clients[id].Activate(Netplay.Connection.Socket);Netplay.Clients[id].TileSections[0,0]=true;NetMessage.buffer[id].broadcast=true;}
                 Main.BestiaryTracker=new BestiaryUnlocksTracker();Main.PylonSystem=new TeleportPylonsSystem();serverFrames=new Dictionary<int,List<byte[]>>();packets.Patch(AccessTools.Method(typeof(NetMessage),"SendPacket"),prefix:new HarmonyMethod(typeof(NativeCompanionCoreNetworkChecks),nameof(CaptureServer)){priority=Priority.First,before=new[]{"JueMingR.Tests.QuickItemOutlets"}});
                 players[0].position=new Vector2(900,918);first.position=new Vector2(1040,918);second.position=new Vector2(1080,918);Main.netMode=2;Main.dedServ=true;
                 int rootSlot=NPC.NewNPC(NPC.GetSpawnSourceForNaturalSpawn(),1100,920,wall?113:NPCID.GiantWormHead,start);

@@ -29,7 +29,7 @@ namespace NativeWorldTextProbe
             try
             {
                 Call(host,"ClearWorldSources");Main.npc=clientTable;human.position=new Vector2(1000,918);first.position=new Vector2(1050,918);second.position=new Vector2(1250,918);Main.maxSectionsX=Main.maxSectionsY=1;activeTime.SetValue(null,new uint[2,2]);
-                Netplay.Clients=new RemoteClient[256];for(int i=0;i<256;i++)Netplay.Clients[i]=new RemoteClient{Id=i,Socket=new TcpSocket()};NetMessage.buffer=new MessageBuffer[257];for(int i=0;i<257;i++)NetMessage.buffer[i]=new MessageBuffer{whoAmI=i};
+                Netplay.Clients=new RemoteClient[256];for(int i=0;i<256;i++)Netplay.Clients[i]=new RemoteClient{Id=i};NetMessage.buffer=new MessageBuffer[257];for(int i=0;i<257;i++)NetMessage.buffer[i]=new MessageBuffer{whoAmI=i};
                 // Server-only history exists before the fresh receiver joins.
                 // It is not falsely attributed to the new client or used as
                 // its expected damage. No registered receiver drops packets.
@@ -37,7 +37,7 @@ namespace NativeWorldTextProbe
                 if(fresh)for(int action=0;action<20;action++){NativeQuickItemChecks.BeginWorldStep();source.UpdateNPC(Slot);}
                 if(fresh)Require(source.ai[2]==0 && source.damage==(int)(source.defDamage*1.5),"real server history ends its swing with raw0/current21 before this receiver's first baseline");
                 Main.npc=clientTable;Main.netMode=1;Main.dedServ=dedicated;
-                Netplay.Clients[armedPeer]=new RemoteClient{Id=armedPeer,State=10,Socket=Netplay.Connection.Socket};Netplay.Clients[armedPeer].TileSections[0,0]=true;NetMessage.buffer[armedPeer].broadcast=true;
+                Netplay.Clients[armedPeer]=Program.CreateRemoteClient(armedPeer,10,Netplay.Connection.Socket);Netplay.Clients[armedPeer].TileSections[0,0]=true;NetMessage.buffer[armedPeer].broadcast=true;
                 Action<Action> server=action=>{Main.npc=sourceTable;Main.netMode=2;Main.dedServ=true;try{RemoteClient.CheckSection(armedPeer,source.Center,0);Require(Netplay.Clients[armedPeer].State==10 && Netplay.Clients[armedPeer].Socket.IsConnected() && NetMessage.buffer[armedPeer].broadcast && Netplay.Clients[armedPeer].IsSectionActive(source.NetSectionCoordinates),"real server mode has a connected/broadcast receiver in the actual active NPC section");action();}finally{Main.npc=clientTable;Main.netMode=1;Main.dedServ=dedicated;}};
                 Action packets=()=>{foreach(var frame in armedPackets.Where(p=>p[2]==23 || p[2]==54)){PlainNpcPacket(host,plain,frame);deliver(frame);if(frame[2]==23)received++;}};
                 // One first-baseline publication. Subsequent window traffic is

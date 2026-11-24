@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Terraria;
 using JueMingR.Features.Movement;
@@ -13,11 +14,24 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
     internal sealed class NativePlayerMotion
     {
         private struct Profile { internal bool Complex,AssistedJump; internal float DefaultGravity; internal MovementJumpPhase JumpPhase; }
+        private static readonly AccessTools.FieldRef<Player,float> legacyMinionSlots=BindLegacyMinionSlots();
         private readonly Profile[] profiles=new Profile[Main.maxPlayers];
         private readonly Player[] restoredPlayers=new Player[Main.maxPlayers];
         private int restoring;
         [ThreadStatic] private static NativePlayerMotion restored;
         internal int Quality { get; private set; }
+        private static AccessTools.FieldRef<Player,float> BindLegacyMinionSlots()
+        {
+            var field=typeof(Player).GetField("slotsMinions");
+            return field==null?null:AccessTools.FieldRefAccess<Player,float>(field);
+        }
+        private static void ResetMinionCounts(Player player)
+        {
+            player.numMinions=0;
+            // Only the legacy replay accumulates slot usage during projectile
+            // updates. 1.4.6 checks capacity separately from the minion rank.
+            if(legacyMinionSlots!=null)legacyMinionSlots(player)=0;
+        }
         // An observed stool anchor is a complex fixed-input condition, like
         // sitting. Do not invent ordinary gravity/jump while keeping its
         // expanded hitbox. A changed use bit is independently in Alignment.
@@ -128,7 +142,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
                     if(player.ghost)continue;
                     // Native UpdateDead clears this aggregate; Ghost returns
                     // earlier and deliberately retains its distinct behavior.
-                    if(player.dead){player.numMinions=0;player.slotsMinions=0;continue;}
+                    if(player.dead){ResetMinionCounts(player);continue;}
                     profiles[slot]=Step(player,profiles[slot]);
                 }
         }
@@ -137,7 +151,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             player.outOfRange=false;if(player.whoAmI==Main.myPlayer)return true;
             int x=(int)(player.position.X+player.width/2)/16,y=(int)(player.position.Y+player.height/2)/16;
             if(WorldGen.InWorld(x,y,4) && NativeTileBoundary.Read(x,y)!=null && NativeTileBoundary.Read(x-3,y)!=null && NativeTileBoundary.Read(x+3,y)!=null && NativeTileBoundary.Read(x,y-3)!=null && NativeTileBoundary.Read(x,y+3)!=null)return true;
-            player.outOfRange=true;player.numMinions=0;player.slotsMinions=0;player.itemAnimation=0;player.netOffset=Vector2.Zero;return false;
+            player.outOfRange=true;ResetMinionCounts(player);player.itemAnimation=0;player.netOffset=Vector2.Zero;return false;
         }
         private Profile Step(Player p,Profile profile)
         {
@@ -293,7 +307,7 @@ namespace JueMingR.TerrariaHost.Combat.Prediction
             // movement; native minions rebuild rank and occupied slots in
             // projectile order. Retaining yesterday's total shifts minionPos
             // every update and can incorrectly kill an over-budget minion.
-            p.numMinions=0;p.slotsMinions=0;
+            ResetMinionCounts(p);
             // Locked broom/bee PlayerFrame branches own flight compensation
             // and the near-ground landing transition. Its UpdateFrame has no
             // idle RNG or light (unlike other mount types); never generalize

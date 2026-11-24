@@ -225,7 +225,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             var owner = seed.Owner; var range = seed.Range;
             return HasSession && seed.Identity.SessionGeneration == generation && seed.Catalog == MaterialCatalog?.Revision &&
                 projectionScene.Contains(owner) && owner.Identity.Equals(seed.Identity) && ReferenceEquals(owner.Mask, seed.Mask) && owner.OriginX == seed.X && owner.OriginY == seed.Y &&
-                ProjectionQualificationCurrent(owner) && owner.Summary.TargetVersion == MaterialCatalog.TargetVersion && owner.Match != null && range.Index >= 0 &&
+                ProjectionQualificationCurrent(owner) && MaterialCatalog.CanReadVersion(owner.Summary.TargetVersion) && owner.Match != null && range.Index >= 0 &&
                 range.Index < owner.Match.Ranges.Length && ReferenceEquals(owner.Match.Ranges[range.Index], range);
         }
         private bool TryRebindBuildSeed(RepeatedBuildSeed seed, Player p, BuildSource preferred, out BlueprintBuildTarget target, out BuildOperationPlan plan, out bool pending,

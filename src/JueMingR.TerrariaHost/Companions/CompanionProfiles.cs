@@ -19,7 +19,9 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal sealed class CompanionProfiles : IDisposable
     {
-        private const int NativeRelease = 326;
+        // The embedded body omits the .plr file header. Verified 1.4.5.8 and
+        // 1.4.6 serializers share this layout, including the 326 read path.
+        private const int NativePayloadFormat = 326;
         private static readonly MethodInfo Serialize = AccessTools.Method(typeof(Player), "Serialize", new[] { typeof(PlayerFileData), typeof(Player), typeof(BinaryWriter) });
         private static readonly MethodInfo Deserialize = AccessTools.Method(typeof(Player), "Deserialize", new[] { typeof(PlayerFileData), typeof(Player), typeof(BinaryReader), typeof(int), typeof(bool).MakeByRefType() });
         private static readonly MethodInfo SaveTemporary = AccessTools.Method(typeof(Player), "SaveTemporaryItemSlotContents");
@@ -121,10 +123,11 @@ namespace JueMingR.TerrariaHost.Companions
             using (var stream = new MemoryStream(profile.NativeData, false))
             using (var reader = new BinaryReader(stream, new UTF8Encoding(false, true)))
             {
-                if (reader.ReadInt32() != NativeRelease) throw new InvalidDataException("队友人物数据与当前原版版本不符。");
+                if (reader.ReadInt32() != NativePayloadFormat)
+                    throw new InvalidDataException("当前游戏无法读取这份队友人物数据。");
                 if (loading) throw new InvalidOperationException("Nested companion character load.");
                 loading = true;
-                try { Deserialize.Invoke(null, new object[] { file, body, reader, NativeRelease, false }); }
+                try { Deserialize.Invoke(null, new object[] { file, body, reader, NativePayloadFormat, false }); }
                 finally { loading = false; }
                 if (stream.Position != stream.Length) throw new InvalidDataException("队友人物数据含未读取内容。");
             }
@@ -191,7 +194,7 @@ namespace JueMingR.TerrariaHost.Companions
             using (var stream = new MemoryStream())
             using (var writer = new BinaryWriter(stream, new UTF8Encoding(false, true)))
             {
-                writer.Write(NativeRelease); serializing = body;
+                writer.Write(NativePayloadFormat); serializing = body;
                 try { Serialize.Invoke(null, new object[] { File(body), body, writer }); }
                 finally { serializing = null; }
                 writer.Flush(); return stream.ToArray();

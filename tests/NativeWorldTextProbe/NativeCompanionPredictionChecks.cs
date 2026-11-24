@@ -58,7 +58,7 @@ namespace NativeWorldTextProbe
                 Set(a,"NextPublish",0U);Call(host,"Publish",a);framesA.Clear();framesB.Clear();
                 for(int i=0;i<30;i++){NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",(ulong)i);first.Update(first.whoAmI);}
                 Require(first.inventory[54].stack<20 && framesA.Any(p=>p.Length>=11 && p[2]==5 && p[3]==first.whoAmI && BitConverter.ToInt16(p,4)==54 && BitConverter.ToInt16(p,6)<20),"actual native ammo consumption publishes its changed native slot on its own stream");
-                int wood=first.inventory.Where(i=>i.type==ItemID.Wood).Sum(i=>i.stack);var drop=Main.item[399];drop.inner.SetDefaults(ItemID.Wood);drop.width=drop.inner.width;drop.height=drop.inner.height;drop.stack=7;drop.whoAmI=399;drop.playerIndexTheItemIsReservedFor=first.whoAmI;drop.grabDelayTime=0;drop.position=first.position;
+                int wood=first.inventory.Where(i=>i.type==ItemID.Wood).Sum(i=>i.stack);var drop=Main.item[399]=new WorldItem(new Item(ItemID.Wood));drop.stack=7;drop.whoAmI=399;drop.playerIndexTheItemIsReservedFor=first.whoAmI;drop.grabDelayTime=0;drop.position=first.position;
                 Call(first,"GrabItems",first.whoAmI);Require(!drop.active && first.inventory.Where(i=>i.type==ItemID.Wood).Sum(i=>i.stack)==wood+7,"actual native reserved world item enters this actor inventory once");
                 Set(a,"NextPublish",0U);Call(host,"Publish",a);
                 Require(framesA.Any(p=>p.Length>=11 && p[2]==5 && p[3]==first.whoAmI && BitConverter.ToInt16(p,9)==ItemID.Wood) && !framesB.Any(p=>p[2]==5),"actual pickup publishes correct player/slot/type only on owning connection");

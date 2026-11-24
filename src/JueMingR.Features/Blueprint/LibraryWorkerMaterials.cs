@@ -155,7 +155,7 @@ namespace JueMingR.Features.Blueprint
                     var request = materialRequests[i]; var key = request.Key;
                     if (key.Id != command.Id || key.Stage != command.Stage) continue;
                     var expected = new BlueprintMaterialKey(command.Id, command.Stage, command.Stage ? Guid.Empty : root.ContentRevision,
-                        command.Stage ? "" : command.Identity, command.Exclude, command.Excluded, key.PlacementRevision, root.Summary.TargetVersion, key.ClassifierVersion);
+                        command.Stage ? "" : command.Identity, command.Exclude, command.Excluded, key.PlacementRevision, request.Catalog.TargetVersion, key.ClassifierVersion);
                     if (!key.Equals(expected)) continue;
                     materialRequests.RemoveAt(i); return request;
                 }
@@ -183,7 +183,7 @@ namespace JueMingR.Features.Blueprint
                 }
                 finally { files.CloseMetadata(); }
             }
-            if (root.Summary.TargetVersion != key.TargetVersion || request.Catalog.TargetVersion != key.TargetVersion)
+            if (request.Catalog.TargetVersion != key.TargetVersion || !request.Catalog.CanReadVersion(root.Summary.TargetVersion))
             { into.Unresolved("目标版本的材料解释尚未确认"); yield break; }
             var layout = files as IBlueprintLibraryLayoutSteps;
             if (layout != null) foreach (int ignored in layout.ValidateLayoutSteps(physical, key.Stage, root.BlockCount, 32)) { CheckMaterials(request); yield return true; }

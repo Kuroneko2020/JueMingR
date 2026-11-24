@@ -83,6 +83,8 @@ function Read-TwoFilePackage {
     if($null -ne $Record){
         if($Record.distributionFormat -cne 'two-file-1' -or $Record.bundle.payloadId -cne $payloadId -or $Record.bundle.bootstrapAssemblyName -cne $assembly.FullName -or
            $Record.sourceCommit -cne $runtime.sourceCommit -or $Record.packageId -cne $runtime.packageId){throw 'Bundle build-record mismatch.'}
+        if($Record.target.simpleName -cne $runtime.targetAssemblySimpleName -or $Record.target.version -cne $runtime.targetAssemblyVersion -or
+           $Record.target.mvid -cne $runtime.targetAssemblyMvid -or $Record.target.sha256 -cne $runtime.targetAssemblySha256){throw 'Bundle target metadata differs from the build record.'}
         foreach($file in $Record.packageDirectory.files){$bytes=[IO.File]::ReadAllBytes((Join-Path $PackageRoot $file.path));if($bytes.Length -ne $file.length -or (Get-PackageBytesHash $bytes) -cne $file.sha256){throw 'Standard pair record mismatch.'}}
         if(@($Record.bundle.files).Count -ne 2 -or @($Record.setup.resources).Count -ne 2){throw 'Channel member record mismatch.'}
         foreach($file in $Record.packageDirectory.files){
