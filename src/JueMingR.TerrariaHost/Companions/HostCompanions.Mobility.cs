@@ -134,7 +134,7 @@ namespace JueMingR.TerrariaHost.Companions
 
             // Native hover uses -.001 Y even when Bat or Pixie is stationary.
             // Only actual support for the expanded body admits the exit.
-            using (CompanionNavigation.Scratch.Save())
+            using (CompanionCollisionScope.Save())
             {
                 if (!Collision.TryChangingSizeFromBottomCenter(body.Hitbox, 20, 42, out var normal)) return false;
                 var pose = new Vector2(normal.X, normal.Y);
@@ -548,7 +548,7 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool CanDismountKnown(Player body)
         {
             if (!body.mount.Active || !DismountKnown(body)) return false;
-            using (CompanionNavigation.Scratch.Save()) return body.mount.CanDismount(body);
+            using (CompanionCollisionScope.Save()) return body.mount.CanDismount(body);
         }
 
         private static bool DismountKnown(Player body)

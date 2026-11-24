@@ -82,7 +82,7 @@ namespace NativeWorldTextProbe
                 body.position = position;
                 body.velocity = velocity;
                 human.position = ownerPosition;
-                Call(Get(Get(actor, "Behavior"), "navigation"), "CancelRoute");
+                Call(Get(Get(actor, "Behavior"), "Navigator"), "ResetPosition");
             }
         }
 
@@ -114,31 +114,46 @@ namespace NativeWorldTextProbe
             Fill(95, 113, 76);
             Warm(host, body);
             human.position = AtGround(human, 100, 76);
-            int firstDash = -1, firstBrake = -1;
+            int firstDash = -1, firstBrake = -1, removedAt = -1;
             float peak = 0, brakingSpeed = 0, furthestOnRunway = body.position.X;
+            bool brakingAtEdit = false;
             var dashTrace = new List<string>();
+            object navigation = Get(Get(actor, "Behavior"), "Navigator");
+            object mobility = Get(actor, "Mobility");
             for (int i = 0; i < 105; i++)
             {
                 bool wasDashing = body.dashDelay < 0;
                 float priorSpeed = body.velocity.X;
                 // Remove one support tile with enough remaining stopping
                 // room but too little room to continue the proven prefix.
-                if (i == 4)
+                if (firstDash >= 0 && removedAt < 0 && i == firstDash + 4)
                 {
                     Require(wasDashing && priorSpeed > 12, "terrain changes during an actual shield dash");
                     Main.tile[72, 76] = new Tile();
+                    removedAt = i;
                 }
                 Step(host, body);
+                if (i == removedAt)
+                    brakingAtEdit = wasDashing && priorSpeed > 12 && !body.controlRight && body.velocity.X < priorSpeed;
                 peak = Math.Max(peak, body.velocity.X);
                 furthestOnRunway = Math.Max(furthestOnRunway, body.position.X);
                 if (firstDash < 0 && body.dashDelay < 0 && body.eocDash > 0) firstDash = i;
                 if (wasDashing && firstBrake < 0 && !body.controlRight)
                 { firstBrake = i; brakingSpeed = priorSpeed; }
-                if (i < 30) dashTrace.Add($"{i}:{body.position.X:F1}/{body.velocity.X:F1}/{body.dashDelay}/{(body.controlRight ? 'R' : '-')}");
+                if (i < 30)
+                {
+                    object observed = Get(mobility, "Observed");
+                    object staged = GetOptional(navigation, "LastMovementDelivery");
+                    dashTrace.Add($"NAV DASH sample={i} feet={body.Bottom}/{body.velocity} delay={body.dashDelay} right={body.controlRight} " +
+                        $"ready={Get(observed, "DashReady")} type={Get(observed, "DashType")} prepared={Get(navigation, "dashPreparedUntil")} " +
+                        $"nextCheck={Get(navigation, "nextDashCheck")} slowdown={body.runSlowdown:F2} kind={Get(navigation, "ActionKind")} " +
+                        $"staged={(staged == null ? null : Get(staged, "Dash"))}");
+                }
             }
-            Console.WriteLine($"NAV DASH RUNWAY firstDash={firstDash} peak={peak:F2} firstBrake={firstBrake} brakingSpeed={brakingSpeed:F2} farthest={furthestOnRunway:F2} newLip={runwayLip - 16}");
-            if (firstDash < 0 || firstBrake < 0) Console.WriteLine(string.Join(" ", dashTrace));
-            Require(firstDash >= 0 && peak >= 14 && firstBrake == 4 && brakingSpeed > 12 &&
+            Console.WriteLine($"NAV DASH RUNWAY firstDash={firstDash} peak={peak:F2} removedAt={removedAt} firstBrake={firstBrake} " +
+                $"brakingAtEdit={brakingAtEdit} brakingSpeed={brakingSpeed:F2} farthest={furthestOnRunway:F2} newLip={runwayLip - 16}");
+            if (firstDash < 0 || firstBrake < 0 || !brakingAtEdit) foreach (string sample in dashTrace) Console.WriteLine(sample);
+            Require(firstDash >= 0 && peak >= 14 && removedAt >= 0 && brakingAtEdit && brakingSpeed > 12 &&
                 furthestOnRunway > 58 * 16 + 160 && furthestOnRunway < runwayLip - 16 && body.position.Y <= 76 * 16 - body.height + 3,
                 "a long supported runway permits a native dash and releases it while fast enough to require real braking room before its cliff");
 
@@ -246,9 +261,23 @@ namespace NativeWorldTextProbe
                 "only active flight equipment is a fresh carpet with no allocated ticks yet");
             human.position = AtGround(human, 93, 78);
             int jump = -1, glide = -1, landed = -1, previousFuel = 0, spent = 0;
+            object navigation = Get(Get(actor, "Behavior"), "Navigator");
             for (int i = 0; i < 420; i++)
             {
                 Step(host, body);
+                if (i % 60 == 0)
+                {
+                    object refine = Get(navigation, "refine");
+                    object edge = Get(refine, "Edge");
+                    object caps = Get(Get(navigation, "route"), "capabilities");
+                    object geometry = Get(caps, "Geometry");
+                    Console.WriteLine($"NAV CARPET sample={i} feet={body.Bottom}/{body.velocity} jump={body.controlJump}/{body.releaseJump} " +
+                        $"carpet={body.canCarpet}/{body.carpetFrame}/{body.carpetTime} query={Get(navigation, "QueryStatus")}/{Get(navigation, "QueryGeneration")} " +
+                        $"capability={Get(caps, "Modes")}/{Get(geometry, "CarpetAvailable")} ticks={Get(caps, "FlightTicks")}/{Get(caps, "MaxFlightTicks")} " +
+                        $"action={Get(navigation, "ActionKind")}/{Get(navigation, "ActionOutcome")} " +
+                        $"proof={Get(refine, "Active")}/{Get(edge, "Detail")}:{Get(edge, "From")}->{Get(edge, "To")} " +
+                        $"steps={Get(refine, "ticks")} reserve={Get(refine, "flightTicks")}");
+                }
                 if (jump < 0 && body.controlJump && body.velocity.Y < 0 && body.carpetTime == 0) jump = i;
                 if (body.carpetFrame >= 0 && body.carpetTime > 0)
                 {
@@ -276,11 +305,10 @@ namespace NativeWorldTextProbe
             Fill(lip, RemovableBank - 1, 114);
             Warm(host, body);
             human.position = AtGround(human, 93, BankFloor);
-            object movement = Get(Get(actor, "Behavior"), "navigation");
             var observer = new Harmony("JueMingR.Tests.PlannedCarpetBank");
-            var executor = GetOptional(movement, "actions");
-            var execute = executor != null ? AccessTools.Method(executor.GetType(), "Step") : AccessTools.Method(movement.GetType(), "ExecuteStep");
-            Require(execute != null, "the selected glide action is visible at the production executor's original input boundary");
+            var action = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionMotionAction", true);
+            var execute = AccessTools.Method(action, "Input");
+            Require(execute != null, "the chosen glide is visible at the actual native input boundary");
             bankProbeBody = body;
             bankRemovalTick = -1;
             bool jumped = false;
@@ -302,9 +330,9 @@ namespace NativeWorldTextProbe
                 "the production action rechecks the missing far shore before sending the carpet takeoff input");
         }
 
-        private static void RemoveBankBeforeGlide(object[] __args)
+        private static void RemoveBankBeforeGlide(object __instance, Player body)
         {
-            if (bankRemovalTick >= 0 || !ReferenceEquals(__args[0], bankProbeBody) || Get(__args[4], "Kind").ToString() != "GlideJump") return;
+            if (bankRemovalTick >= 0 || !ReferenceEquals(body, bankProbeBody) || Get(Get(__instance, "Edge"), "Kind").ToString() != "Flight") return;
             // Change actual terrain after production has picked a glide edge,
             // while leaving the plan, inputs and real Player.Update in charge.
             for (int x = RemovableBank; x <= 109; x++) Main.tile[x, BankFloor] = new Tile();
@@ -314,7 +342,7 @@ namespace NativeWorldTextProbe
         private static void Setup(object host, object actor, Player body, Player human, IEnumerable<Point> area, int x, int y, int accessory = 0)
         {
             foreach (Point point in area) Main.tile[point.X, point.Y] = new Tile();
-            Call(Get(Get(actor, "Behavior"), "navigation"), "CancelRoute");
+            Call(Get(Get(actor, "Behavior"), "Navigator"), "ResetPosition");
             Call(Get(actor, "Mobility"), "Reset", Get(actor, "Generation"));
             for (int i = 0; i < body.armor.Length; i++) body.armor[i] = new Item();
             if (accessory != 0) body.armor[3].SetDefaults(accessory);

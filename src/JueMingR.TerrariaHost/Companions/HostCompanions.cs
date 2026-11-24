@@ -88,6 +88,13 @@ namespace JueMingR.TerrariaHost.Companions
         private CompanionOwnerTrail ownerTrail;
         private Actor planningActor;
         private readonly List<Actor> planningActors = new List<Actor>();
+        private readonly NavigationWorld navigationWorld = new NavigationWorld();
+        private readonly NavigationBudget navigationBudget = new NavigationBudget(2600, 96, 48);
+        private uint navigationTurn;
+        private bool navigationActive;
+#if DEBUG
+        internal NavigationBudget NavigationBudgetOverride = null;
+#endif
         private long aimAttempt;
         private uint aimSelectionStep=UInt32.MaxValue;
         private Actor aimSelected;
@@ -287,6 +294,8 @@ namespace JueMingR.TerrariaHost.Companions
         public void OnSessionEnded()
         {
             RetireArchiveIdentity();
+            navigationWorld.Reset();
+            navigationActive=false;
             owner=null;world=null;EndPasswordSession();prediction.EndWorld();CompanionThreatField.Reset();EndRetiringConnectionSession();steam.Dispose();ClearWorldSources();
         }
         private void RetireArchiveIdentity()
@@ -341,6 +350,7 @@ namespace JueMingR.TerrariaHost.Companions
             FlushSourceRequests();RequestSharedTerrain();
             if(actors.Count==0)
             {
+                if(navigationActive){navigationWorld.Reset();navigationActive=false;}
                 ownerTrail?.BreakSegment();
                 ownerTrail=null;
                 return;
@@ -368,11 +378,21 @@ namespace JueMingR.TerrariaHost.Companions
                     }
                 if (!observedOwner && ownerTrail!=null)
                 { ownerTrail.BreakSegment(); ownerTrail=null; }
-                // One movement/target-refresh slice per real world step,
-                // independent of attacking, channel release or packet phase.
-                // Retained navigation prefixes remain usable by every body;
-                // fresh aiming opportunities have their separate scheduler.
+                // The combat/source-refresh cadence stays separate. Every
+                // body still stages its own controls before its one update.
                 planningActor=planningActors.Count==0?null:planningActors[(int)((uint)planningTurn++%(uint)planningActors.Count)];
+                if(planningActors.Count!=0)
+                {
+                    navigationActive=true;
+                    var actor=planningActors[(int)(navigationTurn++%(uint)planningActors.Count)];
+                    var budget=navigationBudget;
+#if DEBUG
+                    if(NavigationBudgetOverride!=null)budget=NavigationBudgetOverride;
+#endif
+                    budget.Reset();
+                    try { actor.Behavior.AdvanceMovement(actor.Body,actor.Mobility,budget); }
+                    catch(Exception e) { CloseActor(actor,e.Message); }
+                }
                 planningActors.Clear();
             }
             foreach(var a in actors.Values.ToArray())

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -47,16 +48,24 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         internal static bool ClearBody(Vector2 position, int width, int height, int margin = 0)
+            => BodyFits(position, width, height, margin) && !TouchesLava(position, width, height) && !TouchesShimmer(position, width, height);
+
+        internal static bool BodyFits(Vector2 position, int width, int height, int margin = 0)
         {
             var border = new Vector2(margin);
             Vector2 end = position + new Vector2(width, height);
-            if (!KnownBox(position - border, end + border) || Collision.SolidCollision(position, width, height) ||
-                Collision.LavaCollision(position, width, height)) return false;
-            Point first = position.ToTileCoordinates(), last = end.ToTileCoordinates();
+            return KnownBox(position - border, end + border) && !Collision.SolidCollision(position, width, height);
+        }
+
+        internal static bool TouchesLava(Vector2 position, int width, int height) => Collision.LavaCollision(position, width, height);
+
+        internal static bool TouchesShimmer(Vector2 position, int width, int height)
+        {
+            Point first = position.ToTileCoordinates(), last = (position + new Vector2(width, height)).ToTileCoordinates();
             for (int y = first.Y; y <= last.Y; y++)
                 for (int x = first.X; x <= last.X; x++)
-                    if (Main.tile[x, y].liquid > 0 && Main.tile[x, y].shimmer()) return false;
-            return true;
+                    if (Main.tile[x, y].liquid > 0 && Main.tile[x, y].shimmer()) return true;
+            return false;
         }
 
         private static bool Anchor(Tile tile, int type) => tile.nactive() && !TileID.Sets.CrackedBricks[tile.type] &&
@@ -64,10 +73,13 @@ namespace JueMingR.TerrariaHost.Companions
             Main.tileSolid[tile.type] || tile.type == TileID.MinecartTrack || type == 865 &&
             (TileID.Sets.IsATreeTrunk[tile.type] || tile.type == 323));
 
-        internal static bool HookAnchor(Player body, Vector2 target, int type, float range, bool swept)
+        internal static bool HookAnchor(Player body, Vector2 target, int type, float range, bool swept) =>
+            HookAnchorAt(body, body.Center, target, type, range, swept);
+
+        internal static bool HookAnchorAt(Player body, Vector2 center, Vector2 target, int type, float range, bool swept)
         {
             var anchor = target.ToTileCoordinates();
-            float distance = Vector2.Distance(body.Center, target);
+            float distance = Vector2.Distance(center, target);
             if (distance < 8f || distance > range || !Known(anchor.X, anchor.Y) || !Anchor(Main.tile[anchor.X, anchor.Y], type) ||
                 body.IsBlacklistedForGrappling(anchor)) return false;
             if (!swept) return true;
@@ -75,30 +87,33 @@ namespace JueMingR.TerrariaHost.Companions
             // Hook first contact can differ from a center-to-center ray. Test
             // the projectile footprint and the larger body stopping at the
             // selected surface. Terrarian projectiles still decide attachment.
-            Vector2 delta = (target - body.Center) / distance;
+            for (float d = 0; d < distance; d += 6f)
+                if (!HookSweepStep(body, center, target, type, distance, d)) return false;
+            return true;
+        }
+
+        internal static bool HookSweepStep(Player body, Vector2 center, Vector2 target, int type, float distance, float travel)
+        {
+            var anchor = target.ToTileCoordinates();
+            Vector2 delta = (target - center) / distance;
             var halfSize = body.Size * .5f;
             float bodyDistance = distance - 8f - Math.Abs(delta.X) * halfSize.X - Math.Abs(delta.Y) * halfSize.Y;
-            for (float d = 0; d < distance; d += 6f)
-            {
-                var point = body.Center + delta * d;
-                var first = (point - new Vector2(5f)).ToTileCoordinates();
-                // AI_007's overlap test is strict at the far edges. A hook
-                // touching the next cell boundary cannot latch to it yet.
-                var last = (point + new Vector2(4.999f)).ToTileCoordinates();
-                for (int y = first.Y; y <= last.Y; y++)
-                    for (int x = first.X; x <= last.X; x++)
-                    {
-                        if (!Known(x, y)) return false;
-                        var tile = Main.tile[x, y];
-                        if (tile.nactive() && TileID.Sets.CrackedBricks[tile.type] ||
-                            (x != anchor.X || y != anchor.Y) && Anchor(tile, type)) return false;
-                    }
-                // The original position is already occupied by the original
-                // body. Native floor contact can retain a fractional overlap;
-                // require clearance along the new motion from the first step.
-                if (d > 0 && d <= bodyDistance && !ClearBody(point - halfSize, body.width, body.height)) return false;
-            }
-            return true;
+            var point = center + delta * travel;
+            var first = (point - new Vector2(5f)).ToTileCoordinates();
+            // AI_007's overlap test is strict at the far edges. A hook
+            // touching the next cell boundary cannot latch to it yet.
+            var last = (point + new Vector2(4.999f)).ToTileCoordinates();
+            for (int y = first.Y; y <= last.Y; y++)
+                for (int x = first.X; x <= last.X; x++)
+                {
+                    if (!Known(x, y)) return false;
+                    var tile = Main.tile[x, y];
+                    if (tile.nactive() && TileID.Sets.CrackedBricks[tile.type] ||
+                        (x != anchor.X || y != anchor.Y) && Anchor(tile, type)) return false;
+                }
+            // The occupied starting pose can retain fractional native
+            // floor overlap. From the first movement sample, require clearance.
+            return travel <= 0 || travel > bodyDistance || ClearBody(point - halfSize, body.width, body.height);
         }
 
         internal static bool TrackEntry(Player body, Vector2 target)
@@ -109,29 +124,6 @@ namespace JueMingR.TerrariaHost.Companions
                 body.IsInTileInteractionRange(tile.X, tile.Y, TileReachCheckSettings.Simple) &&
                 KnownBox(Vector2.Min(body.Center, target) - new Vector2(16), Vector2.Max(body.Center, target) + new Vector2(16)) &&
                 Collision.CanHitLine(body.Center, 0, 0, target, 0, 0);
-        }
-
-        internal static bool TryTeleporter(Player body, Vector2 desiredCenter, out Vector2 point, out Vector2 exit) =>
-            CompanionMobilityWiring.Find(body, desiredCenter, out point, out exit);
-
-        internal static bool TryPylon(Player body, Vector2 desiredCenter, out Vector2 point, out Vector2 exit)
-        {
-            point = exit = default(Vector2);
-            var pylons = Main.PylonSystem?.Pylons;
-            if (pylons == null || !NearPylon(body)) return false;
-            float nearest = 96f * 96f;
-            bool found = false;
-            foreach (var info in pylons)
-            {
-                var destination = PylonTopLeft(body, info) + body.Size * .5f;
-                float distance = Vector2.DistanceSquared(destination, desiredCenter);
-                if (distance >= nearest || Vector2.DistanceSquared(body.Center, destination) < 112f * 112f || !PylonExit(body, info)) continue;
-                nearest = distance;
-                point = info.PositionInTiles.ToWorldCoordinates();
-                exit = PylonTopLeft(body, info);
-                found = true;
-            }
-            return found;
         }
 
         internal static bool PylonAt(Player body, Vector2 target, out TeleportPylonInfo destination)
@@ -163,27 +155,49 @@ namespace JueMingR.TerrariaHost.Companions
             return Known(x, y) && Main.tile[x, y].nactive() && Main.tile[x, y].type == TileID.TeleportationPylon;
         }
 
-        internal static bool TryPortal(Player body, Vector2 desiredCenter, out Vector2 entry, out Vector2 exitTopLeft)
+        internal static void ReadPylonLinks(Player body, Vector2 target, NavigationBudget budget, List<NavigationTransition> links)
         {
-            entry = exitTopLeft = Vector2.Zero;
-            if (!anyPortal() || body.mount.Active) return false;
-            var known = portals();
-            float nearest = 112f * 112f;
-            bool found = false;
+            var pylons = Main.PylonSystem?.Pylons;
+            if (pylons == null || pylons.Count < 2) return;
+            // A request is only offered for a present destination serving
+            // the goal. The native path still owns biome/boss/NPC admission.
+            foreach (var exit in pylons)
+            {
+                if (!budget.TryExpand()) return;
+                Vector2 end = PylonTopLeft(body, exit) + new Vector2(body.width * .5f, body.gravDir > 0 ? body.height : 0);
+                if (Vector2.DistanceSquared(end, target) > 96f * 96f || !PylonExit(body, exit)) continue;
+                foreach (var entry in pylons)
+                {
+                    if (!budget.TryExpand()) return;
+                    if (entry.PositionInTiles == exit.PositionInTiles || !PylonPresent(entry)) continue;
+                    var from = entry.PositionInTiles.ToWorldCoordinates(24f, 64f);
+                    if (Math.Abs(from.Y - end.Y) + Math.Abs(from.X - end.X) < 112f) continue;
+                    links.Add(new NavigationTransition(NavigationAction.Facility, from, end,
+                        new Point(entry.PositionInTiles.X, entry.PositionInTiles.Y), new Point(exit.PositionInTiles.X, exit.PositionInTiles.Y),
+                        irreversible: true, detail: NavigationTraversalDetail.Pylon));
+                }
+            }
+        }
+
+        internal static void ReadPortalLinks(Player body, Vector2 target, NavigationBudget budget, List<NavigationTransition> links)
+        {
+            if (!anyPortal() || body.mount.Active) return;
+            int[,] known = portals();
+            Vector2 footOffset = new Vector2(body.width * .5f, body.gravDir > 0 ? body.height : 0);
             for (int owner = 0; owner < known.GetLength(0); owner++)
                 for (int side = 0; side < 2; side++)
                 {
-                    if (!PortalPair(known, owner, side, out var from, out var to) ||
-                        Vector2.DistanceSquared(body.Center, from.Center) > 192f * 192f) continue;
-                    var exit = portalOut(body.Size, to.Center, to.ai[0], out _, out _);
-                    float distance = Vector2.DistanceSquared(exit + body.Size * .5f, desiredCenter);
-                    if (distance >= nearest || !ClearBody(exit, body.width, body.height, 32)) continue;
-                    nearest = distance;
-                    entry = from.Center;
-                    exitTopLeft = exit;
-                    found = true;
+                    if (known[owner, side] < 0) continue;
+                    if (!budget.TryExpand()) return;
+                    if (!PortalPair(known, owner, side, out var from, out var to)) continue;
+                    Vector2 exit = portalOut(body.Size, to.Center, to.ai[0], out _, out _);
+                    Vector2 end = exit + footOffset;
+                    if (Vector2.DistanceSquared(end, target) > 112f * 112f || !ClearBody(exit, body.width, body.height, 32)) continue;
+                    Vector2 entry = from.Center + footOffset - body.Size * .5f;
+                    links.Add(new NavigationTransition(NavigationAction.Facility, entry, end,
+                        from.Center.ToTileCoordinates(), to.Center.ToTileCoordinates(), irreversible: true,
+                        detail: NavigationTraversalDetail.Portal, interactionPosition: from.Center));
                 }
-            return found;
         }
 
         private static bool PortalPair(int[,] known, int owner, int side, out Projectile from, out Projectile to)

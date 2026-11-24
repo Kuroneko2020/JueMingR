@@ -359,21 +359,34 @@ namespace NativeWorldTextProbe
                 // pose the production route chooses the vertical release.
                 human.Center = new Vector2(body.Center.X, 73 * 16 - human.height * .5f);
                 float startY = body.position.Y;
-                bool verticalRelease = false, detached = false;
+                float startX = body.position.X;
+                bool sidewaysInput = false, detached = false, keptShaft = true;
+                int deliveredReleases = 0;
+                float farthestSideways = 0;
+                var navigator = Get(Get(Call(host, "Owned", body), "Behavior"), "Navigator");
                 intent = null;
-                for (int tick = 0; tick < 60 && (hook.active || body.position.Y < startY + 8); tick++)
+                for (int tick = 0; tick < 60 && (hook.active || Math.Abs(body.Bottom.Y - 73 * 16) > 1); tick++)
                 {
                     // In each world step the previous projectile update feeds
                     // the next Player.Update's real grapple list.
                     AdvanceHook(hook);
                     Step(host, body);
+                    farthestSideways = Math.Max(farthestSideways, Math.Abs(body.position.X - startX));
+                    keptShaft &= body.Left.X >= (leftWall + 1) * 16 - .25f && body.Right.X <= rightWall * 16 + .25f;
+                    var delivery = Get(navigator, "LastMovementDelivery");
+                    if (Get(delivery, "Activation").ToString() == "ReleaseHook" && (int)Get(delivery, "Sequence") != 2031)
+                    {
+                        deliveredReleases++;
+                        sidewaysInput |= (int)Get(delivery, "Move") != 0;
+                    }
                     if (Get(state, "Action").ToString() != "ReleaseHook" || (int)Get(state, "Sequence") == 2031) continue;
-                    verticalRelease |= body.controlJump && body.controlDown && !body.controlLeft && !body.controlRight;
                     detached |= !(bool)Get(Get(state, "Observed"), "GrappleAttached") && Get(state, "Result").ToString() == "Completed";
                 }
-                Require(verticalRelease && detached && !hook.active && body.position.Y > startY + 8,
+                Require(deliveredReleases > 0 && !sidewaysInput && detached && !hook.active && body.position.Y > startY + 8 &&
+                    Math.Abs(body.Bottom.Y - 73 * 16) <= 1 && keptShaft,
                     "the production route leaves the real overhead hook along the safe vertical shaft: " + body.position + " from " + startY +
-                    ", input=" + verticalRelease + ", detached=" + detached + ", hook=" + hook.active +
+                    ", arrivals=" + deliveredReleases + ", sidewaysInput=" + sidewaysInput + ", sidewaysTravel=" + farthestSideways +
+                    ", detached=" + detached + ", hook=" + hook.active +
                     ", action=" + Get(state, "Action") + "/" + Get(state, "Result"));
                 Console.WriteLine("PASS companion vertical shaft: actual attachment, route-selected vertical release and real descent.");
             }
@@ -398,8 +411,8 @@ namespace NativeWorldTextProbe
         private static void Step(object host, Player body)
         {
             NativeQuickItemChecks.BeginWorldStep();
-            Call(host, "Update", (ulong)Main.GameUpdateCount);
             body.Update(body.whoAmI);
+            Call(host, "Update", (ulong)Main.GameUpdateCount);
         }
 
         private static void Set(Type frame, string action = "None", int sequence = 0, Vector2 point = default(Vector2),

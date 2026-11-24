@@ -54,7 +54,7 @@ namespace NativeWorldTextProbe
                     if (opened < 0 && Main.tile[door, floor - 2].type == TileID.OpenDoor) opened = tick;
                     float gap = door * 16 - body.Right.X;
                     if (!sampledWithoutGrant && !openAtStart && !lowHeadroom && opened < 0 && gap > 8 && gap < 16)
-                        sampledWithoutGrant = CheckUnselectedDoorApproach(run.Actor, body);
+                        sampledWithoutGrant = body.controlRight && !body.controlJump;
                     if (crossed < 0 && body.Left.X > (door + 1) * 16 + 3) crossed = tick;
                     if (downstep < 0 && body.Left.X > (door + 1) * 16 && Math.Abs(body.Bottom.Y - exterior.Y) < .2f && body.velocity.Y == 0)
                         downstep = tick;
@@ -70,8 +70,7 @@ namespace NativeWorldTextProbe
                 Require(opened >= 0 && crossed > opened && downstep >= opened && resumed > crossed,
                     "ordinary Follow opens or uses the real door and treads down onto the exterior half-brick before continuing");
                 if (openAtStart) return;
-                if (Get(Get(run.Actor, "Behavior"), "navigation").GetType().GetMethod("TryDoorImmediate", BindingFlags.Instance | BindingFlags.NonPublic) != null)
-                    Require(sampledWithoutGrant, "the real prepass has a loaded door approach under the no-grant probe");
+                Require(sampledWithoutGrant, "the real body keeps ordinary horizontal input on the loaded door approach");
                 Require(Main.tile[door, floor - 2].type == TileID.ClosedDoor, "the real closed door is restored after the first passage");
 
                 human.Bottom = new Vector2(approach, floor * 16);
@@ -87,27 +86,6 @@ namespace NativeWorldTextProbe
                 Require(reverse >= 0 && upstep >= reverse && returned > upstep && Main.tile[door, floor - 2].type == TileID.ClosedDoor,
                     "the same recovered door reopens as the actual body treads up from half-brick and follows into the interior");
             }
-        }
-
-        private static bool CheckUnselectedDoorApproach(object actor, Player body)
-        {
-            var navigation = Get(Get(actor, "Behavior"), "navigation");
-            Type type = navigation.GetType();
-            var query = type.GetMethod("TryDoorImmediate", BindingFlags.Instance | BindingFlags.NonPublic);
-            if (query == null) return false; // The fixed earlier comparison has no split entrance.
-            var scratch = type.GetNestedType("Scratch", BindingFlags.NonPublic);
-            var route = type.GetNestedType("RouteStep", BindingFlags.NonPublic);
-            var count = type.GetProperty("DoorPassageProbes", BindingFlags.Instance | BindingFlags.NonPublic);
-            object before = count?.GetValue(navigation);
-            var values = new[] { body, (object)1, false, Activator.CreateInstance(route), false, false };
-            bool planned;
-            using ((IDisposable)scratch.GetMethod("Save", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null))
-                planned = (bool)query.Invoke(navigation, values);
-            object after = count?.GetValue(navigation);
-            Require(!planned && !(bool)values[4] && (bool)values[5] && Equals(before, after),
-                "an unselected real body can prove its next doorstep approach without an entire closed-door forecast");
-            Console.WriteLine($"FOLLOW no-grant door step={values[5]} fullForecasts={before ?? "release"}->{after ?? "release"}");
-            return true;
         }
 
         internal static void Run(object host, object actor, Player body, Player human)
@@ -195,6 +173,7 @@ namespace NativeWorldTextProbe
                     human.Bottom = new Vector2(center, (direction > 0 ? lower : ty - 2) * 16);
                     bool opened = false, crossed = false, wrongShape = false;
                     bool wingApproach = false, wingThrough = false;
+                    var navigator = Get(Get(actor, "Behavior"), "Navigator");
                     for (int tick = 0; tick < 145 && (!crossed || Main.tile[tx, ty].type != TileID.TrapdoorClosed); tick++)
                     {
                         float beforeFlight = body.wingTime;
@@ -213,6 +192,12 @@ namespace NativeWorldTextProbe
                                 Main.tile[tx + 1, leafRow].frameX % 36 != 18;
                         }
                         crossed |= direction > 0 ? body.Top.Y > (ty + 1) * 16 + 4 : body.Bottom.Y < ty * 16 - 4;
+                        if (tick % 35 == 0)
+                        {
+                            var refine = Get(navigator, "refine");
+                            var candidate = Get(refine, "Edge");
+                            Console.WriteLine($"DOOR FOLLOW hatch kind={kind} tick={tick} feet={body.Bottom}/{body.velocity} jump={body.controlJump}/{body.releaseJump}/{body.jump} wing={body.wingTime} query={Get(navigator, "QueryStatus")}/{Get(navigator, "QueryGeneration")} action={Get(navigator, "ActionId")}/{Get(navigator, "ActionKind")}/{Get(navigator, "ActionOutcome")} proof={Get(refine, "Active")}/{Get(candidate, "From")}->{Get(candidate, "To")} steps={Get(refine, "ticks")} opened={opened} crossed={crossed}");
+                        }
                     }
                     Require(opened && crossed && !wrongShape && Main.tile[tx, ty].type == TileID.TrapdoorClosed && !(bool)Get(actor, "Faulted"),
                         $"real Follow opens real trapdoor geometry, passes {(flying ? "up in flight" : direction > 0 ? "down" : "up")} and closes: open={opened} crossed={crossed} wrongLeaf={wrongShape} tile={Main.tile[tx, ty].type} body={body.position} velocity={body.velocity} status={Get(actor, "Status")}");
@@ -228,7 +213,7 @@ namespace NativeWorldTextProbe
                 body.armor[3] = wing;
                 ArmorIDs.Wing.Sets.Stats = wingStats;
                 human.position = owner;
-                Call(Get(Get(actor, "Behavior"), "navigation"), "CancelRoute");
+                Call(Get(Get(actor, "Behavior"), "Navigator"), "ResetPosition");
                 Call(host, "SetBehavior", profile.Id, prefs);
             }
         }
@@ -240,7 +225,7 @@ namespace NativeWorldTextProbe
             human.Center = body.Center;
             // Each geometry is independent. Retire the old route without
             // reusing its command sequence on the same live actor.
-            Call(Get(Get(actor, "Behavior"), "navigation"), "CancelRoute");
+            Call(Get(Get(actor, "Behavior"), "Navigator"), "ResetPosition");
             Step(host, body);
         }
 

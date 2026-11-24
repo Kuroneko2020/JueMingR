@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Linq;
@@ -18,6 +19,7 @@ namespace NativeWorldTextProbe
 internal static class NativeOuterInputBoundaryChecks
 {
     const BindingFlags F=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
+    static readonly MethodInfo ResetControls = typeof(Player).GetMethod("ResetControls", F);
     static string root,hostPath; static object input,context,shell;
     static KeyboardState keyboard; static MouseState mouse; static bool foreground=true,skip,throwBody;
     static Main main; static UserInterface ui; static int clicks,frames,keyboardSamples,px=150,py=150;
@@ -50,7 +52,7 @@ internal static class NativeOuterInputBoundaryChecks
             devices.Patch(typeof(Keyboard).GetMethod("GetState",Type.EmptyTypes),new HarmonyMethod(typeof(NativeOuterInputBoundaryChecks).GetMethod("KeyboardPrefix",F)));
             devices.Patch(typeof(Mouse).GetMethod("GetState",Type.EmptyTypes),new HarmonyMethod(typeof(NativeOuterInputBoundaryChecks).GetMethod("MousePrefix",F)));
             devices.Patch(typeof(PlayerInput).GetMethod("GamePadInput",F),new HarmonyMethod(typeof(NativeOuterInputBoundaryChecks).GetMethod("NoGamepad",F)));
-            NativeQuickItemChecks.Run(Exercise,shortFeedback:true,candidateAssembly:hostPath);
+            NativeQuickItemChecks.Run(Exercise,processing:true,shortFeedback:true,candidateAssembly:hostPath);
         }
         finally{devices.UnpatchAll(devices.Id);}
     }
@@ -99,21 +101,147 @@ internal static class NativeOuterInputBoundaryChecks
             throwBody=true;try{Frame(false,Keys.W);throw new Exception("expected isolated exception");}catch(TargetInvocationException){Require(!(bool)Get(input,"CanUseInput"),"exception before mapping leaves no epoch permission");}finally{throwBody=false;}
             Frame(false);Frame(false,Keys.W);Frame(false,Keys.W);Require(Terraria.Main.LocalPlayer.controlUp && !(bool)Get(shell,"Failed"),"fresh input after outer exception; shell stays valid");
             Console.WriteLine("PASS outer world focus/reactivation / skipped and exceptional input epoch; real Shell consumers remain available");
+            InventoryMenuClose();
+            RejectedCompanionOpen();
             CaptureAndText(patch,host);
             UseGestureClaim();
         }
         finally{patch.UnpatchAll(patch.Id);worker.GetField("hookCommitted",F).SetValue(null,0);worker.GetField("postfixContext",F).SetValue(null,null);}
     }
-    static void Frame(bool down,params Keys[] keys)
+    static void Frame(bool down,params Keys[] keys) => MouseFrame(down, false, keys);
+
+    static void MouseFrame(bool down, bool side, params Keys[] keys)
     {
-        keyboard=new KeyboardState(keys);mouse=new MouseState(px+(frames++%2),py,0,down?ButtonState.Pressed:ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released,ButtonState.Released);FocusHelper.IsSelectedApplication=foreground;
+        keyboard=new KeyboardState(keys);mouse=new MouseState(px+(frames++%2),py,0,down?ButtonState.Pressed:ButtonState.Released,ButtonState.Released,ButtonState.Released,side?ButtonState.Pressed:ButtonState.Released,ButtonState.Released);FocusHelper.IsSelectedApplication=foreground;
         Call(main,"Update",new GameTime(TimeSpan.FromSeconds(1),TimeSpan.FromMilliseconds(250)));
-        if(!skip){Terraria.Main.LocalPlayer.controlUp=false;PlayerInput.Triggers.Current.CopyInto(Terraria.Main.LocalPlayer);ui.Update(new GameTime(TimeSpan.FromSeconds(1),TimeSpan.FromMilliseconds(250)));}
+        if(!skip){ResetControls.Invoke(Main.LocalPlayer,null);PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);ui.Update(new GameTime(TimeSpan.FromSeconds(1),TimeSpan.FromMilliseconds(250)));}
     }
     static bool IsolatedUpdate(){if(throwBody)throw new InvalidOperationException("isolated before-input exception");if(foreignFixture!=null && !foreground)foreignWritingAtOuter=Object.ReferenceEquals(Terraria.Main.CurrentInputTextTakerOverride,foreignFixture) && !Terraria.Main.blockInput && PlayerInput.WritingText;if(!skip)Call(main,"DoUpdate_HandleInput");return false;}
     static bool KeyboardPrefix(ref KeyboardState __result){keyboardSamples++;__result=keyboard;return false;}
     static bool MousePrefix(ref MouseState __result){__result=mouse;return false;}
     static bool NoGamepad(ref bool __result){__result=false;return false;}
+    static void InventoryMenuClose()
+    {
+        var state = Get(shell, "State");
+        var settings = PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus;
+        var original = settings["Inventory"];
+        try
+        {
+            settings["Inventory"] = new List<string> {nameof(Keys.Escape)};
+            Frame(false); Frame(false, Keys.F5); Frame(false);
+            Require((bool)Get(state,"Visible"), "F5 opens before the default Inventory action");
+            Frame(false, Keys.Escape, Keys.W);
+            Require(!(bool)Get(state,"Visible"), "the bound Escape press closes the actual shell");
+            Frame(false, Keys.Escape, Keys.W); Frame(false, Keys.Escape, Keys.W);
+            Require(!PlayerInput.Triggers.Current.Inventory && !Main.LocalPlayer.controlInv && Main.LocalPlayer.controlUp,
+                "the delayed mapping and held tail leave vanilla Inventory inactive, with movement still mapped");
+            Frame(false); Frame(false, Keys.Escape); Frame(false, Keys.Escape);
+            Require(PlayerInput.Triggers.JustPressed.Inventory && Main.LocalPlayer.controlInv,
+                "a fresh press after trusted release reaches native CopyInto when the shell is closed");
+            Frame(false); Frame(false, Keys.F5); Frame(false);
+
+            settings["Inventory"] = new List<string> {nameof(Keys.U)};
+            Frame(false, Keys.Escape); Frame(false);
+            Require((bool)Get(state,"Visible"), "Escape no longer closes the shell after rebinding");
+            Frame(false, Keys.U); Frame(false, Keys.U);
+            Require(!(bool)Get(state,"Visible") && !Main.LocalPlayer.controlInv,
+                "the rebound Inventory key replaces Escape and consumes its native mapping");
+            Frame(false); Frame(false);
+
+            settings["Inventory"] = new List<string> {nameof(Keys.F5)};
+            Frame(false, Keys.F5); Frame(false, Keys.F5);
+            Require((bool)Get(state,"Visible") && !Main.LocalPlayer.controlInv,
+                "one Inventory/F5 press opens only F5 and holding it does not close F5 or open Inventory");
+            Frame(false); Frame(false, Keys.F5); Frame(false, Keys.F5);
+            Require(!(bool)Get(state,"Visible") && !Main.LocalPlayer.controlInv,
+                "the next shared key press closes the menu once without opening Inventory");
+            Frame(false); Frame(false);
+
+            InventoryMouseClose(state, settings);
+            Console.WriteLine("PASS F5 Inventory close / live key and Mouse4 bindings / shared F5 key / native CopyInto / held movement and trusted fresh press");
+        }
+        finally { settings["Inventory"] = original; }
+    }
+
+    static void InventoryMouseClose(object state, Dictionary<string, List<string>> settings)
+    {
+        settings["Inventory"] = new List<string> {"Mouse4"};
+        Frame(false, Keys.F5); Frame(false);
+        MouseFrame(false, true, Keys.W);
+        Require(!(bool)Get(state,"Visible") && !PlayerInput.Triggers.Current.Inventory && !Main.LocalPlayer.controlInv,
+            "a rebound Mouse4 closes now and consumes its same-frame native Inventory request");
+        MouseFrame(false, true, Keys.W);
+        Require(!Main.LocalPlayer.controlInv && Main.LocalPlayer.controlUp,
+            "the owned side-button tail keeps Inventory inactive without suppressing movement");
+        MouseFrame(false, true, Keys.F5); MouseFrame(false, true);
+        Require((bool)Get(state,"Visible") && !Main.LocalPlayer.controlInv,
+            "a held side button cannot close a menu reopened with F5");
+        Frame(false); Frame(false, Keys.F5); Frame(false);
+        MouseFrame(false, true);
+        Require(PlayerInput.Triggers.JustPressed.Inventory && Main.LocalPlayer.controlInv,
+            "a genuinely released Mouse4 reaches native Inventory on its next closed-menu press");
+        Frame(false); Frame(false);
+
+        settings["Inventory"] = new List<string> {nameof(Keys.U), "Mouse4"};
+        Frame(false, Keys.F5); Frame(false); Frame(false, Keys.U);
+        MouseFrame(false, true);
+        Require(!(bool)Get(state,"Visible") && Main.LocalPlayer.controlInv,
+            "a distinct new mouse press survives consumption of the previous keyboard mapping");
+        Frame(false); Frame(false);
+
+        settings["Inventory"] = new List<string> {"Mouse1"};
+        Main.LocalPlayer.SetTalkNPC(-1);
+        Frame(false, Keys.F5); Frame(false);
+        var screen = PlayerInput.OriginalScreenSize;
+        Call(Get(shell, "renderer"), "Prepare", state, screen.X, screen.Y, Main.UIScaleMatrix.M11);
+        int originalX = px, originalY = py;
+        try
+        {
+            var title = Get(Get(state, "Layout"), "Title");
+            px = (int)((float)Get(state, "X") + (float)Get(title, "X") + 8);
+            py = (int)((float)Get(state, "Y") + (float)Get(title, "Y") + 8);
+            Frame(true);
+            Require((bool)Get(state,"Visible") && (int)Get(state,"capture") == 1 && !Main.LocalPlayer.controlInv,
+                "Mouse1 over F5 starts its existing title drag without closing the menu or opening native Inventory");
+            Frame(true);
+            Require(!Main.LocalPlayer.controlInv && (int)Get(state,"capture") == 1,
+                "the title owner keeps the held Mouse1 from replaying its direct Inventory mapping");
+            Frame(false);
+        }
+        finally { px = originalX; py = originalY; }
+        Frame(false); Frame(true);
+        Require(!(bool)Get(state,"Visible") && !Main.LocalPlayer.controlInv && !Main.LocalPlayer.controlUseItem,
+            "the unowned Mouse1 closes F5 and consumes the same native Inventory and attack press. " +
+            "F5=" + Get(state,"Visible") + " Inventory=" + Main.LocalPlayer.controlInv + " Use=" + Main.LocalPlayer.controlUseItem);
+        Frame(false); Frame(false);
+    }
+
+    static void RejectedCompanionOpen()
+    {
+        var state = Get(shell, "State");
+        var window = Get(shell, "CompanionUi");
+        Frame(false, Keys.F5); Frame(false);
+        Call(state, "Navigate", 1);
+        Require((bool)Get(state, "Visible") && window != null, "full F5 composition hosts the Misc companion entry");
+        int height = Main.screenHeight;
+        try
+        {
+            Main.screenHeight = 270;
+            PlayerInput.CacheOriginalScreenDimensions();
+            Call(shell, "OpenCompanions", Get(Get(state, "Layout"), "Viewport"));
+            Require((bool)Get(state, "Visible") && !(bool)Get(window, "Visible"),
+                "the Misc entry retains its parent when the companion window cannot prepare");
+        }
+        finally
+        {
+            Main.screenHeight = height;
+            PlayerInput.CacheOriginalScreenDimensions();
+            Call(state, "Close");
+        }
+        Frame(false);
+        Console.WriteLine("PASS rejected companion window preparation leaves the F5 parent visible");
+    }
+
     static void CaptureAndText(Harmony patch,Assembly host)
     {
         Frame(false);Frame(false);Frame(false,Keys.F5);Frame(false);Frame(false);
@@ -127,6 +255,17 @@ internal static class NativeOuterInputBoundaryChecks
         var layout=Get(popup,"Layout");var commands=(IList)Get(layout,"Commands");int record=Enumerable.Range(0,commands.Count).First(i=>commands[i].ToString()=="Record");
         var button=Get(((IList)Get(layout,"Buttons"))[record],"Rect");var panel=Get(layout,"Panel");px=(int)((float)Get(panel,"X")+(float)Get(button,"X")+4);py=(int)((float)Get(panel,"Y")+(float)Get(button,"Y")+4);
         Frame(false);Frame(true);Frame(false);Require((bool)Get(popup,"Capturing") && (bool)Get(input,"HotkeyCapture"),"actual popup Record click reaches capture owner");
+        var inventoryBindings = PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus;
+        var normalInventory = inventoryBindings["Inventory"];
+        try
+        {
+            inventoryBindings["Inventory"] = new List<string> {nameof(Keys.Escape)};
+            Frame(false, Keys.Escape); Frame(false, Keys.Escape); Frame(false);
+            Require(!(bool)Get(popup,"Capturing") && (bool)Get(state,"Visible") && !Main.LocalPlayer.controlInv,
+                "recording owns the same Escape edge without closing F5 or opening native Inventory");
+        }
+        finally { inventoryBindings["Inventory"] = normalInventory; }
+        Frame(false);Frame(true);Frame(false);Require((bool)Get(popup,"Capturing"),"recording can rearm after Escape");
         int before=clicks;foreground=false;Frame(true,Keys.W);Require(!(bool)Get(popup,"Capturing") && !(bool)Get(input,"HotkeyCapture") && !(bool)Get(popup,"Visible"),"production UpdatePrefix focus cancellation retires actual capture");
         foreground=true;px=py=150;Frame(true,Keys.W);Frame(false);Require(clicks==before,"capture activation tail cannot click");Frame(false);Call(state,"Close");Frame(false);Frame(true);Frame(false);Require(clicks==before+1,"capture retired; new native UI click arrives after release");Frame(false);
         Console.WriteLine("PASS real F5 / HotkeyPopup Record consumer / UpdatePrefix focus cancel / fresh native click after capture tail");

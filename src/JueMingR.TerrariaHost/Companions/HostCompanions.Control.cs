@@ -68,6 +68,7 @@ namespace JueMingR.TerrariaHost.Companions
             bool buff=!manualSupply && heldSlot<0 && CompanionBuffPending(a);
             var pursuit=combat.Pursuit;
             var movementTarget=TargetCurrent(a,pursuit.Target,pursuit.TargetGeneration)?pursuit.Target:null;
+            a.Behavior.Navigator.BindWorld(navigationWorld);
             var frame=a.Behavior.DecideMobility(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening,pursuit.Weapon,a.Mobility);
             // Urgent movement may use the next legal hand edge before queued
             // automatic buffs or growth. The manual command keeps its own turn,
@@ -269,13 +270,15 @@ namespace JueMingR.TerrariaHost.Companions
         internal void AfterBody(Actor a)
         {
             if(a.Profile.PermanentlyDead || a.PermanentDeathPending)return;
-            if(!a.Body.dead)ObserveMobility(a);
-            a.Behavior.ObserveMovement(a.Body, a.Mobility);
+            if(!a.Body.dead)
+            {
+                ObserveMobility(a);
+                a.Behavior.ObserveMovement(a.Body,a.Mobility);
+            }
             // A completed live update has recomputed effective accessories.
             // Inventory changes must not use the previous accessory result.
             if(!a.Body.dead)a.TileReachPending=false;
             UpdateCompanionFurniture(a);
-            a.Behavior.ObserveCapabilities(a.Body);
             var hand=a.Combat.Hand;
             if(hand.Weapon!=null && DoesStaySummoned(hand.Weapon) && a.Body.ItemAnimationJustStarted && Main.GameUpdateCount>=a.Combat.NextSummon)
                 a.Combat.NextSummon=Main.GameUpdateCount+90;

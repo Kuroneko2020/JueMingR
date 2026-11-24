@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Companions
         private const uint Lifetime = 1800;
         [Flags]
         internal enum Contact : byte
-        { Air = 0, Supported = 1, Down = 2, Wet = 4, Rope = 8, Rail = 16, Mount = 32, Door = 64 }
+        { Air = 0, Supported = 1, Down = 2, Wet = 4, Rope = 8, Rail = 16, Mount = 32, Door = 64, Ledge = 128 }
 
         internal struct Sample
         {
@@ -49,11 +49,28 @@ namespace JueMingR.TerrariaHost.Companions
             return unchecked(tick - point.Tick) <= Lifetime;
         }
 
+        internal bool TryOutletHint(Vector2 from, Vector2 goal, uint tick, out Vector2 feet)
+        {
+            const Contact portalContact = Contact.Down | Contact.Rope | Contact.Rail | Contact.Door | Contact.Ledge;
+            long newest = Latest;
+            feet = default;
+            for (long sample = newest; sample >= first && sample > newest - 20; sample--)
+            {
+                if (!TryRead(sample, tick, out var point) || unchecked(tick - point.Tick) > 150) break;
+                if (!point.Landmark || (point.Mode & portalContact) == 0 ||
+                    Vector2.DistanceSquared(from, point.Feet) > 320f * 320f ||
+                    Vector2.DistanceSquared(goal, point.Feet) > 256f * 256f) continue;
+                feet = point.Feet;
+                return true;
+            }
+            return false;
+        }
+
         internal void Observe(Player owner, uint tick)
         {
             if (owner == null || !owner.active || owner.dead) { BreakSegment(); return; }
             if (hasObservation && previous.Tick == tick) return;
-            bool supported = CompanionNavigation.OwnerHasSupport(owner);
+            bool supported = CompanionNativeContact.OwnerHasSupport(owner);
             // Point at the contacted side, including inverted gravity.
             var feet = owner.gravDir >= 0 ? owner.Bottom : owner.Top;
             var sample = new Sample { Tick = tick, Feet = feet, Velocity = owner.velocity, Mode = ReadMode(owner, supported) };
@@ -66,6 +83,8 @@ namespace JueMingR.TerrariaHost.Companions
                 if (elapsed > 12 || Vector2.DistanceSquared(sample.Feet, previous.Feet) > travel * travel) BreakSegment();
             }
             bool newSegment = !hasObservation;
+            bool leftLedge = !newSegment && (previous.Mode & Contact.Supported) != 0 && !supported &&
+                sample.Velocity.Y * owner.gravDir > .1f;
             sample.Landmark = newSegment || sample.Mode != previous.Mode ||
                 DirectionChanged(previous.Velocity, sample.Velocity);
             if (!newSegment && sample.Landmark &&
@@ -74,7 +93,16 @@ namespace JueMingR.TerrariaHost.Companions
                 // The last pose before a different support/medium/heading
                 // is useful, even if no full sample stride was travelled.
                 previous.Landmark = true;
+                if (leftLedge) previous.Mode |= Contact.Ledge;
                 Append(previous);
+            }
+            else if (leftLedge)
+            {
+                // Tag an already sampled nearby contact rather than append
+                // a duplicate. The real departure remains a route hint.
+                latest.Mode |= Contact.Ledge;
+                latest.Landmark = true;
+                points[(int)(latest.Sequence % Capacity)] = latest;
             }
             if (sample.Landmark || Vector2.DistanceSquared(latest.Feet, sample.Feet) >= 16 * 16) Append(sample);
             previous = sample;

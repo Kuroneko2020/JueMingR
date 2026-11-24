@@ -20,7 +20,7 @@ namespace NativeWorldTextProbe
             var input = new List<MixedFrame>();
             var activeTimes = new List<long>();
             int settledSamples = 0;
-            int sampledPoses = 0, sampledPassages = 0, sampledReads = 0;
+            int sampledChunks = 0;
             Action terrain = () =>
                 {
                     PlaceFixtureStrip(62, 68, initial, TileID.Platforms);
@@ -53,11 +53,11 @@ namespace NativeWorldTextProbe
                 int down = -1, dropped = -1, doorOpen = -1, doorCross = -1, half = -1, ropeOn = -1, ropeRise = -1;
                 int ropeJump = -1, upperStand = -1, hoik = -1, impulses = 0, hoikExit = -1, obstructionCleared = -1, lowerExit = -1, stable = 0;
                 int ownerPhase = 0, startWait = -1, held = 0, maxRouteWork = 0, resumed = -1, departed = -1;
-                long firstJoined = 0, consumed = 0;
+                long firstAction = 0, lastAction = 0;
+                float ropeEntryY = 0, pulleyTravel = 0;
                 bool gate = false;
                 object navigation = Navigator(run.Actor);
-                object goals = GetOptional(navigation, "goals") ?? navigation;
-                int lastRouteWork = (int)(GetOptional(navigation, "RouteWork") ?? 0);
+                int lastRouteWork = (int)(GetOptional(navigation, "ExpansionWork") ?? 0);
                 // Keep the original deadline for committing the exit. Once
                 // actually airborne, measure the landing and approach in
                 // their own bounded native phases.
@@ -98,25 +98,15 @@ namespace NativeWorldTextProbe
                         }
                     }
                     Vector2 before = body.position;
+                    bool wasOnRope = body.pulley;
                     bool up = ownerPhase == 2 || ownerPhase == 3;
                     activeTimes.Add(run.Step(direction, jump, up: up));
                     input.Add(new MixedFrame(direction, edit, jump, up, human.Bottom));
-                    if (tick % 32 == 0 && GetOptional(navigation, "search") is object search)
-                    {
-                        sampledPoses = Math.Max(sampledPoses, (int)Get(search, "LiveCount"));
-                        sampledReads = Math.Max(sampledReads, ((IList)Get(Get(search, "Terrain"), "Cells")).Count);
-                        if (GetOptional(search, "Passages") is object passages)
-                        {
-                            int occupied = 0;
-                            foreach (object passage in (IList)Get(passages, "passages"))
-                                if ((long)Get(passage, "Id") != 0) occupied++;
-                            sampledPassages = Math.Max(sampledPassages, occupied);
-                        }
-                    }
-                    long joined = (long)(GetOptional(goals, "trailJoined") ?? 0L);
-                    if (firstJoined == 0 && joined > 0) firstJoined = joined;
-                    consumed = Math.Max(consumed, (long)(GetOptional(goals, "trailConsumed") ?? 0L));
-                    int routeWork = (int)(GetOptional(navigation, "RouteWork") ?? 0);
+                    if (tick % 32 == 0) sampledChunks = Math.Max(sampledChunks, (int)Get(Get(host, "navigationWorld"), "ChunkCount"));
+                    long currentAction = (long)Get(navigation, "ActionId");
+                    if (firstAction == 0) firstAction = currentAction;
+                    lastAction = Math.Max(lastAction, currentAction);
+                    int routeWork = (int)(GetOptional(navigation, "ExpansionWork") ?? 0);
                     maxRouteWork = Math.Max(maxRouteWork, routeWork - lastRouteWork);
                     lastRouteWork = routeWork;
                     string kind = ObservedActionKind(navigation);
@@ -125,9 +115,11 @@ namespace NativeWorldTextProbe
                     if (doorOpen < 0 && Main.tile[door, lower - 2].type == TileID.OpenDoor) doorOpen = tick;
                     if (doorCross < 0 && body.Left.X > (door + 1) * 16 && doorOpen >= 0) doorCross = tick;
                     if (half < 0 && doorCross >= 0 && Math.Abs(body.Bottom.Y - (lower * 16 + 8)) <= .25f && body.velocity.Y == 0) half = tick;
-                    if (ropeOn < 0 && body.pulley) ropeOn = tick;
-                    if (ropeRise < 0 && ropeOn >= 0 && body.pulley && body.Bottom.Y < (lower - 5) * 16) ropeRise = tick;
-                    if (ropeJump < 0 && ropeRise >= 0 && !body.pulley && body.controlJump && body.velocity.Y < 0) ropeJump = tick;
+                    if (ropeOn < 0 && body.pulley) { ropeOn = tick; ropeEntryY = body.Bottom.Y; }
+                    if (body.pulley) pulleyTravel = Math.Max(pulleyTravel, ropeEntryY - body.Bottom.Y);
+                    if (ropeRise < 0 && pulleyTravel >= 3 * 16) ropeRise = tick;
+                    if (ropeJump < 0 && ropeRise >= 0 && wasOnRope && !body.pulley && body.controlJump && body.velocity.Y < 0 && body.position.Y < before.Y)
+                        ropeJump = tick;
                     if (upperStand < 0 && ropeJump >= 0 && body.Center.X > 94 * 16 && OnFloor(body, upper)) upperStand = tick;
                     if (hoik < 0 && upperStand >= 0 && kind == "Hoik") hoik = tick;
                     if (upperStand >= 0 && body.position.X - before.X > 7 && body.velocity.X < 1) impulses++;
@@ -141,12 +133,12 @@ namespace NativeWorldTextProbe
                     if (stable >= 24) break;
                 }
                 settledSamples = stable;
-                Console.WriteLine($"MIXED down={down}/{dropped} door={doorOpen}/{doorCross}/{half} rope={ropeOn}/{ropeRise}/{ropeJump}/{upperStand} hoik={hoik}/{impulses}/{hoikExit} wait={startWait}/{obstructionCleared} resumed={resumed} departed={departed} exit={lowerExit} stable={stable} trail={firstJoined}/{consumed} maxRouteWork={maxRouteWork} phase={ownerPhase} body={body.Bottom}/{body.velocity} owner={human.Bottom} status={Get(run.Actor, "Status")}");
+                Console.WriteLine($"MIXED down={down}/{dropped} door={doorOpen}/{doorCross}/{half} rope={ropeOn}/{ropeRise}/{ropeJump}/{upperStand} pulleyTravel={pulleyTravel:F1} hoik={hoik}/{impulses}/{hoikExit} wait={startWait}/{obstructionCleared} resumed={resumed} departed={departed} exit={lowerExit} stable={stable} actions={firstAction}/{lastAction} maxRouteWork={maxRouteWork} phase={ownerPhase} body={body.Bottom}/{body.velocity} owner={human.Bottom} status={Get(run.Actor, "Status")}");
                 Require(down >= 0 && dropped > down && doorOpen > dropped && doorCross > doorOpen && half >= doorCross &&
                     ropeOn > half && ropeRise > ropeOn && ropeJump > ropeRise && upperStand > ropeJump && hoik > upperStand &&
                     impulses >= 2 && hoikExit > hoik && startWait >= hoikExit && obstructionCleared > startWait && resumed >= obstructionCleared &&
                     departed >= resumed && lowerExit > departed && stable >= 24 &&
-                    firstJoined > 0 && consumed >= firstJoined && maxRouteWork <= 160,
+                    firstAction > 0 && lastAction > firstAction && maxRouteWork <= 96,
                     "the same actor naturally drops the platform, walks the half-brick door, ascends and exits the rope, crosses the original Hoik and resumes after the temporary obstruction");
             }
 
@@ -166,7 +158,7 @@ namespace NativeWorldTextProbe
                 int finalStart = activeTimes.Count - settledSamples;
                 Console.WriteLine($"MIXED settled samples={settledSamples} activeCompanion {NativeStepTiming(activeTimes.GetRange(finalStart, settledSamples))} recalled {NativeStepTiming(idleTimes.GetRange(finalStart, settledSamples))}");
                 Console.WriteLine($"MIXED timing samples={input.Count} ownerReplayMaxPixels={largestOwnerDelta:F2} activeCompanion {NativeStepTiming(activeTimes)} recalled {NativeStepTiming(idleTimes)}");
-                Console.WriteLine($"MIXED storage sampledEveryUpdates=32 livePoses={sampledPoses} retainedPassages={sampledPassages} terrainReads={sampledReads}");
+                Console.WriteLine($"MIXED storage sampledEveryUpdates=32 chunks={sampledChunks}");
             }
         }
 
@@ -192,7 +184,8 @@ namespace NativeWorldTextProbe
         {
             ticks.Sort();
             double micros = 1000000d / Stopwatch.Frequency;
-            return $"p50_us={ticks[ticks.Count / 2] * micros:F2} p95_us={ticks[ticks.Count * 95 / 100] * micros:F2} peak_us={ticks[ticks.Count - 1] * micros:F2}";
+            return $"p50_us={ticks[ticks.Count / 2] * micros:F2} p95_us={ticks[ticks.Count * 95 / 100] * micros:F2} " +
+                $"p99_us={ticks[ticks.Count * 99 / 100] * micros:F2} peak_us={ticks[ticks.Count - 1] * micros:F2}";
         }
 
         private static int NativeAxisTo(Player player, float x)
@@ -228,25 +221,60 @@ namespace NativeWorldTextProbe
                 }))
             {
                 Player body = run.Body;
-                int retreat = -1, lowerEntry = -1, overRoof = -1, exit = -1, ownerMoved = -1, stable = 0;
+                int retreat = -1, lowerEntry = -1, overRoof = -1, exit = -1, stable = 0, longestStable = 0;
+                int turns = 0, moved = 0, direction = 1, relocations = 0;
                 float lowestX = body.Center.X;
+                var samples = new List<long>(1700);
+                object navigator = Navigator(run.Actor);
+                var work = new RoomWork(navigator);
+                var recent = new Queue<string>(24);
                 for (int tick = 0; tick < 1700; tick++)
                 {
-                    run.Step(exit >= 0 ? NativeAxisTo(human, finalX) : 0);
+                    // The exterior loop is entirely owner-driven. Exit
+                    // observations below only score the companion.
+                    if (direction > 0 && human.Center.X >= finalX ||
+                        direction < 0 && human.Center.X <= (wall + 5) * 16)
+                    {
+                        direction = -direction;
+                        turns++;
+                        Console.WriteLine($"TRIANGLE proxy owner turn tick={tick} exterior bound direction={direction} feet={human.Bottom}");
+                    }
+                    var ownerBefore = human.Bottom;
+                    var before = body.Bottom;
+                    samples.Add(run.Step(direction));
+                    work.Read(turns);
+                    bool ownerMoving = Vector2.DistanceSquared(ownerBefore, human.Bottom) > .25f;
+                    if (ownerMoving) moved++;
+                    if (Vector2.DistanceSquared(before, body.Bottom) > 24 * 24) relocations++;
                     lowestX = Math.Min(lowestX, body.Center.X);
+                    if (tick % 12 == 0)
+                    {
+                        string trace = RoomTrace(run, human, navigator, tick, turns);
+                        if (recent.Count == 24) recent.Dequeue();
+                        recent.Enqueue(trace);
+                        if (tick % 120 == 0) Console.WriteLine("TRIANGLE proxy " + trace);
+                    }
                     if (retreat < 0 && body.Center.X < actorX - 55) retreat = tick;
                     if (lowerEntry < 0 && retreat >= 0 && body.Bottom.Y > (innerBottom + 2) * 16) lowerEntry = tick;
                     if (overRoof < 0 && retreat >= 0 && body.Center.X > 55 * 16 && body.Bottom.Y <= roof * 16 + 1) overRoof = tick;
-                    if (exit < 0 && retreat >= 0 && (lowerEntry >= 0 || overRoof >= 0) && body.Left.X > (wall + 1) * 16 &&
-                        Math.Abs(body.Center.X - human.Center.X) <= 42 && Math.Abs(body.velocity.Y) < .4f) exit = tick;
-                    if (ownerMoved < 0 && exit >= 0 && human.Center.X > ownerX + 48) ownerMoved = tick;
-                    stable = ownerMoved >= 0 && OnFloor(body, lower) && OnFloor(human, lower) &&
-                        Math.Abs(body.Center.X - human.Center.X) <= 32 && Math.Abs(body.velocity.X) < .5f ? stable + 1 : 0;
-                    if (stable >= 25) break;
+                    if (exit < 0 && retreat >= 0 && (lowerEntry >= 0 || overRoof >= 0) && body.Left.X > (wall + 1) * 16)
+                        exit = tick;
+                    stable = exit >= 0 && ownerMoving && body.Left.X > (wall + 1) * 16 &&
+                        Math.Abs(body.Bottom.Y - human.Bottom.Y) <= 18 && Math.Abs(body.Center.X - human.Center.X) <= 72
+                        ? stable + 1 : 0;
+                    longestStable = Math.Max(longestStable, stable);
                 }
-                Console.WriteLine($"TRIANGLE proxy retreat={retreat} low={lowerEntry} roof={overRoof} exit={exit} ownerMoved={ownerMoved} stable={stable} leftmost={lowestX:F2} body={body.Bottom}/{body.velocity} owner={human.Bottom} status={Get(run.Actor, "Status")}");
-                Require(retreat >= 0 && (lowerEntry > retreat || overRoof > retreat) && exit > retreat && ownerMoved > exit && stable >= 25,
-                    "a continuous native body reverses away from the owner, changes layers around the covered slope and keeps following after the exterior owner moves");
+                Console.WriteLine($"TRIANGLE proxy tiles=44..119x67..94 slope=81..90 roof={roof} wall={wall} retreat={retreat} low={lowerEntry} roofPass={overRoof} exit={exit} " +
+                    $"ownerTurns={turns} ownerMoving={moved} nearMoving={longestStable} displacementOver24={relocations} leftmost={lowestX:F2} " +
+                    $"body={body.Bottom}/{body.velocity} owner={human.Bottom} status={Get(run.Actor, "Status")} work[{work}] {NativeStepTiming(samples)}");
+                if (exit < 0 || longestStable < 25)
+                    foreach (string trace in recent) Console.WriteLine("TRIANGLE proxy " + trace);
+                Require(turns >= 4 && moved >= 1350, "the independent exterior owner keeps walking and reversing during the proxy test");
+                Require(retreat >= 0 && (lowerEntry > retreat || overRoof > retreat) && exit > retreat && longestStable >= 25 &&
+                    relocations == 0 && run.NativeRelocations == 0 && !body.dead,
+                    "an actual body exits the covered slope by a legal change of level and follows the already-moving owner outside");
+                if (work.Available) work.AssertComplete(1700);
+                Console.WriteLine("PASS native moving owner around triangle proxy terrain.");
             }
         }
 

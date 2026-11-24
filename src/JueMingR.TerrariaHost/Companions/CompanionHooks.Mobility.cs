@@ -271,7 +271,7 @@ namespace JueMingR.TerrariaHost.Companions
             bool moved = __state != newPos;
             if (moved) host?.ObserveOwnerWarp(__instance);
             var actor = host?.Owned(__instance);
-            if (actor == null || Style == 3 && !moved) return;
+            if (actor == null || !moved) return;
             var state = actor.Mobility;
             state.PositionRevision++;
             if (Style == 3 && moved) host.ObserveWormholeArrival(actor, newPos);

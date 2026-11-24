@@ -41,9 +41,12 @@ namespace NativeWorldTextProbe
                     if (wet < 0 && body.wet && !body.lavaWet && !body.honeyWet && !body.shimmerWet) wet = tick;
                     if (wet >= 0 && landed < 0 && OnFloor(body, bottom)) { landed = tick; lastX = body.Center.X; }
                     if (tick >= 110 && landed >= 0 && walked < 0 && body.Center.X - lastX > 32 && body.controlRight) walked = tick;
-                    stable = walked >= 0 && body.wet && OnFloor(body, bottom) && Math.Abs(body.Center.X - desired) <= 28 ? stable + 1 : 0;
+                    bool ordinaryWet = body.wet && !body.lavaWet && !body.honeyWet && !body.shimmerWet;
+                    bool nearOnBottom = ordinaryWet && OnFloor(body, bottom) && OnFloor(human, bottom) &&
+                        Math.Abs(body.Center.X - human.Center.X) <= OrdinaryFollowSpacing + .01f && Math.Abs(body.velocity.X) < .5f;
+                    stable = walked >= 0 && nearOnBottom ? stable + 1 : 0;
                 }
-                Console.WriteLine($"FOLLOW ordinary water down={down} wet={wet} landed={landed} walked={walked} stable={stable} body={run.Body.Bottom} status={Get(run.Actor, "Status")}");
+                Console.WriteLine($"FOLLOW ordinary water down={down} wet={wet} landed={landed} walked={walked} stable={stable} distance={Math.Abs(run.Body.Center.X - human.Center.X):F2} body={run.Body.Bottom} status={Get(run.Actor, "Status")}");
                 Require(down >= 0 && wet > down && landed >= wet && walked >= 110 && stable >= 16,
                     "the same actual actor drops from dry support, enters breathable ordinary water and follows on the submerged bottom");
             }

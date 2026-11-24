@@ -40,18 +40,14 @@ namespace NativeWorldTextProbe
                 {
                     var target = new Vector2(center, lower * 16 + 8);
                     Vector2 pose = target - new Vector2(run.Body.width * .5f, run.Body.height);
-                    var nav = Navigator(run.Actor).GetType();
-                    const BindingFlags flags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
-                    bool goalSupport = (bool)nav.GetMethod("HasSurface", flags).Invoke(null,
-                        new object[] { run.Body, pose, null, true, false });
-                    bool bodySupport = (bool)nav.GetMethod("Supported", flags).Invoke(null,
-                        new object[] { run.Body, pose, true });
+                    var support = NavigationType(host.GetType().Assembly, "CompanionNativeContact").GetMethod("Supported", ReflectionMembers);
+                    bool bodySupport = (bool)support.Invoke(null, new object[] { run.Body, pose, true });
                     var native = ContactProbe(run.Body, pose);
                     NativeContactStep(native, false, false);
-                    Console.WriteLine($"FOLLOW contact slope={shape} goalSupport={goalSupport} bodySupport={bodySupport} nativePos={native.position} original={pose}");
+                    Console.WriteLine($"FOLLOW contact slope={shape} bodySupport={bodySupport} nativePos={native.position} original={pose}");
                     Require(Math.Abs(native.position.Y - pose.Y) <= .1f && Math.Abs(native.velocity.Y) <= .01f &&
-                        goalSupport && bodySupport, "the supported target and current-body queries agree with the native slope phase");
-                    FollowToContact(run, human, target, "lower slope " + shape);
+                        bodySupport, "the supported target and current-body queries agree with the native slope phase");
+                    FollowToContact(run, human, target, "lower slope " + shape, shape == 1 ? 1 : -1);
                 }
             }
         }
@@ -106,7 +102,7 @@ namespace NativeWorldTextProbe
             native.SlopingCollision(down, ignore);
         }
 
-        private static void FollowToContact(Scenario run, Player human, Vector2 goal, string geometry)
+        private static void FollowToContact(Scenario run, Player human, Vector2 goal, string geometry, int slopeDirection = 0)
         {
             human.Bottom = goal;
             int firstDown = -1, stair = -1, settled = -1, stable = 0;
@@ -116,7 +112,10 @@ namespace NativeWorldTextProbe
                 Player body = run.Body;
                 if (body.controlDown && firstDown < 0) firstDown = tick;
                 if (body.stairFall && stair < 0) stair = tick;
-                bool correct = Math.Abs(body.Bottom.Y - goal.Y) < .3f && Math.Abs(body.Center.X - goal.X) < 8 &&
+                // The same native diagonal support changes its contact Y with X.
+                float horizontal = body.Center.X - goal.X;
+                float contactY = goal.Y + horizontal * slopeDirection;
+                bool correct = Math.Abs(body.Bottom.Y - contactY) < .3f && Math.Abs(horizontal) < 8 &&
                     Math.Abs(body.velocity.Y) < .05f && !body.stairFall;
                 stable = correct ? stable + 1 : 0;
                 if (correct && settled < 0) settled = tick;
@@ -167,44 +166,6 @@ namespace NativeWorldTextProbe
                     run.StepToward(next, new Vector2(2.4f, 0));
                     resumed = ContactNearOwner(run.Body, next) ? resumed + 1 : 0;
                 }
-                object frontier = GetOptional(Navigator(run.Actor), "search");
-                if (frontier != null)
-                {
-                    int jumps = 0, stairs = 0, bridges = 0;
-                    float uppermostX = 0, deepestFeet = 0;
-                    object furthest = null;
-                    foreach (object node in (IList)Get(frontier, "Nodes"))
-                    {
-                        if ((int)Get(node, "Previous") < 0) continue;
-                        var position = (Vector2)Get(node, "Position");
-                        float feet = position.Y + run.Body.height;
-                        deepestFeet = Math.Max(deepestFeet, feet);
-                        if (Math.Abs(feet - crossing * 16) < 2 && position.X > uppermostX)
-                        { uppermostX = position.X; furthest = node; }
-                        if (Get(Get(node, "Step"), "Kind").ToString() != "Jump") continue;
-                        jumps++;
-                        if (Math.Abs(feet - intermediate * 16) < 2) stairs++;
-                        if (Math.Abs(feet - crossing * 16) < 2) bridges++;
-                    }
-                    Console.WriteLine($"FOLLOW high exit graph jumps={jumps} intermediate={stairs} crossing={bridges} upperRight={uppermostX:F1} deepestFeet={deepestFeet:F1}");
-                    if (furthest != null)
-                    {
-                        const BindingFlags flags = BindingFlags.Static | BindingFlags.NonPublic;
-                        var navType = Navigator(run.Actor).GetType();
-                        var support = navType.GetMethod("TrySupportedTravel", flags);
-                        var scratch = navType.GetNestedType("Scratch", BindingFlags.NonPublic);
-                        using ((IDisposable)scratch.GetMethod("Save", flags).Invoke(null, null))
-                        {
-                            foreach (int direction in new[] { -1, 1 })
-                            {
-                                object[] args = { run.Body, Get(furthest, "Position"), direction, 32f, null, Vector2.Zero,
-                                    false, true, false, false, false };
-                                bool walked = (bool)support.Invoke(null, args);
-                                Console.WriteLine($"FOLLOW high exit upper node direction={direction} walked32={walked} end={args[5]} pending={GetOptional(furthest, "Pending")} local={GetOptional(furthest, "LocalEdgesDone")} score={GetOptional(furthest, "Score")}");
-                            }
-                        }
-                    }
-                }
                 Console.WriteLine($"FOLLOW high exit launch={launch} speed={launchSpeed:F2} intermediate={firstLanding} upperCross={crossed} lower={landed} nearestHeight={lowestFeet:F2} stable={stable} resumed={resumed} feet={run.Body.Bottom}");
                 Require(launch >= 0 && firstLanding > launch && crossed > firstLanding && landed > crossed &&
                     stable >= 24 && resumed >= 22, "ordinary Follow must jump upward to the only upper exit, descend and settle by the lower owner twice");
@@ -212,7 +173,7 @@ namespace NativeWorldTextProbe
         }
 
         private static bool ContactNearOwner(Player body, Vector2 goal) =>
-            Math.Abs(body.Bottom.Y - goal.Y) < 1 && Math.Abs(body.Center.X - goal.X) < 28 &&
+            Math.Abs(body.Bottom.Y - goal.Y) < 1 && Math.Abs(body.Center.X - goal.X) <= OrdinaryFollowSpacing + .01f &&
             Math.Abs(body.velocity.X) < .35f && Math.Abs(body.velocity.Y) < .1f;
 
         private static void VerifyNativeRunUp(object host, object profiles, Player human)
@@ -249,8 +210,10 @@ namespace NativeWorldTextProbe
                 var goal = new Vector2(80 * 16, landing * 16);
                 human.Bottom = goal;
                 int running = -1, jumping = -1, crossed = -1, stable = 0;
-                float actualSpeed = 0, plannedSpeed = 0;
+                float actualSpeed = 0;
                 bool walkPrecedesJump = false;
+                var nav = Navigator(run.Actor);
+                var refinement = Get(nav, "refine");
                 for (int tick = 0; tick < 440 && stable < 22; tick++)
                 {
                     Player body = run.Body;
@@ -261,64 +224,28 @@ namespace NativeWorldTextProbe
                     {
                         jumping = tick;
                         actualSpeed = speed;
-                        object nav = Navigator(run.Actor);
-                        object routeOwner = GetOptional(nav, "actions") ?? nav;
-                        var route = (IList)Get(routeOwner, "route");
-                        int index = (int)Get(routeOwner, "routeIndex");
-                        if (index < route.Count)
-                        {
-                            object edge = route[index];
-                            if (Get(edge, "Kind").ToString() == "Jump")
-                            {
-                                plannedSpeed = (float)(GetOptional(edge, "EntryVelocityX") ?? 0f);
-                                walkPrecedesJump = index > 0 && Get(route[index - 1], "Kind").ToString() == "Walk";
-                            }
-                        }
+                        walkPrecedesJump = ObservedActionKind(Navigator(run.Actor)) == "Jump";
                     }
                     if (jumping >= 0 && crossed < 0 && OnFloor(body, landing) && body.Right.X > farBank * 16) crossed = tick;
                     stable = ContactNearOwner(body, goal) ? stable + 1 : 0;
                     if (tick % 80 == 0 || tick < 80 && tick % 6 == 0)
                     {
-                        var nav = Navigator(run.Actor);
-                        var blocked = Get(nav, "blockedStep");
-                        Console.WriteLine($"FOLLOW runup step={tick} feet={body.Bottom}/{body.velocity} route={RouteStep(run.Actor)} status={Get(run.Actor, "Status")} blocked={Get(blocked, "Kind")}:{Get(blocked, "From")}→{Get(blocked, "To")} plan={PlanStatus(nav)}");
+                        var candidate = Get(refinement, "Edge");
+                        Console.WriteLine($"FOLLOW runup step={tick} feet={body.Bottom}/{body.velocity} route={RouteStep(run.Actor)} " +
+                            $"status={Get(run.Actor, "Status")} plan={PlanStatus(nav)} {RouteTrace(nav)} " +
+                            $"refinement={Get(refinement, "Active")}/{Get(nav, "refineReady")} " +
+                            $"candidate={Get(candidate, "Kind")}:{Get(candidate, "From")}→{Get(candidate, "To")} refinedTicks={Get(refinement, "ticks")}");
                     }
                 }
-                Console.WriteLine($"FOLLOW runup walk={running} jump={jumping} actualEntry={actualSpeed:F2} plannedEntry={plannedSpeed:F2} predecessorWalk={walkPrecedesJump} crossed={crossed} stable={stable} feet={run.Body.Bottom}");
+                Console.WriteLine($"FOLLOW runup walk={running} jump={jumping} actualEntry={actualSpeed:F2} ownAction={walkPrecedesJump} crossed={crossed} stable={stable} feet={run.Body.Bottom}");
                 if (crossed < 0)
                 {
                     var nativeStart = new Vector2(1032 - run.Body.width * .5f, launch * 16 - run.Body.height);
                     Vector2 slow = JumpToNativeBank(run.Body, 0, out _, nativeStart);
                     Vector2 fast = JumpToNativeBank(run.Body, run.Body.maxRunSpeed, out _, nativeStart);
                     Console.WriteLine($"FOLLOW runup native geometry launch={nativeStart} stationary={slow} rolling={fast}");
-                    var nav = Navigator(run.Actor);
-                    var frontier = GetOptional(nav, "search");
-                    if (frontier != null)
-                    {
-                        int printed = 0, farCandidates = 0;
-                        foreach (object node in (IList)Get(frontier, "Nodes"))
-                        {
-                            var pose = (Vector2)Get(node, "Position");
-                            float vx = (float)(GetOptional(node, "VelocityX") ?? 0f);
-                            if (pose.Y < launch * 16 - run.Body.height - 10) farCandidates++;
-                            if (printed < 10 && pose.X >= 1014 && pose.X <= 1040 && vx > 1.8f)
-                            {
-                                printed++;
-                                Console.WriteLine($"FOLLOW runup node pose={pose} speed={vx:F2} pending={GetOptional(node, "Pending")} kind={Get(Get(node, "Step"), "Kind")} parent={Get(node, "Previous")}");
-                            }
-                        }
-                        Console.WriteLine($"FOLLOW runup nodesNearLip={printed} farCandidates={farCandidates}");
-                    }
-                    foreach (var method in nav.GetType().GetMethods(BindingFlags.NonPublic | BindingFlags.Instance))
-                    {
-                        if (method.Name != "TryJumpEdge" || method.GetParameters().Length != 12) continue;
-                        var observed = Get(Get(run.Actor, "Mobility"), "Observed");
-                        object[] args = { run.Body, observed, nativeStart, 1, false, run.Body.maxRunSpeed, 0, null,
-                            Vector2.Zero, 0, 0, 0f };
-                        Console.WriteLine($"FOLLOW runup planner geometry={method.Invoke(nav, args)} projected={args[8]} exit={args[11]}");
-                    }
                 }
-                Require(running >= 0 && jumping > running && plannedSpeed > 1.2f && walkPrecedesJump && crossed > jumping && stable >= 22,
+                Require(running >= 0 && jumping > running && actualSpeed > 1.2f && walkPrecedesJump && crossed > jumping && stable >= 22,
                     "an actual supported walk feeds its running entry to the planned jump and reaches the higher far support");
             }
         }

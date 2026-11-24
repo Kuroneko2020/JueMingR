@@ -44,12 +44,18 @@ namespace NativeWorldTextProbe
                     Main.npc[1] = PylonResident(NPCID.Merchant, 1, destination + 6, floor);
                     Vector2 owner = human.Bottom;
                     int arrived = -1;
+                    long previousAction = -1;
                     Vector2 actualEntry = default, actualExit = default;
                     var state = Get(run.Actor, "Mobility");
+                    var navigation = Get(Get(run.Actor, "Behavior"), "Navigator");
                     for (int tick = 0; tick < 220; tick++)
                     {
                         Vector2 before = run.Body.position;
                         run.StepOwner(Vector2.Zero);
+                        long currentActionId = (long)Get(navigation, "ActionId");
+                        if (tick % 55 == 0 || currentActionId != previousAction || tick >= 50 && tick <= 120 && tick % 8 == 0)
+                            TraceFollow(run.Actor, run.Body, "pylon", tick);
+                        previousAction = currentActionId;
                         if (Vector2.DistanceSquared(before, run.Body.position) < 112 * 112) continue;
                         actualEntry = before; actualExit = run.Body.position;
                         arrived = tick; break;
@@ -113,30 +119,37 @@ namespace NativeWorldTextProbe
             var position = body.position;
             var velocity = body.velocity;
             var owner = human.position;
-            var area = new Dictionary<Point, Tile>();
+            var terrain = Main.tile;
             var failures = new List<Exception>();
-            for (int x = 73; x <= 119; x++)
-                for (int y = 55; y <= 82; y++)
-                    area.Add(new Point(x, y), Main.tile[x, y]);
             try
             {
                 Call(host, "SetBehavior", profile.Id, new CompanionBehavior { Follow = true, AttackEnabled = false, HealthRecoveryEnabled = false });
                 foreach (Action<object, object, Player, Player> test in new Action<object, object, Player, Player>[] { Rope, Track, TrackNearOwner, WiredPads, Grapple })
                 {
-                    foreach (Point tile in area.Keys) Main.tile[tile.X, tile.Y] = new Tile();
+                    // These cases replace the map premise between trials.
+                    // Give each its own tile-array identity so cached facts from
+                    // the previous geometry cannot become the next premise.
+                    Main.tile = (Tile[,])terrain.Clone();
+                    for (int x = 73; x <= 119; x++)
+                        for (int y = 55; y <= 82; y++) Main.tile[x, y] = new Tile();
                     try { test(host, actor, body, human); }
                     catch (Exception failure) { Console.WriteLine(failure); failures.Add(failure); }
-                    finally { if (body.mount.Active) body.mount.Dismount(body, true); }
+                    finally
+                    {
+                        if (body.mount.Active) body.mount.Dismount(body, true);
+                        body.pulley = false;
+                        body.RemoveAllGrapplingHooks();
+                    }
                 }
                 if (failures.Count > 0) throw new AggregateException("Actual companion facility Follow", failures);
             }
             finally
             {
-                foreach (var tile in area) Main.tile[tile.Key.X, tile.Key.Y] = tile.Value;
+                Main.tile = terrain;
                 body.position = position;
                 body.velocity = velocity;
                 human.position = owner;
-                Call(Get(Get(actor, "Behavior"), "navigation"), "CancelRoute");
+                Call(Get(Get(actor, "Behavior"), "Navigator"), "ResetPosition");
                 Call(host, "SetBehavior", profile.Id, preferences);
             }
         }
@@ -149,18 +162,31 @@ namespace NativeWorldTextProbe
             for (int y = 61; y < lower; y++) TileAt(ropeX, y, TileID.Rope);
             Place(host, actor, body, human, ropeX * 16 + 8, lower);
             human.Bottom = new Vector2(93 * 16, upper * 16);
-            bool attached = false, rose = false, released = false, reached = false;
-            for (int tick = 0; tick < 330 && !reached; tick++)
+            int attached = -1, released = -1, landed = -1, settled = 0;
+            float attachY = 0, ropeRise = 0, highestY = float.MaxValue;
+            for (int tick = 0; tick < 330 && settled < 12; tick++)
             {
+                bool wasOnRope = body.pulley;
+                float previousY = body.Bottom.Y;
                 Step(host, body);
-                if (body.pulley && !attached) { attached = true; human.Bottom = new Vector2(104 * 16, upper * 16); }
-                rose |= attached && body.pulley && body.Bottom.Y < (lower - 5) * 16;
-                released |= rose && !body.pulley && body.controlJump && body.velocity.Y < 0;
-                reached = released && body.Center.X > 95 * 16 && Math.Abs(body.Bottom.Y - upper * 16) < 2;
-                if (tick % 55 == 0) TraceFollow(actor, body, "rope", tick);
+                if (body.pulley && attached < 0)
+                {
+                    attached = tick;
+                    attachY = body.Bottom.Y;
+                    human.Bottom = new Vector2(104 * 16, upper * 16);
+                }
+                if (body.pulley) ropeRise = Math.Max(ropeRise, attachY - body.Bottom.Y);
+                if (released < 0 && wasOnRope && !body.pulley && body.controlJump && body.velocity.Y < 0 && body.Bottom.Y < previousY)
+                    released = tick;
+                if (released >= 0) highestY = Math.Min(highestY, body.Bottom.Y);
+                bool onUpper = released >= 0 && body.Center.X > 95 * 16 && Math.Abs(body.Bottom.Y - upper * 16) < 2 && Math.Abs(body.velocity.Y) < .25f;
+                if (onUpper && landed < 0) landed = tick;
+                settled = onUpper ? settled + 1 : 0;
+                if (tick % 55 == 0 || tick == attached || tick == released || tick == landed) TraceFollow(actor, body, "rope", tick);
             }
-            Require(attached && rose && released && reached,
-                $"Follow climbs the original rope and jumps onto the higher landing: attach={attached} rise={rose} released={released} landed={reached} body={body.position} speed={body.velocity} status={Get(actor, "Status")}");
+            Require(attached >= 0 && ropeRise >= 3 * 16 && released > attached && attachY - highestY >= 5 * 16 && landed > released && settled >= 12,
+                $"Follow climbs the original rope and jumps onto the higher landing: attach={attached} ropeRise={ropeRise:F1} released={released} highest={highestY:F1} landed={landed} stable={settled} body={body.position} speed={body.velocity} status={Get(actor, "Status")}");
+            Console.WriteLine($"NAV FACILITY rope attach={attached} ropeRise={ropeRise:F1} released={released} highest={highestY:F1} landed={landed} stable={settled}");
             Console.WriteLine("PASS native companion Follow rope: attachment, climbing, native jump at the top and upper platform landing.");
         }
 
@@ -183,15 +209,13 @@ namespace NativeWorldTextProbe
             Place(host, actor, body, human, 82 * 16 + 8, floor);
             human.Bottom = new Vector2(112 * 16, floor * 16);
             bool ride = false, driving = false, brake = false, dismounted = false;
-            int waitingForNativeTrack = 0;
+            int waitingForNativeTrack = 0, retargeted = -1;
             float initialRailX = 0, topSpeed = 0;
             int stable = 0;
             float farthest = 0;
             Vector2 nearbyGoal = new Vector2(94 * 16, floor * 16);
             var mobility = Get(actor, "Mobility");
-            var navigation = Get(Get(actor, "Behavior"), "navigation");
-            var coordinator = GetOptional(navigation, "coordinator");
-            var executor = coordinator == null ? null : Get(coordinator, "Actions");
+            var navigation = Get(Get(actor, "Behavior"), "Navigator");
             int priorHook = (int)Get(mobility, "HookKey");
             int railHookKey = priorHook;
             Projectile railHook = null;
@@ -206,29 +230,17 @@ namespace NativeWorldTextProbe
                         railHook = next;
                         railHookKey = key;
                     }
-                    if (railHook?.active == true && (int)railHook.key == railHookKey)
-                    {
-                        int previous = Main.ProjectileUpdateLoopIndex;
-                        try { Main.ProjectileUpdateLoopIndex = railHook.whoAmI; railHook.Update(railHook.whoAmI); }
-                        finally { Main.ProjectileUpdateLoopIndex = previous; }
-                    }
                     bool settling = body.mount.Cart && !body.onTrack && Get(mobility, "Action").ToString() == "QuickCart" &&
                         Get(mobility, "Result").ToString() == "Started";
-                    int ageBefore = settling && executor != null ? (int)Get(executor, "age") : 0;
-                    // Control/AfterBody surrounds the native movement first.
-                    // The real Host tail observes it for the next world step.
-                    NativeQuickItemChecks.BeginWorldStep();
-                    body.Update(body.whoAmI);
-                    Call(host, "Update", (ulong)Main.GameUpdateCount);
-                    if (settling && executor != null)
+                    long actionBefore = (long)Get(navigation, "ActionId");
+                    float speedBefore = body.velocity.X;
+                    Step(host, body, railHook?.active == true && (int)railHook.key == railHookKey ? railHook : null);
+                    if (settling && !body.onTrack)
                     {
-                        var outcome = Get(executor, "Outcome");
-                        var delivery = Get(executor, "delivery");
-                        Require(Get(outcome, "Deferral").ToString() == "NativeTransition" &&
-                            (long)Get(delivery, "ActionId") == (long)Get(outcome, "ActionId") &&
-                            (int)Get(delivery, "Move") == 0 && (int)Get(delivery, "Vertical") == 0 && !(bool)Get(delivery, "Jump") &&
-                            (int)Get(executor, "age") == ageBefore,
-                            "an actual unsettled cart receives neutral controls and no movement failure opportunity while it attaches");
+                        Require(Get(navigation, "LastDeferral").ToString() == "NativeTransition" &&
+                            (long)Get(navigation, "ActionId") == actionBefore &&
+                            !body.controlLeft && !body.controlRight && !body.controlUp && !body.controlDown && !body.controlJump,
+                            "an actual unsettled cart receives neutral controls with its same action identity while it attaches");
                         waitingForNativeTrack++;
                     }
                     if (body.mount.Cart && body.onTrack)
@@ -238,7 +250,7 @@ namespace NativeWorldTextProbe
                         if (!driving && body.Center.X > initialRailX + 48)
                         {
                             driving = true;
-                            if (nearbyOwner) human.Bottom = nearbyGoal;
+                            if (nearbyOwner) { human.Bottom = nearbyGoal; retargeted = tick; }
                         }
                         brake |= driving && topSpeed > 1.5f && Math.Abs(body.velocity.X) <= 1.5f;
                     }
@@ -247,6 +259,15 @@ namespace NativeWorldTextProbe
                     if (nearbyOwner && dismounted && Math.Abs(body.Bottom.Y - floor * 16) < 2 &&
                         Math.Abs(body.Center.X - nearbyGoal.X) <= 36 && Math.Abs(body.velocity.X) < .5f) stable++;
                     else stable = 0;
+                    if (retargeted >= 0 && tick <= retargeted + 54 && (tick <= retargeted + 12 || (tick - retargeted) % 6 == 0))
+                    {
+                        var edge = Get(navigation, "ActionTransition");
+                        var delivery = Get(navigation, "LastMovementDelivery");
+                        Console.WriteLine($"NAV FACILITY cart retarget tick={tick} age={tick - retargeted} feet={body.Bottom} speed={speedBefore:F2}→{body.velocity.X:F2} " +
+                            $"accel={body.runAcceleration:F2} friction={body.runSlowdown:F2} track={body.onTrack} control={body.controlLeft}/{body.controlRight} " +
+                            $"action={Get(edge, "Kind")}/{Get(edge, "Detail")}:{Get(edge, "From")}→{Get(edge, "To")} " +
+                            $"delivery={Get(delivery, "Move")}/{Get(delivery, "Activation")} deferral={Get(navigation, "LastDeferral")}");
+                    }
                     if (tick % 75 == 0) TraceFollow(actor, body, nearbyOwner ? "track-near" : "track", tick);
                 }
             }
@@ -260,7 +281,7 @@ namespace NativeWorldTextProbe
             }
             Require(ride && driving && brake && dismounted && body.Center.X > 107 * 16,
                 $"Follow rides the existing track, brakes and resumes on foot: ride={ride} drive={driving} speed={topSpeed} brake={brake} dismount={dismounted} body={body.position} status={Get(actor, "Status")}");
-            if (executor != null) Require(waitingForNativeTrack > 0, "the native cart really enters the unsettled contact phase");
+            Require(waitingForNativeTrack > 0, "the native cart really enters the unsettled contact phase");
             Console.WriteLine($"NAV FACILITY real cart settling updates={waitingForNativeTrack}");
             Console.WriteLine("PASS native companion Follow minecart: track attachment, sustained travel, native braking, dismount and continued ground Follow.");
         }
@@ -291,6 +312,7 @@ namespace NativeWorldTextProbe
                 float previous = body.Center.X;
                 Step(host, body);
                 if (body.Center.X - previous > 250) exit = body.Center.X;
+                if (tick % 60 == 0) TraceFollow(actor, body, "wire", tick);
             }
             Require(exit > end * 16 && body.Center.X >= exit + 24 && human.position == owner && Main.tile[start, 70].frameY == 18,
                 $"Follow operates one existing safe circuit, resumes from the real landing and leaves the human alone: exit={exit} body={body.position} signal={Main.tile[start, 70].frameY} status={Get(actor, "Status")}");
@@ -323,13 +345,7 @@ namespace NativeWorldTextProbe
                     var current = (Projectile)GetOptional(mobility, "Hook");
                     if (current != null && (int)Get(mobility, "HookKey") != initialKey && current.owner == body.whoAmI && current.type == hookItem.shoot)
                     { hook = current; shot = true; }
-                    if (hook?.active == true)
-                    {
-                        int previous = Main.ProjectileUpdateLoopIndex;
-                        try { Main.ProjectileUpdateLoopIndex = hook.whoAmI; hook.Update(hook.whoAmI); }
-                        finally { Main.ProjectileUpdateLoopIndex = previous; }
-                    }
-                    Step(host, body);
+                    Step(host, body, hook);
                     if (!attached && hook?.active == true && hook.ai[0] == 2 && body.position.Y < (floor - 4) * 16)
                     {
                         attached = true;
@@ -338,9 +354,12 @@ namespace NativeWorldTextProbe
                     }
                     if (attached && Get(mobility, "Action").ToString() == "ReleaseHook")
                     {
-                        verticalRelease |= body.controlJump && body.controlDown && !body.controlLeft && !body.controlRight;
+                        var navigation = Get(Get(actor, "Behavior"), "Navigator");
+                        var delivery = Get(navigation, "LastMovementDelivery");
+                        verticalRelease |= Get(delivery, "Activation").ToString() == "ReleaseHook" && (int)Get(delivery, "Move") == 0;
                         detached |= hook?.active == false && body.position.Y > hangingY + 8;
                     }
+                    if (i % 60 == 0) TraceFollow(actor, body, "hook", i);
                 }
                 Require(shot && attached && verticalRelease && detached && !(bool)Get(actor, "Faulted"),
                     $"Follow chooses its own hook, pulls upward, then releases to the lower target: birth={shot} attached={attached} release={verticalRelease} down={detached} body={body.position} action={Get(mobility, "Action")}/{Get(mobility, "Result")} status={Get(actor, "Status")}");
@@ -359,22 +378,40 @@ namespace NativeWorldTextProbe
             body.Bottom = new Vector2(centerX, floor * 16);
             body.velocity = Vector2.Zero;
             human.Center = body.Center;
-            Call(Get(Get(actor, "Behavior"), "navigation"), "CancelRoute");
+            Call(Get(Get(actor, "Behavior"), "Navigator"), "ResetPosition");
+            Call(Get(actor, "Mobility"), "Reset", Get(actor, "Generation"));
             Step(host, body);
         }
 
         private static void TraceFollow(object actor, Player body, string caseName, int tick)
         {
-            var navigation = Get(Get(actor, "Behavior"), "navigation");
-            var coordinator = GetOptional(navigation, "coordinator");
-            var routeOwner = coordinator == null ? navigation : Get(coordinator, "Actions");
-            var steps = (System.Collections.IList)Get(routeOwner, "route");
-            int current = (int)Get(routeOwner, "routeIndex");
-            object action = current < steps.Count ? steps[current] : null;
-            var search = GetOptional(navigation, "search");
-            string route = action == null ? "local" : $"{Get(action,"Kind")}:{Get(action,"From")}→{Get(action,"To")}";
-            string frontier = search == null ? "none" : $"{Get(search,"Active")}/{Get(search,"Exhausted")}/{((System.Collections.IList)Get(search,"Nodes")).Count}";
-            Console.WriteLine($"NAV FACILITY {caseName} tick={tick} body={body.Bottom}/{body.velocity} pulley={body.pulley} track={body.onTrack} up={body.controlUp} down={body.controlDown} route={route} frontier={frontier} pending={Get(navigation,"pendingResult")} publishing={Get(navigation,"publishing")} status={Get(actor,"Status")}");
+            var navigation = Get(Get(actor, "Behavior"), "Navigator");
+            var mobility = Get(Get(actor, "Mobility"), "Observed");
+            var route = GetOptional(navigation, "route");
+            var localLinks = GetOptional(navigation, "facilities") as System.Collections.IList;
+            var routeLinks = route == null ? null : GetOptional(route, "facilities") as System.Collections.IList;
+            var corridor = route == null ? null : GetOptional(route, "corridor") as System.Collections.IList;
+            int head = route == null ? 0 : (int)(GetOptional(route, "corridorIndex") ?? 0);
+            var refinement = Get(navigation, "refine");
+            var action = Get(navigation, "action");
+            var corridorGoal = route == null ? null : GetOptional(route, "corridorGoal");
+            var links = new List<string>();
+            if (localLinks != null)
+                foreach (object link in localLinks)
+                    links.Add($"{Get(link, "Detail")}:{Get(link, "From")}→{Get(link, "To")}");
+            var steps = new List<string>();
+            for (int index = head; corridor != null && index < corridor.Count && index < head + 4; index++)
+            {
+                object step = corridor[index];
+                steps.Add($"{Get(step, "Kind")}:{Get(step, "From")}→{Get(step, "To")}");
+            }
+            Console.WriteLine($"NAV FACILITY {caseName} tick={tick} body={body.Bottom}/{body.velocity} pulley={body.pulley} track={body.onTrack} " +
+                $"up={body.controlUp} down={body.controlDown} action={Get(navigation, "ActionId")}/{Get(navigation,"ActionKind")}/{Get(navigation,"ActionOutcome")} direct={Get(action, "Direct")} " +
+                $"query={Get(navigation,"QueryStatus")}/{Get(navigation,"QueryGeneration")} goal={(corridorGoal == null ? null : GetOptional(corridorGoal, "Cell"))} " +
+                $"corridor={head}/{corridor?.Count}[{string.Join(",", steps)}] verification={(route == null ? null : GetOptional(route, "verificationIndex"))} " +
+                $"refinement={Get(refinement, "Active")}/{Get(navigation, "refineReady")} " +
+                $"cart={Get(mobility, "CanUseCart")}/{body.mount.Type} hook={Get(mobility, "HookRange")} facilities={localLinks?.Count}/{routeLinks?.Count}[{string.Join(",", links)}] " +
+                $"reason={Get(navigation,"LastDeferral")} status={Get(actor,"Status")}");
         }
 
         private static void Floor(int left, int right, int y)
@@ -388,11 +425,17 @@ namespace NativeWorldTextProbe
             return tile;
         }
 
-        private static void Step(object host, Player body)
+        private static void Step(object host, Player body, Projectile projectile = null)
         {
             NativeQuickItemChecks.BeginWorldStep();
-            Call(host, "Update", (ulong)Main.GameUpdateCount);
             body.Update(body.whoAmI);
+            if (projectile?.active == true)
+            {
+                int previous = Main.ProjectileUpdateLoopIndex;
+                try { Main.ProjectileUpdateLoopIndex = projectile.whoAmI; projectile.Update(projectile.whoAmI); }
+                finally { Main.ProjectileUpdateLoopIndex = previous; }
+            }
+            Call(host, "Update", (ulong)Main.GameUpdateCount);
         }
     }
 }

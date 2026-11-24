@@ -95,14 +95,27 @@ namespace NativeWorldTextProbe
             }))
             {
                 int planned = -1;
+                long oldAction = 0, previousAction = -1;
+                var navigator = Navigator(run.Actor);
                 for (int tick = 0; tick < 150 && planned < 0; tick++)
                 {
                     run.StepToward(new Vector2(target, (human.Left.X < lip ? upper : lower) * 16), new Vector2(3.2f, 4));
                     Player body = run.Body;
                     float room = lip - body.Left.X;
                     if (OnFloor(body, upper) && body.velocity.X > 1 && room > OriginalBrakeRoom(body) + 3 &&
-                        RouteStep(run.Actor).StartsWith("LedgeDrop:", StringComparison.Ordinal))
-                        planned = tick;
+                        RouteStep(run.Actor).StartsWith("Drop:", StringComparison.Ordinal))
+                    {
+                        if (!(bool)Get(navigator, "ActionCommitted"))
+                        {
+                            planned = tick;
+                            oldAction = (long)Get(navigator, "ActionId");
+                        }
+                    }
+                    long action = (long)Get(navigator, "ActionId");
+                    if (tick % 25 == 0 || action != previousAction)
+                        Console.WriteLine($"FOLLOW owner warp preparation tick={tick} feet={body.Bottom}/{body.velocity} room={room:F2} " +
+                            $"brake={OriginalBrakeRoom(body):F2} committed={Get(navigator, "ActionCommitted")} {RouteStep(run.Actor)} {PlanStatus(navigator)} {RouteTrace(navigator)}");
+                    previousAction = action;
                 }
                 Require(planned >= 0, "real Follow has an unissued drop at a still-brakeable upper ledge before the owner moves");
                 Player companion = run.Body;
@@ -114,7 +127,12 @@ namespace NativeWorldTextProbe
                 for (int tick = 0; tick < 175; tick++)
                 {
                     run.StepOwner(Vector2.Zero);
-                    if (tick == 0) retainedOldDrop = RouteStep(run.Actor).StartsWith("LedgeDrop:", StringComparison.Ordinal);
+                    if (tick == 0)
+                    {
+                        var delivered = GetOptional(navigator, "LastMovementDelivery");
+                        retainedOldDrop = (long)Get(navigator, "ActionId") == oldAction ||
+                            delivered != null && (long)Get(delivered, "ActionId") == oldAction;
+                    }
                     if (firstAway < 0 && companion.velocity.X < -.1f) firstAway = tick;
                     maxDrop = Math.Max(maxDrop, companion.Bottom.Y - upper * 16);
                     stable = OnFloor(companion, upper) && Math.Abs(companion.Bottom.X - human.Bottom.X) < 32 ? stable + 1 : 0;
@@ -151,50 +169,27 @@ namespace NativeWorldTextProbe
                 float initialSpeed = body.velocity.X;
                 human.Bottom = new Vector2(targetX, floor * 16);
                 var navigation = Navigator(run.Actor);
-                var state = Get(run.Actor, "Mobility");
-                var root = Enum.Parse(AccessTools.Inner(navigation.GetType(), "RouteMotion"), "Ground");
-                var route = (IList)Get(GetOptional(navigation, "actions") ?? navigation, "route");
-                Call(navigation, "CancelRoute");
-                using (var work = new TerrainSearchWork(navigation))
+                int brake = -1;
+                for (int t = 0; t < 55; t++)
                 {
-                    var goal = human.Center - body.Size * .5f;
-                    int firstBand = -1;
-                    for (int t = 0; t < 12 && firstBand < 0; t++)
-                    {
-                        // Study the failed outgoing candidates at the
-                        // observed fast pose without applying a planner frame.
-                        NativeQuickItemChecks.BeginWorldStep();
-                        Call(navigation, "SearchRoute", body, Get(state, "Observed"), goal, 22, root, false);
-                        var initial = Get(navigation, "search");
-                        if ((bool)(GetOptional(initial, "RootVelocityRead") ?? false) && route.Count == 0)
-                            firstBand = (int)Get(initial, "RootVelocityBand");
-                    }
-                    int checksBefore = work.Candidates, speedWake = -1;
-                    for (int t = 0; t < 55 && speedWake < 0; t++)
-                    {
-                        run.StepOwner(Vector2.Zero);
-                        var current = Get(navigation, "search");
-                        if (firstBand > 0 && Math.Abs(body.velocity.X) < .3f &&
-                            (int)Get(current, "RootVelocityBand") == 0 && (bool)Get(current, "RootVelocityRead") &&
-                            work.Candidates > checksBefore) speedWake = t;
-                    }
-                    float distance = Vector2.Distance(origin, body.position);
-                    Console.WriteLine($"FOLLOW brake root initialSpeed={initialSpeed:F2} band={firstBand} wake={speedWake} walked={distance:F1} starts={work.Starts} candidates={checksBefore}->{work.Candidates}");
-                    Require(firstBand > 0 && speedWake >= 0 && distance < 42 && work.Starts == 1 &&
-                        body.Right.X <= wall * 16 && !body.dead,
-                        "braking alone reopens the actual movement-dependent root before 42 pixels, preserving the prior graph and blocking the unchanged solid wall");
+                    run.StepOwner(Vector2.Zero);
+                    if (brake < 0 && Math.Abs(body.velocity.X) < .3f) brake = t;
                 }
+                float distance = Vector2.Distance(origin, body.position);
+                Console.WriteLine($"FOLLOW brake root initialSpeed={initialSpeed:F2} brake={brake} walked={distance:F1} {PlanStatus(navigation)}");
+                Require(brake >= 0 && distance < 42 && body.Right.X <= wall * 16 && !body.dead,
+                    "the real moving body brakes at the unchanged wall without tunneling or manufacturing a different root pose");
             }
         }
 
         private static void TrailFollow(object host, object profiles, Player human)
         {
-            const int top = 80, lower = 92, wall = 68, start = 65 * 16;
+            const int top = 80, lower = 92, wall = 68, wallTop = 75, leftEdge = 62, start = 65 * 16;
             using (var run = new Scenario(host, profiles, human, "follow-owner-turn", start, top, () =>
             {
-                Fill(62, wall - 1, top, TileID.Stone);
+                Fill(leftEdge, wall - 1, top, TileID.Stone);
                 Fill(49, 98, lower, TileID.Stone);
-                for (int y = 75; y < 88; y++) StoneVertical(wall, y);
+                for (int y = wallTop; y < 88; y++) StoneVertical(wall, y);
             }))
             using (var work = new TerrainSearchWork(Navigator(run.Actor)))
             {
@@ -212,35 +207,41 @@ namespace NativeWorldTextProbe
                     "both real actors share the owner's trajectory");
                 try
                 {
+                    Player first = run.Body;
                     int joined = -1, lowerLanding = -1, stable = 0, otherMoves = 0, maxSamplesInStep = 0;
+                    int leftExit = -1, crown = -1, farSide = -1;
                     int unplannedFirst = 0, unplannedSecond = 0, maxTeamWork = 0, previousTeamWork = 0;
-                    float leftmost = run.Body.Bottom.X;
+                    float leftmost = first.Bottom.X, largestStep = 0f;
+                    Require(OnFloor(first, top) && Math.Abs(first.Bottom.X - start) <= .1f && first.Right.X < wall * 16,
+                        "the first native body starts on the unchanged upper shelf strictly to the west of the wall");
                     long elapsed = 0, peak = 0;
-                    long previous = 0, consumed = 0, observedAtArrival = 0;
+                    long previous = 0, observedAtOwnerRest = 0;
+                    Vector2 ownerAtRest = Vector2.Zero;
+                    bool ownerRemainedStill = true;
                     bool together = false;
                     var navigation = Navigator(run.Actor);
-                    var goals = GetOptional(navigation, "goals") ?? navigation;
                     var peerNavigation = Navigator(secondActor);
-                    bool debugWork = GetOptional(navigation, "RouteWork") != null;
+                    bool debugWork = GetOptional(navigation, "ExpansionWork") != null;
                     for (int tick = 0; tick < 470; tick++)
                     {
                         Vector2 target = tick < 16 ? new Vector2(59 * 16, top * 16) : tick < 46 ? new Vector2(59 * 16, lower * 16) :
                             tick < 93 ? new Vector2(79 * 16, lower * 16) : new Vector2(75 * 16, lower * 16);
                         if (tick >= 93 && tick < 108) target.X = 82 * 16;
                         Vector2 firstBefore = run.Body.position, before = second.position;
-                        long used = run.StepToward(target, new Vector2(8, 6.5f), measure: true);
-                        long peerStarted = Stopwatch.GetTimestamp();
-                        second.Update(second.whoAmI);
-                        Measure(used + Stopwatch.GetTimestamp() - peerStarted, ref elapsed, ref peak);
+                        int firstSlice = (int)Get(navigation, "PlannerSlices"), secondSlice = (int)Get(peerNavigation, "PlannerSlices");
+                        long used = run.StepToward(target, new Vector2(8, 6.5f), measure: true, peer: second);
+                        Measure(used, ref elapsed, ref peak);
+                        largestStep = Math.Max(largestStep, Vector2.Distance(firstBefore, first.position));
                         if (Vector2.DistanceSquared(before, second.position) > .25f) otherMoves++;
-                        object selected = GetOptional(host, "planningActor");
-                        if (!ReferenceEquals(selected, run.Actor) && Vector2.DistanceSquared(firstBefore, run.Body.position) > .25f)
+                        if (firstSlice == (int)Get(navigation, "PlannerSlices") &&
+                            Vector2.DistanceSquared(firstBefore, run.Body.position) > .25f)
                             unplannedFirst++;
-                        if (!ReferenceEquals(selected, secondActor) && Vector2.DistanceSquared(before, second.position) > .25f)
+                        if (secondSlice == (int)Get(peerNavigation, "PlannerSlices") &&
+                            Vector2.DistanceSquared(before, second.position) > .25f)
                             unplannedSecond++;
                         if (debugWork)
                         {
-                            int total = (int)Get(navigation, "RouteWork") + (int)Get(peerNavigation, "RouteWork");
+                            int total = (int)Get(navigation, "ExpansionWork") + (int)Get(peerNavigation, "ExpansionWork");
                             maxTeamWork = Math.Max(maxTeamWork, total - previousTeamWork);
                             previousTeamWork = total;
                         }
@@ -253,50 +254,55 @@ namespace NativeWorldTextProbe
                             together |= ReferenceEquals(GetOptional(Get(run.Actor, "Behavior"), "OwnerTrail"),
                                 GetOptional(Get(secondActor, "Behavior"), "OwnerTrail")) && latest > 3;
                         }
-                        long anchor = (long)(GetOptional(goals, "trailJoined") ?? 0L);
-                        if (anchor > 0 && joined < 0) joined = tick;
-                        consumed = Math.Max(consumed, (long)(GetOptional(goals, "trailConsumed") ?? 0L));
-                        leftmost = Math.Min(leftmost, run.Body.Bottom.X);
+                        string action = ObservedActionKind(navigation);
+                        if (joined < 0 && (action == "Drop" || action == "PlatformDrop")) joined = tick;
+                        leftmost = Math.Min(leftmost, first.Bottom.X);
+                        if (leftExit < 0 && first.Right.X <= leftEdge * 16 + .1f && first.Bottom.Y > top * 16 + 4 && first.velocity.Y > 0)
+                            leftExit = tick;
+                        if (crown < 0 && OnFloor(first, wallTop) && first.Left.X < (wall + 1) * 16 && first.Right.X > wall * 16)
+                            crown = tick;
+                        if (crown >= 0 && farSide < 0 && first.Left.X >= (wall + 1) * 16)
+                            farSide = tick;
                         if (lowerLanding < 0 && OnFloor(run.Body, lower)) lowerLanding = tick;
                         stable = OnFloor(run.Body, lower) && Math.Abs(run.Body.Bottom.X - human.Bottom.X) < 34 &&
                             Math.Abs(run.Body.velocity.X) < 1 ? stable + 1 : 0;
-                        if (stable == 24 && observedAtArrival == 0) observedAtArrival = previous;
+                        // The owner clock is independent of the two followers' arrival.
+                        if (tick == 445) { observedAtOwnerRest = previous; ownerAtRest = human.Bottom; }
+                        if (tick >= 445) ownerRemainedStill &= human.velocity == Vector2.Zero && human.Bottom == ownerAtRest;
                         if (tick == 50 || tick == 100 || tick == 180 || tick == 260 || tick == 469)
-                            Console.WriteLine($"FOLLOW trail t={tick} owner={human.Bottom} actor={run.Body.Bottom}/{run.Body.velocity} route={RouteStep(run.Actor)} join={anchor} cursor={consumed}");
+                            Console.WriteLine($"FOLLOW trail t={tick} owner={human.Bottom} actor={run.Body.Bottom}/{run.Body.velocity} route={RouteStep(run.Actor)} dropAction={joined}");
                     }
-                    Console.WriteLine($"FOLLOW trail turn join={joined} consumed={consumed} nativeLower={lowerLanding} leftmost={leftmost:F1} stable={stable} peerMoves={otherMoves} shared={together} maxSamples={maxSamplesInStep} unplannedSteps={unplannedFirst}/{unplannedSecond} teamWork={(debugWork ? maxTeamWork : -1)}");
+                    Console.WriteLine($"FOLLOW trail turn dropAction={joined} nativeLower={lowerLanding} leftmost={leftmost:F1} leftExit={leftExit} wallCrown={crown} east={farSide} maxStep={largestStep:F2} stable={stable} peerMoves={otherMoves} shared={together} maxSamples={maxSamplesInStep} ownerRest={ownerRemainedStill}/{observedAtOwnerRest}→{previous} unplannedSteps={unplannedFirst}/{unplannedSecond} teamWork={(debugWork ? maxTeamWork : -1)}");
                     work.Report("owner-trail-team", 470, elapsed, peak);
                     Require(together && maxSamplesInStep <= 2 && unplannedFirst > 20 && unplannedSecond > 20 &&
-                        (!debugWork || maxTeamWork <= 160) && otherMoves > 30 && observedAtArrival != 0 && observedAtArrival == previous,
+                        (!debugWork || maxTeamWork <= 96) && otherMoves > 30 && ownerRemainedStill && observedAtOwnerRest != 0 && observedAtOwnerRest == previous,
                         "two native followers observe one shared bounded owner trail and a stationary owner creates no duplicate samples");
-                    Require(joined >= 0 && consumed > 0 && leftmost < 62 * 16 && lowerLanding > joined && stable >= 24 &&
-                        run.Body.wingsLogic == 0 && !run.Body.mount.Active,
-                        "the blocked ground-only follower uses an earlier owner's waypoint, takes its own real path into the lower tier and settles after the owner's reversal");
+                    bool exitedLeft = leftExit >= 0 && lowerLanding > leftExit;
+                    bool crossedCrown = crown >= 0 && farSide >= crown && farSide < lowerLanding;
+                    Require(joined >= 0 && lowerLanding > joined && (exitedLeft || crossedCrown) && stable >= 24 &&
+                        ReferenceEquals(first, Main.player[first.whoAmI]) && largestStep < 24 && first.wingsLogic == 0 && !first.mount.Active,
+                        "the blocked ground-only follower uses a real descent path into the lower tier and settles after the owner's reversal");
 
                     var shared = Get(host, "ownerTrail");
                     int segment = (int)Get(shared, "Segment");
                     Vector2 oldBody = run.Body.position, oldHuman = human.position;
                     human.Teleport(oldHuman + new Vector2(190, 0), 0);
-                    run.StepOwner(Vector2.Zero);
-                    second.Update(second.whoAmI);
+                    run.StepOwner(Vector2.Zero, peer: second);
                     Console.WriteLine($"FOLLOW owner warp oldSegment={segment} newSegment={Get(shared, "Segment")} ownerDisplacement={human.position.X-oldHuman.X:F1} actorDisplacement={Vector2.Distance(run.Body.position,oldBody):F1}");
                     Require(human.position.X >= oldHuman.X + 188 && (int)Get(shared, "Segment") != segment &&
-                        Vector2.DistanceSquared(run.Body.position, oldBody) < 12 * 12 &&
-                        (long)Get(goals, "trailJoined") == 0,
+                        Vector2.DistanceSquared(run.Body.position, oldBody) < 12 * 12,
                         "an actual owner teleport splits the shared trail and retires only guide progress without relocating the follower");
-                    int guidedOnOpenGround = 0, shortcutStable = 0;
+                    int shortcutStable = 0;
                     float peakSpeed = 0;
                     for (int tick = 0; tick < 155; tick++)
                     {
-                        run.StepToward(new Vector2(94 * 16, lower * 16), new Vector2(1.15f, 0));
-                        second.Update(second.whoAmI);
-                        if ((long)Get(goals, "trailJoined") != 0) guidedOnOpenGround++;
+                        run.StepToward(new Vector2(94 * 16, lower * 16), new Vector2(1.15f, 0), peer: second);
                         peakSpeed = Math.Max(peakSpeed, Math.Abs(run.Body.velocity.X));
                         shortcutStable = OnFloor(run.Body, lower) && Math.Abs(run.Body.Bottom.X-human.Bottom.X) < 32 ?
                             shortcutStable + 1 : 0;
                     }
-                    Console.WriteLine($"FOLLOW open shortcut ownerSpeed=1.15 actorPeak={peakSpeed:F2} historicSteps={guidedOnOpenGround} stable={shortcutStable}");
-                    Require(peakSpeed > 2 && guidedOnOpenGround == 0 && shortcutStable >= 20,
+                    Console.WriteLine($"FOLLOW open shortcut ownerSpeed=1.15 actorPeak={peakSpeed:F2} stable={shortcutStable}");
+                    Require(peakSpeed > 2 && shortcutStable >= 20,
                         "a faster body takes the continuously supported live shortcut without replaying the older trail");
                 }
                 finally

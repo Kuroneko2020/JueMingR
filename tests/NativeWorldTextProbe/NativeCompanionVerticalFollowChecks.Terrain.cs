@@ -1,8 +1,6 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ID;
@@ -63,6 +61,7 @@ namespace NativeWorldTextProbe
         private static void RoofReserveAndWake(object host, object profiles, Player human)
         {
             const int ground = 94, roof = 83, wall = 66, blockerX = 62, blockerY = 85, x = 64 * 16;
+            const int ownerMovesAt = 24;
             int ownerFloor = roof - 2;
             using (var run = new Scenario(host, profiles, human, "terrain-roof-reserve", x, ground, () =>
             {
@@ -76,98 +75,53 @@ namespace NativeWorldTextProbe
                 var body = run.Body;
                 var navigation = Navigator(run.Actor);
                 human.Bottom = new Vector2(x, ownerFloor * 16);
-                int obstructed = -1, turned = -1, stable = 0;
+                int obstructed = -1, turned = -1, crossedOpening = -1, stable = 0;
                 Vector2 failedProbePose = default;
                 float movedBeforeWake = -1;
+                bool originalBlocked = false, openingClear = false;
+                var blockedTile = new Rectangle(blockerX * 16, blockerY * 16, 16, 16);
                 for (int tick = 0; tick < 220 && stable < 12; tick++)
                 {
                     var before = body.position;
-                    run.StepToward(new Vector2(75 * 16, ownerFloor * 16), new Vector2(turned < 0 ? 0 : 3.5f, 0));
-                    var reads = GetOptional(navigation, "roofReads");
-                    if (obstructed < 0 && reads != null && ((ICollection<int>)Get(reads, "Keys")).Contains(blockerX * Height + blockerY) &&
-                        !RouteStep(run.Actor).StartsWith("AirAcross:", StringComparison.Ordinal))
+                    run.StepToward(new Vector2(75 * 16, ownerFloor * 16), new Vector2(tick < ownerMovesAt ? 0 : 3.5f, 0));
+                    bool caughtBelowRoof = body.Top.Y < (roof + 1) * 16 + 6 && body.Center.X >= blockerX * 16;
+                    if (obstructed < 0 && caughtBelowRoof && Math.Abs(body.velocity.Y) < .25f)
                     {
                         obstructed = tick;
-                        failedProbePose = (Vector2)Get(navigation, "roofProbePosition");
-                        // Remove exactly the obstructing tile already read by
-                        // this actor. The usable roof and opposite wall remain.
+                        failedProbePose = body.position;
+                        // Test the same observed height just inside the blocked side.
+                        var entry = new Vector2(blockedTile.Right - 1, body.position.Y);
+                        originalBlocked = Main.tile[blockerX, blockerY].active() &&
+                            Collision.SolidCollision(entry, body.width, body.height);
                         Main.tile[blockerX, blockerY] = new Tile();
+                        openingClear = !Collision.SolidCollision(entry, body.width, body.height);
                     }
-                    if (obstructed >= 0 && turned < 0 && body.controlLeft && body.velocity.X < -.25f)
+                    if (obstructed >= 0 && tick > obstructed && turned < 0 && body.controlLeft && body.velocity.X < -.25f)
                     { turned = tick; movedBeforeWake = Vector2.Distance(failedProbePose, before); }
+                    if (turned >= 0 && crossedOpening < 0 && blockedTile.Intersects(body.Hitbox)) crossedOpening = tick;
                     stable = OnFloor(body, ownerFloor) && Math.Abs(body.Center.X - human.Center.X) < 28 ? stable + 1 : 0;
                 }
-                Console.WriteLine(FormattableString.Invariant($"TERRAIN B' roof edit readAndClosed={obstructed} resumedLeft={turned} movedBeforeWake={movedBeforeWake:F1} stable={stable} blocker={Main.tile[blockerX,blockerY].active()} opposite={Main.tile[wall,blockerY].active()} body={body.Bottom}"));
-                Require(obstructed >= 0 && turned > obstructed && turned - obstructed <= 22 && movedBeforeWake < 16 && stable >= 12 &&
+                Console.WriteLine(FormattableString.Invariant($"TERRAIN B' roof edit readAndClosed={obstructed} resumedLeft={turned} crossedOpening={crossedOpening} movedBeforeWake={movedBeforeWake:F1} closedCollision={originalBlocked} openCollision={!openingClear} stable={stable} blocker={Main.tile[blockerX,blockerY].active()} opposite={Main.tile[wall,blockerY].active()} body={body.Bottom}"));
+                Require(obstructed >= 0 && originalBlocked && openingClear && turned > obstructed && turned - obstructed <= 22 &&
+                    crossedOpening >= turned && movedBeforeWake < 16 && stable >= 12 &&
                     !Main.tile[blockerX, blockerY].active() && Main.tile[wall, blockerY].active(),
                     "B': opening a real previously read tile wakes the same blocked native follower, which uses that side and reaches the owner");
 
                 // Fly naturally above the cleared area until the same real
                 // Starboard has little of its own finite reserve remaining.
                 Vector2 target = human.Bottom - new Vector2(0, 132);
-                Vector2 healthyPose = default;
-                float healthy = 0, low = 0;
-                int roofRow = 0, roofColumn = 0;
-                bool healthyAllowed = false, lowAllowed = false;
-                for (int tick = 0; tick < 450 && low == 0; tick++)
+                float lowest = body.wingTime;
+                int airborneRefills = 0;
+                for (int tick = 0; tick < 450 && body.wingTime > 0; tick++)
                 {
+                    float before = body.wingTime;
                     run.StepToward(target, new Vector2(0, 4.6f));
-                    var observed = Get(Get(run.Actor, "Mobility"), "Observed");
-                    float reserve = (float)Get(observed, "WingTime");
-                    bool hover = body.controlDown && body.controlJump && Math.Abs(body.velocity.Y) < .1f && Math.Abs(body.velocity.X) < .25f;
-                    if (healthy == 0 && hover && reserve > 60 && reserve < 170)
-                    {
-                        healthy = reserve; healthyPose = body.position;
-                        roofColumn = (int)(body.Center.X / 16); roofRow = (int)(body.Top.Y / 16) - 1;
-                        healthyAllowed = ProbeRoofSide(navigation, body, observed, roofColumn, roofRow);
-                    }
-                    if (healthy > 0 && hover && reserve > 0 && reserve <= 8)
-                    {
-                        Require(Vector2.DistanceSquared(healthyPose, body.position) < 4 * 4,
-                            "B' compares an identical roof and nearly unchanged actual hover pose at two native reserves");
-                        low = reserve;
-                        lowAllowed = ProbeRoofSide(navigation, body, observed, roofColumn, roofRow);
-                    }
+                    lowest = Math.Min(lowest, body.wingTime);
+                    if (body.wingTime > before && body.Bottom.Y < ownerFloor * 16 - 16) airborneRefills++;
                 }
-                float heldY = body.Bottom.Y;
-                bool released = false;
-                for (int tick = 0; tick < 90 && !released; tick++)
-                {
-                    run.StepOwner(Vector2.Zero);
-                    released = body.wingTime <= 0 && body.Bottom.Y > heldY + 12 && body.velocity.Y > 1;
-                }
-                Console.WriteLine(FormattableString.Invariant($"TERRAIN B' native reserve normal={healthy:F1} normalAdmitted={healthyAllowed} low={low:F1} lowAdmitted={lowAllowed} released={released} body={body.Bottom}"));
-                Require(healthyAllowed && low > 0 && !lowAllowed && released,
-                    "B': real low reserve does not authorize a long hover exit on the same geometry, and the real body releases after its own finite reserve ends");
-            }
-        }
-
-        private static bool ProbeRoofSide(object navigation, Player body, object observed, int center, int row)
-        {
-            var original = new Tile[7];
-            for (int i = 0; i < original.Length; i++)
-            {
-                original[i] = Main.tile[center - 3 + i, row];
-                Main.tile[center - 3 + i, row] = new Tile();
-            }
-            try
-            {
-                Fill(center - 3, center + 3, row, TileID.Stone);
-                var type = navigation.GetType();
-                var probe = AccessTools.Method(type, "TryOverheadExit");
-                var isolatedSearch = Activator.CreateInstance(type, true);
-                var next = Activator.CreateInstance(AccessTools.Inner(type, "RouteStep"));
-                var goal = body.position + new Vector2(64, -70);
-                // A state-only check against the real observed body. The
-                // resulting candidate is never applied to the actual actor.
-                var args = probe.GetParameters().Length == 5 ? new[] { body, observed, (object)goal, 1, next } :
-                    new[] { (object)body, goal, 1, next };
-                using ((IDisposable)AccessTools.Method(AccessTools.Inner(type, "Scratch"), "Save").Invoke(null, null))
-                    return (bool)probe.Invoke(isolatedSearch, args);
-            }
-            finally
-            {
-                for (int i = 0; i < original.Length; i++) Main.tile[center - 3 + i, row] = original[i];
+                Console.WriteLine($"TERRAIN B' finite reserve minimum={lowest:F1} airborneRefills={airborneRefills} {PlanStatus(navigation)}");
+                Require(lowest < 30 && airborneRefills == 0,
+                    "the actual same-body wing route uses its finite reserve without replenishing it in open air");
             }
         }
 
@@ -194,8 +148,12 @@ namespace NativeWorldTextProbe
                 int planned = -1, down = -1, stair = -1, crossed = -1, lowerLanding = -1, belowWall = -1, returned = -1, stable = 0;
                 int ownerWalking = 0, healQueued = -1, healed = -1;
                 var departure = Vector2.Zero;
-                float maxExtraDistance = 0;
+                float maxExtraDistance = 0, landedDepth = 0;
                 long elapsed = 0, peak = 0;
+                var navigator = Navigator(run.Actor);
+                var refinement = GetOptional(navigator, "refine");
+                var continuation = GetOptional(navigator, "refineExit");
+                string previousProof = null;
                 for (int tick = 0; tick < 420; tick++)
                 {
                     float x = (74 * 16) + 50 * (1 - Math.Abs(tick % 84 - 42) / 42f);
@@ -203,13 +161,18 @@ namespace NativeWorldTextProbe
                     Measure(run.StepToward(new Vector2(x, ownerShelf * 16), new Vector2(1.5f, 0), measure: true), ref elapsed, ref peak);
                     if (Math.Abs(human.velocity.X) > .5f) ownerWalking++;
                     string route = RouteStep(run.Actor);
-                    if (planned < 0 && route.StartsWith("Drop:", StringComparison.Ordinal)) planned = tick;
+                    if (planned < 0 && route.StartsWith("PlatformDrop:", StringComparison.Ordinal)) planned = tick;
                     if (down < 0 && planned >= 0 && body.controlDown && Math.Abs(before.Y - platform * 16) < 2)
                     { down = tick; departure = before; }
                     if (stair < 0 && down >= 0 && body.stairFall && body.Bottom.Y < platform * 16 + 18) stair = tick;
                     if (crossed < 0 && stair >= 0 && body.Bottom.Y > platform * 16 + 18 && body.velocity.Y > 0) crossed = tick;
-                    if (crossed >= 0 && lowerLanding < 0 && OnFloor(body, floor)) lowerLanding = tick;
-                    if (crossed >= 0 && belowWall < 0 && body.Left.X >= (rightWall + 1) * 16 && body.Top.Y > 88 * 16 - 1)
+                    if (crossed >= 0 && lowerLanding < 0 && OnFloor(body, floor))
+                    {
+                        lowerLanding = tick;
+                        landedDepth = body.Bottom.Y - departure.Y;
+                    }
+                    if (lowerLanding >= 0 && belowWall < 0 && OnFloor(body, floor) && body.controlRight && body.velocity.X > 0 &&
+                        body.Left.X >= (rightWall + 1) * 16 && body.Top.Y > 88 * 16 - 1)
                         belowWall = tick;
                     if (healQueued < 0 && crossed >= 0 && belowWall < 0 && body.velocity.Y > 1)
                     {
@@ -223,14 +186,24 @@ namespace NativeWorldTextProbe
                     bool arrived = belowWall >= 0 && body.Center.X >= 71 * 16 && OnFloor(body, ownerShelf) && Math.Abs(body.Center.X - human.Center.X) < 45;
                     stable = arrived ? stable + 1 : 0;
                     if (stable == 18 && returned < 0) returned = tick - 17;
-                    if (tick % 25 == 0 || tick == planned || tick == down || tick == stair || tick == crossed || tick == lowerLanding || tick == belowWall || tick == returned)
-                        Console.WriteLine(FormattableString.Invariant($"TERRAIN C/D t={tick} owner={human.Bottom} body={body.Bottom}/{body.velocity} down={body.controlDown} stair={body.stairFall} jump={body.controlJump} life={body.statLife} wings={body.wingTime:F1} route={route} search={PlanStatus(Navigator(run.Actor))}"));
+                    var inlet = refinement == null ? null : Get(refinement, "Edge");
+                    var exit = continuation == null ? null : Get(continuation, "Edge");
+                    string proof = inlet == null ? "historical" : $"{Get(refinement, "Active")}/{Get(navigator, "refineReady")} " +
+                        $"{Get(inlet, "Kind")}:{Get(inlet, "From")}→{Get(inlet, "To")} next={Get(navigator, "continuationOffset")}/" +
+                        $"{Get(continuation, "Active")} {Get(exit, "Kind")}:{Get(exit, "From")}→{Get(exit, "To")} {RouteTrace(navigator)}";
+                    if (proof != previousProof || tick % 25 == 0 || tick == planned || tick == down || tick == stair || tick == crossed || tick == lowerLanding || tick == belowWall || tick == returned)
+                    {
+                        string ticks = inlet == null ? "historical" : $"{Get(refinement, "ticks")}/{Get(continuation, "ticks")}";
+                        Console.WriteLine(FormattableString.Invariant($"TERRAIN C/D t={tick} owner={human.Bottom} body={body.Bottom}/{body.velocity} move={body.controlLeft}/{body.controlRight} down={body.controlDown} stair={body.stairFall} jump={body.controlJump} life={body.statLife} wings={body.wingTime:F1} route={route} search={PlanStatus(navigator)} proof={proof} ticks={ticks}"));
+                    }
+                    previousProof = proof;
                 }
-                Console.WriteLine(FormattableString.Invariant($"TERRAIN C/D support={support} publishedDrop={planned} down={down} stairFall={stair} crossed={crossed} lowerLanding={lowerLanding} underWall={belowWall} return={returned} stableTail={stable} ownerWalk={ownerWalking} detourExtra={maxExtraDistance:F1} healQueued={healQueued} consumedWhileMoving={healed} potions={body.inventory[potion].stack}"));
+                Console.WriteLine(FormattableString.Invariant($"TERRAIN C/D support={support} publishedDrop={planned} down={down} stairFall={stair} crossed={crossed} lowerLanding={lowerLanding} landedDepth={landedDepth:F1} underWall={belowWall} return={returned} stableTail={stable} ownerWalk={ownerWalking} detourExtra={maxExtraDistance:F1} healQueued={healQueued} consumedWhileMoving={healed} potions={body.inventory[potion].stack}"));
                 work.Report("C/D", 420, elapsed, peak);
                 Require(support >= 0 && planned >= 0 && down >= planned && stair >= down && crossed > stair && lowerLanding > crossed && belowWall > lowerLanding &&
-                    maxExtraDistance >= 70 && returned > belowWall && ownerWalking > 60 && stable >= 18,
-                    "C/D: the actual supported platform gives a published Drop, native Down and stairFall, then reaches the moving owner via the longer route below the wall");
+                    Math.Abs(landedDepth - (floor - platform) * 16f) < 2f && maxExtraDistance > 0 &&
+                    returned > belowWall && ownerWalking > 60 && stable >= 18,
+                    "C/D: the actual supported platform gives a published platform drop, native Down and stairFall, then reaches the moving owner via the longer route below the wall");
                 Require(healed > healQueued && body.inventory[potion].stack == 1,
                     "the same following body consumes its real potion once while moving through the detour");
             }
@@ -238,28 +211,18 @@ namespace NativeWorldTextProbe
 
         private static void StoneVertical(int x, int y) => Fill(x, x, y, TileID.Stone);
 
-        private static object Navigator(object actor) => Get(Get(actor, "Behavior"), "navigation");
+        private static object Navigator(object actor)
+        {
+            object behavior = Get(actor, "Behavior");
+            return GetOptional(behavior, "Navigator") ?? Get(behavior, "navigation");
+        }
 
         private static void Measure(long ticks, ref long elapsed, ref long peak)
         { elapsed += ticks; peak = Math.Max(peak, ticks); }
 
-        private static string PlanStatus(object navigation)
-        {
-            var search = GetOptional(navigation, "search");
-            if (search == null) return "absent";
-            var nodes = (IList)Get(search, "Nodes");
-            int drops = 0, observed = 0, below = 0;
-            for (int i = 0; i < nodes.Count; i++)
-            {
-                var node = nodes[i];
-                if ((int)Get(node, "Previous") < 0) continue;
-                string kind = Get(Get(node, "Step"), "Kind").ToString();
-                if (kind == "Drop" || kind == "LedgeDrop") drops++;
-                if ((bool)Get(node, "Observe")) observed++;
-                if (((Vector2)Get(node, "Position")).Y > 1390) below++;
-            }
-            return FormattableString.Invariant($"nodes={nodes.Count}/drop={drops}/obs={observed}/below={below}/active={Get(search, "Active")}/exhausted={Get(search, "Exhausted")}/window={Get(search, "Window")}/candidate={Get(search, "Candidate")}/pending={GetOptional(navigation, "pendingResult") ?? -1}");
-        }
+        private static string PlanStatus(object navigation) =>
+            $"query={Get(navigation, "QueryStatus")}/{Get(navigation, "QueryGeneration")} age={Get(navigation, "QueryPendingAge")} " +
+            $"action={Get(navigation, "ActionId")}/{Get(navigation, "ActionKind")}/{Get(navigation, "ActionOutcome")} reason={Get(navigation, "LastDeferral")}";
 
         private static void RetainedPlan(object host, object profiles, Player human)
         {
@@ -271,98 +234,47 @@ namespace NativeWorldTextProbe
                 for (int y = floor - 3; y < floor; y++) { StoneVertical(53, y); StoneVertical(73, y); }
             }))
             {
-                var body = run.Body;
-                var navigation = Navigator(run.Actor);
-                var state = Get(run.Actor, "Mobility");
-                var root = Enum.Parse(AccessTools.Inner(navigation.GetType(), "RouteMotion"), "Ground");
-                var executor = GetOptional(navigation, "actions");
-                IList ActivePrefix() => (IList)Get(executor ?? navigation, "route");
+                Player body = run.Body;
+                object navigation = Navigator(run.Actor);
                 human.Bottom = new Vector2(68 * 16, floor * 16);
-                // Bind the new owner pose before taking a background proof.
-                // The later native follow updates keep the same goal epoch.
-                run.StepOwner(Vector2.Zero);
-                var goal = human.Center - new Vector2(body.width * .5f, body.height * .5f);
-                int candidate = -1, pending = -1, grants = 0, publications = 0;
-                bool backgroundExhausted = false;
-                object search = null;
-                using (var work = new TerrainSearchWork(navigation))
+                long action = 0;
+                int sameActionMoves = 0, stable = 0;
+                float start = body.Bottom.X;
+                for (int tick = 0; tick < 140; tick++)
                 {
-                    long begin = Stopwatch.GetTimestamp();
-                    for (; grants < 120; grants++)
-                    {
-                        // A bounded state-level slice exercises the real caller's
-                        // publication gate without emitting or substituting input.
-                        NativeQuickItemChecks.BeginWorldStep();
-                        Call(host, "Update", (ulong)Main.GameUpdateCount);
-                        Call(navigation, "SearchRoute", body, Get(state, "Observed"), goal, 22, root, false);
-                        search = Get(navigation, "search");
-                        var nodes = (IList)Get(search, "Nodes");
-                        for (int i = 0; i < nodes.Count; i++)
-                            if ((int)Get(nodes[i], "Previous") >= 0 && Vector2.DistanceSquared((Vector2)Get(nodes[i], "Position"), goal) <= 22 * 22)
-                            { candidate = i; break; }
-                        pending = (int)(GetOptional(navigation, "pendingResult") ?? -1);
-                        backgroundExhausted = (bool)Get(search, "Exhausted");
-                        if (candidate >= 0 && pending >= 0 || backgroundExhausted) break;
-                    }
-                    long elapsed = Stopwatch.GetTimestamp() - begin;
-                    Require(candidate >= 0 && ActivePrefix().Count == 0, "E fixture actually discovered a reachable candidate behind the closed publication gate");
-                    var from = body.position;
-                    int starts = work.Starts;
-                    int candidateId = pending >= 0 ? pending : candidate;
-                    var discovered = (Vector2)Get(((IList)Get(search, "Nodes"))[candidateId], "Position");
-                    // Real Follow walks from the original pose before the gate
-                    // opens. It must connect to the old result from today's body.
-                    for (int tick = 0; tick < 19; tick++) run.StepOwner(Vector2.Zero);
-                    var live = body.position;
-                    for (; publications < 10 && ActivePrefix().Count == 0; publications++)
-                    {
-                        NativeQuickItemChecks.BeginWorldStep();
-                        if (executor == null) Call(navigation, "SearchRoute", body, Get(state, "Observed"), goal, 22, root, true);
-                        else Call(navigation, "TryPlanRoute", body, state, Get(state, "Observed"), root, goal, 22, null);
-                    }
-                    var route = ActivePrefix();
-                    bool published = route.Count > 0;
-                    int startsAfter = work.Starts;
-                    float reconnect = published ? Vector2.Distance(live, (Vector2)Get(route[0], "From")) : -1;
-                    float retainedEnd = published ? Vector2.Distance(discovered, (Vector2)Get(route[route.Count - 1], "To")) : -1;
-                    int applied = 0, stable = 0;
-                    for (int tick = 0; tick < 115; tick++)
-                    {
-                        run.StepOwner(Vector2.Zero);
-                        if (body.controlRight && !RouteStep(run.Actor).StartsWith("local", StringComparison.Ordinal)) applied++;
-                        stable = OnFloor(body, floor) && Math.Abs(body.Center.X - human.Center.X) < 28 ? stable + 1 : 0;
-                    }
-                    Console.WriteLine(FormattableString.Invariant($"TERRAIN E state candidate={candidate} pending={pending} backgroundExhausted={backgroundExhausted} backgroundSlices={grants+1} published={published} publishSlices={publications} movedBefore={live.X-from.X:F1} reconnect={reconnect:F1} retainedEnd={retainedEnd:F1} startsBefore={starts} startsAtPublish={startsAfter} workCalls={work.Candidates} routeInputs={applied} stableTail={stable} backgroundMs={elapsed*1000d/Stopwatch.Frequency:F3}"));
-                    Require(pending >= 0 && published && startsAfter == starts &&
-                        live.X - from.X >= 8 && reconnect >= 0 && reconnect <= 26 && retainedEnd >= 0 && retainedEnd < 4 && applied > 0 && stable >= 12,
-                        "E: a real discovered plan remains pending without exhaustion, reconnects from a body advanced by native Follow, then supplies actual uninterrupted movement without restarting planning");
+                    float priorX = body.Bottom.X;
+                    run.StepToward(new Vector2(71 * 16, floor * 16), new Vector2(1.1f, 0));
+                    long id = (long)Get(navigation, "ActionId");
+                    if (action == 0 && body.controlRight) action = id;
+                    if (action != 0 && id == action && body.Bottom.X > priorX + .5f) sameActionMoves++;
+                    stable = OnFloor(body, floor) && Math.Abs(body.Bottom.X - human.Bottom.X) < 38 ? stable + 1 : 0;
                 }
+                Console.WriteLine($"TERRAIN E action={action} nativeStepsWithSameAction={sameActionMoves} advance={body.Bottom.X - start:F1} stable={stable} {PlanStatus(navigation)}");
+                Require(action > 0 && sameActionMoves >= 10 && body.Bottom.X - start > 90 && stable >= 12,
+                    "the actual ground action survives nearby changing goals and carries the same body to the later owner position");
             }
         }
 
         private sealed class TerrainSearchWork : IDisposable
         {
-            private static TerrainSearchWork current;
-            private readonly Harmony observation = new Harmony("JueMingR.Tests.TerrainSearchWork");
-            internal int Starts, Candidates;
+            private readonly object navigation;
+            private readonly int initialGeneration, initialExpansions;
 
             internal TerrainSearchWork(object navigation)
             {
-                current = this;
-                var type = navigation.GetType();
-                observation.Patch(AccessTools.Method(AccessTools.Inner(type, "RouteSearch"), "Begin"),
-                    prefix: new HarmonyMethod(typeof(TerrainSearchWork), nameof(CountStart)));
-                observation.Patch(AccessTools.Method(type, "TryEdge"),
-                    prefix: new HarmonyMethod(typeof(TerrainSearchWork), nameof(CountCandidate)));
+                this.navigation = navigation;
+                initialGeneration = (int)Get(navigation, "QueryGeneration");
+                initialExpansions = (int)(GetOptional(navigation, "ExpansionWork") ?? 0);
             }
 
-            private static void CountStart() { if (current != null) current.Starts++; }
-            private static void CountCandidate() { if (current != null) current.Candidates++; }
             internal void Report(string sample, int updates, long elapsed, long peak)
             {
-                Console.WriteLine(FormattableString.Invariant($"TERRAIN {sample} work updates={updates} starts={Starts} edgeEvaluations={Candidates} nativeTotalMs={elapsed*1000d/Stopwatch.Frequency:F3} nativeMaxMs={peak*1000d/Stopwatch.Frequency:F3}"));
+                int generations = (int)Get(navigation, "QueryGeneration") - initialGeneration;
+                object total = GetOptional(navigation, "ExpansionWork");
+                string expansions = total is int work ? (work - initialExpansions).ToString() : "unavailable";
+                Console.WriteLine(FormattableString.Invariant($"TERRAIN {sample} work updates={updates} queryGenerations={generations} expansions={expansions} nativeTotalMs={elapsed*1000d/Stopwatch.Frequency:F3} nativeMaxMs={peak*1000d/Stopwatch.Frequency:F3}"));
             }
-            public void Dispose() { observation.UnpatchAll(observation.Id); current = null; }
+            public void Dispose() { }
         }
     }
 }

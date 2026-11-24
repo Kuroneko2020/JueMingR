@@ -39,6 +39,7 @@ namespace NativeWorldTextProbe
                 Require(!body.immune, "spawn protection expired through the original updates before the actual injury");
                 int departure = -1, hit = -1, saved = -1;
                 int start = -1;
+                bool reportedGround = false;
                 for (int tick = 0; tick < 185 && saved < 0; tick++)
                 {
                     int target = hit < 0 ? x : x + 24;
@@ -52,8 +53,16 @@ namespace NativeWorldTextProbe
                         hit = tick;
                     }
                     if (hit >= 0 && body.controlJump && body.velocity.Y < 0) saved = tick;
-                    if (departure >= 0 && hit >= 0 && saved < 0)
-                        Require(body.fallStart == start, "changing the live Follow target did not reset the native fall-start tile");
+                    // Native landing itself owns fallStart. The regression
+                    // check concerns only the still-descending trajectory.
+                    if (departure >= 0 && hit >= 0 && saved < 0 && body.Bottom.Y < bottom * 16 - 1)
+                        Require(body.fallStart == start,
+                            $"changing the live Follow target did not reset the native fall-start tile (tick={tick}, from={start}, now={body.fallStart}, feet={body.Bottom}, velocity={body.velocity}, route={RouteStep(run.Actor)})");
+                    if (hit >= 0 && (saved >= 0 || !reportedGround && body.Bottom.Y >= bottom * 16 - 1))
+                    {
+                        reportedGround = saved < 0;
+                        Console.WriteLine($"FOLLOW falling injury tick={tick} life={body.statLife} saved={saved} fallStart={start}/{body.fallStart} feet={body.Bottom}/{body.velocity}");
+                    }
                 }
                 Console.WriteLine($"FOLLOW fall escalation departed={departure} injured={hit} rescued={saved} originalFallStart={start} life={body.statLife} at={body.Bottom}");
                 Require(departure >= 0 && hit > departure && saved > hit && !body.dead && body.statLife == 56,
@@ -143,6 +152,10 @@ namespace NativeWorldTextProbe
                 body.statLife = 40;
                 int entered = -1, steered = -1, landed = -1;
                 float start = body.Center.X;
+                var verticalOnly = ContactProbe(body, body.position);
+                for (int tick = 0; tick < 40; tick++) NativeContactStep(verticalOnly, true, false);
+                Require(verticalOnly.Right.X < wall * 16 && verticalOnly.Bottom.Y > bottom * 16 + 16,
+                    "the same native body without a horizontal move misses the original shelf");
                 for (int tick = 0; tick < 230; tick++)
                 {
                     run.StepToward(new Vector2((wall + 3) * 16, bottom * 16), new Vector2(2.8f, 4));
@@ -151,8 +164,8 @@ namespace NativeWorldTextProbe
                         steered = tick;
                     if (steered >= 0 && OnFloor(body, bottom)) { landed = tick; break; }
                 }
-                Console.WriteLine($"FOLLOW controlled drop entered={entered} actualAirRight={steered} landed={landed} body={body.Bottom} route={RouteStep(run.Actor)}");
-                Require(entered >= 0 && steered >= entered && landed > steered && body.Center.X > start + 8 && !body.dead && body.wingsLogic == 0,
+                Console.WriteLine($"FOLLOW controlled drop entered={entered} actualAirRight={steered} landed={landed} feet={body.Bottom} right={body.Right.X:F2} bank={wall * 16} verticalOnly={verticalOnly.Bottom} route={RouteStep(run.Actor)}");
+                Require(entered >= 0 && steered >= entered && landed > steered && body.Right.X > wall * 16 && !body.dead && body.wingsLogic == 0,
                     "one unpowered body steers during the native platform descent and lands sideways on actual support");
             }
         }

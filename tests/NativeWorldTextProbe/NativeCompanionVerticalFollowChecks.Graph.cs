@@ -1,0 +1,325 @@
+using System;
+using System.Collections;
+using System.Reflection;
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.ID;
+using static NativeWorldTextProbe.NativeInformationChecks;
+
+namespace NativeWorldTextProbe
+{
+    internal static partial class NativeCompanionVerticalFollowChecks
+    {
+        private const BindingFlags ReflectionMembers = BindingFlags.Instance | BindingFlags.Static |
+            BindingFlags.Public | BindingFlags.NonPublic;
+
+        private static object Make(Type type, params object[] arguments) =>
+            Activator.CreateInstance(type, ReflectionMembers & ~BindingFlags.Static, null, arguments, null);
+
+        private static Type NavigationType(Assembly assembly, string name) =>
+            assembly.GetType("JueMingR.TerrariaHost.Companions." + name, true);
+
+        private static void RouteGraphContracts(object host, object profiles, Player human)
+        {
+            Main.tile = new Tile[Width, Height];
+            for (int y = 0; y < Height; y++)
+                for (int x = 0; x < Width; x++) Main.tile[x, y] = new Tile();
+            PlaceFixtureStrip(48, 79, 80, TileID.Stone);
+            PlaceFixtureStrip(81, 90, 80, TileID.Stone);
+            PlaceFixtureStrip(54, 67, 75, TileID.Platforms);
+            PlaceFixtureTile(71, 79, TileID.Stone);
+            Main.tile[71, 79].halfBrick(true);
+            const int blocker = 80;
+            for (int y = 70; y <= 93; y++) PlaceFixtureTile(blocker, y, TileID.Stone);
+            Main.tile[60, 71] = null;
+
+            Assembly assembly = host.GetType().Assembly;
+            Type budgetType = NavigationType(assembly, "NavigationBudget");
+            Type transitionType = NavigationType(assembly, "NavigationTransition");
+            Type actionType = NavigationType(assembly, "NavigationAction");
+            object world = Make(NavigationType(assembly, "NavigationWorld"));
+            object NewBudget(int tiles, int expansions) => Make(budgetType, tiles, expansions, expansions);
+
+            object limited = NewBudget(3, 0);
+            object partial = Call(world, "Discover", new Point(55, 75), limited);
+            Require(!(bool)Get(partial, "Complete") && (int)Get(limited, "Tiles") == 3,
+                "initial unseeded terrain discovery is incremental and obeys its actual tile allowance");
+            object inspected = Call(world, "Discover", new Point(55, 75), NewBudget(128, 0));
+            object adjacent = Call(world, "Discover", new Point(56, 75), NewBudget(128, 0));
+            Require((bool)Get(inspected, "Complete") && (bool)Get(adjacent, "Complete") &&
+                ((IList)Get(inspected, "Surfaces")).Count > 0 && ((IList)Get(adjacent, "Surfaces")).Count > 0 &&
+                ((IList)Get(inspected, "AirSpans")).Count > 0,
+                "platform support and open spans exist across a chunk join without a goal or a previously successful route");
+            var unloaded = new[] { (object)new Point(60, 71), NewBudget(128, 0), null };
+            Require((bool)Call(world, "Read", unloaded) && !(bool)Get(unloaded[2], "Known") && Main.tile[60, 71] == null,
+                "a missing native tile is observed as unknown without allocating a tile or granting passage");
+            var half = new[] { (object)new Point(71, 79), NewBudget(128, 0), null };
+            Require((bool)Call(world, "Read", half) && Get(half[2], "Kind").ToString() == "Half",
+                "the shared world stores the actual half-brick rather than flattening it into a full tile");
+            Main.tile[71, 79].halfBrick(false);
+            var verify = new[] { half[0], NewBudget(1, 0), (object)false };
+            Require((bool)Call(world, "TryVerify", verify) && (bool)verify[2] &&
+                (bool)Call(world, "Read", half) && Get(half[2], "Kind").ToString() == "Solid",
+                "a local shape edit refreshes the cell that was actually read");
+
+            var route = Make(NavigationType(assembly, "NavigationRoute"), world);
+            object caps = Make(NavigationType(assembly, "NavigationCapabilities"), 20, 42, 1, 80f, 112f,
+                0, 0, 0f, 0f, Enum.ToObject(NavigationType(assembly, "NavigationModes"), 0), true, false);
+            Vector2 start = new Vector2(RoomX(52), 80 * 16);
+            Vector2 target = new Vector2(RoomX(72), 80 * 16);
+            Vector2 initialTarget = new Vector2(RoomX(83), 80 * 16);
+            var tiny = NewBudget(4, 1);
+            Call(route, "Advance", start, initialTarget, caps, tiny);
+            Require(Get(route, "Status").ToString() == "PendingBudget", "an incomplete tiny slice remains pending");
+            for (int tick = 0; tick < 90; tick++)
+                Call(route, "Advance", start, initialTarget, caps, NewBudget(256, 24));
+            int generation = (int)Get(route, "Generation");
+            object offer = null;
+            for (int tick = 0; tick < 90 && offer == null; tick++)
+            {
+                Call(route, "Advance", start, target, caps, NewBudget(256, 24));
+                var selected = new[] { (object)start, Activator.CreateInstance(transitionType) };
+                if ((bool)Call(route, "TrySelect", selected)) offer = selected[1];
+            }
+            Require(offer != null && (int)Get(route, "Generation") > generation &&
+                ((Vector2)Get(offer, "To")).X > start.X,
+                "the same retained terrain answers a new goal through real intermediate edges after an earlier query");
+            Call(route, "MarkIssued", offer);
+            Vector2 outside = new Vector2(RoomX(48), 80 * 16);
+            Call(route, "Advance", start, outside, caps, NewBudget(256, 24));
+            var retained = new[] { (object)start, Activator.CreateInstance(transitionType) };
+            Require((bool)Call(route, "TrySelect", retained) && (bool)Call(offer, "SameEdge", retained[1]),
+                "a new goal cannot replace an issued action before its own native result");
+            object MakeDrop(int entry) => Make(transitionType, Enum.Parse(actionType, "PlatformDrop"),
+                new Vector2(RoomX(entry), 75 * 16), new Vector2(RoomX(entry), 80 * 16),
+                new Point(entry, 75), new Point(entry, 80), 0, true,
+                Enum.ToObject(NavigationType(assembly, "NavigationTraversalDetail"), 0), Vector2.Zero);
+            object drop = MakeDrop(55), other = MakeDrop(64);
+            Call(route, "Reject", drop, Get(drop, "From"));
+            Require((bool)Call(route, "IsRejected", drop) && !(bool)Call(route, "IsRejected", other),
+                "a rejected platform action does not block descent from a different entry");
+            VerifyLateMovementReceipt(assembly, offer, start);
+            ReopenKnownPassage(assembly, world, caps, transitionType);
+            CumulativeDropLife(assembly, transitionType, actionType);
+            Console.WriteLine($"NAV GRAPH independentChunks=True generation={generation}->{Get(route, "Generation")} status={Get(route, "Status")} next={Get(offer, "Kind")}");
+        }
+
+        private static void CumulativeDropLife(Assembly assembly, Type transitionType, Type actionType)
+        {
+            const int column = 30, upper = 36, middle = 74, lower = 112, life = 185;
+            double surface = Main.worldSurface;
+            Main.worldSurface = 30;
+            try
+            {
+                PlaceFixtureStrip(column - 1, column + 1, upper, TileID.Platforms);
+                PlaceFixtureStrip(column - 1, column + 1, middle, TileID.Platforms);
+                PlaceFixtureStrip(column - 1, column + 1, lower, TileID.Stone);
+                var body = new Player { width = 20, height = 42, maxFallSpeed = 10f, gravity = .4f, gravDir = 1f, statLife = life };
+                body.grappling[0] = -1;
+                body.Bottom = new Vector2(RoomX(column), upper * 16);
+                object observed = Activator.CreateInstance(NavigationType(assembly, "CompanionMobilitySnapshot"));
+                Type budget = NavigationType(assembly, "NavigationBudget");
+                Type refinement = NavigationType(assembly, "CompanionActionRefinement");
+                var noDetail = Enum.ToObject(NavigationType(assembly, "NavigationTraversalDetail"), 0);
+                object Drop(int source, int destination) => Make(transitionType, Enum.Parse(actionType, "PlatformDrop"),
+                    new Vector2(RoomX(column), source * 16), new Vector2(RoomX(column), destination * 16),
+                    new Point(column, source), new Point(column, destination), 0, true, noDetail, Vector2.Zero);
+                object descent = Make(refinement);
+                object first = Drop(upper, middle), second = Drop(middle, lower);
+                Call(descent, "Begin", body, first, true);
+                string initial = Call(descent, "Advance", body, observed, Make(budget, 512, 96, 128)).ToString();
+                object witness = Get(descent, "Witness");
+                int remainder = (int)Get(witness, "RemainingLife");
+                object chained = Make(refinement);
+                Require(initial == "Ready" && remainder > 0 && remainder < life &&
+                    (bool)Call(chained, "BeginContinuation", body, second, witness),
+                    "the first actual projected drop is survivable and carries the spent life to the next inlet");
+                string together = Call(chained, "Advance", body, observed, Make(budget, 512, 96, 128)).ToString();
+
+                // The second landing alone is also survivable at full life.
+                var isolated = Make(refinement);
+                body.Bottom = new Vector2(RoomX(column), middle * 16);
+                Call(isolated, "Begin", body, second, true);
+                string alone = Call(isolated, "Advance", body, observed, Make(budget, 512, 96, 128)).ToString();
+                Require(alone == "Ready" && together == "Failed" && body.statLife == life,
+                    "the same two native-shape drops are refused in combination without predicting future healing or mutating the body");
+                Console.WriteLine($"NAV DROP LIFE initial={life} afterFirst={remainder} isolated={alone} chain={together}");
+            }
+            finally { Main.worldSurface = surface; }
+        }
+
+        private static void ReopenKnownPassage(Assembly assembly, object world, object caps, Type transitionType)
+        {
+            object route = Make(NavigationType(assembly, "NavigationRoute"), world);
+            Type budget = NavigationType(assembly, "NavigationBudget");
+            Vector2 feet = new Vector2(RoomX(77), 80 * 16);
+            Vector2 target = new Vector2(RoomX(84), 80 * 16);
+            bool waited = false;
+            for (int slice = 0; slice < 70; slice++)
+            {
+                NativeQuickItemChecks.BeginWorldStep();
+                Call(route, "Advance", feet, target, caps, Make(budget, 96, 4, 6));
+                waited |= Get(route, "Status").ToString() == "PendingBudget";
+                var offered = new[] { (object)feet, Activator.CreateInstance(transitionType) };
+                Require(!(bool)Call(route, "TrySelect", offered) || ((Vector2)Get(offered[1], "To")).X < 81 * 16,
+                    "the closed real wall cannot publish a crossing under pressure");
+            }
+            Require(waited, "the closed route consumes the small fixed slice and reports pending work");
+            var cachedChunks = (IDictionary)Get(world, "chunks");
+            Point openingChunk = new Point(80, 72);
+            int beforeVersion = cachedChunks.Contains(openingChunk) ? (int)Get(cachedChunks[openingChunk], "Version") : -1;
+            for (int row = 76; row < 80; row++)
+            {
+                WorldGen.KillTile(80, row, fail: false, effectOnly: false, noItem: true);
+                Require(!Main.tile[80, row].nactive(), "the original tile operation opens the actual corridor");
+            }
+            for (int column = 77; column <= 84; column++)
+            {
+                var pose = new Vector2(RoomX(column) - 10, 80 * 16 - 42);
+                Require(!Collision.SolidCollision(pose, 20, 42) &&
+                    Collision.TileCollision(pose, new Vector2(0, 2), 20, 42).Y < .01f,
+                    "the original collision admits an ordinary body and real support all the way across the new opening");
+            }
+            int recovered = -1;
+            object allowance = null;
+            for (int slice = 0; slice < 240; slice++)
+            {
+                NativeQuickItemChecks.BeginWorldStep();
+                allowance = Make(budget, 96, 4, 6);
+                Call(route, "Advance", feet, target, caps, allowance);
+                var offered = new[] { (object)feet, Activator.CreateInstance(transitionType) };
+                if (!(bool)Call(route, "TrySelect", offered)) continue;
+                Call(route, "MarkIssued", offered[1]);
+                feet = (Vector2)Get(offered[1], "To");
+                Call(route, "Complete", offered[1], feet);
+                if (feet.X < 82 * 16) continue;
+                recovered = slice;
+                break;
+            }
+            int afterVersion = cachedChunks.Contains(openingChunk) ? (int)Get(cachedChunks[openingChunk], "Version") : -1;
+            object pending = GetOptional(route, "query");
+            var cell = new[] { (object)new Point(80, 78), Make(budget, 96, 4, 6), null };
+            bool read = (bool)Call(world, "Read", cell);
+            Console.WriteLine($"NAV GRAPH budget opening firstAcrossSlice={recovered} feet={feet} status={Get(route, "Status")} " +
+                $"generation={Get(route, "Generation")} worldRevision={Get(world, "Revision")} chunkVersion={beforeVersion}->{afterVersion} " +
+                $"openCell={(read ? Get(cell[2], "Kind") : "unread")} queryOption={(pending == null ? null : GetOptional(pending, "option"))} " +
+                $"expanded={(pending == null ? null : GetOptional(pending, "expanded"))} " +
+                $"remainingTiles={Get(allowance, "TilesRemaining")} remainingExpansions={Get(allowance, "ExpansionsRemaining")}");
+            Require(recovered >= 0, "the same route and cache discover and cross a genuine opening without resetting the cursor or raising its slice");
+        }
+
+        private static void SlicedLongHookProof(object context, object host, object profiles, Player human)
+        {
+            var entry = new Vector2(RoomX(57), 90 * 16);
+            var anchor = new Point(69, 78);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "sliced-hook-proof", entry, entry, () =>
+            {
+                PlaceFixtureStrip(48, 85, 90, TileID.Stone);
+                PlaceFixtureTile(anchor.X, anchor.Y, TileID.Stone);
+            }))
+            {
+                var gear = new Item(ItemID.GrapplingHook);
+                bool prior = Main.projHook[gear.shoot];
+                try
+                {
+                    Main.projHook[gear.shoot] = ContentSamples.ProjectilesByType[gear.shoot].aiStyle == 7;
+                    run.Body.miscEquips[4] = gear;
+                    for (int i = 0; i < 6; i++) run.Step();
+                    object observed = Get(Get(run.Actor, "Mobility"), "Observed");
+                    float reach = (float)Get(observed, "HookRange");
+                    Vector2 anchorCenter = anchor.ToWorldCoordinates();
+                    float distance = Vector2.Distance(run.Body.Center, anchorCenter);
+                    Require((int)Get(observed, "HookType") == gear.shoot && distance > 200 && distance <= reach,
+                        "the original equipped hook can reach the actual distant solid tile");
+                    Assembly assembly = host.GetType().Assembly;
+                    object transition = Make(NavigationType(assembly, "NavigationTransition"),
+                        Enum.Parse(NavigationType(assembly, "NavigationAction"), "Hook"), run.Body.Bottom, anchorCenter,
+                        default(Point), anchor, 0, false, Enum.ToObject(NavigationType(assembly, "NavigationTraversalDetail"), 0), Vector2.Zero);
+                    object refinement = Make(NavigationType(assembly, "CompanionActionRefinement"));
+                    Call(refinement, "Begin", run.Body, transition, true);
+                    string result = "Pending";
+                    int slices = 0, predicted = 0, spendingSlices = 0;
+                    for (; slices < 90 && result == "Pending"; slices++)
+                    {
+                        object allowance = Make(NavigationType(assembly, "NavigationBudget"), 80, 4, 2);
+                        result = Call(refinement, "Advance", run.Body, observed, allowance).ToString();
+                        int spent = (int)Get(allowance, "Predictions");
+                        if (spent > 0) spendingSlices++;
+                        predicted += spent;
+                        Require(spent <= 2 && (int)Get(allowance, "Tiles") <= 80, "a real long hook query only spends its actual small slice");
+                    }
+                    Console.WriteLine($"NAV LONG HOOK distance={distance:F1} nativeRange={reach:F1} slices={slices} advancingSlices={spendingSlices} predictions={predicted} result={result}");
+                    Require(slices >= 4 && spendingSlices >= 4 && predicted >= 25 && result == "Ready" &&
+                        run.Body.Bottom == entry && run.NativeRelocations == 0,
+                        "a long native hook ray accumulates proof across fixed small slices without moving the live body");
+                }
+                finally { Main.projHook[gear.shoot] = prior; }
+            }
+        }
+
+        private static void NativeMovedActionRetires(object context, object host, object profiles, Player human)
+        {
+            const int floor = 80;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "original-relocation",
+                new Vector2(RoomX(55), floor * 16), new Vector2(RoomX(69), floor * 16),
+                () => PlaceFixtureStrip(48, 106, floor, TileID.Stone)))
+            {
+                Player body = run.Body;
+                object nav = Navigator(run.Actor);
+                object native = Get(run.Actor, "Mobility");
+                for (int tick = 0; tick < 55; tick++) run.Step(1);
+                long priorId = (long)Get(nav, "ActionId");
+                int priorRevision = (int)Get(native, "PositionRevision");
+                Require(priorId > 0 && body.controlRight && body.Bottom.X < human.Bottom.X,
+                    "the ordinary body has a real delivered movement action before separate relocation");
+                Vector2 destination = new Vector2(RoomX(91) - body.width * .5f, floor * 16 - body.height);
+                body.Teleport(destination, 0);
+                Require(body.position == destination && (int)Get(native, "PositionRevision") == priorRevision + 1,
+                    "the separate original non-wormhole teleport actually reaches its new native position");
+                run.Step(-1);
+                object delivery = GetOptional(nav, "LastMovementDelivery");
+                long firstDelivered = delivery == null ? -1 : (long)Get(delivery, "ActionId");
+                long after = (long)Get(nav, "ActionId");
+                int resumed = -1;
+                for (int tick = 0; tick < 35; tick++)
+                {
+                    float priorX = body.Bottom.X;
+                    run.Step(-1);
+                    if (resumed < 0 && body.controlLeft && body.Bottom.X < priorX - .5f &&
+                        (long)Get(nav, "ActionId") != priorId) resumed = tick;
+                }
+                Console.WriteLine($"NAV NATIVE RELOCATION oldAction={priorId} firstDelivered={firstDelivered} after={after} " +
+                    $"revision={priorRevision}->{Get(native, "PositionRevision")} resumedLeft={resumed} feet={body.Bottom}");
+                Require(after != priorId && (delivery == null || firstDelivered != priorId) && resumed >= 0 &&
+                    ReferenceEquals(body, Get(run.Actor, "Body")),
+                    "the first effective body step after native relocation retires old movement and continues from today's real position");
+            }
+        }
+
+        private static void VerifyLateMovementReceipt(Assembly assembly, object edge, Vector2 feet)
+        {
+            var body = new Player { active = true, width = 20, height = 42, gravDir = 1 };
+            body.Bottom = feet;
+            object movement = Make(NavigationType(assembly, "CompanionMotionAction"));
+            object native = Make(NavigationType(assembly, "CompanionMobilityState"));
+            Call(native, "ObserveBody", body, false);
+            object MakeReceipt(long identity)
+            {
+                Type frameType = NavigationType(assembly, "CompanionMobilityFrame");
+                object frame = Activator.CreateInstance(frameType);
+                frameType.GetField("ActionId", ReflectionMembers).SetValue(frame, identity);
+                object deferral = Enum.Parse(NavigationType(assembly, "CompanionMovementDeferral"), "HandBusy");
+                return Make(NavigationType(assembly, "CompanionMovementDelivery"), body, native, frame, deferral);
+            }
+            Call(movement, "Begin", 7L, edge, false, feet);
+            object oldReceipt = MakeReceipt(7L);
+            Call(movement, "Begin", 8L, edge, false, feet);
+            Call(movement, "Record", oldReceipt);
+            string late = Call(movement, "Observe", body, native, true, feet, false).ToString();
+            Call(movement, "Record", MakeReceipt(8L));
+            string current = Call(movement, "Observe", body, native, true, feet, false).ToString();
+            Require(late == "Running" && current == "Waiting" && (long)Get(movement, "Id") == 8L,
+                "an obsolete input receipt cannot defer a newer action but its own real delivery can");
+        }
+    }
+}

@@ -19,8 +19,10 @@ namespace NativeWorldTextProbe
         private const int Starboard = 4954;
         private const int Width = 160;
         private const int Height = 160;
+        // The normal same-support Follow spacing from CompanionBehaviorHost.
+        private const float OrdinaryFollowSpacing = 34f;
 
-        internal static void Run(object context, string comparisonFocus = null)
+        internal static void Run(object context, string comparisonFocus = null, bool historical = false)
         {
             new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player), "Spawn"),
                 HarmonyPatchType.Prefix, "JueMingR.Tests.QuickItemOutlets");
@@ -50,19 +52,49 @@ namespace NativeWorldTextProbe
                     { NativeCompanionDoorFollowChecks.HalfBrick, LowCeiling, DescendingDetour, RetainedPlan, LiquidEntry, NativeCompanionFacilityFollowChecks.PylonFollow };
                 var practicalFollow = new Action<object, object, Player>[]
                     { AdjacentPlatforms, ControlledDrop, TolerableFalls, TrailFollow };
-                var longerFollow = new Action<object, object, Player>[] { LongAutonomousDetour, BoundedTerrainDependencies };
+                var longerFollow = new Action<object, object, Player>[] { (h, p, owner) => LongAutonomousDetour(context, h, p, owner), RouteGraphContracts };
                 var contact = new Action<object, object, Player>[] { NativeContactAndDescent, RunUpJumpAndHighExit };
                 var hoik = new Action<object, object, Player>[] { (h, p, owner) => NativeHoikBaseline(context, owner) };
                 var structure = new Action<object, object, Player>[] { (h, p, owner) => HoikFollow(context, h, p, owner),
-                    (h, p, owner) => MixedNativeFollow(context, h, p, owner), (h, p, owner) => TriangleProxyFollow(context, h, p, owner) };
+                    (h, p, owner) => MixedNativeFollow(context, h, p, owner) };
+                var moving = new Action<object, object, Player>[]
+                {
+                    (h, p, owner) => MovingRoom(context, h, p, owner),
+                    (h, p, owner) => MovingRoom(context, h, p, owner, interruptedTeam: true),
+                    (h, p, owner) => TriangleProxyFollow(context, h, p, owner),
+                    (h, p, owner) => MovingStarboardRoom(context, h, p, owner)
+                };
+                if (!historical)
+                {
+                    var partition = new Action<object, object, Player>[]
+                    {
+                        (h, p, owner) => MovingNearPartition(context, h, p, owner),
+                        (h, p, owner) => MovingStarboardCeiling(context, h, p, owner),
+                        (h, p, owner) => SlicedLongHookProof(context, h, p, owner),
+                        (h, p, owner) => NativeMovedActionRetires(context, h, p, owner)
+                    };
+                    moving = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Concat(moving, partition));
+                }
+                bool fixedBudgetAvailable = host.GetType().GetField("NavigationBudgetOverride", ReflectionMembers) != null;
+                if (comparisonFocus == null)
+                    Require(fixedBudgetAvailable, "the formal navigation leaf runs with the real Debug measurement and pressure seam");
+                if (fixedBudgetAvailable)
+                {
+                    var pressure = new Action<object, object, Player>[] { (h, p, owner) => MovingRoom(context, h, p, owner, stress: true) };
+                    moving = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Concat(moving, pressure));
+                }
                 var full = System.Linq.Enumerable.Concat(
-                    System.Linq.Enumerable.Concat(existing, terrain),
+                    System.Linq.Enumerable.Concat(moving, System.Linq.Enumerable.Concat(existing, terrain)),
                     System.Linq.Enumerable.Concat(practicalFollow, System.Linq.Enumerable.Concat(contact,
                         System.Linq.Enumerable.Concat(longerFollow, System.Linq.Enumerable.Concat(hoik, structure)))));
                 var scenarios = comparisonFocus == "terrain" ? terrain : comparisonFocus == "vertical" ? existing :
                     comparisonFocus == "wormhole-follow" ? practicalFollow :
                     comparisonFocus == "detour-descent" ? longerFollow : comparisonFocus == "contact-descent" ? contact :
-                    comparisonFocus == "hoik-baseline" ? hoik : comparisonFocus == "movement-structure" ? structure : full;
+                    comparisonFocus == "hoik-baseline" ? hoik : comparisonFocus == "movement-structure" ? structure :
+                    comparisonFocus == "graph" ? new Action<object, object, Player>[] { RouteGraphContracts } :
+                    comparisonFocus == "moving-room" ?
+                        historical ? moving : System.Linq.Enumerable.Concat(moving, new Action<object, object, Player>[] { RouteGraphContracts }) :
+                        full;
                 foreach (Action<object, object, Player> scenario in scenarios)
                 {
                     try { scenario(host, profiles, human); }
@@ -127,25 +159,29 @@ namespace NativeWorldTextProbe
                 Fill(45, 83, low, TileID.Stone);
             };
             var destination = new Vector2(x, low * 16);
-            var approach = new Vector2(0, 4);
             int down = -1, landed = -1;
             using (var protectedFall = new Scenario(host, profiles, human, "drop-horseshoe", x, high, terrain, ItemID.LuckyHorseshoe))
             {
+                // The owner starts on the real lower support in both trials.
+                // This isolates equipment timing from acquiring a falling target.
+                human.Bottom = destination;
                 Require(protectedFall.Body.noFallDmg && protectedFall.Body.wingsLogic == 0, "the deep drop uses an actual horseshoe and ordinary gravity");
                 int life = protectedFall.Body.statLife;
                 for (int tick = 0; tick < 245 && landed < 0; tick++)
                 {
-                    protectedFall.StepToward(destination, approach);
+                    protectedFall.StepOwner(Vector2.Zero);
                     if (down < 0 && protectedFall.Body.controlDown) down = tick;
                     if (down >= 0 && OnFloor(protectedFall.Body, low)) landed = tick;
                 }
+                Console.WriteLine($"FOLLOW protected shaft owner={human.Bottom} body={protectedFall.Body.Bottom}/{protectedFall.Body.velocity} down={down} landed={landed} life={protectedFall.Body.statLife}/{life} {PlanStatus(Navigator(protectedFall.Actor))}");
                 Require(down >= 0 && landed > down && protectedFall.Body.statLife == life,
                     "shared descent planning reaches a real protected landing over 512 px below the start");
             }
 
             using (var changed = new Scenario(host, profiles, human, "remove-horseshoe", x, high, terrain, ItemID.LuckyHorseshoe))
             {
-                for (int tick = 0; tick < down; tick++) changed.StepToward(destination, approach);
+                human.Bottom = destination;
+                for (int tick = 0; tick < down; tick++) changed.StepOwner(Vector2.Zero);
                 Require(changed.Body.noFallDmg && OnFloor(changed.Body, high) && !changed.Body.controlDown,
                     "the matching Follow step still stands above the protected shaft before an equipment commit");
                 var id = ((CompanionProfile)Get(changed.Actor, "Profile")).Id;
@@ -156,19 +192,19 @@ namespace NativeWorldTextProbe
                     changed.Body.armor[3].IsAir && changed.Body.inventory[storeSlot].type == ItemID.LuckyHorseshoe &&
                     changed.Body.noFallDmg && (bool)Get(changed.Actor, "TileReachPending"),
                     "the real equipment gesture commits before the native effect can refresh");
-                changed.StepToward(destination, approach);
+                changed.StepOwner(Vector2.Zero);
                 Require(!changed.Body.controlDown && !changed.Body.noFallDmg && OnFloor(changed.Body, high),
                     "Follow waits for native equipment observation on the exact former start step");
                 for (int tick = down + 1; tick < 245; tick++)
                 {
-                    changed.StepToward(destination, approach);
+                    changed.StepOwner(Vector2.Zero);
                     Require(!changed.Body.controlDown && OnFloor(changed.Body, high), "the now-ordinary body refuses the deep drop");
                 }
                 Console.WriteLine($"FOLLOW equipment drop={(low - high) * 16} protectedDown={down} protectedLanding={landed} removedDown=False remainingOnPlatform=True");
             }
 
             CheckNewShaftLiquid(host, profiles, human, "deep-shaft-liquid", high, low, column, high + 35,
-                down, terrain, ItemID.LuckyHorseshoe);
+                down, terrain, ItemID.LuckyHorseshoe, ownerOnLanding: true);
         }
 
         private static void ChangedShaftLiquid(object host, object profiles, Player human)
@@ -197,14 +233,15 @@ namespace NativeWorldTextProbe
         }
 
         private static void CheckNewShaftLiquid(object host, object profiles, Player human, string name, int high,
-            int low, int column, int hazardRow, int down, Action terrain, int accessory = 0)
+            int low, int column, int hazardRow, int down, Action terrain, int accessory = 0, bool ownerOnLanding = false)
         {
             int x = column * 16 + 8;
             var destination = new Vector2(x, low * 16);
             var approach = new Vector2(0, 4);
             using (var edited = new Scenario(host, profiles, human, name, x, high, terrain, accessory))
             {
-                for (int tick = 0; tick < down; tick++) edited.StepToward(destination, approach);
+                if (ownerOnLanding) human.Bottom = destination;
+                for (int tick = 0; tick < down; tick++) Step();
                 Require(OnFloor(edited.Body, high) && !edited.Body.controlDown, "the second body is still at the same platform release pose");
                 for (int tileX = column - 1; tileX <= column + 1; tileX++)
                 {
@@ -214,20 +251,26 @@ namespace NativeWorldTextProbe
                 }
                 for (int tick = 0; tick < 24; tick++)
                 {
-                    edited.StepToward(destination, approach);
+                    Step();
                     Require(!edited.Body.controlDown && OnFloor(edited.Body, high),
-                        "new lava between unchanged release and landing blocks the exact old Down and its retries");
+                        $"new lava between unchanged release and landing blocks the exact old Down and its retries (tick={tick}, feet={edited.Body.Bottom}, velocity={edited.Body.velocity}, down={edited.Body.controlDown}, route={RouteStep(edited.Actor)})");
                 }
                 for (int tileX = column - 1; tileX <= column + 1; tileX++) Main.tile[tileX, hazardRow].liquid = 0;
                 int resumed = 0, clearDown = -1;
                 for (; resumed < 135 && !OnFloor(edited.Body, low); resumed++)
                 {
-                    edited.StepToward(destination, approach);
+                    Step();
                     if (clearDown < 0 && edited.Body.controlDown) clearDown = resumed;
                 }
                 Console.WriteLine($"FOLLOW shaft liquid depth={(low - high) * 16} hazardBelow={(hazardRow - high) * 16} dryDown={down} changedDown=False clearDown={clearDown} clearLanding={resumed} body={edited.Body.Bottom}/{edited.Body.velocity} status={Get(edited.Actor, "Status")} route={RouteStep(edited.Actor)}");
                 Require(clearDown >= 0 && resumed > clearDown && resumed < 135,
                     "removing the new liquid restores native Down followed by the lower landing");
+
+                void Step()
+                {
+                    if (ownerOnLanding) edited.StepOwner(Vector2.Zero);
+                    else edited.StepToward(destination, approach);
+                }
             }
         }
 
@@ -247,13 +290,26 @@ namespace NativeWorldTextProbe
             float dryLeft = 0;
             using (var dry = new Scenario(host, profiles, human, "dry-ledge-side", start, high, terrain))
             {
+                var navigator = Navigator(dry.Actor);
+                long priorAction = -1;
                 for (int tick = 0; tick < updates; tick++)
                 {
                     step(dry);
                     if (release < 0 && OnFloor(dry.Body, high) && dry.Body.velocity.X > 1 &&
                         edge - dry.Body.Left.X > OriginalBrakeRoom(dry.Body) + 3 &&
-                        RouteStep(dry.Actor).StartsWith("LedgeDrop:", StringComparison.Ordinal)) editAt = tick + 1;
+                        RouteStep(dry.Actor).StartsWith("Drop:", StringComparison.Ordinal)) editAt = tick + 1;
                     if (release < 0 && dry.Body.Left.X >= edge && dry.Body.Bottom.Y > high * 16 + .1f) release = tick;
+                    long action = (long)Get(navigator, "ActionId");
+                    if (tick % 20 == 0 || action != priorAction || tick == editAt || tick == release)
+                    {
+                        var refinement = Get(navigator, "refine");
+                        var candidate = Get(refinement, "Edge");
+                        Console.WriteLine($"FOLLOW side wall dry tick={tick} owner={human.Bottom}/{human.velocity} body={dry.Body.Bottom}/{dry.Body.velocity} " +
+                            $"inputs={dry.Body.controlLeft}/{dry.Body.controlRight}/{dry.Body.controlJump} edit={editAt} release={release} " +
+                            $"route={RouteStep(dry.Actor)} refinement={Get(refinement, "Active")}/{Get(navigator, "refineReady")} " +
+                            $"candidate={Get(candidate, "Kind")}:{Get(candidate, "From")}→{Get(candidate, "To")} {PlanStatus(navigator)} {RouteTrace(navigator)}");
+                    }
+                    priorAction = action;
                     if (release >= 0 && OnFloor(dry.Body, lower)) { landing = tick; dryLeft = dry.Body.Left.X; break; }
                 }
                 Require(editAt >= 0 && release > editAt && landing > release && dryLeft + dry.Body.width > wallColumn * 16,
@@ -267,30 +323,43 @@ namespace NativeWorldTextProbe
                 float speed = run.Body.velocity.X;
                 string route = RouteStep(run.Actor);
                 Require(OnFloor(run.Body, high) && edge - run.Body.Left.X > OriginalBrakeRoom(run.Body) + 3 &&
-                    speed > 1 && route.StartsWith("LedgeDrop:", StringComparison.Ordinal),
+                    speed > 1 && route.StartsWith("Drop:", StringComparison.Ordinal),
                     $"the published ledge route still has enough original braking room (body={before}, speed={speed}, route={route})");
                 for (int row = high - 4; row <= lastRow; row++) Fill(wallColumn, wallColumn, row, TileID.Stone);
             }
 
+            bool safeShortWall;
             using (var shortWall = new Scenario(host, profiles, human, "ledge-short-wall", start, high, terrain))
             {
                 // The body can regain horizontal motion once its head
                 // clears this wall, just before reaching the narrow shelf.
                 AddWall(shortWall, high + 2);
                 int life = shortWall.Body.statLife;
-                int leftEdge = -1, steered = -1, landed = -1;
-                for (int tick = 0; tick < updates && landed < 0; tick++)
+                int leftEdge = -1, underWall = -1, landed = -1, stable = 0;
+                for (int tick = 0; tick < updates && stable < 12; tick++)
                 {
                     step(shortWall);
                     if (leftEdge < 0 && shortWall.Body.Bottom.Y > high * 16 + .1f) leftEdge = tick;
-                    if (leftEdge >= 0 && steered < 0 && shortWall.Body.controlRight && shortWall.Body.Top.Y >= (high + 3) * 16 &&
-                        shortWall.Body.velocity.X > 0) steered = tick;
-                    if (leftEdge >= 0 && OnFloor(shortWall.Body, lower)) landed = tick;
+                    bool overlapsWall = shortWall.Body.Right.X > wallColumn * 16 && shortWall.Body.Left.X < (wallColumn + 1) * 16;
+                    if (leftEdge >= 0 && underWall < 0 && shortWall.Body.Top.Y >= (high + 3) * 16 - .25f && overlapsWall &&
+                        shortWall.Body.controlRight && shortWall.Body.velocity.X > 0)
+                        underWall = tick;
+                    bool onShelf = OnFloor(shortWall.Body, lower) && shortWall.Body.Right.X > wallColumn * 16 &&
+                        shortWall.Body.Left.X < (wallColumn + 3) * 16;
+                    if (onShelf && landed < 0) landed = tick;
+                    stable = onShelf ? stable + 1 : 0;
+                    if (tick == leftEdge || tick == underWall || tick == landed)
+                    {
+                        var lastBlock = Main.tile[wallColumn, high + 2];
+                        var firstOpen = Main.tile[wallColumn, high + 3];
+                        Console.WriteLine($"FOLLOW short wall tick={tick} bounds={shortWall.Body.Left.X:F2},{shortWall.Body.Top.Y:F2}→{shortWall.Body.Right.X:F2},{shortWall.Body.Bottom.Y:F2} " +
+                            $"velocity={shortWall.Body.velocity} wall={wallColumn},{high + 2}:{lastBlock.active()}/{lastBlock.type}/{lastBlock.slope()}/{lastBlock.halfBrick()} " +
+                            $"below={firstOpen.active()}/{firstOpen.type}/{firstOpen.slope()}/{firstOpen.halfBrick()} route={RouteStep(shortWall.Actor)}");
+                    }
                 }
-                Console.WriteLine($"FOLLOW side wall with room leftEdge={leftEdge} steeredBelowWall={steered} landing={landed} life={shortWall.Body.statLife}/{life} body={shortWall.Body.Bottom}");
-                Require(leftEdge >= 0 && steered > leftEdge && landed >= steered && shortWall.Body.statLife == life &&
-                    shortWall.Body.Left.X + shortWall.Body.width > wallColumn * 16 && !shortWall.Body.dead,
-                    "the same narrow shelf is safe when real horizontal input can resume underneath the shorter wall");
+                Console.WriteLine($"FOLLOW side wall with room leftEdge={leftEdge} underWall={underWall} landing={landed} stable={stable} life={shortWall.Body.statLife}/{life} body={shortWall.Body.Bottom}");
+                safeShortWall = leftEdge >= 0 && underWall > leftEdge && landed >= underWall && stable >= 12 &&
+                    shortWall.Body.statLife == life && !shortWall.Body.dead;
             }
 
             using (var edited = new Scenario(host, profiles, human, "ledge-side-wall", start, high, terrain))
@@ -326,6 +395,7 @@ namespace NativeWorldTextProbe
                 Console.WriteLine($"FOLLOW side wall clearLanding={resumed} body={edited.Body.Bottom}/{edited.Body.velocity} route={RouteStep(edited.Actor)}");
                 Require(resumed < updates, "removing the wall restores Follow to the original narrow landing");
             }
+            Require(safeShortWall, "the same native body passes underneath the shorter wall and stays safely on the narrow shelf");
         }
 
         private static float OriginalBrakeRoom(Player body)
@@ -539,13 +609,11 @@ namespace NativeWorldTextProbe
 
         private static string RouteStep(object actor)
         {
-            var navigator = Get(Get(actor, "Behavior"), "navigation");
-            var routeOwner = GetOptional(navigator, "actions") ?? navigator;
-            var route = (IList)Get(routeOwner, "route");
-            int index = (int)Get(routeOwner, "routeIndex");
-            if (index >= route.Count) return "local";
-            var step = route[index];
-            return FormattableString.Invariant($"{Get(step, "Kind")}:{Get(step, "From")}→{Get(step, "To")} age={Get(routeOwner, "age")}");
+            object navigator = Navigator(actor);
+            long identity = (long)Get(navigator, "ActionId");
+            if (identity == 0) return "local";
+            object step = Get(navigator, "ActionTransition");
+            return FormattableString.Invariant($"{Get(step, "Kind")}:{Get(step, "From")}→{Get(step, "To")} id={identity} outcome={Get(navigator, "ActionOutcome")}");
         }
 
         private sealed class FlightWindow
@@ -622,20 +690,21 @@ namespace NativeWorldTextProbe
                 catch { Dispose(); throw; }
             }
 
-            internal long StepToward(Vector2 target, Vector2 maximum, bool measure = false)
+            internal long StepToward(Vector2 target, Vector2 maximum, bool measure = false, Player peer = null)
             {
                 var delta = target - human.Bottom;
-                return StepOwner(Vector2.Clamp(delta, -maximum, maximum), measure);
+                return StepOwner(Vector2.Clamp(delta, -maximum, maximum), measure, peer);
             }
 
-            internal long StepOwner(Vector2 motion, bool measure = false)
+            internal long StepOwner(Vector2 motion, bool measure = false, Player peer = null)
             {
                 human.velocity = motion;
                 human.position += motion;
                 NativeQuickItemChecks.BeginWorldStep();
                 long start = measure ? Stopwatch.GetTimestamp() : 0;
-                Call(host, "Update", (ulong)Main.GameUpdateCount);
                 Body.Update(Body.whoAmI);
+                if (peer != null) peer.Update(peer.whoAmI);
+                Call(host, "Update", (ulong)Main.GameUpdateCount);
                 long elapsed = measure ? Stopwatch.GetTimestamp() - start : 0;
                 Require(!(bool)Get(Actor, "Faulted"), "the genuine Player.Update faulted: " + Get(Actor, "Status"));
                 return elapsed;

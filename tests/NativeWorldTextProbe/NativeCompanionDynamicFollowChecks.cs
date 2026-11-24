@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using HarmonyLib;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -11,8 +10,6 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCompanionDynamicFollowChecks
     {
-        private static int searchStarts;
-
         internal static void Run(object host, object actor, Player body, Player human, bool comparison)
         {
             var previousTiles = Main.tile;
@@ -31,10 +28,6 @@ namespace NativeWorldTextProbe
             var previousBehavior = Get(actor, "Behavior");
             var profile = (CompanionProfile)Get(actor, "Profile");
             var wingStats = ArmorIDs.Wing.Sets.Stats;
-            var navigation = Get(previousBehavior, "navigation");
-            var start = AccessTools.Method(AccessTools.Inner(navigation.GetType(), "RouteSearch"), "Begin");
-            var observer = new Harmony("JueMingR.Tests.DynamicFollowProgress");
-            observer.Patch(start, prefix: new HarmonyMethod(typeof(NativeCompanionDynamicFollowChecks), nameof(CountStart)));
             try
             {
                 Terraria.Initializers.WingStatsInitializer.Load();
@@ -78,7 +71,10 @@ namespace NativeWorldTextProbe
                     firstSettled = -1, stable = 0, flyingHeal = -1;
                 float ownerTop = human.position.Y, bodyTop = body.position.Y;
                 bool mountedInAir = false, crossedWall = false;
-                searchStarts = 0;
+                var navigation = Get(Get(actor, "Behavior"), "Navigator");
+                var mobility = Get(actor, "Mobility");
+                int firstGeneration = (int)Get(navigation, "QueryGeneration");
+                string previousNativeAction = null;
                 long cost = 0;
                 for (int t = 0; t < 340; t++)
                 {
@@ -114,10 +110,20 @@ namespace NativeWorldTextProbe
                     if (t >= 235 && SettledNearOwner(body, human))
                     { if (stable == 0) firstSettled = t; stable = SettledStep(stable, true); }
                     else { stable = SettledStep(stable, false); firstSettled = -1; }
-                    if (comparison && (t % 24 == 0 || t == 339))
-                        Console.WriteLine($"FOLLOW TRACE t={t} owner={human.position}/{human.velocity} actor={body.position}/{body.velocity} jump={body.controlJump} wing={body.wingTime:F1}/{full:F1} mount={body.mount.Type} starts={searchStarts}");
+                    string nativeAction = $"{Get(mobility, "Action")}/{Get(mobility, "Result")}";
+                    if (t % 24 == 0 || t == 339 || t == firstWing || t == mounted || nativeAction != previousNativeAction)
+                    {
+                        var observed = Get(mobility, "Observed");
+                        var delivery = GetOptional(navigation, "LastMovementDelivery");
+                        var transition = Get(navigation, "ActionTransition");
+                        Console.WriteLine($"FOLLOW TRACE t={t} owner={human.Bottom}/{human.velocity} actor={body.Bottom}/{body.velocity} jump={body.controlJump} wing={body.wingTime:F1}/{full:F1} " +
+                            $"mount={body.mount.Type} offeredMount={Get(observed, "DefaultMountType")}/{Get(observed, "DefaultMountFly")} native={nativeAction} " +
+                            $"route={Get(navigation, "ActionId")}/{Get(transition, "Kind")}/{Get(transition, "Detail")}:{Get(transition, "From")}→{Get(transition, "To")} " +
+                            $"delivery={(delivery == null ? null : Get(delivery, "Activation"))} query={Get(navigation, "QueryStatus")}/{Get(navigation, "QueryGeneration")} reason={Get(navigation, "LastDeferral")}");
+                    }
+                    previousNativeAction = nativeAction;
                 }
-                Console.WriteLine(FormattableString.Invariant($"FOLLOW DYNAMIC ownerMoved={ownerMoved} ownerRise={ownerOrigin.Y-ownerTop:F1} actorMoved={bodyMoved} rise={origin.Y-bodyTop:F1} firstUp={firstUp} wing={firstWing} mount={mounted} airborneMount={mountedInAir} down={firstDown} turnUseful={turnUseful} reverse={firstReverse} crossed={crossedWall} starts={searchStarts} blockedHold={directBlocked} longestMovingIdle={longestIdle} settled={firstSettled} stable={stable} healingInFlight={flyingHeal} actorMs={1000d*cost/Stopwatch.Frequency:F3}"));
+                Console.WriteLine(FormattableString.Invariant($"FOLLOW DYNAMIC ownerMoved={ownerMoved} ownerRise={ownerOrigin.Y-ownerTop:F1} actorMoved={bodyMoved} rise={origin.Y-bodyTop:F1} firstUp={firstUp} wing={firstWing} mount={mounted} airborneMount={mountedInAir} down={firstDown} turnUseful={turnUseful} reverse={firstReverse} crossed={crossedWall} starts={(int)Get(navigation, "QueryGeneration") - firstGeneration} blockedHold={directBlocked} longestMovingIdle={longestIdle} settled={firstSettled} stable={stable} healingInFlight={flyingHeal} actorMs={1000d*cost/Stopwatch.Frequency:F3}"));
                 Require(ownerMoved > 90 && ownerOrigin.Y - ownerTop > 300 && human.position.X < 88 * 16,
                     "the scripted owner continuously flies above root planning range, releases, and reverses");
                 Require(!(bool)Get(actor, "Faulted"), "dynamic production player does not fault: " + Get(actor, "Status"));
@@ -134,12 +140,11 @@ namespace NativeWorldTextProbe
                     Require(flyingHeal > firstWing && flyingHeal < mounted, "a real manual potion consumes and heals while the production follow input remains in ascending wing flight");
                     var current = ((CompanionProfile)Get(actor, "Profile")).Behavior.MainWeapons;
                     Require(current.Length == 1 && current[0].Type == ItemID.VenusMagnum, "the accepted mobility item does not alter the actual weapon preference");
-                    RequireRejectedMountUnderRoof(host, actor, body, human);
+                    RequireNativeMountClearance(host, actor, body, human);
                 }
             }
             finally
             {
-                observer.Unpatch(start, HarmonyPatchType.Prefix, observer.Id);
                 if (body.mount.Active) body.mount.Dismount(body);
                 Main.tile = previousTiles;
                 ArmorIDs.Wing.Sets.Stats = wingStats;
@@ -170,32 +175,61 @@ namespace NativeWorldTextProbe
             return body.mount.Active && body.mount.CanHover();
         }
 
-        private static void CountStart() => searchStarts++;
 
-        private static void RequireRejectedMountUnderRoof(object host, object actor, Player body, Player human)
+        private static void RequireNativeMountClearance(object host, object actor, Player body, Player human)
         {
+            const int slot = 32, floor = 106, roof = 102;
             body.mount.Dismount(body);
             Require(!body.mount.Active, "the previous actual mount can legally dismount in its open room");
             body.armor[3] = new Item();
-            for (int x = 50; x <= 63; x++) Stone(x, 102);
-            body.position = human.position = new Vector2(56 * 16, 106 * 16 - body.height);
-            body.velocity = Vector2.Zero;
-            body.ResetFallDamage();
-            Call(Get(Get(actor, "Behavior"), "navigation"), "CancelRoute");
-            for (int t = 0; t < 4; t++) Step(host, body);
+            for (int x = 50; x <= 63; x++) Stone(x, roof);
+            var item = body.inventory[slot];
+            int itemStack = item.stack;
+            var feet = new Vector2(56 * 16 + body.width * .5f, floor * 16);
             var state = Get(actor, "Mobility");
-            Require(body.wingsLogic == 0 && body.inventory[32].mountType >= 0, "only the real inventory flight tool remains in the low room");
-            human.position -= new Vector2(0, 176);
-            bool rejected = false, mounted = false;
+            ResetTrial();
+            Require(body.wingsLogic == 0 && item.type == ItemID.CosmicCarKey && item.mountType >= 0 &&
+                ReferenceEquals(item, body.QuickMount_GetItemToUse()), "only the actual inventory flight mount is available in this room");
+            int expandedHeight = body.height + Mount.GetHeightBoost(item.mountType);
+            var mountedTop = feet - new Vector2(body.width * .5f, expandedHeight);
+            bool closedCollision = Collision.SolidCollision(mountedTop, body.width, expandedHeight);
+            Require(expandedHeight > body.height && closedCollision && !body.mount.CanMount(item.mountType, body) &&
+                !Collision.SolidCollision(body.position, body.width, body.height),
+                "native collision admits the ordinary body but rejects this actual mount's expanded size at the same feet");
+            bool attempted = false;
+            human.Bottom = feet - new Vector2(0, 176);
             for (int t = 0; t < 50; t++)
             {
                 Step(host, body);
-                rejected |= Get(state,"Action").ToString() == "QuickMount" && Get(state,"Result").ToString() == "Rejected";
-                mounted |= body.mount.Active;
+                attempted |= Get(state, "Action").ToString() == "QuickMount";
+                Require(!body.mount.Active && !body.dead && body.Top.Y >= (roof + 1) * 16 && body.Bottom.Y <= floor * 16 + .1f &&
+                    body.Left.X >= 50 * 16 && body.Right.X <= 64 * 16 && !Collision.SolidCollision(body.position, body.width, body.height) &&
+                    ReferenceEquals(item, body.inventory[slot]) && item.type == ItemID.CosmicCarKey && item.stack == itemStack,
+                    "the same body stays safe and retains its own real mount below the low ceiling");
             }
-            Console.WriteLine($"FOLLOW MOUNT ROOM requestedRefusal={rejected} mounted={mounted} body={body.position}");
-            Require(rejected && !mounted && body.inventory[32].type == ItemID.CosmicCarKey && !body.dead,
-                "actual expanded native mount cannot fit under the low ceiling and the actor keeps its real equipment");
+            var closedFeet = body.Bottom;
+            for (int x = 50; x <= 63; x++) Main.tile[x, roof].active(false);
+            ResetTrial();
+            bool openCollision = Collision.SolidCollision(mountedTop, body.width, expandedHeight);
+            Require(!openCollision && body.mount.CanMount(item.mountType, body) && body.Bottom == feet,
+                "only removing the roof admits the same expanded native body at its original feet");
+            // The continuous high-wall case already proves automatic Follow activation.
+            // This native control changes only headroom between the two room poses.
+            body.QuickMount();
+            Console.WriteLine($"FOLLOW MOUNT ROOM height={expandedHeight} closedCollision={closedCollision} attempted={attempted} closedFeet={closedFeet} openCollision={openCollision} nativeOpenMount={body.mount.Type}/{body.mount.Active}");
+            Require(body.mount.Active && body.mount.Type == item.mountType && body.height == expandedHeight &&
+                ReferenceEquals(item, body.inventory[slot]) && item.stack == itemStack && !body.dead,
+                "the same inventory mount actually starts through the native command when only the roof is removed");
+
+            void ResetTrial()
+            {
+                body.Bottom = human.Bottom = feet;
+                body.velocity = human.velocity = Vector2.Zero;
+                body.ResetFallDamage();
+                Call(Get(Get(actor, "Behavior"), "Navigator"), "ResetPosition");
+                Call(state, "Reset", Get(actor, "Generation"));
+                for (int t = 0; t < 4; t++) Step(host, body);
+            }
         }
 
         private static void Stone(int x, int y)
@@ -217,8 +251,8 @@ namespace NativeWorldTextProbe
         {
             NativeQuickItemChecks.BeginWorldStep();
             long start = Stopwatch.GetTimestamp();
-            Call(host, "Update", (ulong)Main.GameUpdateCount);
             body.Update(body.whoAmI);
+            Call(host, "Update", (ulong)Main.GameUpdateCount);
             return Stopwatch.GetTimestamp() - start;
         }
     }

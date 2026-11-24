@@ -78,23 +78,32 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context=>{NativeCompanionSessionChecks.Run(context);NativeScopeDispatch.Enter("companions-session");},processing:true,shortFeedback:true);return 0;
             }
-            if(scope=="CompanionNavigationCpu")
+            if(scope=="CompanionNavigationCpu" || scope=="CompanionNavigationDiagnostic")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 string comparison = Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_NAV_COMPARISON");
-                if (comparison != null && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT") != null)
+                if (scope == "CompanionNavigationCpu" && comparison != null ||
+                    scope == "CompanionNavigationDiagnostic" &&
+                    Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT") != null)
                     throw new InvalidOperationException("Explicit navigation comparisons have no formal scope qualification.");
                 NativeQuickItemChecks.Run(context=>{
                     NativeCombatAimChecks.Initialize();
-                    string focus = comparison == null ? null : Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_NAV_FOCUS");
-                    if (focus == "vertical" || focus == "terrain" || focus == "wormhole-follow" || focus == "detour-descent" ||
-                        focus == "contact-descent" || focus == "hoik-baseline" || focus == "movement-structure")
-                        NativeCompanionVerticalFollowChecks.Run(context, focus);
-                    else
+                    NativeCombatLiveContextChecks.InitializeMount();
+                    if (scope == "CompanionNavigationDiagnostic")
                     {
-                        if (comparison == null) NativeCompanionVerticalFollowChecks.Run(context);
-                        NativeCompanionNavigationChecks.Run(context, comparison != null);
+                        var host = NativeInformationChecks.Get(context, "Companions");
+                        bool historical = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionNavigator") == null;
+                        string focus = Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_NAV_FOCUS");
+                        if (!historical && (focus == "integration" || focus == "planned" || focus == "tail"))
+                            NativeCompanionNavigationChecks.Run(context, plannedOnly: focus == "planned", facilityOnly: focus == "tail");
+                        else if (!historical && focus == "vertical-all")
+                            NativeCompanionVerticalFollowChecks.Run(context);
+                        else
+                            NativeCompanionVerticalFollowChecks.Run(context, !historical && focus == "graph" ? "graph" : "moving-room", historical);
+                        return;
                     }
+                    NativeCompanionVerticalFollowChecks.Run(context);
+                    NativeCompanionNavigationChecks.Run(context);
                     NativeScopeDispatch.Enter("companions-navigation");},processing:true,shortFeedback:true,
                     candidateAssembly:comparison);return 0;
             }

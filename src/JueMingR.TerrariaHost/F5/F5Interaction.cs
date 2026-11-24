@@ -7,7 +7,7 @@ namespace JueMingR.TerrariaHost.F5
     internal struct F5Input
     {
         internal float Width, Height, Scale, X, Y;
-        internal bool Active, Focused, F5, Left, Right;
+        internal bool Active, Focused, F5, CloseMenu, Left, Right;
         internal int Wheel;
         internal bool PageWheelHandled;
         internal bool BlockPointer;
@@ -122,7 +122,7 @@ namespace JueMingR.TerrariaHost.F5
                 else if(armed!=null && !ReferenceEquals(armed,input.SecondaryEntry))armed=null;
             }
             if (pressed) physicalClick++;
-            if (input.F5 && !previousF5)
+            if ((Visible && input.CloseMenu) || (input.F5 && !previousF5))
             {
                 if (Visible)
                 {

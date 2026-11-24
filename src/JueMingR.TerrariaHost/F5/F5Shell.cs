@@ -264,11 +264,10 @@ namespace JueMingR.TerrariaHost.F5
         {
             if(CompanionUi==null)return;
             if(CompanionUi.Visible){CompanionUi.Close();return;}
-            // Misc already owns this validated release and its physical tail.
-            // Close the parent first, then open the same independent window;
-            // hidden-page cleanup must never retire the newly opened view.
-            CloseAndSubmitPosition();
-            ToggleCompanionWindow(anchor,true,null);
+            ToggleCompanionWindow(null);
+            // A narrow viewport or unavailable resources can reject the open.
+            // Commit the parent departure only after the independent view survives preparation.
+            if(CompanionUi.Visible) CloseShellAndSubmitPosition(keepCompanion:true);
         }
         // Notes hover may coexist with this keyboard action. An existing drag
         // and its final consumed release sample must finish before a new window.
@@ -293,7 +292,7 @@ namespace JueMingR.TerrariaHost.F5
             // Keep shared physical history intact: one accepted edge clears this
             // epoch, without suppressing unrelated held movement until release.
             inputState.ConsumeHotkeyActions();
-            ToggleCompanionWindow(default(F5Rect),true,chord);
+            ToggleCompanionWindow(chord);
         }
         private bool CompanionHotkeyPointerFree(HotkeyChord chord)
         {
@@ -306,16 +305,16 @@ namespace JueMingR.TerrariaHost.F5
             const HotkeyModifiers control=HotkeyModifiers.LeftControl|HotkeyModifiers.RightControl;
             return !Main.playerInventory || chord.MainKey!=256 || (chord.Modifiers&control)==0;
         }
-        private void ToggleCompanionWindow(F5Rect anchor,bool independent,HotkeyChord chord)
+        private void ToggleCompanionWindow(HotkeyChord chord)
         {
             if(CompanionUi==null)return;
-            if(CompanionUi.Visible){if(independent)CompanionUi.ToggleIndependent(chord);else CompanionUi.Close();return;}
+            if(CompanionUi.Visible){CompanionUi.ToggleIndependent(chord);return;}
             CloseBlueprintReplacementConfiguration();CaptureUi?.Close();FishingUi?.CloseOverlay();RecoveryUi?.PotionPopup.Close();
             HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();MapPopup?.Suspend();FootprintPopup?.Close();
             renderer.RefreshResources();
             renderer.Prepare(State,PlayerInput.OriginalScreenSize.X,PlayerInput.OriginalScreenSize.Y,Main.UIScaleMatrix.M11);
             State.CancelControlCapture();
-            if(independent)CompanionUi.ToggleIndependent(chord);else CompanionUi.Toggle(anchor);
+            CompanionUi.ToggleIndependent(chord);
             CompanionUi.Prepare(Main.UIScaleMatrix,PlayerInput.OriginalScreenSize);
         }
         private MiscAutomationPanel EnsureMiscUi()
@@ -832,6 +831,7 @@ namespace JueMingR.TerrariaHost.F5
                 var secondaryEntry = SecondaryEntryAt(pointer, screen);
                 bool dynamicEntry = SecondaryDynamicAt(pointer,screen);
                 bool materialsWasVisible = BlueprintMaterialsUi?.Visible == true;
+                bool inventoryCloseBlocked = State.Visible && SecondaryModalVisible;
                 bool materialsParentEntry=materialsWasVisible && BlueprintMaterialsUi.Captured==false && !BlueprintMaterialsUi.Contains(pointer.X,pointer.Y) &&
                     (BlueprintUi?.MaterialsEntryAt(pointer)==true || BlueprintPlacedUi?.MaterialsEntryAt(pointer)==true);
                 BlueprintMaterialsUi?.Process(inputActive, pointer, inputState.SampleFocused, PlayerInput.ScrollWheelDeltaForUI, f5);
@@ -910,12 +910,33 @@ namespace JueMingR.TerrariaHost.F5
                     inputState.SampleFocused, PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed, inputState.Hotkeys.IsNew(256),
                     f5 || cancelGesture, pointer.X, pointer.Y, matrix, renderer.FontIdentity, renderer.SkinGeneration);
                 popupPointer|=(CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true || ViewZoom?.OwnsPointer==true);
+                bool closeFromInventory = false;
+                if (inputActive && State.Ready && (State.Visible || f5) && !inventoryCloseBlocked &&
+                    !SecondaryModalVisible && !adjusting && !adjustmentPending && !(TargetGestureBusy?.Invoke() ?? false) &&
+                    RecoveryUi?.Selecting != true && items?.Selecting != true && !Main.blockInput && !Main.drawingPlayerChat &&
+                    !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !notes.OtherTextOwner)
+                {
+                    // A shared F5/Inventory binding is one gesture. While closed,
+                    // F5 opens the menu and its delayed native mapping is consumed.
+                    bool wasVisible = State.Visible;
+                    var mouseClick = Input.HostInputState.InventoryMouseClick.Native;
+                    if (wasVisible && PlayerInput.Triggers.Current.Inventory && (inputState.Hotkeys.IsNew(256) || inputState.Hotkeys.IsNew(257)))
+                    {
+                        // Our pointer owners retain the real click, even when it
+                        // also maps to Inventory. Native surfaces retain theirs.
+                        if (popupPointer || TargetPointOwned(pointer)) mouseClick = Input.HostInputState.InventoryMouseClick.Interface;
+                        else if (!Main.playerInventory && Main.LocalPlayer is Player player && !player.mouseInterface && !player.lastMouseInterface &&
+                            player.talkNPC < 0 && player.sign < 0) mouseClick = Input.HostInputState.InventoryMouseClick.CloseMenu;
+                    }
+                    closeFromInventory = inputState.ConsumeInventoryKeyPress(f5Only: !wasVisible, mouseClick: mouseClick) && wasVisible;
+                }
                 State.Update(new F5Input
                 {
                     Width = screen.X, Height = screen.Y, Scale = matrix.M11, X = pointer.X, Y = pointer.Y,
                     Active = inputActive,
                     Focused = inputState.SampleFocused,
                     F5 = f5,
+                    CloseMenu = closeFromInventory,
                     Left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed,
                     Right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed,
                     BlockPointer = popupPointer,
@@ -1476,7 +1497,10 @@ namespace JueMingR.TerrariaHost.F5
         private void CloseForUnavailablePresentation()
         { if (TemporaryPresentationUnavailable) SuspendForTemporaryUnavailability(!inputState.IsFocused); else CloseAndSubmitPosition(); }
 
-        internal void CloseAndSubmitPosition() { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); ViewZoom?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); CompanionUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
+        internal void CloseAndSubmitPosition() => CloseShellAndSubmitPosition(keepCompanion:false);
+
+        private void CloseShellAndSubmitPosition(bool keepCompanion)
+        { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); ViewZoom?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); if(!keepCompanion)CompanionUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
 
         internal void CancelForFocusLoss()
         {

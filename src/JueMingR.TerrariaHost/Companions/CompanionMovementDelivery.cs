@@ -11,7 +11,7 @@ namespace JueMingR.TerrariaHost.Companions
     internal readonly struct CompanionMovementDelivery
     {
         internal readonly long ActionId, Generation;
-        internal readonly Vector2 Position;
+        internal readonly Vector2 Position, Velocity;
         internal readonly int Move, Vertical, Sequence;
         internal readonly bool Jump, Dash, StairFall, InputsDeferred, ToolAdmitted, NativeShapeExit;
         internal readonly CompanionMovementActivation Activation;
@@ -22,6 +22,7 @@ namespace JueMingR.TerrariaHost.Companions
             ActionId = request.ActionId;
             Generation = native.Generation;
             Position = body.position;
+            Velocity = body.velocity;
             Sequence = request.Sequence;
             Activation = request.Activation;
             Deferral = deferral;

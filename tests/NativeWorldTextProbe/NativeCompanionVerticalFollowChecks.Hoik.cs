@@ -99,19 +99,19 @@ namespace NativeWorldTextProbe
                 }))
             {
                 int observedAction = -1, impulseCount = 0, exit = -1, lowerContact = -1, followed = -1, stable = 0;
-                int projectedThreat = -1;
+                int firstImpulse = -1, projectedThreat = -1;
                 bool keptNativeExit = false;
                 object navigation = Navigator(run.Actor);
                 const BindingFlags staticMethod = BindingFlags.Static | BindingFlags.NonPublic;
-                var engaged = navigation.GetType().GetMethod("HoikEngaged", staticMethod);
                 Vector2 firstOwnerPose = human.position;
                 for (int tick = 0; tick < 1600; tick++)
                 {
                     float oldX = run.Body.position.X;
                     int ownerInput = lowerContact >= 0 ? NativeAxisTo(human, owner + 52) : 0;
-                    if (engaged != null && projectedThreat < 0 && ObservedActionKind(navigation) == "Hoik" &&
-                        run.Body.Center.X == (int)run.Body.Center.X &&
-                        (bool)engaged.Invoke(null, new[] { run.Body, Get(Get(run.Actor, "Mobility"), "Observed"), Get(Get(navigation, "actions"), "Current") }))
+                    bool insideTeeth = impulseCount == 1 && run.Body.Left.X >= HoikMouth * 16 &&
+                        run.Body.Right.X <= (HoikMouth + HoikModuleWidth) * 16 &&
+                        Math.Abs(run.Body.velocity.X) < 1 && OnFloor(run.Body, HoikFloor);
+                    if (projectedThreat < 0 && insideTeeth)
                     {
                         int slot = Array.FindIndex(Main.projectile, item => item == null || !item.active);
                         Require(slot >= 0, "the isolated Hoik scene has space for a genuine hostile observation");
@@ -128,16 +128,21 @@ namespace NativeWorldTextProbe
                             var forecast = field.GetMethod("Observe", staticMethod);
                             object[] observation = { run.Body, new int[Main.projectile.Length + Main.npc.Length], 1, 0, false };
                             projectedThreat = tick;
-                            keptNativeExit = (bool)forecast.Invoke(null, observation) && !(bool)observation[4] &&
-                                run.Body.controlRight && run.Body.position.X > oldX && run.Body.statLife == health &&
-                                ObservedActionKind(navigation) == "Hoik";
+                            bool threatened = (bool)forecast.Invoke(null, observation);
+                            bool jumpClear = (bool)observation[4];
+                            keptNativeExit = threatened && !jumpClear &&
+                                run.Body.controlRight && run.Body.position.X >= oldX && run.Body.statLife == health;
+                            Console.WriteLine($"HOIK threat tick={tick} projected={threatened} jumpClear={jumpClear} avoidAxis={observation[3]} " +
+                                $"input={run.Body.controlLeft}/{run.Body.controlRight} displacement={run.Body.position.X - oldX:F2} " +
+                                $"life={run.Body.statLife}/{health} route={RouteStep(run.Actor)}");
                         }
                         finally { Main.projectile[slot] = previous; }
                     }
                     else run.Step(ownerInput);
                     string kind = ObservedActionKind(navigation);
                     if (kind == "Hoik" && observedAction < 0) observedAction = tick;
-                    if (run.Body.position.X - oldX > 7 && run.Body.velocity.X < 1) impulseCount++;
+                    if (run.Body.position.X - oldX > 7 && Math.Abs(run.Body.velocity.X) < 1)
+                    { if (firstImpulse < 0) firstImpulse = tick; impulseCount++; }
                     if (exit < 0 && impulseCount >= 2 && run.Body.Left.X > (HoikMouth + HoikModuleWidth) * 16 && OnFloor(run.Body, HoikFloor))
                         exit = tick;
                     if (lowerContact < 0 && exit >= 0 && OnFloor(run.Body, lower)) lowerContact = tick;
@@ -148,33 +153,33 @@ namespace NativeWorldTextProbe
                         if (stable >= 20) break;
                     }
                 }
-                Console.WriteLine($"HOIK follow action={observedAction} impulses={impulseCount} exit={exit} lower={lowerContact} followed={followed} stable={stable} projectedThreat={projectedThreat} protectedExit={keptNativeExit} actor={run.Body.Bottom}/{run.Body.velocity} owner={human.Bottom} status={Get(run.Actor, "Status")}");
-                Require(observedAction >= 0 && impulseCount >= 2 && exit > observedAction && lowerContact > exit && followed > lowerContact && stable >= 20,
+                Console.WriteLine($"HOIK follow action={observedAction} firstImpulse={firstImpulse} impulses={impulseCount} exit={exit} lower={lowerContact} followed={followed} stable={stable} projectedThreat={projectedThreat} protectedExit={keptNativeExit} actor={run.Body.Bottom}/{run.Body.velocity} owner={human.Bottom} status={Get(run.Actor, "Status")}");
+                Require(firstImpulse >= 0 && impulseCount >= 2 && exit > firstImpulse && lowerContact > exit && followed > lowerContact && stable >= 20,
                     "ordinary Follow takes the directional Hoik away from the lower goal, observes the native displacements, changes layers and resumes following the native moving owner");
-                Require(engaged == null || projectedThreat >= observedAction && projectedThreat < exit && keptNativeExit,
+                Require(projectedThreat > firstImpulse && projectedThreat < exit && keptNativeExit,
                     "the native hostile observation does not discard the only validated exit while the body is between live teeth");
+                Require(observedAction >= 0 && observedAction < exit, "the typed Hoik route offers and executes the native directional transit");
             }
         }
 
-        private static string ObservedActionKind(object navigation)
-        {
-            object executor = GetOptional(navigation, "actions") ?? navigation;
-            var route = GetOptional(executor, "route") as IList;
-            var routeIndex = GetOptional(executor, "routeIndex");
-            if (route == null || !(routeIndex is int index) || index < 0 || index >= route.Count) return "none";
-            return Get(route[index], "Kind").ToString();
-        }
+        private static string ObservedActionKind(object navigation) =>
+            (long)Get(navigation, "ActionId") == 0 ? "none" : Get(navigation, "ActionKind").ToString();
 
         private sealed class NativeFollowWorld : IDisposable
         {
+            private static NativeFollowWorld updating;
             private readonly object context, host, input, profiles;
             private readonly Player human;
             private readonly Guid id;
+            private Guid peerId;
             private readonly Harmony noAchievements;
             private readonly Terraria.Map.WorldMap previousMap;
             private bool recalled;
             internal readonly Player Body;
             internal readonly object Actor;
+            internal Player Peer { get; private set; }
+            internal object PeerActor { get; private set; }
+            internal int NativeRelocations { get; private set; }
 
             internal NativeFollowWorld(object context, object host, object profiles, Player human, string name,
                 Vector2 bodyStart, Vector2 ownerStart, Action terrain)
@@ -191,19 +196,45 @@ namespace NativeWorldTextProbe
                     terrain();
                     Main.spawnTileX = (int)(ownerStart.X / 16); Main.spawnTileY = (int)(ownerStart.Y / 16) - 2;
                     human.Bottom = ownerStart; human.velocity = Vector2.Zero;
-                    Require((bool)Call(host, "Create", name), "create a native continuous Follow profile: " + Get(host, "Feedback"));
-                    id = (Guid)Get(host, "LastCreatedId");
-                    NativeQuickItemChecks.Until(() => { Call(profiles, "Pump"); return (bool)Call(profiles, "IsSaved", id); });
-                    Require((bool)Call(host, "Join", id), "join the native continuous Follow profile: " + Get(host, "Feedback"));
-                    Body = (Player)Call(host, "GetBody", id);
+                    id = Join(name, bodyStart, out Player body);
+                    Body = body;
                     Actor = Call(host, "Owned", Body);
-                    Body.Bottom = bodyStart;
-                    Body.velocity = Vector2.Zero;
-                    Require((bool)Call(host, "SetBehavior", id, new CompanionBehavior
-                    { Follow = true, AttackEnabled = false, HealthRecoveryEnabled = false }), "configure ordinary Follow");
                     noAchievements = IsolateNativeMovementAchievements();
+                    try
+                    {
+                        noAchievements.Patch(AccessTools.Method(typeof(Player), nameof(Player.Teleport),
+                                new[] { typeof(Vector2), typeof(int), typeof(int) }),
+                            postfix: new HarmonyMethod(typeof(NativeFollowWorld), nameof(ObserveNativeRelocation)));
+                    }
+                    catch
+                    {
+                        noAchievements.UnpatchAll(noAchievements.Id);
+                        Recall();
+                        throw;
+                    }
                 }
                 catch { Main.Map = previousMap; throw; }
+            }
+
+            private Guid Join(string name, Vector2 start, out Player body)
+            {
+                Require((bool)Call(host, "Create", name), "create a native continuous Follow profile: " + Get(host, "Feedback"));
+                var profile = (Guid)Get(host, "LastCreatedId");
+                NativeQuickItemChecks.Until(() => { Call(profiles, "Pump"); return (bool)Call(profiles, "IsSaved", profile); });
+                Require((bool)Call(host, "Join", profile), "join the native continuous Follow profile: " + Get(host, "Feedback"));
+                body = (Player)Call(host, "GetBody", profile);
+                body.Bottom = start;
+                body.velocity = Vector2.Zero;
+                Require((bool)Call(host, "SetBehavior", profile, new CompanionBehavior
+                { Follow = true, AttackEnabled = false, HealthRecoveryEnabled = false }), "configure ordinary Follow");
+                return profile;
+            }
+
+            internal void JoinPeer(string name, Vector2 site)
+            {
+                peerId = Join(name, site, out Player body);
+                Peer = body;
+                PeerActor = Call(host, "Owned", body);
             }
 
             internal long Step(int direction = 0, bool jump = false, bool down = false, bool up = false)
@@ -213,19 +244,42 @@ namespace NativeWorldTextProbe
                 controls.Jump = jump; controls.Down = down; controls.Up = up;
                 NativeQuickItemChecks.BeginWorldStep();
                 long started = Stopwatch.GetTimestamp();
-                human.Update(human.whoAmI);
-                if (!recalled) Body.Update(Body.whoAmI);
-                Call(context, "UpdateRuntime");
+                updating = this;
+                try
+                {
+                    human.Update(human.whoAmI);
+                    if (!recalled) Body.Update(Body.whoAmI);
+                    if (!recalled && Peer != null) Peer.Update(Peer.whoAmI);
+                    Call(context, "UpdateRuntime");
+                }
+                finally { updating = null; }
                 long elapsed = Stopwatch.GetTimestamp() - started;
                 Require(recalled || !(bool)Get(Actor, "Faulted"), "normal continuous Player.Update faulted: " + Get(Actor, "Status"));
+                Require(recalled || PeerActor == null || !(bool)Get(PeerActor, "Faulted"),
+                    "second normal continuous Player.Update faulted: " + (PeerActor == null ? "" : Get(PeerActor, "Status")));
                 return elapsed;
+            }
+
+            private static void ObserveNativeRelocation(Player __instance, bool __runOriginal)
+            {
+                if (__runOriginal && updating != null &&
+                    (ReferenceEquals(__instance, updating.human) || ReferenceEquals(__instance, updating.Body) ||
+                        ReferenceEquals(__instance, updating.Peer)))
+                    updating.NativeRelocations++;
             }
 
             internal void Recall()
             {
                 if (recalled) return;
                 Call(host, "Recall", id);
-                NativeQuickItemChecks.Until(() => { Call(host, "Update", 0UL); Call(profiles, "Pump"); return !((IDictionary)Get(host, "actors")).Contains(id); });
+                if (peerId != Guid.Empty) Call(host, "Recall", peerId);
+                NativeQuickItemChecks.Until(() =>
+                {
+                    Call(host, "Update", 0UL);
+                    Call(profiles, "Pump");
+                    var active = (IDictionary)Get(host, "actors");
+                    return !active.Contains(id) && (peerId == Guid.Empty || !active.Contains(peerId));
+                });
                 recalled = true;
             }
 
