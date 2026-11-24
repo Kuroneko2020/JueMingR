@@ -68,8 +68,11 @@ namespace JueMingR.TerrariaHost.Companions
             bool buff=!manualSupply && heldSlot<0 && CompanionBuffPending(a);
             var pursuit=combat.Pursuit;
             var movementTarget=TargetCurrent(a,pursuit.Target,pursuit.TargetGeneration)?pursuit.Target:null;
+            bool maintainMeleeApproach = valid && chosen.CloseCombat && ReferenceEquals(chosen.Target, movementTarget) &&
+                chosen.TargetGeneration == pursuit.TargetGeneration;
             a.Behavior.Navigator.BindWorld(navigationWorld);
-            var frame=a.Behavior.DecideMobility(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening,pursuit.Weapon,a.Mobility);
+            var frame=a.Behavior.DecideMobility(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening,pursuit.Weapon,
+                a.Mobility, maintainMeleeApproach);
             // Urgent movement may use the next legal hand edge before queued
             // automatic buffs or growth. The manual command keeps its own turn,
             // and StageMobility still waits for any actual native hand tail.

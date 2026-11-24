@@ -1,7 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
+using HarmonyLib;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -63,6 +65,8 @@ namespace NativeWorldTextProbe
                 int nearby = 0, longestNearby = 0, nearWindows = 0, movingSamples = 0, teleports = 0;
                 int nearPeer = 0, peerNearWindows = 0;
                 int farQuiet = 0, longestFarQuiet = 0;
+                int farProgressAge = 0, longestFarProgressAge = 0, firstUseful = -1, longestProgressEnd = -1;
+                Vector2 achieved = run.Body.Bottom;
                 int frozenStart = -1, frozenEnd = -1, resumed = -1, laterDescent = -1;
                 int healedInMotion = -1;
                 int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
@@ -74,127 +78,163 @@ namespace NativeWorldTextProbe
                 int worldEpochAtInterruption = -1;
                 var primaryWork = new RoomWork(sameNavigator);
                 var peerWork = new RoomWork(run.PeerActor == null ? null : Navigator(run.PeerActor));
-                int maxTeamTiles = 0, maxTeamExpansions = 0, maxTeamPredictions = 0, maxTeamShapes = 0;
-                var recent = new Queue<string>(24);
-                for (int tick = 0; tick < RoomDeadline; tick++)
+                bool realReleaseTimer = !primaryWork.Available && sameNavigator != null;
+                using (var measurement = realReleaseTimer ? new RoomPhaseTiming(sameNavigator,
+                    run.PeerActor == null ? null : Navigator(run.PeerActor)) : null)
                 {
-                    // A fixed native immobilization changes the actual body
-                    // result without editing terrain or retiring its session.
-                    if (interruptedTeam && tick == interruptionTick)
+                    int maxTeamTiles = 0, maxTeamExpansions = 0, maxTeamPredictions = 0, maxTeamShapes = 0;
+                    var recent = new Queue<string>(24);
+                    for (int tick = 0; tick < RoomDeadline; tick++)
                     {
-                        interruptedWorld = GetOptional(sameNavigator, "world");
-                        if (interruptedWorld != null) worldEpochAtInterruption = (int)Get(interruptedWorld, "Epoch");
-                        run.Body.AddBuff(BuffID.Frozen, 38);
+                        // A fixed native immobilization changes the actual body
+                        // result without editing terrain or retiring its session.
+                        if (interruptedTeam && tick == interruptionTick)
+                        {
+                            interruptedWorld = GetOptional(sameNavigator, "world");
+                            if (interruptedWorld != null) worldEpochAtInterruption = (int)Get(interruptedWorld, "Epoch");
+                            run.Body.AddBuff(BuffID.Frozen, 38);
+                        }
+                        if (interruptedTeam && tick == potionTick)
+                            Require((bool)Call(host, "UseItemOnce", ((CompanionProfile)Get(run.Actor, "Profile")).Id,
+                                CompanionInventoryArea.Inventory, 33), "a real manual potion request is accepted while Follow is active");
+                        OwnerButtons buttons = driver.Read(human, tick);
+                        long allocationBefore = allocationCounter?.Invoke() ?? 0;
+                        samples.Add(run.Step(buttons.Axis, buttons.Jump, buttons.Down));
+                        measurement?.Capture(tick >= 45);
+                        if (tick >= 45 && allocationCounter != null) allocated += allocationCounter() - allocationBefore;
+                        int phase = driver.Phase;
+                        primaryWork.Read(phase, !run.Body.frozen);
+                        peerWork.Read(phase);
+                        maxTeamTiles = Math.Max(maxTeamTiles, primaryWork.StepTiles + peerWork.StepTiles);
+                        maxTeamExpansions = Math.Max(maxTeamExpansions, primaryWork.StepExpansions + peerWork.StepExpansions);
+                        maxTeamPredictions = Math.Max(maxTeamPredictions, primaryWork.StepPredictions + peerWork.StepPredictions);
+                        maxTeamShapes = Math.Max(maxTeamShapes, primaryWork.StepShapes + peerWork.StepShapes);
+                        Vector2 ownerDelta = ownerProgress.Record(human, tick);
+                        int previousDescents = movement.Descents;
+                        int previousAscents = movement.Ascents, previousDoors = movement.DoorCrossings;
+                        Vector2 bodyDelta = movement.Record(run.Body, tick);
+                        bool crossedSupport = movement.Descents != previousDescents || movement.Ascents != previousAscents ||
+                            movement.DoorCrossings != previousDoors;
+                        // Empty jumps and planner/action turnover do not advance the
+                        // checkpoint. Count a real floor/door crossing or a ground-scale stride.
+                        bool useful = crossedSupport || Math.Abs(achieved.X - run.Body.Bottom.X) >= 24f;
+                        bool following = SameOpenRoomBand(human, run.Body) && Vector2.DistanceSquared(human.Bottom, run.Body.Bottom) <= 96 * 96;
+                        if (useful)
+                        {
+                            achieved = run.Body.Bottom;
+                            if (firstUseful < 0) firstUseful = tick;
+                        }
+                        farProgressAge = useful || following ? 0 : farProgressAge + 1;
+                        if (farProgressAge > longestFarProgressAge)
+                        {
+                            longestFarProgressAge = farProgressAge;
+                            longestProgressEnd = tick;
+                        }
+                        if (farProgressAge > 0 && farProgressAge % 50 == 0)
+                            Console.WriteLine($"MOVING ROOM stalled variant={variant} age={farProgressAge} " +
+                                RoomTrace(run, human, sameNavigator, tick, phase));
+                        if (interruptedTeam && healedInMotion < 0 && tick >= potionTick && run.Body.statLife > startingLife &&
+                            run.Body.inventory[33].IsAir && bodyDelta.LengthSquared() > .25f)
+                            healedInMotion = tick;
+                        if (peer != null && peer.Record(run.Peer, tick).LengthSquared() > 24 * 24) teleports++;
+                        if (bodyDelta.LengthSquared() > 24 * 24) teleports++;
+                        if (run.Body.frozen)
+                        {
+                            if (frozenStart < 0) frozenStart = tick;
+                            frozenEnd = tick;
+                        }
+                        if (frozenEnd >= 0 && !run.Body.frozen && Math.Abs(bodyDelta.X) > .5f && resumed < 0 &&
+                            (run.Body.controlLeft || run.Body.controlRight)) resumed = tick;
+                        if (resumed >= 0 && laterDescent < 0 && movement.Descents > previousDescents) laterDescent = tick;
+                        if (ownerDelta.LengthSquared() > .25f)
+                        {
+                            movingSamples++;
+                            nearby = following ? nearby + 1 : 0;
+                            nearPeer = run.Peer != null && SameOpenRoomBand(human, run.Peer) &&
+                                Vector2.DistanceSquared(human.Bottom, run.Peer.Bottom) <= 96 * 96 ? nearPeer + 1 : 0;
+                            farQuiet = !following && bodyDelta.LengthSquared() <= .25f && !run.Body.frozen ? farQuiet + 1 : 0;
+                            if (nearby == 20) nearWindows++;
+                            if (nearPeer == 20) peerNearWindows++;
+                            longestNearby = Math.Max(nearby, longestNearby);
+                            longestFarQuiet = Math.Max(longestFarQuiet, farQuiet);
+                        }
+                        else nearby = nearPeer = farQuiet = 0;
+                        if (tick % 150 == 0)
+                            Console.WriteLine(RoomTrace(run, human, sameNavigator, tick, phase));
+                        if (tick % 12 == 0)
+                        {
+                            if (recent.Count == 24) recent.Dequeue();
+                            recent.Enqueue(RoomTrace(run, human, sameNavigator, tick, phase));
+                        }
                     }
-                    if (interruptedTeam && tick == potionTick)
-                        Require((bool)Call(host, "UseItemOnce", ((CompanionProfile)Get(run.Actor, "Profile")).Id,
-                            CompanionInventoryArea.Inventory, 33), "a real manual potion request is accepted while Follow is active");
-                    OwnerButtons buttons = driver.Read(human, tick);
-                    long allocationBefore = allocationCounter?.Invoke() ?? 0;
-                    samples.Add(run.Step(buttons.Axis, buttons.Jump, buttons.Down));
-                    if (tick >= 45 && allocationCounter != null) allocated += allocationCounter() - allocationBefore;
-                    int phase = driver.Phase;
-                    primaryWork.Read(phase, !run.Body.frozen);
-                    peerWork.Read(phase);
-                    maxTeamTiles = Math.Max(maxTeamTiles, primaryWork.StepTiles + peerWork.StepTiles);
-                    maxTeamExpansions = Math.Max(maxTeamExpansions, primaryWork.StepExpansions + peerWork.StepExpansions);
-                    maxTeamPredictions = Math.Max(maxTeamPredictions, primaryWork.StepPredictions + peerWork.StepPredictions);
-                    maxTeamShapes = Math.Max(maxTeamShapes, primaryWork.StepShapes + peerWork.StepShapes);
-                    Vector2 ownerDelta = ownerProgress.Record(human, tick);
-                    int previousDescents = movement.Descents;
-                    Vector2 bodyDelta = movement.Record(run.Body, tick);
-                    if (interruptedTeam && healedInMotion < 0 && tick >= potionTick && run.Body.statLife > startingLife &&
-                        run.Body.inventory[33].IsAir && bodyDelta.LengthSquared() > .25f)
-                        healedInMotion = tick;
-                    if (peer != null && peer.Record(run.Peer, tick).LengthSquared() > 24 * 24) teleports++;
-                    if (bodyDelta.LengthSquared() > 24 * 24) teleports++;
-                    if (run.Body.frozen)
+                    Console.WriteLine($"MOVING ROOM variant={variant} inputPhases={driver.Transitions} ownerMoving={movingSamples} owner[{ownerProgress}] ai[{movement}] " +
+                        $"peer[{peer}] nearWindows={nearWindows}/{peerNearWindows} nearbyMoving={longestNearby} nativeTeleports={run.NativeRelocations} displacementOver24={teleports} " +
+                        $"farQuietWhileOwnerMoves={longestFarQuiet} firstUseful={firstUseful} farWithoutSupportOr24px={longestFarProgressAge} " +
+                        $"farInterval={longestProgressEnd - longestFarProgressAge + 1}..{longestProgressEnd} " +
+                    $"frozen={frozenStart}..{frozenEnd} resumed={resumed} laterDescent={laterDescent} healedInMotion={healedInMotion}");
+                    Console.WriteLine($"MOVING ROOM warmup=45 {NativeStepTiming(samples.GetRange(0, 45))} " +
+                        $"active={RoomDeadline - 45} {NativeStepTiming(samples.GetRange(45, RoomDeadline - 45))} " +
+                        $"nativeStepAllocatedBytes={(allocationCounter == null ? "unavailable" : allocated.ToString())} " +
+                        $"processGcAllSteps={GC.CollectionCount(0) - gen0}/{GC.CollectionCount(1) - gen1}/{GC.CollectionCount(2) - gen2}");
+                    Console.WriteLine($"MOVING ROOM work primary[{primaryWork}] peer[{peerWork}] " +
+                        $"maxTeamTiles/expansions/prediction/shapes={maxTeamTiles}/{maxTeamExpansions}/{maxTeamPredictions}/{maxTeamShapes}");
+                    measurement?.Report(variant);
+                    // The solo loop owns repeated through-door proof. The team
+                    // requires both actual paths and checks rotation and recovery
+                    // while one actor handles the interruption.
+                    int requiredPasses = interruptedTeam ? 1 : 2;
+                    if (movement.Descents < 2 || movement.Ascents < 1 || movement.DoorCrossings < requiredPasses || nearWindows < 2)
+                        foreach (string trace in recent) Console.WriteLine(trace);
+                    Require(driver.Transitions >= 24 && movingSamples >= RoomDeadline * 4 / 5 &&
+                        ownerProgress.Descents >= 4 && ownerProgress.Ascents >= 4 && ownerProgress.DoorCrossings >= 4,
+                        "independent owner completes several native ordinary room laps within the preset moving window");
+                    Require(run.NativeRelocations == 0, "no original teleport outlet moves any measured room body");
+                    if (stress)
                     {
-                        if (frozenStart < 0) frozenStart = tick;
-                        frozenEnd = tick;
+                        Require(primaryWork.PhaseChangesWhilePending > 0 && primaryWork.MaxPendingAge > 0 &&
+                            movement.FirstMovement >= 0 && movement.Ascents >= 1 && teleports == 0 && !run.Body.dead,
+                            "the fixed smaller slice sees an independent owner change regions while work is pending and the same body still progresses");
                     }
-                    if (frozenEnd >= 0 && !run.Body.frozen && Math.Abs(bodyDelta.X) > .5f && resumed < 0 &&
-                        (run.Body.controlLeft || run.Body.controlRight)) resumed = tick;
-                    if (resumed >= 0 && laterDescent < 0 && movement.Descents > previousDescents) laterDescent = tick;
-                    if (ownerDelta.LengthSquared() > .25f)
+                    else
                     {
-                        movingSamples++;
-                        bool near = SameOpenRoomBand(human, run.Body) &&
-                            Vector2.DistanceSquared(human.Bottom, run.Body.Bottom) <= 96 * 96;
-                        nearby = near ? nearby + 1 : 0;
-                        nearPeer = run.Peer != null && SameOpenRoomBand(human, run.Peer) &&
-                            Vector2.DistanceSquared(human.Bottom, run.Peer.Bottom) <= 96 * 96 ? nearPeer + 1 : 0;
-                        farQuiet = !near && bodyDelta.LengthSquared() <= .25f && !run.Body.frozen ? farQuiet + 1 : 0;
-                        if (nearby == 20) nearWindows++;
-                        if (nearPeer == 20) peerNearWindows++;
-                        longestNearby = Math.Max(nearby, longestNearby);
-                        longestFarQuiet = Math.Max(longestFarQuiet, farQuiet);
+                        // The frozen f026 Release in this same fixture reached its first real stride
+                        // at 23 and held for at most 103/136 updates in the single/team run. Allow one
+                        // 24-pixel acceleration interval (25 native updates from rest) and four scheduler steps.
+                        int longestAllowed = (interruptedTeam ? 136 : 103) + 25 + 4;
+                        Require(firstUseful >= 0 && firstUseful <= 27 && longestFarProgressAge <= longestAllowed &&
+                            movement.Descents >= 2 && movement.Ascents >= 1 && movement.DoorCrossings >= requiredPasses &&
+                            nearWindows >= 2 && teleports == 0 && !run.Body.dead,
+                            "the ordinary companion makes prompt useful moves, descends, climbs and crosses the actual door beside a moving owner without relocating");
                     }
-                    else nearby = nearPeer = farQuiet = 0;
-                    if (tick % 150 == 0)
-                        Console.WriteLine(RoomTrace(run, human, sameNavigator, tick, phase));
-                    if (tick % 12 == 0)
-                    {
-                        if (recent.Count == 24) recent.Dequeue();
-                        recent.Enqueue(RoomTrace(run, human, sameNavigator, tick, phase));
-                    }
-                }
-                Console.WriteLine($"MOVING ROOM variant={variant} inputPhases={driver.Transitions} ownerMoving={movingSamples} owner[{ownerProgress}] ai[{movement}] " +
-                    $"peer[{peer}] nearWindows={nearWindows}/{peerNearWindows} nearbyMoving={longestNearby} nativeTeleports={run.NativeRelocations} displacementOver24={teleports} " +
-                    $"farQuietWhileOwnerMoves={longestFarQuiet} frozen={frozenStart}..{frozenEnd} resumed={resumed} laterDescent={laterDescent} healedInMotion={healedInMotion}");
-                Console.WriteLine($"MOVING ROOM warmup=45 {NativeStepTiming(samples.GetRange(0, 45))} " +
-                    $"active={RoomDeadline - 45} {NativeStepTiming(samples.GetRange(45, RoomDeadline - 45))} " +
-                    $"nativeStepAllocatedBytes={(allocationCounter == null ? "unavailable" : allocated.ToString())} " +
-                    $"processGcAllSteps={GC.CollectionCount(0) - gen0}/{GC.CollectionCount(1) - gen1}/{GC.CollectionCount(2) - gen2}");
-                Console.WriteLine($"MOVING ROOM work primary[{primaryWork}] peer[{peerWork}] " +
-                    $"maxTeamTiles/expansions/prediction/shapes={maxTeamTiles}/{maxTeamExpansions}/{maxTeamPredictions}/{maxTeamShapes}");
-                // The solo loop owns repeated through-door proof. The team
-                // requires both actual paths and checks rotation and recovery
-                // while one actor handles the interruption.
-                int requiredPasses = interruptedTeam ? 1 : 2;
-                if (movement.Descents < 2 || movement.Ascents < 1 || movement.DoorCrossings < requiredPasses || nearWindows < 2)
-                    foreach (string trace in recent) Console.WriteLine(trace);
-                Require(driver.Transitions >= 24 && movingSamples >= RoomDeadline * 4 / 5 &&
-                    ownerProgress.Descents >= 4 && ownerProgress.Ascents >= 4 && ownerProgress.DoorCrossings >= 4,
-                    "independent owner completes several native ordinary room laps within the preset moving window");
-                Require(run.NativeRelocations == 0, "no original teleport outlet moves any measured room body");
-                if (stress)
-                {
-                    Require(primaryWork.PhaseChangesWhilePending > 0 && primaryWork.MaxPendingAge > 0 &&
-                        movement.FirstMovement >= 0 && movement.Ascents >= 1 && teleports == 0 && !run.Body.dead,
-                        "the fixed smaller slice sees an independent owner change regions while work is pending and the same body still progresses");
-                }
-                else Require(movement.FirstMovement >= 0 && movement.Descents >= 2 && movement.Ascents >= 1 &&
-                    movement.DoorCrossings >= requiredPasses && nearWindows >= 2 && longestFarQuiet <= 180 && teleports == 0 && !run.Body.dead,
-                    "the same ordinary companion descends, climbs and descends again, crosses the native side door, and stays near a moving owner without relocating");
-                if (interruptedTeam)
-                {
-                    Require(frozenStart >= interruptionTick && frozenEnd >= frozenStart + 20 &&
-                        resumed > frozenEnd && laterDescent > resumed && ReferenceEquals(sameNavigator, Navigator(run.Actor)) &&
-                        ReferenceEquals(run.Body, Get(run.Actor, "Body")) && (interruptedWorld == null ||
-                            ReferenceEquals(interruptedWorld, Get(sameNavigator, "world")) &&
-                            (int)Get(interruptedWorld, "Epoch") == worldEpochAtInterruption),
-                        "the real frozen interruption ends and the original body resumes and descends on unchanged terrain");
-                    Require(peer.Descents >= 2 && peer.Ascents >= 1 && peer.DoorCrossings >= 1 && peerNearWindows >= 1 && !run.Peer.dead,
-                        "the second original body climbs around the inside partition, drops and continues through the door while the first is active");
-                    Require(healedInMotion >= potionTick && healedInMotion <= potionTick + 15,
-                        "the same native body pays for and benefits from the potion while continuing world-space movement");
-                }
-                if (primaryWork.Available)
-                {
-                    int tiles = stress ? 208 : 2600, expansion = stress ? 4 : 96, prediction = stress ? 6 : 48;
-                    primaryWork.AssertComplete(RoomDeadline);
                     if (interruptedTeam)
                     {
-                        peerWork.AssertComplete(RoomDeadline);
-                        Require(primaryWork.MaxServiceGap <= 4 && peerWork.MaxServiceGap <= 4,
-                            "the unchanged world-step scheduler gives both real active navigators regular planning service");
+                        Require(frozenStart >= interruptionTick && frozenEnd >= frozenStart + 20 &&
+                            resumed > frozenEnd && laterDescent > resumed && ReferenceEquals(sameNavigator, Navigator(run.Actor)) &&
+                            ReferenceEquals(run.Body, Get(run.Actor, "Body")) && (interruptedWorld == null ||
+                                ReferenceEquals(interruptedWorld, Get(sameNavigator, "world")) &&
+                                (int)Get(interruptedWorld, "Epoch") == worldEpochAtInterruption),
+                            "the real frozen interruption ends and the original body resumes and descends on unchanged terrain");
+                        Require(peer.Descents >= 2 && peer.Ascents >= 1 && peer.DoorCrossings >= 1 && peerNearWindows >= 1 && !run.Peer.dead,
+                            "the second original body climbs around the inside partition, drops and continues through the door while the first is active");
+                        Require(healedInMotion >= potionTick && healedInMotion <= potionTick + 15,
+                            "the same native body pays for and benefits from the potion while continuing world-space movement");
                     }
-                    Require(maxTeamTiles <= tiles && maxTeamExpansions <= expansion && maxTeamPredictions <= prediction &&
-                        maxTeamShapes <= Math.Max(2048, tiles + expansion * 64),
-                        "actual summed heavy work stays within the world's shared production or fixed stress slice");
+                    if (primaryWork.Available)
+                    {
+                        int tiles = stress ? 208 : 2600, expansion = stress ? 4 : 96, prediction = stress ? 6 : 48;
+                        primaryWork.AssertComplete(RoomDeadline);
+                        if (interruptedTeam)
+                        {
+                            peerWork.AssertComplete(RoomDeadline);
+                            Require(primaryWork.MaxServiceGap <= 4 && peerWork.MaxServiceGap <= 4,
+                                "the unchanged world-step scheduler gives both real active navigators regular planning service");
+                        }
+                        Require(maxTeamTiles <= tiles && maxTeamExpansions <= expansion && maxTeamPredictions <= prediction &&
+                            maxTeamShapes <= Math.Max(2048, tiles + expansion * 64),
+                            "actual summed heavy work stays within the world's shared production or fixed stress slice");
+                    }
+                    Console.WriteLine($"PASS native moving room scenario {variant}.");
                 }
-                Console.WriteLine($"PASS native moving room scenario {variant}.");
             }
         }
 
@@ -209,7 +249,7 @@ namespace NativeWorldTextProbe
                 $"target={GetOptional(nav, "Target")} action={action} deferral={GetOptional(nav, "LastDeferral")} {suffix} status={Get(run.Actor, "Status")}";
         }
 
-        private static string RouteTrace(object nav)
+        internal static string RouteTrace(object nav)
         {
             object route = GetOptional(nav, "route");
             if (route == null || !(GetOptional(route, "corridor") is IList corridor)) return "";
@@ -223,6 +263,13 @@ namespace NativeWorldTextProbe
             var query = GetOptional(route, "query");
             object goal = query == null ? null : GetOptional(query, "Goal");
             return $"corridor={start}/{corridor.Count}[{string.Join(",", next)}] goalCell={(goal == null ? null : GetOptional(goal, "Cell"))}";
+        }
+
+        internal static string RefinementTrace(object nav)
+        {
+            object refine = Get(nav, "refine"), edge = Get(refine, "Edge");
+            return $"refinement={Get(refine, "Active")}/{Get(Get(refine, "Witness"), "Valid")} " +
+                $"ticks={Get(refine, "ticks")} edge={Get(edge, "Kind")}/{Get(edge, "Detail")}:{Get(edge, "From")}→{Get(edge, "To")}";
         }
 
         private static void BuildMovingRoom()
@@ -240,17 +287,21 @@ namespace NativeWorldTextProbe
             WorldGen.SquareTileFrame(RoomDoor, RoomLower - 2);
         }
 
-        private static void MovingNearPartition(object context, object host, object profiles, Player human)
+        private static void MovingNearPartition(object context, object host, object profiles, Player human, bool interruptJump = false)
         {
             float innerWall = RoomPartition * 16;
             float bodyStart = innerWall - 10.5f;
             float ownerStart = innerWall + 26.5f;
-            using (var run = new NativeFollowWorld(context, host, profiles, human, "moving-partition",
+            using (var run = new NativeFollowWorld(context, host, profiles, human, interruptJump ? "partition-roof" : "moving-partition",
                 new Vector2(bodyStart, RoomLower * 16), new Vector2(ownerStart, RoomLower * 16), BuildMovingRoom))
             {
                 Player body = run.Body;
                 object navigation = Navigator(run.Actor);
                 long lastAction = -1;
+                long blockedAction = 0, recoveredAction = 0;
+                float blockedEntry = 0;
+                int roofRow = 0;
+                int blockedAt = -1, actualContact = -1, failed = -1, differentJump = -1, released = -1;
                 int direction = -1, turns = 0, over = -1, arrived = -1, close = 0, longestClose = 0, moving = 0;
                 for (int tick = 0; tick < 680; tick++)
                 {
@@ -262,6 +313,7 @@ namespace NativeWorldTextProbe
                         turns++;
                     }
                     Vector2 before = human.Bottom;
+                    float priorVy = body.velocity.Y;
                     run.Step(direction);
                     bool moved = Vector2.DistanceSquared(before, human.Bottom) > .25f;
                     if (moved) moving++;
@@ -271,6 +323,35 @@ namespace NativeWorldTextProbe
                         Vector2.DistanceSquared(body.Bottom, human.Bottom) <= 72 * 72 ? close + 1 : 0;
                     longestClose = Math.Max(close, longestClose);
                     long action = (long)Get(navigation, "ActionId");
+                    string kind = Get(navigation, "ActionKind").ToString();
+                    if (interruptJump && blockedAt < 0 && action > 0 && kind == "Jump" && body.controlJump && body.velocity.Y < -2 &&
+                        (bool)Get(navigation, "ActionCommitted"))
+                    {
+                        // Place a real roof above the advancing jump. The left edge leaves
+                        // another ascent available along the same floor and upper platforms.
+                        roofRow = (int)Math.Floor((body.Top.Y - 2) / 16) - 1;
+                        blockedAt = tick;
+                        blockedAction = action;
+                        blockedEntry = ((Vector2)Get(Get(navigation, "ActionTransition"), "From")).X;
+                        PlaceFixtureStrip(RoomPartition - 2, RoomPartition - 1, roofRow, TileID.Stone);
+                        Console.WriteLine($"MOVING PARTITION edited roof row={roofRow} tick={tick} action={blockedAction} before={body.Top}");
+                    }
+                    if (blockedAt >= 0 && action == blockedAction)
+                    {
+                        if (actualContact < 0 && tick > blockedAt && priorVy < -.5f && body.velocity.Y >= -.02f &&
+                            Math.Abs(body.Top.Y - (roofRow + 1) * 16) < 1) actualContact = tick;
+                        string outcome = Get(navigation, "ActionOutcome").ToString();
+                        if (failed < 0 && (outcome == "Blocked" || outcome == "Rejected"))
+                        {
+                            failed = tick;
+                            Console.WriteLine($"MOVING PARTITION actual {outcome} tick={tick} action={action} body={body.Bottom}");
+                        }
+                    }
+                    if (failed >= 0 && kind == "Jump" && body.controlJump && body.velocity.Y < -2 && action != blockedAction &&
+                        differentJump < 0 && Math.Abs(((Vector2)Get(Get(navigation, "ActionTransition"), "From")).X - blockedEntry) >= 14)
+                    { differentJump = tick; recoveredAction = action; }
+                    if (differentJump >= 0 && released < 0 && kind == "PlatformDrop" && body.Bottom.Y > RoomUpper * 16 + 10 && body.velocity.Y > 0)
+                        released = tick;
                     if (tick % 60 == 0 || action != lastAction || tick == over || tick == arrived || tick >= 50 && tick <= 130 && tick % 8 == 0)
                         Console.WriteLine($"MOVING PARTITION tick={tick} owner={human.Bottom}/{human.velocity} body={body.Bottom}/{body.velocity} " +
                             $"inputs={body.controlLeft}/{body.controlRight}/{body.controlJump}/{body.controlDown} route={RouteStep(run.Actor)} " +
@@ -279,9 +360,19 @@ namespace NativeWorldTextProbe
                 }
                 Console.WriteLine($"MOVING PARTITION startDistance={ownerStart - bodyStart:F1} ownerTurns={turns} moving={moving} over={over} " +
                     $"lowerArrival={arrived} nearMoving={longestClose} {RoomTrace(run, human, navigation, 680, turns)}");
+                if (interruptJump)
+                    Console.WriteLine($"FOLLOW LIVE RECOVERY issued={blockedAt}/{blockedAction} roofContact={actualContact} rejected={failed} " +
+                        $"alternateAscent={differentJump}/{recoveredAction} nativeRelease={released} land={arrived} nearbyMoving={longestClose}");
                 Require(turns >= 5 && moving > 450 && over >= 0 && arrived > over && longestClose >= 20 &&
                     run.NativeRelocations == 0 && !body.dead,
                     "close distance across a solid partition cannot replace a real route into the moving owner's room");
+                if (interruptJump)
+                {
+                    Require(blockedAt >= 0 && actualContact > blockedAt && failed >= actualContact && differentJump > failed &&
+                        released > differentJump && arrived > released && ReferenceEquals(navigation, Navigator(run.Actor)) &&
+                        ReferenceEquals(body, Get(run.Actor, "Body")) && Main.tile[RoomPartition - 1, roofRow].nactive(),
+                        "the same body rejects a real interrupted jump, ascends from a different entry and drops with the obstruction still present");
+                }
                 Console.WriteLine("PASS native moving owner near an interior partition.");
             }
         }
@@ -386,6 +477,79 @@ namespace NativeWorldTextProbe
         }
 
         private static float RoomX(int tile) => tile * 16 + 8;
+
+        // Timing is injected only by the isolated ordinary-Release probe. A
+        // sample is one world's step and includes only actual method invocations.
+        private sealed class RoomPhaseTiming : IDisposable
+        {
+            private static RoomPhaseTiming current;
+            private readonly Harmony harmony = new Harmony("JueMingR.Tests.CompanionRoomPhaseTiming");
+            private readonly object first, second;
+            private readonly List<long> firstSamples = new List<long>(RoomDeadline), secondSamples = new List<long>(RoomDeadline),
+                teamSearchSamples = new List<long>(RoomDeadline);
+            private long firstTime, secondTime, teamSearchTime;
+
+            internal RoomPhaseTiming(object first, object second)
+            {
+                this.first = first;
+                this.second = second;
+                Type type = first.GetType();
+                var enter = new HarmonyMethod(typeof(RoomPhaseTiming), nameof(Enter));
+                try
+                {
+                    harmony.Patch(AccessTools.Method(type, "Decide"), enter, new HarmonyMethod(typeof(RoomPhaseTiming), nameof(Control)));
+                    harmony.Patch(AccessTools.Method(type, "Observe"), enter, new HarmonyMethod(typeof(RoomPhaseTiming), nameof(Control)));
+                    harmony.Patch(AccessTools.Method(type, "Advance"), enter, new HarmonyMethod(typeof(RoomPhaseTiming), nameof(Search)));
+                    current = this;
+                }
+                catch { harmony.UnpatchAll(harmony.Id); throw; }
+            }
+
+            private static void Enter(out long __state) => __state = Stopwatch.GetTimestamp();
+
+            private static void Control(object __instance, long __state)
+            {
+                var sample = current;
+                if (sample == null) return;
+                long elapsed = Stopwatch.GetTimestamp() - __state;
+                if (ReferenceEquals(__instance, sample.first)) sample.firstTime += elapsed;
+                else if (ReferenceEquals(__instance, sample.second)) sample.secondTime += elapsed;
+            }
+
+            private static void Search(object __instance, long __state)
+            {
+                var sample = current;
+                if (sample != null && (ReferenceEquals(__instance, sample.first) || ReferenceEquals(__instance, sample.second)))
+                    sample.teamSearchTime += Stopwatch.GetTimestamp() - __state;
+            }
+
+            internal void Capture(bool active)
+            {
+                if (active)
+                {
+                    firstSamples.Add(firstTime);
+                    if (second != null) secondSamples.Add(secondTime);
+                    teamSearchSamples.Add(teamSearchTime);
+                }
+                firstTime = secondTime = teamSearchTime = 0;
+            }
+
+            internal void Report(string variant)
+            {
+                Require(firstSamples.Exists(x => x > 0) && teamSearchSamples.Exists(x => x > 0) &&
+                    (second == null || secondSamples.Exists(x => x > 0)), "the isolated timing hooks observe both actual control and budgeted navigation");
+                Console.WriteLine($"MOVING ROOM phase timings variant={variant} samples={firstSamples.Count} " +
+                    $"firstObservedControl[{NativeStepTiming(firstSamples)}] " +
+                    $"secondObservedControl[{(second == null ? "—" : NativeStepTiming(secondSamples))}] " +
+                    $"teamAdvance[{NativeStepTiming(teamSearchSamples)}]");
+            }
+
+            public void Dispose()
+            {
+                current = null;
+                harmony.UnpatchAll(harmony.Id);
+            }
+        }
 
         private sealed class RoomWork
         {

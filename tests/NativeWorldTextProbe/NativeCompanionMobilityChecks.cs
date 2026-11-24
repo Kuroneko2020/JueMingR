@@ -373,11 +373,13 @@ namespace NativeWorldTextProbe
                     Step(host, body);
                     farthestSideways = Math.Max(farthestSideways, Math.Abs(body.position.X - startX));
                     keptShaft &= body.Left.X >= (leftWall + 1) * 16 - .25f && body.Right.X <= rightWall * 16 + .25f;
-                    var delivery = Get(navigator, "LastMovementDelivery");
-                    if (Get(delivery, "Activation").ToString() == "ReleaseHook" && (int)Get(delivery, "Sequence") != 2031)
+                    var delivery = GetOptional(navigator, "LastMovementDelivery");
+                    object controlSource = delivery ?? state;
+                    string activationName = delivery == null ? "Action" : "Activation";
+                    if (Get(controlSource, activationName).ToString() == "ReleaseHook" && (int)Get(controlSource, "Sequence") != 2031)
                     {
                         deliveredReleases++;
-                        sidewaysInput |= (int)Get(delivery, "Move") != 0;
+                        sidewaysInput |= delivery == null ? body.controlLeft || body.controlRight : (int)Get(delivery, "Move") != 0;
                     }
                     if (Get(state, "Action").ToString() != "ReleaseHook" || (int)Get(state, "Sequence") == 2031) continue;
                     detached |= !(bool)Get(Get(state, "Observed"), "GrappleAttached") && Get(state, "Result").ToString() == "Completed";

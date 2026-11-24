@@ -142,7 +142,7 @@ namespace NativeWorldTextProbe
             {
                 var goal = new Vector2(91 * 16, lower * 16);
                 human.Bottom = goal;
-                int launch = -1, firstLanding = -1, crossed = -1, landed = -1, stable = 0, resumed = 0;
+                int launch = -1, firstLanding = -1, wallTop = -1, crossed = -1, landed = -1, stable = 0, resumed = 0;
                 float launchSpeed = 0, lowestFeet = float.PositiveInfinity;
                 for (int tick = 0; tick < 670 && stable < 24; tick++)
                 {
@@ -154,11 +154,22 @@ namespace NativeWorldTextProbe
                     { launch = tick; launchSpeed = priorX; }
                     lowestFeet = Math.Min(lowestFeet, body.Bottom.Y);
                     if (firstLanding < 0 && OnFloor(body, intermediate)) firstLanding = tick;
-                    if (crossed < 0 && body.Left.X >= (wall + 1) * 16 && body.Bottom.Y < 74 * 16) crossed = tick;
+                    // The original solid crown is a legal intermediate support before the far drop.
+                    if (wallTop < 0 && OnFloor(body, 74) && body.Right.X > wall * 16 && body.Left.X < (wall + 1) * 16)
+                        wallTop = tick;
+                    if (crossed < 0 && body.Left.X >= (wall + 1) * 16 && (body.Bottom.Y < 74 * 16 || wallTop >= 0))
+                    {
+                        crossed = tick;
+                        Console.WriteLine($"FOLLOW high exit far edge step={tick} feet={body.Bottom}/{body.velocity} crown={wallTop} route={RouteStep(run.Actor)}");
+                    }
                     if (crossed >= 0 && landed < 0 && OnFloor(body, lower)) landed = tick;
                     stable = ContactNearOwner(body, goal) ? stable + 1 : 0;
-                    if (tick % 110 == 0)
-                        Console.WriteLine($"FOLLOW high exit step={tick} feet={body.Bottom}/{body.velocity} route={RouteStep(run.Actor)} plan={PlanStatus(Navigator(run.Actor))}");
+                    if (tick % 110 == 0 || firstLanding >= 0 && tick - firstLanding <= 14)
+                    {
+                        object nav = Navigator(run.Actor);
+                        Console.WriteLine($"FOLLOW high exit step={tick} feet={body.Bottom}/{body.velocity} route={RouteStep(run.Actor)} " +
+                            $"plan={PlanStatus(nav)} {RefinementTrace(nav)} {RouteTrace(nav)}");
+                    }
                 }
                 var next = goal + new Vector2(64, 0);
                 for (int tick = 0; tick < 140 && resumed < 22; tick++)
@@ -166,7 +177,7 @@ namespace NativeWorldTextProbe
                     run.StepToward(next, new Vector2(2.4f, 0));
                     resumed = ContactNearOwner(run.Body, next) ? resumed + 1 : 0;
                 }
-                Console.WriteLine($"FOLLOW high exit launch={launch} speed={launchSpeed:F2} intermediate={firstLanding} upperCross={crossed} lower={landed} nearestHeight={lowestFeet:F2} stable={stable} resumed={resumed} feet={run.Body.Bottom}");
+                Console.WriteLine($"FOLLOW high exit launch={launch} speed={launchSpeed:F2} intermediate={firstLanding} crown={wallTop} upperCross={crossed} lower={landed} nearestHeight={lowestFeet:F2} stable={stable} resumed={resumed} feet={run.Body.Bottom}");
                 Require(launch >= 0 && firstLanding > launch && crossed > firstLanding && landed > crossed &&
                     stable >= 24 && resumed >= 22, "ordinary Follow must jump upward to the only upper exit, descend and settle by the lower owner twice");
             }
@@ -233,7 +244,7 @@ namespace NativeWorldTextProbe
                         var candidate = Get(refinement, "Edge");
                         Console.WriteLine($"FOLLOW runup step={tick} feet={body.Bottom}/{body.velocity} route={RouteStep(run.Actor)} " +
                             $"status={Get(run.Actor, "Status")} plan={PlanStatus(nav)} {RouteTrace(nav)} " +
-                            $"refinement={Get(refinement, "Active")}/{Get(nav, "refineReady")} " +
+                            $"refinement={Get(refinement, "Active")}/{Get(Get(refinement, "Witness"), "Valid")} " +
                             $"candidate={Get(candidate, "Kind")}:{Get(candidate, "From")}→{Get(candidate, "To")} refinedTicks={Get(refinement, "ticks")}");
                     }
                 }

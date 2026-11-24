@@ -108,18 +108,18 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly Point trail;
         private readonly bool hasTrail;
         private Label current, closest, frontier, result;
-        private int option, sequence, expanded;
-        private bool unknown, reached, capacity;
+        private int option, branch, sequence, expanded;
+        private bool unknown, capacity;
         private float closestDistance;
         internal readonly NavigationNode Start, Goal;
-        internal bool Terminal => reached;
+        private readonly NavigationNode observedGoal;
         internal bool Valid => readSet.Current();
         internal NavigationReadSet Dependencies => readSet;
         internal NavigationQueryStatus Status { get; private set; }
 
         internal NavigationQuery(NavigationTraversal traversal, NavigationCapabilities capabilities,
             NavigationNode start, NavigationNode goal, IReadOnlyList<NavigationTransition> facilities,
-            NavigationWorld world, Vector2 trailHint, bool hasTrail)
+            NavigationWorld world, Vector2 trailHint, bool hasTrail, NavigationNode? observedGoal = null)
         {
             this.traversal = traversal;
             this.capabilities = capabilities;
@@ -129,17 +129,20 @@ namespace JueMingR.TerrariaHost.Companions
             trail = NavigationTraversal.CellAt(trailHint);
             Start = start;
             Goal = goal;
+            this.observedGoal = observedGoal ?? goal;
             readSet.Record(start.Cell);
             readSet.Record(goal.Cell);
+            readSet.Record(this.observedGoal.Cell);
             closest = Add(start, null, default, 0);
-            closestDistance = Distance(start, goal);
+            closestDistance = GoalDistance(start);
             Status = NavigationQueryStatus.PendingBudget;
         }
 
         internal void Advance(NavigationBudget budget, Predicate<NavigationTransition> rejected)
         {
             if (Status != NavigationQueryStatus.PendingBudget) return;
-            int count = NavigationTraversal.OptionCount + (facilities?.Count ?? 0);
+            int candidates = NavigationTraversal.CandidateCount(capabilities);
+            int count = candidates + (facilities?.Count ?? 0);
             while (budget.ExpansionsRemaining > 0)
             {
                 if (current == null)
@@ -153,6 +156,7 @@ namespace JueMingR.TerrariaHost.Companions
                     current = open.Min;
                     open.Remove(current);
                     option = -1;
+                    branch = NavigationTraversal.FirstBranch;
                     expanded++;
                 }
                 traversal.Begin(capabilities, budget, readSet);
@@ -160,12 +164,12 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     budget.TryExpand();
                     budget.RecordExpansion();
-                    bool accepted = traversal.IsGoal(current.Node, Goal);
+                    bool accepted = traversal.IsGoal(current.Node, Goal) ||
+                        !Goal.EqualsRegion(observedGoal) && traversal.IsGoal(current.Node, observedGoal);
                     if (traversal.Pending) return;
                     unknown |= traversal.Unknown;
                     if (accepted)
                     {
-                        reached = true;
                         result = current;
                         Status = NavigationQueryStatus.ReadyPrefix;
                         return;
@@ -184,30 +188,61 @@ namespace JueMingR.TerrariaHost.Companions
                         // for that walk; publish it in this search slice.
                         if (current.Parent == null)
                         {
-                            reached = true;
                             result = groundGoal;
                             Status = NavigationQueryStatus.ReadyPrefix;
                             return;
                         }
                     }
+                    if (current.Parent == null && TryLocalFacility(current, budget, rejected))
+                    {
+                        Status = NavigationQueryStatus.ReadyPrefix;
+                        return;
+                    }
                     option = 0;
                     continue;
                 }
-                if (option < NavigationTraversal.OptionCount && !traversal.IsApplicable(current.Node, option))
+                if (option < candidates && !traversal.IsApplicable(current.Node, option))
                 {
                     if (++option == count) current = null;
                     continue;
                 }
                 budget.TryExpand();
                 budget.RecordCandidate();
-                bool offered = option < NavigationTraversal.OptionCount
-                    ? traversal.Offer(current.Node, option, out var destination, out var edge, out var cost)
-                    : TryFacility(current.Node, option - NavigationTraversal.OptionCount, out destination, out edge, out cost);
+                bool offered = option < candidates
+                    ? traversal.OfferNext(current.Node, option, ref branch, out var destination, out var edge, out var cost)
+                    : TryFacility(current.Node, option - candidates, out destination, out edge, out cost);
                 if (traversal.Pending) return;
                 unknown |= traversal.Unknown;
                 if (offered && !rejected(edge)) Add(destination, current, edge, current.Cost + TravelCost(edge, cost));
+                if (branch != NavigationTraversal.FirstBranch) continue;
                 if (++option == count) current = null;
             }
+        }
+
+        private bool TryLocalFacility(Label source, NavigationBudget budget, Predicate<NavigationTransition> rejected)
+        {
+            if (facilities == null || !source.Node.Grounded) return false;
+            for (int i = 0; i < facilities.Count && budget.TryExpand(); i++)
+            {
+                budget.RecordCandidate();
+                if (!TryFacility(source.Node, i, out var destination, out var edge, out float cost) || rejected(edge))
+                    continue;
+                var approach = edge;
+                var inlet = destination;
+                float approachCost = cost;
+                bool walksToInlet = edge.Kind == NavigationAction.Walk;
+                if (walksToInlet &&
+                    (!TryFacility(inlet, i, out destination, out edge, out cost) || edge.Kind != NavigationAction.Facility ||
+                        rejected(edge))) continue;
+                // An already-qualified entrance near this body can connect
+                // all the way to the current goal region. It is an ordinary
+                // path with its own approach and native facility proof.
+                if (!traversal.IsGoal(destination, Goal) && !traversal.SameGroundRegion(destination, Goal)) continue;
+                var head = walksToInlet ? Add(inlet, source, approach, approachCost) : source;
+                result = Add(destination, head, edge, head.Cost + cost);
+                return true;
+            }
+            return false;
         }
 
         internal void CopyCorridor(List<NavigationTransition> corridor)
@@ -223,7 +258,7 @@ namespace JueMingR.TerrariaHost.Companions
             // Only equal portal/body-mode envelopes are comparable. A lower
             // cost with less flight time cannot dominate an otherwise legal label.
             var portal = new NavigationNode(node.Cell, node.Medium, node.Gravity, node.Mounted, 0,
-                node.MountMode, node.RailFrame, node.OffsetX);
+                node.MountMode, node.RailFrame, node.OffsetX, node.MountChoice);
             if (!labels.TryGetValue(portal, out var peers))
             {
                 peers = new List<Label>(1);
@@ -239,7 +274,7 @@ namespace JueMingR.TerrariaHost.Companions
                     peers.RemoveAt(i);
                 }
             }
-            float distance = Distance(node, Goal);
+            float distance = GoalDistance(node);
             var label = new Label
             {
                 Node = node, Parent = parent, Edge = edge, Cost = cost,
@@ -249,12 +284,15 @@ namespace JueMingR.TerrariaHost.Companions
             };
             peers.Add(label);
             open.Add(label);
-            if (parent != null && distance < closestDistance && (!edge.Irreversible || node.EqualsRegion(Goal)))
+            // A grounded exit is independently useful when this body can
+            // survive reaching it. Native refinement owns that life proof.
+            bool decisionBoundary = !edge.Irreversible || node.Grounded;
+            if (parent != null && distance < closestDistance && decisionBoundary)
             {
                 closest = label;
                 closestDistance = distance;
             }
-            if (parent != null && !edge.Irreversible &&
+            if (parent != null && decisionBoundary &&
                 (frontier == null || label.Cost + label.Estimate < frontier.Cost + frontier.Estimate) &&
                 Distance(node, Start) >= 5f) frontier = label;
             return label;
@@ -266,8 +304,17 @@ namespace JueMingR.TerrariaHost.Companions
             to = default;
             cost = 0;
             var feet = traversal.Feet(from);
-            if (Vector2.DistanceSquared(feet, edge.From) > 30f * 30f ||
-                !traversal.KnownClear(feet, edge.From, from.Gravity, from.MountMode, 3)) return false;
+            float distance = Vector2.DistanceSquared(feet, edge.From);
+            if (distance > 30f * 30f)
+            {
+                // Link the ordinary supported approach to an already
+                // qualified entrance. Its independent facility edge stays
+                // in the graph and must still get its own native receipt.
+                if (!from.Grounded || distance > 128f * 128f) return false;
+                var entry = traversal.Anchor(edge.From, true);
+                return traversal.GroundGoalLink(from, entry, out to, out edge, out cost);
+            }
+            if (!traversal.KnownClear(feet, edge.From, from.Gravity, from.MountMode, 3, from.MountChoice)) return false;
             to = traversal.Anchor(edge.To, true);
             cost = 12;
             return true;
@@ -296,5 +343,8 @@ namespace JueMingR.TerrariaHost.Companions
             float dx = a.Cell.X - b.Cell.X, dy = a.Cell.Y - b.Cell.Y;
             return (float)Math.Sqrt(dx * dx + dy * dy);
         }
+
+        private float GoalDistance(NavigationNode node) =>
+            Math.Min(Distance(node, Goal), Distance(node, observedGoal));
     }
 }

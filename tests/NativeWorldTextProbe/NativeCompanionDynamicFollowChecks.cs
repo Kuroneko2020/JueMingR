@@ -116,8 +116,9 @@ namespace NativeWorldTextProbe
                         var observed = Get(mobility, "Observed");
                         var delivery = GetOptional(navigation, "LastMovementDelivery");
                         var transition = Get(navigation, "ActionTransition");
+                        var choices = GetOptional(observed, "MountChoices") as Array;
                         Console.WriteLine($"FOLLOW TRACE t={t} owner={human.Bottom}/{human.velocity} actor={body.Bottom}/{body.velocity} jump={body.controlJump} wing={body.wingTime:F1}/{full:F1} " +
-                            $"mount={body.mount.Type} offeredMount={Get(observed, "DefaultMountType")}/{Get(observed, "DefaultMountFly")} native={nativeAction} " +
+                            $"mount={body.mount.Type} ownedMountChoices={choices?.Length} native={nativeAction} " +
                             $"route={Get(navigation, "ActionId")}/{Get(transition, "Kind")}/{Get(transition, "Detail")}:{Get(transition, "From")}→{Get(transition, "To")} " +
                             $"delivery={(delivery == null ? null : Get(delivery, "Activation"))} query={Get(navigation, "QueryStatus")}/{Get(navigation, "QueryGeneration")} reason={Get(navigation, "LastDeferral")}");
                     }

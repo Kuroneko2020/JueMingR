@@ -5,7 +5,7 @@ using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Companions
 {
-    internal enum CompanionActionOutcome { Idle, Running, Waiting, Complete, Blocked, Rejected, Suspended }
+    internal enum CompanionActionOutcome { Idle, Running, Waiting, Complete, Blocked, Rejected, Suspended, Superseded }
 
     // One action spans staging, the original Player.Update and actual observation.
     // Deferred hands do not count against contact progress, but can time out.
@@ -15,9 +15,14 @@ namespace JueMingR.TerrariaHost.Companions
         internal CompanionFallRisk.ReleaseCorridor FallRelease;
         internal float FallOutletX;
         internal const float FlightBankClearance = 4f;
+        internal const float FlightClimbTolerance = 4f;
         internal bool FlightLanding;
         internal long Id;
         internal bool Direct, Committed;
+        internal bool CanRetarget => Id != 0 && !Committed &&
+            (Edge.Kind == NavigationAction.Walk || Edge.Kind == NavigationAction.Dash ||
+             Edge.Kind == NavigationAction.Jump || Edge.Kind == NavigationAction.Drop || Edge.Kind == NavigationAction.PlatformDrop ||
+             Edge.Kind == NavigationAction.Flight);
         internal CompanionActionOutcome Outcome;
         private enum Phase { Approach, Release, Travel }
         private Phase phase;
@@ -26,12 +31,23 @@ namespace JueMingR.TerrariaHost.Companions
         private Vector2 target, entry, roofEscapeStart;
         private CompanionMovementDelivery delivered;
         private bool hasDelivery, startedMovement, airborne, hookReleasing, dashIssued, unsafeRelease;
-        private bool observedInlet, groundedInlet, maintainingAirContact, clearedFlightBank;
+        private bool cancellingDrop, crossedJumpHeight;
+        private bool observedInlet, groundedInlet, maintainingAirContact, clearedFlightBank, levelCruise, roofDropping;
         internal CompanionMovementDeferral Deferral { get; private set; }
         internal bool LosingProgress => noProgress >= 4;
         internal bool InNativeMotion { get; private set; }
         internal bool HasRoofContact { get; private set; }
         internal Vector2 RoofContact { get; private set; }
+        internal int RoofEscapeDirection => roofEscape;
+
+        internal bool TryRetarget(NavigationTransition edge)
+        {
+            if (!Direct || !CanRetarget || Edge.Kind != edge.Kind) return false;
+            if (Edge.Detail != edge.Detail) dashIssued = false;
+            Edge = edge;
+            target = edge.To;
+            return true;
+        }
 
         internal void Begin(long id, NavigationTransition edge, bool direct, Vector2 launch)
         {
@@ -46,8 +62,10 @@ namespace JueMingR.TerrariaHost.Companions
             best = float.NegativeInfinity;
             noProgress = waiting = elapsed = sequence = 0;
             roofEscape = roofEscapeAge = 0;
+            roofDropping = false;
             hasDelivery = startedMovement = airborne = hookReleasing = dashIssued = unsafeRelease = false;
-            observedInlet = groundedInlet = maintainingAirContact = false;
+            cancellingDrop = crossedJumpHeight = false;
+            observedInlet = groundedInlet = maintainingAirContact = levelCruise = false;
             clearedFlightBank = FlightLanding = false;
             InNativeMotion = false;
             HasRoofContact = false;
@@ -87,9 +105,19 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 observedInlet = true;
                 groundedInlet = supported;
+                levelCruise = Direct && supported && Edge.Kind == NavigationAction.Flight &&
+                    Math.Abs(liveTarget.Y - feet.Y) <= 8f && Math.Abs(liveTarget.X - feet.X) > spacing + 64f;
             }
             target = Direct ? liveTarget : Edge.To;
             var frame = new CompanionMobilityFrame { ActionId = Id, ItemSlot = -1, Status = "跟随中" };
+            if (IsDrop && FallReleased(body, feet, supported)) phase = Phase.Travel;
+            if (IsDrop && phase != Phase.Travel && native.AwaitingEquipmentObservation)
+            {
+                // Retain the pre-release action while equipment settles,
+                // with native braking so existing momentum cannot release it.
+                BrakeDrop(body, supported, ref frame);
+                return frame;
+            }
             if (!Direct && (Edge.Kind == NavigationAction.Walk || Edge.Kind == NavigationAction.Hoik || Edge.Kind == NavigationAction.Dash))
                 phase = Phase.Travel;
             else if (phase == Phase.Approach && Aligned(body, feet))
@@ -113,9 +141,6 @@ namespace JueMingR.TerrariaHost.Companions
                 frame.Move = GroundInput(body, state, entry.X, arrivalSpeed, 0f, supported);
                 return frame;
             }
-
-            if (native.AwaitingEquipmentObservation && phase != Phase.Travel &&
-                (Edge.Kind == NavigationAction.Drop || Edge.Kind == NavigationAction.PlatformDrop)) return frame;
 
             if (state.GrappleAttached && Edge.Kind != NavigationAction.Hook ||
                 state.GrappleInFlight && Edge.Kind == NavigationAction.PlatformDrop)
@@ -146,7 +171,7 @@ namespace JueMingR.TerrariaHost.Companions
                         float speed = Math.Abs(body.velocity.X);
                         bool canHold = heading != 0 && (target.X - feet.X) * heading > spacing + speed &&
                             CompanionGroundRun.HasBrakingRoom(body, heading, speed, state.DashKind);
-                        frame.Move = canHold ? heading : 0;
+                        frame.Move = canHold ? heading : heading != 0 && ClearAhead(body, -heading, 3f, supported) ? -heading : 0;
                         frame.Status = canHold ? "冲刺中" : "减速中";
                         break;
                     }
@@ -177,9 +202,40 @@ namespace JueMingR.TerrariaHost.Companions
                 case NavigationAction.Flight:
                     if (Edge.Detail == NavigationTraversalDetail.CarpetGlide)
                         Glide(body, state, feet, supported, ref frame);
-                    else Fly(body, state, feet, target, velocity, spacing, supported, ref frame,
-                        levelHold: Direct && keepAirContact && Math.Abs(liveVelocity.Y) < .4f,
-                        preferDescent: Direct ? !ownerInAir : (Edge.To.Y - Edge.From.Y) * body.gravDir > 6f);
+                    else
+                    {
+                        bool cruise = levelCruise && Math.Abs(target.Y - entry.Y) <= 16f &&
+                            Math.Abs(target.X - feet.X) > spacing + 34f;
+                        var destination = cruise ? target - new Vector2(0, 32f * body.gravDir) : target;
+                        Fly(body, state, feet, destination, velocity, spacing, supported, ref frame,
+                            levelHold: cruise || Direct && keepAirContact && Math.Abs(liveVelocity.Y) < .4f,
+                            preferDescent: Direct ? !cruise && !ownerInAir : (Edge.To.Y - Edge.From.Y) * body.gravDir > 6f);
+                        if (Edge.Detail == NavigationTraversalDetail.FlightDash)
+                        {
+                            // DashMovement alters X before WingMovement in
+                            // Player.Update. Keep native lift/hover control in
+                            // the very same frame, including during the pulse.
+                            int heading = Math.Sign(target.X - feet.X);
+                            if (state.DashActive && supported)
+                                frame.Move = 0;
+                            else if (state.DashActive && frame.Move == 0)
+                            {
+                                int momentum = Math.Sign(body.velocity.X);
+                                float speed = Math.Abs(body.velocity.X);
+                                if (momentum != 0 && (destination.X - feet.X) * momentum > spacing + speed * 2f &&
+                                    roofEscape == 0 && !roofDropping && ClearAhead(body, momentum, speed + 1f, false))
+                                    frame.Move = momentum;
+                                else if (momentum != 0 && ClearAhead(body, -momentum, 3f, false))
+                                    frame.Move = -momentum;
+                            }
+                            else if (!dashIssued && !supported)
+                            {
+                                if (frame.Move == heading && CompanionGroundRun.CanAirDash(body, state, heading, destination))
+                                    frame.Dash = heading;
+                                else RetireAirDash();
+                            }
+                        }
+                    }
                     break;
                 case NavigationAction.Swim:
                     if (state.Wet)
@@ -240,7 +296,7 @@ namespace JueMingR.TerrariaHost.Companions
                         SetTool(ref frame, CompanionMovementActivation.Hook, TileCenter(Edge.ExitTile));
                     break;
                 case NavigationAction.Mount:
-                    Mount(body, state, ref frame);
+                    Mount(body, ref frame);
                     break;
                 case NavigationAction.Dismount:
                     if (!state.MountCart || Math.Abs(body.velocity.X) <= 1.25f)
@@ -269,6 +325,15 @@ namespace JueMingR.TerrariaHost.Companions
                     ClearAhead(body, threatDirection, 5f, supported)) frame.Move = threatDirection;
             }
             return frame;
+        }
+
+        private void RetireAirDash()
+        {
+            // The optional pulse is a single budgeted candidate. Resume the
+            // existing flight control and leave any next pulse to selection.
+            if (!Direct) return;
+            Edge = new NavigationTransition(NavigationAction.Flight, Edge.From, Edge.To);
+            dashIssued = false;
         }
 
         private bool Aligned(Player body, Vector2 feet)
@@ -306,19 +371,36 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static int TrackBrakeInput(Player body) => Math.Abs(body.velocity.X) > .12f ? -Math.Sign(body.velocity.X) : 0;
 
+        private bool IsDrop => Edge.Kind == NavigationAction.Drop || Edge.Kind == NavigationAction.PlatformDrop;
+
+        private bool FallReleased(Player body, Vector2 feet, bool supported)
+        {
+            float depth = (feet.Y - Edge.From.Y) * body.gravDir;
+            return observedInlet && !supported && (!groundedInlet || depth > 1f ||
+                Edge.Kind == NavigationAction.PlatformDrop && body.stairFall && depth > .05f);
+        }
+
+        private static void BrakeDrop(Player body, bool supported, ref CompanionMobilityFrame frame)
+        {
+            int direction = -Math.Sign(body.velocity.X);
+            if (supported && direction != 0 && ClearAhead(body, direction, 3f, true)) frame.Move = direction;
+            frame.Status = "减速中";
+        }
+
         private void Drop(Player body, CompanionMobilitySnapshot state, Vector2 feet, bool supported, ref CompanionMobilityFrame frame)
         {
             int gravity = body.gravDir < 0 ? -1 : 1;
             bool platform = Edge.Kind == NavigationAction.PlatformDrop;
-            if (gravity * (feet.Y - Edge.From.Y) >= 6f) phase = Phase.Travel;
-            if (phase != Phase.Travel && (!FallRelease.IsCurrent(body) || !CompanionFallRisk.CanLand(body, feet, target, supported)))
+            if (phase != Phase.Travel && (cancellingDrop || !FallRelease.CanRelease(body, feet, target, supported)))
             {
                 // Damage and accessories can change while aligning. Never
                 // release the source support with stale survivability.
-                unsafeRelease = true;
+                BrakeDrop(body, supported, ref frame);
+                cancellingDrop = true;
+                unsafeRelease = Math.Abs(body.velocity.X) <= .25f || frame.Move == 0;
                 return;
             }
-            if (platform && phase != Phase.Travel)
+            if (platform && (phase != Phase.Travel || (feet.Y - Edge.From.Y) * gravity < 6f))
             {
                 // Down holds the source release through the native stairFall
                 // phase. Let go before approaching the destination platform.
@@ -356,7 +438,10 @@ namespace JueMingR.TerrariaHost.Companions
             // hover may hold a moving owner within 16px, but can hold a
             // planned body outside its next step indefinitely.
             float tolerance = levelHold ? 7f : Direct && state.WingHovering ? 16f : supported ? 8f : 10f;
+            bool climbingToOutlet = !Direct && !FlightLanding && (Edge.From.Y - Edge.To.Y) * gravity > 8f;
+            if (climbingToOutlet) tolerance = FlightClimbTolerance;
             int elevation = projected < -tolerance ? -1 : projected > tolerance ? 1 : 0;
+            if (climbingToOutlet && error < -FlightClimbTolerance && elevation > 0) elevation = 0;
             // Successive downhill flight samples can be closer than the
             // hover band. Let native gravity reach them instead of spending
             // reserve holding a pose above the intended continuation.
@@ -373,17 +458,7 @@ namespace JueMingR.TerrariaHost.Companions
             bool liftBesideLedge = (Direct && preferDescent || FlightLanding && !clearedFlightBank) && gravity > 0 && error < -.25f &&
                 Math.Abs(destination.X - feet.X) > spacing && NeedsOpenColumn(body, toward, destination.Y);
             if (liftBesideLedge) elevation = -1;
-            if (roofEscape != 0 && (error > 12f || roofEscapeAge >= 40 ||
-                Math.Abs(body.position.X - roofEscapeStart.X) > 8f &&
-                ClearVertical(body, -gravity) && AirColumnClear(body, body.position.X, roofEscapeRow, roofEscapeRow)))
-                roofEscape = 0;
-            if (roofEscape != 0)
-            {
-                roofEscapeAge++;
-                frame.Move = ClearAhead(body, roofEscape, Math.Max(4f, Math.Abs(body.velocity.X)), supported) ? roofEscape : 0;
-                frame.Status = "空中移动";
-                return frame.Move != 0;
-            }
+            if (ContinueRoofExit(body, state, supported, gravity, toward, error, ref frame)) return true;
             bool hover = !FlightLanding && elevation == 0 && !supported && state.WingHover && CompanionMotionProfile.Wings(state);
             frame.Move = CompanionMotionProfile.Steer(body, state, destination.X, velocity.X, spacing, !supported, hover);
             if (frame.Move != 0 && !ClearAhead(body, frame.Move, Math.Max(3f, Math.Abs(body.velocity.X)), supported))
@@ -396,21 +471,22 @@ namespace JueMingR.TerrariaHost.Companions
                 int opposing = Math.Sign(body.velocity.X) == toward ? -toward : 0;
                 frame.Move = opposing != 0 && ClearAhead(body, opposing, 4f, false) ? opposing : 0;
             }
-            if (elevation < 0 && !ClearVertical(body, -gravity))
+            if (elevation < 0 && !LiftRoom(body, gravity, out bool hitRoof))
             {
                 // Coast beneath a roof. A blocked lift must not be converted
                 // to hover, which would keep the body against the same roof.
-                if (Direct && frame.Move == 0)
+                if (hitRoof && Direct && frame.Move == 0)
                 {
                     HasRoofContact = true;
                     RoofContact = body.position;
                     if (gravity > 0 && !supported)
                     {
-                        roofEscape = FindNearbyRoofSide(body, toward);
                         roofEscapeAge = 0;
                         roofEscapeRow = RoofRow(body);
                         roofEscapeStart = body.position;
-                        frame.Move = roofEscape;
+                        roofEscape = FindNearbyRoofSide(body, toward, roofEscapeRow);
+                        roofDropping = roofEscape == 0;
+                        if (ContinueRoofExit(body, state, supported, gravity, toward, error, ref frame)) return true;
                     }
                 }
                 elevation = 1;
@@ -446,18 +522,66 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static int RoofRow(Player body) => (int)Math.Floor((body.Top.Y - 5f) / 16f);
 
-        private static int FindNearbyRoofSide(Player body, int preferred)
+        private static bool LiftRoom(Player body, int gravity, out bool hitRoof)
+        {
+            const float probe = 4f;
+            bool known = Predict(body, new Vector2(0, -gravity * probe), false, out var step);
+            hitRoof = known && (step.Position.Y - body.position.Y) * -gravity < probe - .05f;
+            return known && !hitRoof;
+        }
+
+        private bool ContinueRoofExit(Player body, CompanionMobilitySnapshot state, bool supported, int gravity,
+            int preferred, float error, ref CompanionMobilityFrame frame)
+        {
+            if (roofEscape == 0 && !roofDropping) return false;
+            if (error > 12f || roofEscapeAge >= 40 ||
+                roofEscape != 0 && Math.Abs(body.position.X - roofEscapeStart.X) > 8f &&
+                ClearVertical(body, -gravity) && AirColumnClear(body, body.position.X, roofEscapeRow, roofEscapeRow))
+            {
+                roofEscape = 0;
+                roofDropping = false;
+                return false;
+            }
+            // Never resume the same upward pressure after a clipped stride
+            // and a single release frame. Follow the clear lateral lane or
+            // give native gravity time to move the body clear of the lip.
+            if (roofDropping && roofEscapeAge > 0 && roofEscapeAge % 4 == 0)
+            {
+                roofEscape = FindNearbyRoofSide(body, preferred, roofEscapeRow);
+                roofDropping = roofEscape == 0;
+            }
+            roofEscapeAge++;
+            frame.Move = roofEscape != 0 && ClearAhead(body, roofEscape, Math.Max(4f, Math.Abs(body.velocity.X)), supported)
+                ? roofEscape : 0;
+            if (state.MountHover) frame.Vertical = gravity;
+            frame.Status = roofEscape == 0 ? "下降中" : "空中移动";
+            return true;
+        }
+
+        private static int FindNearbyRoofSide(Player body, int preferred, int roof)
         {
             int first = preferred == 0 ? -1 : preferred;
-            bool firstClear = ClearAhead(body, first, 5f, false);
-            bool secondClear = ClearAhead(body, -first, 5f, false);
-            int roof = RoofRow(body);
-            for (int offset = 8; offset <= 56 && (firstClear || secondClear); offset += 8)
+            Vector2 forward = body.position, backward = body.position;
+            bool firstClear = true, secondClear = true;
+            var contact = CompanionNativeContact.PlatformContact.Native(body, false, body.stairFall);
+            // A clear head tile beyond a side wall is not a reachable exit.
+            // Check each small lateral sweep to the first complete opening.
+            for (int offset = 8; offset <= 88 && (firstClear || secondClear); offset += 8)
             {
-                if (firstClear && AirColumnClear(body, body.position.X + first * offset, roof, roof)) return first;
-                if (secondClear && AirColumnClear(body, body.position.X - first * offset, roof, roof)) return -first;
+                firstClear = firstClear && TryRoofStride(body, first, contact, ref forward);
+                secondClear = secondClear && TryRoofStride(body, -first, contact, ref backward);
+                if (firstClear && AirColumnClear(body, forward.X, roof, roof)) return first;
+                if (secondClear && AirColumnClear(body, backward.X, roof, roof)) return -first;
             }
             return 0;
+        }
+
+        private static bool TryRoofStride(Player body, int direction, CompanionNativeContact.PlatformContact contact, ref Vector2 at)
+        {
+            if (!CompanionNativeContact.TryMove(body, at, new Vector2(direction * 8f, 0), contact, false, out var step) ||
+                step.Wall || CompanionFallRisk.OutsideModeledLiquid(body, step.Position, body.width, body.height)) return false;
+            at = step.Position;
+            return true;
         }
 
         private static bool AirColumnClear(Player body, float x, int top, int bottom)
@@ -499,24 +623,23 @@ namespace JueMingR.TerrariaHost.Companions
             frame.Status = "空中移动";
         }
 
-        private void Mount(Player body, CompanionMobilitySnapshot state, ref CompanionMobilityFrame frame)
+        private void Mount(Player body, ref CompanionMobilityFrame frame)
         {
-            int slot = state.DefaultMountSlot, type = state.DefaultMountType;
-            switch (Edge.Detail)
+            var choice = Edge.MountChoice;
+            if (body.mount.Active && body.mount.Type == choice.Type) return;
+            if (!choice.SourceCurrent(body))
             {
-                case NavigationTraversalDetail.MountFlight: slot = state.FlightMountSlot; type = state.FlightMountType; break;
-                case NavigationTraversalDetail.MountWater: slot = state.WaterMountSlot; type = state.WaterMountType; break;
-                case NavigationTraversalDetail.MountNarrow: slot = state.NarrowMountSlot; type = state.NarrowMountType; break;
+                unsafeRelease = true;
+                return;
             }
-            if (type < 0) return;
-            if (body.mount.Active && body.mount.Type != type)
+            if (body.mount.Active)
             {
-                SetTool(ref frame, CompanionMovementActivation.Dismount, body.Center);
+                unsafeRelease = true;
                 return;
             }
             SetTool(ref frame, CompanionMovementActivation.QuickMount, body.Center);
-            frame.ItemSlot = slot;
-            frame.MountTypePlusOne = type + 1;
+            frame.ItemSlot = choice.ItemSlot;
+            frame.MountTypePlusOne = choice.Type + 1;
         }
 
         private void Door(Player body, CompanionMobilitySnapshot state, Vector2 feet, bool supported, ref CompanionMobilityFrame frame)
@@ -537,8 +660,7 @@ namespace JueMingR.TerrariaHost.Companions
                 float center = door.Aperture.Center.X;
                 float alignment = Math.Max(1f, (door.Aperture.Width - body.width) * .5f - .5f);
                 bool centered = Math.Abs(center - feet.X) <= alignment;
-                if (passage > 0 && phase != Phase.Travel && !door.Open &&
-                    (!FallRelease.IsCurrent(body) || !CompanionFallRisk.CanLand(body, feet, Edge.To, supported)))
+                if (passage > 0 && phase != Phase.Travel && !FallRelease.CanRelease(body, feet, Edge.To, supported))
                 {
                     unsafeRelease = true;
                     return;
@@ -611,11 +733,15 @@ namespace JueMingR.TerrariaHost.Companions
             if (!hasDelivery || delivered.Generation != native.Generation) return Outcome;
             hasDelivery = false;
             Deferral = delivered.Deferral;
-            if (unsafeRelease) return Outcome = CompanionActionOutcome.Rejected;
+            if (unsafeRelease) return Outcome = CompanionActionOutcome.Superseded;
             elapsed++;
             var feet = CompanionNativeContact.Feet(body);
             var state = native.Observed;
-            if (delivered.Dash) dashIssued = true;
+            if (delivered.Dash) dashIssued |= state.DashActive;
+            if (Edge.Detail == NavigationTraversalDetail.FlightDash && !state.DashActive && (dashIssued || delivered.Dash))
+                RetireAirDash();
+            if (Edge.Kind == NavigationAction.Mount && Edge.MountChoice.Valid && body.mount.Active &&
+                body.mount.Type == Edge.MountChoice.Type) return Outcome = CompanionActionOutcome.Complete;
             InNativeMotion |= delivered.ToolAdmitted || delivered.Jump && !supported ||
                 (Edge.Kind == NavigationAction.Drop || Edge.Kind == NavigationAction.PlatformDrop) &&
                 (feet.Y - Edge.From.Y) * body.gravDir > 6f;
@@ -644,13 +770,24 @@ namespace JueMingR.TerrariaHost.Companions
             float vertical = (feet.Y - Edge.From.Y) * body.gravDir;
             startedMovement |= !supported || delivered.Move != 0 && Math.Abs(body.position.X - delivered.Position.X) > .08f;
             airborne |= !supported;
-            if (Edge.Irreversible && (Edge.Kind != NavigationAction.Drop && Edge.Kind != NavigationAction.PlatformDrop || vertical > 6f) &&
-                (startedMovement || delivered.ToolAdmitted)) Committed = true;
+            // Commitment follows actual native state. Normal steering can be
+            // replaced while a body is moving. A released fall or launch
+            // needs continuous control until its next actual contact.
+            bool fallReleased = IsDrop && FallReleased(body, feet, supported);
+            if (fallReleased) phase = Phase.Travel;
+            bool launched = Edge.Kind == NavigationAction.Jump || Edge.Kind == NavigationAction.Door ||
+                Edge.Kind == NavigationAction.Flight && (FlightLanding || Edge.Detail == NavigationTraversalDetail.CarpetGlide);
+            if (Edge.Kind != NavigationAction.Hoik)
+                Committed = state.DashActive || !supported && (fallReleased ||
+                    launched && (airborne || InNativeMotion)) ||
+                    delivered.ToolAdmitted && native.Result == CompanionMobilityResult.Started;
 
             if (Direct)
             {
                 target = latestTarget;
-                if (atGoal)
+                if (Edge.Kind == NavigationAction.Dash && dashIssued && !state.DashActive && supported)
+                    return Outcome = CompanionActionOutcome.Complete;
+                if (atGoal && !Committed)
                     return Outcome = CompanionActionOutcome.Complete;
             }
             else if (phase != Phase.Approach && Reached(body, state, supported, feet, horizontal, vertical))
@@ -661,6 +798,8 @@ namespace JueMingR.TerrariaHost.Companions
                 return Outcome = ++waiting < 132 ? CompanionActionOutcome.Waiting : CompanionActionOutcome.Suspended;
 
             if (Outcome == CompanionActionOutcome.Waiting) waiting = 0;
+            if (Edge.Kind == NavigationAction.Jump && (feet.Y - Edge.To.Y) * body.gravDir <= 0f)
+                crossedJumpHeight = true;
             if (roofEscape != 0 && (body.position.X - delivered.Position.X) * roofEscape > .08f)
             {
                 noProgress = 0;
@@ -671,7 +810,18 @@ namespace JueMingR.TerrariaHost.Companions
                 noProgress = 0;
                 return Outcome = CompanionActionOutcome.Running;
             }
-            float progress = Measure(body, feet, horizontal, vertical);
+            float progress = Direct ? 0f : Measure(feet, horizontal, vertical);
+            if (Direct)
+            {
+                // Compare both physical samples to the same current target.
+                // Owner motion alone cannot make a stalled body progress.
+                var oldFeet = delivered.Position + new Vector2(body.width * .5f, body.gravDir > 0 ? body.height : 0);
+                progress = Vector2.Distance(oldFeet, target) - Vector2.Distance(feet, target);
+                bool braking = delivered.Move != 0 && delivered.Velocity.X * delivered.Move < -.04f &&
+                    (body.velocity.X - delivered.Velocity.X) * delivered.Move > .015f;
+                if (progress > .08f || braking) noProgress = 0;
+                else noProgress++;
+            }
             if (!Direct && Edge.Kind == NavigationAction.Walk && horizontal != 0f &&
                 delivered.Velocity.X * horizontal < -.04f &&
                 (body.velocity.X - delivered.Velocity.X) * horizontal > .015f)
@@ -683,12 +833,12 @@ namespace JueMingR.TerrariaHost.Companions
                 noProgress = 0;
                 return Outcome = CompanionActionOutcome.Running;
             }
-            if (progress > best + .45f)
+            if (!Direct && progress > best + .45f)
             {
                 best = progress;
                 noProgress = 0;
             }
-            else noProgress++;
+            else if (!Direct) noProgress++;
             int limit = Edge.Kind == NavigationAction.Hoik ? 75 : Edge.Kind == NavigationAction.Flight ? 25 : 24;
             if (phase == Phase.Approach) limit += 10;
             if (Edge.Kind == NavigationAction.Hook)
@@ -703,7 +853,8 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 limit += 24;
             }
-            if (noProgress >= limit || elapsed >= 480 && !Direct) return Outcome = CompanionActionOutcome.Blocked;
+            bool settlingJump = Edge.Kind == NavigationAction.Jump && Committed && crossedJumpHeight && elapsed < 240;
+            if (noProgress >= limit && !settlingJump || elapsed >= 480 && !Direct) return Outcome = CompanionActionOutcome.Blocked;
             return Outcome = CompanionActionOutcome.Running;
         }
 
@@ -723,12 +874,19 @@ namespace JueMingR.TerrariaHost.Companions
                 case NavigationAction.Drop:
                     // An airborne connector can start immediately above its
                     // target shelf. Its real landing may travel under 6px.
-                    return supported && (!groundedInlet || vertical > 6f) && Near(feet, Edge.To, 24f, 12f);
+                    return supported && Math.Abs(body.velocity.Y) <= .2f &&
+                        (!groundedInlet || vertical > 6f) && Near(feet, Edge.To, 24f, 12f);
                 case NavigationAction.PlatformDrop:
-                    return vertical > 6f && supported && Near(feet, Edge.To, 27f, 13f);
+                    return vertical > 6f && supported && Math.Abs(body.velocity.Y) <= .2f &&
+                        Near(feet, Edge.To, 27f, 13f);
                 case NavigationAction.Jump:
                     return startedMovement && near && (supported || state.Pulley || state.Wet);
                 case NavigationAction.Flight:
+                    // An upward air endpoint can feed a shelf or another
+                    // input stage. Handing off below its actual clearance
+                    // plane leaves a real next contact out of reach.
+                    if (!FlightLanding && (Edge.From.Y - Edge.To.Y) * body.gravDir > 8f &&
+                        (feet.Y - Edge.To.Y) * body.gravDir > FlightClimbTolerance) return false;
                     return near && (!FlightLanding && Edge.Detail != NavigationTraversalDetail.CarpetGlide || supported);
                 case NavigationAction.Door:
                     if (phase != Phase.Travel || !near) return false;
@@ -757,20 +915,13 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
 
-        private float Measure(Player body, Vector2 feet, float horizontal, float vertical)
+        private float Measure(Vector2 feet, float horizontal, float vertical)
         {
             if (phase == Phase.Approach) return -Vector2.Distance(feet, entry);
             if (Edge.Kind == NavigationAction.Drop || Edge.Kind == NavigationAction.PlatformDrop)
                 return vertical + (feet.X - Edge.From.X) * horizontal * .3f;
             if (!Direct && Edge.Kind == NavigationAction.Walk)
                 return (feet.X - Edge.From.X) * horizontal;
-            if (Direct)
-            {
-                // The forward projection uses the committed start/heading.
-                // Repeated owner movement does not renew this progress clock.
-                var axis = Edge.To - Edge.From;
-                return axis.LengthSquared() > 1 ? Vector2.Dot(Vector2.Normalize(axis), feet - Edge.From) : 0f;
-            }
             return Vector2.Distance(Edge.From, Edge.To) - Vector2.Distance(feet, target);
         }
 

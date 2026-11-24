@@ -72,7 +72,6 @@ namespace JueMingR.TerrariaHost.Companions
         internal readonly uint[] VerifiedAt = new uint[NavigationWorld.ChunkSize * NavigationWorld.ChunkSize];
         internal readonly List<NavigationSpan> Surfaces = new List<NavigationSpan>();
         internal readonly List<NavigationSpan> AirSpans = new List<NavigationSpan>();
-        internal readonly List<Point> Entrances = new List<Point>();
         private readonly int[] surfaceRows = new int[NavigationWorld.ChunkSize + 1];
         private readonly int[] airRows = new int[NavigationWorld.ChunkSize + 1];
         internal int ReadCount, LastUse, Version, UnknownCells;
@@ -98,8 +97,6 @@ namespace JueMingR.TerrariaHost.Companions
                 if (supportStart >= 0 && (!support || previous.Kind != cell.Kind || previous.Slope != cell.Slope))
                 {
                     Surfaces.Add(new NavigationSpan(Origin.Y + row, Origin.X + supportStart, Origin.X + x, previous.Kind));
-                    Entrances.Add(new Point(Origin.X + supportStart, Origin.Y + row));
-                    if (x - 1 != supportStart) Entrances.Add(new Point(Origin.X + x - 1, Origin.Y + row));
                     supportStart = -1;
                 }
                 if (airStart >= 0 && !air)
@@ -109,9 +106,6 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 if (support && supportStart < 0) supportStart = x;
                 if (air && airStart < 0) airStart = x;
-                if (cell.Kind == NavigationCellKind.Door || cell.Kind == NavigationCellKind.Trapdoor ||
-                    cell.Kind == NavigationCellKind.Rope || cell.Kind == NavigationCellKind.Track || cell.RopeOverlap)
-                    Entrances.Add(new Point(Origin.X + x, Origin.Y + row));
                 previous = cell;
             }
             surfaceRows[row + 1] = Surfaces.Count;
@@ -139,7 +133,6 @@ namespace JueMingR.TerrariaHost.Companions
         {
             Surfaces.Clear();
             AirSpans.Clear();
-            Entrances.Clear();
             for (int row = 0; row < ReadCount / NavigationWorld.ChunkSize; row++) IndexRow(row);
         }
     }

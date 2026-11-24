@@ -64,11 +64,17 @@ namespace NativeWorldTextProbe
                     (h, p, owner) => TriangleProxyFollow(context, h, p, owner),
                     (h, p, owner) => MovingStarboardRoom(context, h, p, owner)
                 };
+                var timing = moving;
                 if (!historical)
                 {
                     var partition = new Action<object, object, Player>[]
                     {
+                        (h, p, owner) => NativeOwnerReverses(context, h, p, owner),
+                        (h, p, owner) => NativeMovingFall(context, h, p, owner),
+                        (h, p, owner) => NativeAirDashSelection(context, h, p, owner),
+                        (h, p, owner) => NativeGroundMountSelection(context, h, p, owner),
                         (h, p, owner) => MovingNearPartition(context, h, p, owner),
+                        (h, p, owner) => MovingNearPartition(context, h, p, owner, interruptJump: true),
                         (h, p, owner) => MovingStarboardCeiling(context, h, p, owner),
                         (h, p, owner) => SlicedLongHookProof(context, h, p, owner),
                         (h, p, owner) => NativeMovedActionRetires(context, h, p, owner)
@@ -78,6 +84,8 @@ namespace NativeWorldTextProbe
                 bool fixedBudgetAvailable = host.GetType().GetField("NavigationBudgetOverride", ReflectionMembers) != null;
                 if (comparisonFocus == null)
                     Require(fixedBudgetAvailable, "the formal navigation leaf runs with the real Debug measurement and pressure seam");
+                Console.WriteLine("FOLLOW VERTICAL checks: native behavior scenarios; " +
+                    (fixedBudgetAvailable ? "including fixed Debug budget and counters" : "ordinary Host with no Debug budget override"));
                 if (fixedBudgetAvailable)
                 {
                     var pressure = new Action<object, object, Player>[] { (h, p, owner) => MovingRoom(context, h, p, owner, stress: true) };
@@ -92,6 +100,7 @@ namespace NativeWorldTextProbe
                     comparisonFocus == "detour-descent" ? longerFollow : comparisonFocus == "contact-descent" ? contact :
                     comparisonFocus == "hoik-baseline" ? hoik : comparisonFocus == "movement-structure" ? structure :
                     comparisonFocus == "graph" ? new Action<object, object, Player>[] { RouteGraphContracts } :
+                    comparisonFocus == "timing" ? timing :
                     comparisonFocus == "moving-room" ?
                         historical ? moving : System.Linq.Enumerable.Concat(moving, new Action<object, object, Player>[] { RouteGraphContracts }) :
                         full;
@@ -230,6 +239,52 @@ namespace NativeWorldTextProbe
                     "the real dry Follow route begins with Down from its platform");
             }
             CheckNewShaftLiquid(host, profiles, human, "shaft-liquid-commit", high, low, column, high + 3, down, terrain);
+            ContinueAfterNativeRelease(host, profiles, human, high, low, x, terrain);
+        }
+
+        private static void ContinueAfterNativeRelease(object host, object profiles, Player human, int high, int low,
+            int x, Action terrain)
+        {
+            using (var run = new Scenario(host, profiles, human, "drop-after-release", x, high, terrain, ItemID.LuckyHorseshoe))
+            {
+                var body = run.Body;
+                var nav = Navigator(run.Actor);
+                var destination = new Vector2(x, low * 16);
+                long action = 0;
+                int release = -1, refreshed = -1, contact = -1, landed = -1;
+                int life = body.statLife;
+                for (int tick = 0; tick < 120 && landed < 0; tick++)
+                {
+                    run.StepToward(destination, new Vector2(0, 4));
+                    if (release < 0 && body.controlDown && body.Bottom.Y > high * 16 &&
+                        body.Bottom.Y < high * 16 + 6 && body.velocity.Y > 0)
+                    {
+                        release = tick;
+                        action = (long)Get(nav, "ActionId");
+                        Require(action > 0 && body.stairFall && body.noFallDmg,
+                            "the real native Down and stairFall have released the protected body before the six-pixel marker");
+                        var id = ((CompanionProfile)Get(run.Actor, "Profile")).Id;
+                        object left = Enum.Parse(NavigationType(host.GetType().Assembly, "CompanionItemGesture"), "Left");
+                        Require((bool)Call(host, "ItemGesture", id, false, CompanionInventoryArea.Armor, 3, left) &&
+                            (bool)Call(host, "ItemGesture", id, false, CompanionInventoryArea.Inventory, 41, left) &&
+                            body.armor[3].IsAir && body.inventory[41].type == ItemID.LuckyHorseshoe,
+                            "the real equipment transaction reaches the same already-descending body");
+                    }
+                    else if (release >= 0)
+                    {
+                        if (refreshed < 0 && !body.noFallDmg) refreshed = tick;
+                        if (contact < 0 && (bool)Get(nav, "Supported") && Math.Abs(body.Bottom.Y - low * 16) < .25f) contact = tick;
+                        if (OnFloor(body, low)) landed = tick;
+                        // A real support contact can complete the old action in this same update.
+                        Require((contact >= 0 || (long)Get(nav, "ActionId") == action) && Get(nav, "ActionOutcome").ToString() != "Superseded",
+                            $"the released body preserves the viable landing after equipment changes (release={release}/{action} tick={tick} " +
+                            $"current={Get(nav, "ActionId")}/{Get(nav, "ActionOutcome")} feet={body.Bottom} actualNoFall={body.noFallDmg})");
+                    }
+                }
+                Console.WriteLine($"FOLLOW release gear change down={release}/{action} nativeRefresh={refreshed} contact={contact} settled={landed} life={life}->{body.statLife}");
+                Require(release >= 0 && refreshed > release && contact > refreshed && landed >= contact && body.statLife == life && !body.dead &&
+                    ReferenceEquals(body, Get(run.Actor, "Body")), "the original committed drop finishes on native support with unchanged life");
+            }
         }
 
         private static void CheckNewShaftLiquid(object host, object profiles, Player human, string name, int high,
@@ -306,7 +361,7 @@ namespace NativeWorldTextProbe
                         var candidate = Get(refinement, "Edge");
                         Console.WriteLine($"FOLLOW side wall dry tick={tick} owner={human.Bottom}/{human.velocity} body={dry.Body.Bottom}/{dry.Body.velocity} " +
                             $"inputs={dry.Body.controlLeft}/{dry.Body.controlRight}/{dry.Body.controlJump} edit={editAt} release={release} " +
-                            $"route={RouteStep(dry.Actor)} refinement={Get(refinement, "Active")}/{Get(navigator, "refineReady")} " +
+                            $"route={RouteStep(dry.Actor)} refinement={Get(refinement, "Active")}/{Get(Get(refinement, "Witness"), "Valid")} " +
                             $"candidate={Get(candidate, "Kind")}:{Get(candidate, "From")}→{Get(candidate, "To")} {PlanStatus(navigator)} {RouteTrace(navigator)}");
                     }
                     priorAction = action;

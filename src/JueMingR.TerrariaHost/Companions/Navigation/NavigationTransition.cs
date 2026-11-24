@@ -21,7 +21,7 @@ namespace JueMingR.TerrariaHost.Companions
     internal enum NavigationTraversalDetail
     {
         None, MountGround, MountFlight, MountWater, Teleporter, Portal, Pylon, Rod, GravitySwitch, MountNarrow,
-        TrackBoard, TrackRide, CarpetGlide, RunningJump
+        TrackBoard, TrackRide, CarpetGlide, RunningJump, FlightDash
     }
 
     internal enum NavigationQueryStatus
@@ -92,6 +92,8 @@ namespace JueMingR.TerrariaHost.Companions
         internal readonly NavigationTraversalDetail ActiveMount;
         internal readonly int AvailableMountFlightTicks;
         internal readonly NavigationActorGeometry Geometry;
+        internal readonly CompanionMountChoice[] MountChoices;
+        internal readonly int ActiveMountType;
 
         internal NavigationCapabilities(int width, int height, int gravity, float jumpHeight, float jumpRange,
             int flightTicks, int maxFlightTicks, float flightSpeed, float hookRange, NavigationModes modes,
@@ -112,7 +114,8 @@ namespace JueMingR.TerrariaHost.Companions
         private NavigationCapabilities(int width, int height, int gravity, float jumpHeight, float jumpRange,
             int flightTicks, int maxFlightTicks, float flightSpeed, float hookRange, NavigationModes modes,
             bool supported, bool mounted, NavigationTraversalDetail activeMount, bool mountCanFly,
-            int availableMountFlightTicks, NavigationActorGeometry geometry)
+            int availableMountFlightTicks, NavigationActorGeometry geometry,
+            CompanionMountChoice[] mountChoices = null, int activeMountType = -1)
         {
             Width = width;
             Height = height;
@@ -130,12 +133,20 @@ namespace JueMingR.TerrariaHost.Companions
             MountCanFly = mounted && mountCanFly;
             AvailableMountFlightTicks = Math.Max(0, availableMountFlightTicks);
             Geometry = geometry;
+            MountChoices = mountChoices;
+            ActiveMountType = activeMountType;
         }
 
         internal bool Has(NavigationModes modes) => (Modes & modes) != 0;
         internal NavigationCapabilities WithCondition(NavigationActorGeometry geometry) =>
             new NavigationCapabilities(Width, Height, Gravity, JumpHeight, JumpRange, FlightTicks, MaxFlightTicks,
-                FlightSpeed, HookRange, Modes, Supported, Mounted, ActiveMount, MountCanFly, AvailableMountFlightTicks, geometry);
+                FlightSpeed, HookRange, Modes, Supported, Mounted, ActiveMount, MountCanFly, AvailableMountFlightTicks, geometry,
+                MountChoices, ActiveMountType);
+
+        internal NavigationCapabilities WithMountChoices(CompanionMountChoice[] choices, int activeMountType) =>
+            new NavigationCapabilities(Width, Height, Gravity, JumpHeight, JumpRange, FlightTicks, MaxFlightTicks,
+                FlightSpeed, HookRange, Modes, Supported, Mounted, ActiveMount, MountCanFly, AvailableMountFlightTicks,
+                Geometry, choices, activeMountType);
 
         internal bool SameFlightConditions(NavigationCapabilities other) =>
             Geometry.CarpetAvailable == other.Geometry.CarpetAvailable && FlightTicks / 8 == other.FlightTicks / 8;
@@ -155,7 +166,8 @@ namespace JueMingR.TerrariaHost.Companions
             Modes == other.Modes && Math.Abs(JumpHeight - other.JumpHeight) < 8f &&
             Math.Abs(JumpRange - other.JumpRange) < 8f && MaxFlightTicks == other.MaxFlightTicks &&
             Math.Abs(FlightSpeed - other.FlightSpeed) < .35f && HookRange == other.HookRange &&
-            AvailableMountFlightTicks == other.AvailableMountFlightTicks && Geometry.SameShape(other.Geometry);
+            AvailableMountFlightTicks == other.AvailableMountFlightTicks && Geometry.SameShape(other.Geometry) &&
+            ActiveMountType == other.ActiveMountType && ReferenceEquals(MountChoices, other.MountChoices);
     }
 
     // Coarse offers name a direction and a geometric dependency, never a proof
@@ -170,6 +182,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal readonly bool Irreversible;
         internal readonly NavigationTraversalDetail Detail;
         internal readonly int RailDirection, RailFrame, RailEntryFrame;
+        internal readonly CompanionMountChoice MountChoice;
 
         internal NavigationTransition(NavigationAction kind, Vector2 from, Vector2 to, Point entryTile = default,
             Point exitTile = default, int terrainVersion = 0, bool irreversible = false,
@@ -178,9 +191,18 @@ namespace JueMingR.TerrariaHost.Companions
         {
         }
 
+        internal NavigationTransition(NavigationAction kind, Vector2 from, Vector2 to, CompanionMountChoice mountChoice,
+            Point entryTile = default, Point exitTile = default, int terrainVersion = 0, bool irreversible = false,
+            NavigationTraversalDetail detail = NavigationTraversalDetail.None, Vector2 interactionPosition = default)
+            : this(kind, from, to, entryTile, exitTile, terrainVersion, irreversible, detail, interactionPosition, 0, -1,
+                mountChoice: mountChoice)
+        {
+        }
+
         internal NavigationTransition(NavigationAction kind, Vector2 from, Vector2 to, Point entryTile,
             Point exitTile, int terrainVersion, bool irreversible, NavigationTraversalDetail detail,
-            Vector2 interactionPosition, int railDirection, int railFrame, int railEntryFrame = -1)
+            Vector2 interactionPosition, int railDirection, int railFrame, int railEntryFrame = -1,
+            CompanionMountChoice mountChoice = default)
         {
             Kind = kind;
             From = from;
@@ -194,12 +216,14 @@ namespace JueMingR.TerrariaHost.Companions
             RailDirection = railDirection;
             RailFrame = railFrame;
             RailEntryFrame = railEntryFrame;
+            MountChoice = mountChoice;
         }
 
         internal bool SameEdge(NavigationTransition other) =>
             Kind == other.Kind && From == other.From && To == other.To && EntryTile == other.EntryTile &&
             ExitTile == other.ExitTile && Detail == other.Detail && InteractionPosition == other.InteractionPosition &&
-            RailDirection == other.RailDirection && RailFrame == other.RailFrame && RailEntryFrame == other.RailEntryFrame;
+            RailDirection == other.RailDirection && RailFrame == other.RailFrame && RailEntryFrame == other.RailEntryFrame &&
+            MountChoice.Equals(other.MountChoice);
     }
 
     // Shared across bodies for the runtime slice. Chunk extraction, candidate

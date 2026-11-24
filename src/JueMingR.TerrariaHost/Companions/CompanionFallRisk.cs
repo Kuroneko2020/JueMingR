@@ -31,8 +31,15 @@ namespace JueMingR.TerrariaHost.Companions
         {
             Vector2 position = CompanionNativeContact.TopLeft(body, landing);
             int start = supported ? (int)(CompanionNativeContact.TopLeft(body, from).Y / 16f) : body.fallStart;
-            return body.slowFall || LowGravityFallReset(position.Y) ? 0 : LandingFallLoss(body, position, start);
+            return LandingFallLoss(body, position, start);
         }
+
+        // Liquid transitions other than an already protected lava exposure
+        // need their own native movement model. They do not represent a
+        // prediction of lethal fall damage.
+        internal static bool OutsideModeledLiquid(Player body, Vector2 position, int width, int height) =>
+            !body.lavaImmune && !body.lavaWet && body.lavaTime <= 24 && CompanionMobilityGeometry.TouchesLava(position, width, height) ||
+            CompanionMobilityGeometry.TouchesShimmer(position, width, height);
 
         internal static int ProtectionKey(Player body)
         {
@@ -48,7 +55,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
 
-        private static bool ImmuneToDrop(Player body) => body.noFallDmg || body.hasWings || body.mount.CanFly(body) ||
+        internal static bool ImmuneToDrop(Player body) => body.noFallDmg || body.hasWings || body.mount.CanFly(body) ||
             body.mount.Type == 1 || body.isPerformingJump_DownDash;
 
         private static int FallTolerance(Player body) => 25 + body.extraFall + (body.mount.Active ? body.mount.ExtraFall : 0);
@@ -82,6 +89,7 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal static int LandingFallLoss(Player body, Vector2 landing, int fallStart)
         {
+            if (body.slowFall || LowGravityFallReset(landing.Y)) return 0;
             int loss = NativeFallLoss(body, landing.Y, fallStart);
             if (loss == 0) return 0;
             // Player.Update checks every foot tile including its right edge.
@@ -105,7 +113,8 @@ namespace JueMingR.TerrariaHost.Companions
             private Rectangle tiles;
             private int cursor, width, height, gravity;
             private uint signature;
-            private bool initialized;
+            private bool initialized, hasLanding;
+            private Vector2 landing;
             private const uint Initial = 2166136261u;
 
             internal bool Begin(Player body, Vector2 start, Vector2 end, float releaseX)
@@ -130,13 +139,29 @@ namespace JueMingR.TerrariaHost.Companions
                 while (cursor < size)
                 {
                     if (!budget.TryTiles()) return CompanionRefinementResult.Pending;
-                    if (!Read(cursor, ref signature)) return CompanionRefinementResult.Failed;
+                    if (!Read(cursor, ref signature)) return CompanionRefinementResult.Unknown;
                     cursor++;
                 }
                 return CompanionRefinementResult.Ready;
             }
 
-            internal bool IsCurrent(Player body)
+            internal void SetLanding(Vector2 actualContact)
+            {
+                landing = actualContact;
+                hasLanding = true;
+            }
+
+            internal bool CanRelease(Player body, Vector2 from, Vector2 requestedLanding, bool supported)
+            {
+                if (!IsCurrent(body)) return false;
+                if (!hasLanding) return CanLand(body, from, requestedLanding, supported);
+                // Use the material and overlap actually reached by the swept
+                // body. Life, fall history and protection are live at release.
+                int start = supported ? (int)(body.position.Y / 16f) : body.fallStart;
+                return LandingFallLoss(body, landing, start) < body.statLife;
+            }
+
+            private bool IsCurrent(Player body)
             {
                 if (!initialized) return true;
                 if (body.width != width || body.height != height || (body.gravDir < 0 ? -1 : 1) != gravity) return false;

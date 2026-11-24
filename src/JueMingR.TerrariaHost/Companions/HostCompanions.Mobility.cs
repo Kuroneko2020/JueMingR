@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using HarmonyLib;
 using JueMingR.Platform.Companions;
 using JueMingR.TerrariaHost.Movement;
@@ -28,18 +29,13 @@ namespace JueMingR.TerrariaHost.Companions
             state.SourceGestureRevision = ItemGestureRevision;
             state.SourceChaos = p.chaosState;
             var hook = p.QuickGrapple_GetItemToUse();
-            var mount = p.QuickMount_GetItemToUse();
             state.Observed.HookType = hook != null && !hook.IsAir ? hook.shoot : 0;
             state.Observed.HookRange = SmartFallGrapple.Range(state.Observed.HookType);
-            state.Observed.DefaultMountType = ValidMountItem(mount) ? mount.mountType : -1;
-            state.Observed.DefaultMountSlot = -1;
-            state.Observed.FlightMountType = state.Observed.FlightMountSlot = -1;
-            state.Observed.WaterMountType = state.Observed.WaterMountSlot = -1;
-            state.Observed.NarrowMountType = state.Observed.NarrowMountSlot = -1;
-            state.Observed.NarrowMountWidth = state.Observed.NarrowMountHeight = 0;
-            state.Observed.FlightMountBudget = state.Observed.WaterMountSpeed = 0f;
-            if (ValidMountItem(mount) && ReferenceEquals(mount, p.miscEquips[3]) && SupplyAdmitted(actor, p.miscEquips, -1, 3))
-                RankMount(ref state.Observed, p, mount, -1);
+            var mountChoices = state.MountChoiceScratch;
+            mountChoices.Clear();
+            Item equippedMount = p.miscEquips[3];
+            if (ValidMountItem(equippedMount) && SupplyAdmitted(actor, p.miscEquips, -1, 3))
+                ObserveMount(p, equippedMount, -1, mountChoices);
             state.Observed.RodSlot = -1;
             int discord = -1;
             for (int slot = 0; slot < CompanionBehavior.MainInventorySlots; slot++)
@@ -47,56 +43,43 @@ namespace JueMingR.TerrariaHost.Companions
                 Item item = p.inventory[slot];
                 if (item == null || item.IsAir) continue;
                 if (ValidMountItem(item) && SupplyAdmitted(actor, p.inventory, 0, slot))
-                {
-                    if (state.Observed.DefaultMountType < 0 || ReferenceEquals(item, mount))
-                    {
-                        state.Observed.DefaultMountSlot = slot;
-                        state.Observed.DefaultMountType = item.mountType;
-                    }
-                    RankMount(ref state.Observed, p, item, slot);
-                }
+                    ObserveMount(p, item, slot, mountChoices);
                 if (state.Observed.RodSlot < 0 && item.type == ItemID.RodOfHarmony && SupplyAdmitted(actor, p.inventory, 0, slot))
                     state.Observed.RodSlot = slot;
                 if (discord < 0 && item.type == ItemID.RodofDiscord && SupplyAdmitted(actor, p.inventory, 0, slot)) discord = slot;
             }
             if (state.Observed.RodSlot < 0 && !p.chaosState) state.Observed.RodSlot = discord;
             state.Observed.CanUseRod = state.Observed.RodSlot >= 0 && !p.noItems && !p.cursed;
-            var data = CompanionMobilityState.MountData(state.Observed.DefaultMountType);
-            state.Observed.DefaultMountFly = data?.flightTimeMax > 0;
-            state.Observed.DefaultMountHover = data?.usesHover ?? false;
+            // Share a stable, immutable observation with in-flight queries.
+            // Repeated scans of unchanged equipment must not restart them.
+            var previous = state.Observed.MountChoices;
+            bool changed = previous == null || previous.Length != mountChoices.Count;
+            for (int i = 0; !changed && i < previous.Length; i++) changed = !previous[i].Equals(mountChoices[i]);
+            if (changed) state.Observed.MountChoices = mountChoices.Count == 0 ? Array.Empty<CompanionMountChoice>() : mountChoices.ToArray();
         }
 
-        private static void RankMount(ref CompanionMobilitySnapshot observed, Player body, Item item, int slot)
+        private static void ObserveMount(Player body, Item item, int slot, List<CompanionMountChoice> choices)
         {
             var data = CompanionMobilityState.MountData(item.mountType);
             if (data == null) return;
-            float flight = data.usesHover && data.fatigueMax == 0 ? float.MaxValue : Math.Max(data.flightTimeMax, data.fatigueMax);
-            if (flight > observed.FlightMountBudget)
-            {
-                observed.FlightMountBudget = flight;
-                observed.FlightMountType = item.mountType;
-                observed.FlightMountSlot = slot;
-            }
-            if (data.swimSpeed > observed.WaterMountSpeed)
-            {
-                observed.WaterMountSpeed = data.swimSpeed;
-                observed.WaterMountType = item.mountType;
-                observed.WaterMountSlot = slot;
-            }
-            var projection = data.delegations.PlayerSize;
-            if (projection != null && projection(body, out var size) && size.HasValue)
-            {
-                var normal = body.DefaultSize;
-                int width = (int)size.Value.X, height = (int)size.Value.Y;
-                if (width > 0 && height > 0 && width <= normal.X && height < normal.Y &&
-                    (observed.NarrowMountType < 0 || width * height < observed.NarrowMountWidth * observed.NarrowMountHeight))
-                {
-                    observed.NarrowMountType = item.mountType;
-                    observed.NarrowMountSlot = slot;
-                    observed.NarrowMountWidth = width;
-                    observed.NarrowMountHeight = height;
-                }
-            }
+            // Two sources of the same admitted type offer the same native
+            // motion. Keep the first current source; unlike different types,
+            // these alternatives share shape, physics and startup conditions.
+            for (int i = 0; i < choices.Count; i++) if (choices[i].Type == item.mountType) return;
+            int type = item.mountType;
+            // The book uses Hover instead of CanFly. The shark's hover is
+            // limited to native swimming frames and isn't dry flight.
+            bool hover = data.usesHover && type != MountID.LavaShark;
+            int flyTime = type == MountID.DarkMageBook ? 0 : data.flightTimeMax;
+            int flight = hover && data.fatigueMax == 0 ? CompanionMountChoice.UnboundedFlight :
+                Math.Max(flyTime, hover ? data.fatigueMax : 0);
+            var normal = body.DefaultSize;
+            var shape = CompanionMobilityState.MountSize(body, normal, data);
+            int width = (int)shape.X, height = (int)shape.Y;
+            if (width <= 0 || height <= 0) return;
+            bool compact = width <= normal.X && height < normal.Y;
+            choices.Add(new CompanionMountChoice(slot, item.mountType, width, height, flight,
+                data.runSpeed, data.acceleration, data.swimSpeed, hover, compact));
         }
 
         private static bool ValidMountItem(Item item) => item != null && !item.IsAir && item.mountType >= 0 &&
@@ -250,14 +233,15 @@ namespace JueMingR.TerrariaHost.Companions
                     break;
                 case CompanionMovementActivation.QuickMount:
                     if (p.mount.Active || p.gravDir < 0 || p.noItems || p.cursed) return RejectMobility(state);
-                    var mount = frame.ItemSlot >= 0 && frame.ItemSlot < CompanionBehavior.MainInventorySlots ? p.inventory[frame.ItemSlot] : p.QuickMount_GetItemToUse();
+                    var mount = frame.ItemSlot >= 0 && frame.ItemSlot < CompanionBehavior.MainInventorySlots ? p.inventory[frame.ItemSlot] :
+                        frame.MountTypePlusOne != 0 ? p.miscEquips[3] : p.QuickMount_GetItemToUse();
                     if (attackReady && mount != null && HandlessMount(mount.mountType))
                     {
                         deferral = CompanionMovementDeferral.HandBusy;
                         return false;
                     }
                     if (!ValidMountItem(mount) || frame.MountTypePlusOne != 0 && frame.MountTypePlusOne != mount.mountType + 1 ||
-                        !KnownMountSpace(p, mount.mountType) || !BindMobilitySource(actor, mount, frame.ItemSlot)) return RejectMobility(state);
+                        !CanMountKnown(p, mount.mountType) || !BindMobilitySource(actor, mount, frame.ItemSlot)) return RejectMobility(state);
                     break;
                 case CompanionMovementActivation.Dismount:
                     if (!shapeExit && !CanDismountKnown(p)) return RejectMobility(state);
@@ -340,7 +324,7 @@ namespace JueMingR.TerrariaHost.Companions
                 state.Aim = aim;
             }
             if (body.controlUseItem && state.Action == CompanionMovementActivation.QuickMount)
-                body.controlUseItem = !body.mount.Active && body.gravDir > 0 && KnownMountSpace(body, state.Source.mountType);
+                body.controlUseItem = !body.mount.Active && body.gravDir > 0 && CanMountKnown(body, state.Source.mountType);
             return true;
         }
 
@@ -371,7 +355,7 @@ namespace JueMingR.TerrariaHost.Companions
                     break;
                 case CompanionMovementActivation.QuickMount:
                     if (body.mount.Active || body.gravDir < 0 || body.noItems || body.cursed || !state.SourceCurrent(body) ||
-                        !ReferenceEquals(state.Source, body.QuickMount_GetItemToUse()) || !KnownMountSpace(body, state.Source.mountType))
+                        !ReferenceEquals(state.Source, body.QuickMount_GetItemToUse()) || !CanMountKnown(body, state.Source.mountType))
                     { RejectMobility(state); break; }
                     using (CompanionHooks.Enter(actor, body.Center)) CompanionHooks.MobilityQuickMount(body);
                     break;
@@ -559,15 +543,14 @@ namespace JueMingR.TerrariaHost.Companions
             return CompanionMobilityGeometry.KnownBox(body.TopLeft - margin, body.BottomRight + margin);
         }
 
-        private static bool KnownMountSpace(Player body, int type)
+        private static bool CanMountKnown(Player body, int type)
         {
             var data = CompanionMobilityState.MountData(type);
             if (data == null) return false;
-            var size = body.Size + new Vector2(0f, data.heightBoost);
-            var projection = data.delegations.PlayerSize;
-            if (projection != null && projection(body, out var requested) && requested.HasValue) size = requested.Value;
+            var size = CompanionMobilityState.MountSize(body, body.Size, data);
             var topLeft = body.Bottom - new Vector2(size.X * .5f, size.Y) + body.velocity;
-            return CompanionMobilityGeometry.KnownBox(topLeft - new Vector2(16f), topLeft + size + new Vector2(16f));
+            if (!CompanionMobilityGeometry.KnownBox(topLeft - new Vector2(16f), topLeft + size + new Vector2(16f))) return false;
+            using (CompanionCollisionScope.Save()) return body.mount.CanMount(type, body);
         }
     }
 }

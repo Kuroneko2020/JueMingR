@@ -9,20 +9,150 @@ namespace JueMingR.TerrariaHost.Companions
     {
         internal static bool CanDash(Player body, int direction, int dash, float goalX)
         {
-            float impulse;
-            switch (dash)
-            {
-                case 1: case 5: impulse = 16.9f; break;
-                case 2: impulse = 14.5f; break;
-                case 3: impulse = 21.9f; break;
-                // The mounted impulse couples horizontal and vertical
-                // movement. Do not borrow the unmounted braking constants.
-                default: return false;
-            }
-            if (body.wet || body.velocity.Y != 0 || !TryStopDistance(body, impulse, dash, out float braking)) return false;
+            float impulse = DashImpulse(dash);
+            if (direction == 0 || impulse <= 0 || body.mount.Active || body.wet || body.velocity.Y != 0 ||
+                !TryStopDistance(body, impulse, dash, out float braking)) return false;
             float span = impulse + braking + 6f;
             return (goalX - body.Center.X) * direction >= span && TryFlatLane(body, direction * span, true, trailingSupport: true);
         }
+
+        private static float DashImpulse(int dash)
+        {
+            switch (dash)
+            {
+                case 1: case 5: return 16.9f;
+                case 2: return 14.5f;
+                case 3: return 21.9f;
+                // Native mounted dashes also change vertical speed.
+                default: return 0f;
+            }
+        }
+
+        internal static float DirectTravelTicks(Player body, CompanionMobilitySnapshot state, NavigationAction action,
+            Vector2 feet, Vector2 target)
+        {
+            float distance = Math.Abs(target.X - feet.X);
+            int heading = Math.Sign(target.X - feet.X);
+            bool air = action == NavigationAction.Flight;
+            float speed = CompanionMotionProfile.HorizontalSpeed(body, state, air, air && state.WingHover);
+            float acceleration = CompanionMotionProfile.HorizontalAcceleration(body, state, air, air && state.WingHover);
+            float initial = body.velocity.X * heading;
+            float time = TravelTicks(distance, speed, acceleration, initial);
+            if (air)
+            {
+                float lift = Math.Max(0, (feet.Y - target.Y) * body.gravDir);
+                time = Math.Max(time, lift / Math.Max(3f, state.JumpSpeed));
+                if (body.velocity.Y == 0f) time += 6f;
+                // Equal-time flight spends finite reserve. Hover-speed gear
+                // can still win clear, long horizontal stretches.
+                return time + (state.UnlimitedWings || state.UnlimitedMountHover ? 0 : 4f);
+            }
+            return action == NavigationAction.Dash ? DashTravelTicks(body, state, feet, target, false) : time;
+        }
+
+        // Admission and the terrain proof belong to the immediate/refined
+        // candidate. Scoring the admitted pulse does not scan its lane again.
+        internal static float DashTravelTicks(Player body, CompanionMobilitySnapshot state,
+            Vector2 feet, Vector2 target, bool airborne)
+        {
+            float distance = Math.Abs(target.X - feet.X);
+            bool hover = airborne && state.WingHover && Math.Abs(target.Y - feet.Y) <= 18f;
+            float speed = CompanionMotionProfile.HorizontalSpeed(body, state, airborne, hover);
+            float acceleration = CompanionMotionProfile.HorizontalAcceleration(body, state, airborne, hover);
+            float impulse = DashImpulse(state.DashType);
+            if (!state.DashReady || impulse <= speed) return float.PositiveInfinity;
+            float projected = impulse;
+            float advance = impulse;
+            int ticks = 1;
+            while (projected > speed && advance < distance && ticks < 48)
+            {
+                projected = DashDecay(projected, state.DashType, speed);
+                advance += projected;
+                ticks++;
+            }
+            float horizontal = ticks + TravelTicks(Math.Max(0, distance - advance), speed, acceleration, projected);
+            float vertical = airborne ? Math.Max(0, (feet.Y - target.Y) * body.gravDir) / Math.Max(3f, state.JumpSpeed) : 0f;
+            return Math.Max(horizontal, vertical) + 3f;
+        }
+
+        internal static float TravelTicks(float distance, float speed, float acceleration, float current)
+        {
+            if (distance <= 0) return 0;
+            current = MathHelper.Clamp(current, -speed, speed);
+            float accelerationTicks = (speed - current) / acceleration;
+            float accelerationDistance = (speed + current) * .5f * accelerationTicks;
+            return distance <= accelerationDistance ?
+                ((float)Math.Sqrt(current * current + 2f * acceleration * distance) - current) / acceleration :
+                accelerationTicks + (distance - accelerationDistance) / speed;
+        }
+
+        internal static bool CanAirDash(Player body, CompanionMobilitySnapshot state, int direction, Vector2 target)
+        {
+            float impulse = DashImpulse(state.DashType);
+            var feet = CompanionNativeContact.Feet(body);
+            bool hover = state.WingHover && Math.Abs(target.Y - feet.Y) <= 18f;
+            float speed = CompanionMotionProfile.HorizontalSpeed(body, state, true, hover);
+            if (!state.DashReady || direction == 0 || state.Controlled || body.mount.Active || body.wet || body.pulley ||
+                state.GrappleAttached || body.windPushed || body.trackBoost != 0 || impulse <= speed ||
+                !CompanionMotionProfile.Wings(state) || (target.X - body.Center.X) * direction < impulse * 5f) return false;
+
+            float runSpeed = Math.Max(body.maxRunSpeed, body.accRunSpeed);
+            float vx = impulse;
+            float distance = impulse;
+            int ticks = 1;
+            // A held forward key need not brake during the native pulse.
+            // Predict the longer inertial envelope without idle friction.
+            while (DashDecaying(vx, state.DashType, runSpeed) && ticks < 48)
+            {
+                vx = DashDecay(vx, state.DashType, runSpeed);
+                distance += vx;
+                ticks++;
+            }
+            distance += runSpeed;
+            int wingCost = state.WingFastAscent ? 2 : 1;
+            if (ticks >= 48 || (target.X - body.Center.X) * direction < distance ||
+                !state.UnlimitedWings && state.WingTime < ticks * wingCost + 8) return false;
+            // This launch requires recoverable airspace for the same body's
+            // momentum. The frame can still choose lift, coast or hover.
+            // Check a bounded box enclosing the pulse and the intended band.
+            float gravity = body.gravDir;
+            float y = (target.Y - feet.Y) * gravity;
+            float peak = MathHelper.Clamp(y, -48f, 48f) * gravity;
+            float verticalMomentum = body.velocity.Y * 5f;
+            var start = body.position + new Vector2(Math.Min(0f, distance * direction),
+                Math.Min(0f, Math.Min(peak, verticalMomentum)) - 13f);
+            var end = body.BottomRight + new Vector2(Math.Max(0f, distance * direction),
+                Math.Max(0f, Math.Max(peak, verticalMomentum)) + 13f);
+            return AirDashLane(start, end);
+        }
+
+        private static bool AirDashLane(Vector2 start, Vector2 end)
+        {
+            int left = (int)Math.Floor(start.X / 16f), right = (int)Math.Floor((end.X - .01f) / 16f);
+            int top = (int)Math.Floor(start.Y / 16f), bottom = (int)Math.Floor((end.Y - .01f) / 16f);
+            if (right - left >= 32 || bottom - top >= 10) return false;
+            for (int x = left; x <= right; x++)
+                for (int y = top; y <= bottom; y++)
+                {
+                    if (!CompanionNativeContact.Loaded(x, y)) return false;
+                    var tile = Main.tile[x, y];
+                    if (tile.liquid != 0 || tile.nactive() &&
+                        (Main.tileSolid[tile.type] || Main.tileSolidTop[tile.type])) return false;
+                }
+            return true;
+        }
+
+        private static float DashDecay(float speed, int dash, float runSpeed)
+        {
+            bool strong = dash == 2 || dash == 3;
+            return speed > DashThreshold(dash) ? speed * (strong ? .985f : .992f) :
+                speed > runSpeed ? speed * (strong ? .94f : .96f) : runSpeed;
+        }
+
+        private static float DashThreshold(int dash) => dash == 3 ? 14f : 12f;
+
+        private static bool DashDecaying(float speed, int dash, float runSpeed) =>
+            speed > DashThreshold(dash) || speed > runSpeed;
 
         internal static bool HasBrakingRoom(Player body, int heading, float speed, int dash)
         {
@@ -47,9 +177,7 @@ namespace JueMingR.TerrariaHost.Companions
                 var move = new Vector2(heading * step, Math.Max(.05f, body.gravity) * body.gravDir);
                 if (!CompanionNativeContact.TryMove(body, position, move, contact, true, out var result) || result.Wall ||
                     !result.Ground && !CompanionNativeContact.Supported(body, result.Position) ||
-                    !body.lavaImmune && !body.lavaWet && body.lavaTime <= 24 &&
-                    CompanionMobilityGeometry.TouchesLava(result.Position, body.width, body.height) ||
-                    CompanionMobilityGeometry.TouchesShimmer(result.Position, body.width, body.height)) return false;
+                    CompanionFallRisk.OutsideModeledLiquid(body, result.Position, body.width, body.height)) return false;
                 position = result.Position;
                 remaining -= step;
             }
@@ -76,9 +204,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if (!CompanionNativeContact.TryMove(body, position, new Vector2(0, 4f * body.gravDir), contact, false, out var down)) return false;
                 if (down.Ground)
                 {
-                    if (!body.lavaImmune && body.lavaTime <= 24 && CompanionMobilityGeometry.TouchesLava(down.Position, body.width, body.height) ||
-                        CompanionMobilityGeometry.TouchesShimmer(down.Position, body.width, body.height)) return false;
-                    return true;
+                    return !CompanionFallRisk.OutsideModeledLiquid(body, down.Position, body.width, body.height);
                 }
                 position = down.Position;
             }
@@ -147,8 +273,6 @@ namespace JueMingR.TerrariaHost.Companions
             float slowdown = body.runSlowdown;
             if (!(slowdown > 0) || body.windPushed || body.trackBoost != 0 || float.IsInfinity(speed) || float.IsNaN(speed)) return false;
             float runSpeed = Math.Max(body.accRunSpeed, body.maxRunSpeed);
-            bool strongerDecay = dash == 2 || dash == 3;
-            float fastThreshold = dash == 3 ? 14 : 12;
             // HorizontalMovement applies the neutral ground friction before
             // DashMovement damps overspeed or snaps back to ordinary running.
             // Failure to prove a stop inside this window never admits a dash.
@@ -160,8 +284,7 @@ namespace JueMingR.TerrariaHost.Companions
                 speed = Math.Max(0, speed - slowdown);
                 if (dash > 0 && speed > 0)
                 {
-                    if (speed > fastThreshold) speed *= strongerDecay ? .985f : .992f;
-                    else if (speed > runSpeed) speed *= strongerDecay ? .94f : .96f;
+                    if (DashDecaying(speed, dash, runSpeed)) speed = DashDecay(speed, dash, runSpeed);
                     else { speed = runSpeed; dash = 0; }
                 }
                 distance += speed;

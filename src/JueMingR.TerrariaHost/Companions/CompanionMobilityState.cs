@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using HarmonyLib;
 using JueMingR.Platform.Companions;
@@ -10,19 +11,61 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal enum CompanionMobilityResult { Idle, Deferred, Started, Completed, Rejected }
 
+    // Immutable after observation. A query and its published edges keep the
+    // exact shape and native source that were compared, even after inventory changes.
+    internal readonly struct CompanionMountChoice : IEquatable<CompanionMountChoice>
+    {
+        internal const int UnboundedFlight = 10000;
+        internal readonly int ItemSlot, Type, Width, Height, FlightTicks;
+        internal readonly float RunSpeed, Acceleration, WaterSpeed;
+        internal readonly bool Hover, Compact;
+        internal bool Valid => Width > 0;
+        internal bool CanFly => FlightTicks > 0;
+
+        internal CompanionMountChoice(int slot, int type, int width, int height, int flightTicks,
+            float runSpeed, float acceleration, float waterSpeed, bool hover, bool compact)
+        {
+            ItemSlot = slot;
+            Type = type;
+            Width = width;
+            Height = height;
+            FlightTicks = flightTicks;
+            RunSpeed = runSpeed;
+            Acceleration = acceleration;
+            WaterSpeed = waterSpeed;
+            Hover = hover;
+            Compact = compact;
+        }
+
+        public bool Equals(CompanionMountChoice other) => Type == other.Type && ItemSlot == other.ItemSlot &&
+            Width == other.Width && Height == other.Height && FlightTicks == other.FlightTicks &&
+            RunSpeed == other.RunSpeed && Acceleration == other.Acceleration && WaterSpeed == other.WaterSpeed &&
+            Hover == other.Hover && Compact == other.Compact;
+
+        public override bool Equals(object obj) => obj is CompanionMountChoice other && Equals(other);
+        public override int GetHashCode() => Type * 59 + ItemSlot;
+
+        internal bool SourceCurrent(Player body)
+        {
+            if (!Valid || ItemSlot < -1 || ItemSlot >= body.inventory.Length) return false;
+            var item = ItemSlot < 0 ? body.miscEquips[3] : body.inventory[ItemSlot];
+            return item != null && !item.IsAir && item.mountType == Type && (!item.expertOnly || Main.expertMode);
+        }
+    }
+
     internal struct CompanionMobilitySnapshot
     {
+        internal CompanionMountChoice[] MountChoices;
         internal bool Ready, ReleaseJump, Sliding, DashReady, DashActive, UnlimitedWings, WingHover, WingHovering, WingHoverRun, WingFastAscent,
             WingAbilities, RocketReady, RocketAvailable,
             Carpet, CarpetAvailable, CarpetReady, MountFly, MountHover, MountUseWings, MountCart, Track, CanChangeGravity,
             Pulley, GrappleAttached, GrappleInFlight, Wet, Lava, Honey, Shimmer, CanSwim, MountSwim, BreathProtected, LavaImmune,
-            Controlled, HandBusy, CanUseRod, CanUseCart, DefaultMountFly, DefaultMountHover, CanDismount, UnlimitedMountHover;
+            Controlled, HandBusy, CanUseRod, CanUseCart, CanDismount, UnlimitedMountHover;
         internal int Width, Height, JumpHeight, JumpTime, ExtraJumps, WallSide, WallGrip, DashType, DashDelay, DashKind,
             Wings, WingTimeMax, RocketBoots, RocketTime, RocketDelay, CarpetTime, MountType, MountFlightTime,
-            HookType, Breath, BreathMax, DefaultMountType, DefaultMountSlot, FlightMountType, FlightMountSlot,
-            WaterMountType, WaterMountSlot, NarrowMountType, NarrowMountSlot, NarrowMountWidth, NarrowMountHeight, RodSlot, LavaTime;
+            HookType, Breath, BreathMax, RodSlot, LavaTime;
         internal float GravityDirection, Gravity, Speed, RunAcceleration, RunSlowdown, MaxFallSpeed,
-            JumpSpeed, WingTime, MountFatigue, MountFatigueMax, HookRange, FlightMountBudget, WaterMountSpeed;
+            JumpSpeed, WingTime, MountFatigue, MountFatigueMax, HookRange;
         internal float WingSpeed, WingAcceleration, WingHoverSpeed, WingHoverAcceleration, WingSlowdown;
         internal float WingBaseSpeed, WingBaseAcceleration, WingBaseSlowdown;
     }
@@ -57,6 +100,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal Projectile Hook;
         internal int HookKey;
         internal bool WingRunSampled;
+        internal readonly List<CompanionMountChoice> MountChoiceScratch = new List<CompanionMountChoice>(4);
         private float wingBaseSpeed, wingBaseAcceleration;
         private bool wingSampledHover;
         private struct HookLease
@@ -132,6 +176,13 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var data = mounts();
             return data != null && type >= 0 && type < data.Length ? data[type] : null;
+        }
+
+        internal static Vector2 MountSize(Player body, Vector2 baseSize, Mount.MountData data)
+        {
+            var projection = data.delegations.PlayerSize;
+            return projection != null && projection(body, out var size) && size.HasValue ?
+                size.Value : baseSize + new Vector2(0, data.heightBoost);
         }
 
         internal void ObserveWingRunInputs(Player body)

@@ -152,7 +152,6 @@ namespace NativeWorldTextProbe
                 long elapsed = 0, peak = 0;
                 var navigator = Navigator(run.Actor);
                 var refinement = GetOptional(navigator, "refine");
-                var continuation = GetOptional(navigator, "refineExit");
                 string previousProof = null;
                 for (int tick = 0; tick < 420; tick++)
                 {
@@ -187,13 +186,11 @@ namespace NativeWorldTextProbe
                     stable = arrived ? stable + 1 : 0;
                     if (stable == 18 && returned < 0) returned = tick - 17;
                     var inlet = refinement == null ? null : Get(refinement, "Edge");
-                    var exit = continuation == null ? null : Get(continuation, "Edge");
-                    string proof = inlet == null ? "historical" : $"{Get(refinement, "Active")}/{Get(navigator, "refineReady")} " +
-                        $"{Get(inlet, "Kind")}:{Get(inlet, "From")}→{Get(inlet, "To")} next={Get(navigator, "continuationOffset")}/" +
-                        $"{Get(continuation, "Active")} {Get(exit, "Kind")}:{Get(exit, "From")}→{Get(exit, "To")} {RouteTrace(navigator)}";
+                    string proof = inlet == null ? "historical" : $"{Get(refinement, "Active")}/{Get(Get(refinement, "Witness"), "Valid")} " +
+                        $"{Get(inlet, "Kind")}:{Get(inlet, "From")}→{Get(inlet, "To")} {RouteTrace(navigator)}";
                     if (proof != previousProof || tick % 25 == 0 || tick == planned || tick == down || tick == stair || tick == crossed || tick == lowerLanding || tick == belowWall || tick == returned)
                     {
-                        string ticks = inlet == null ? "historical" : $"{Get(refinement, "ticks")}/{Get(continuation, "ticks")}";
+                        string ticks = inlet == null ? "historical" : $"{Get(refinement, "ticks")}";
                         Console.WriteLine(FormattableString.Invariant($"TERRAIN C/D t={tick} owner={human.Bottom} body={body.Bottom}/{body.velocity} move={body.controlLeft}/{body.controlRight} down={body.controlDown} stair={body.stairFall} jump={body.controlJump} life={body.statLife} wings={body.wingTime:F1} route={route} search={PlanStatus(navigator)} proof={proof} ticks={ticks}"));
                     }
                     previousProof = proof;

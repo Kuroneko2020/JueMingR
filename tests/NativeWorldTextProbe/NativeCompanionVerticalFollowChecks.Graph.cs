@@ -86,22 +86,112 @@ namespace NativeWorldTextProbe
                 "the same retained terrain answers a new goal through real intermediate edges after an earlier query");
             Call(route, "MarkIssued", offer);
             Vector2 outside = new Vector2(RoomX(48), 80 * 16);
-            Call(route, "Advance", start, outside, caps, NewBudget(256, 24));
-            var retained = new[] { (object)start, Activator.CreateInstance(transitionType) };
-            Require((bool)Call(route, "TrySelect", retained) && (bool)Call(offer, "SameEdge", retained[1]),
-                "a new goal cannot replace an issued action before its own native result");
+            object reversed = null;
+            for (int tick = 0; tick < 90 && reversed == null; tick++)
+            {
+                Call(route, "Advance", start, outside, caps, NewBudget(256, 24));
+                var selected = new[] { (object)start, Activator.CreateInstance(transitionType) };
+                if ((bool)Call(route, "TrySelect", selected) && !(bool)Call(offer, "SameEdge", selected[1])) reversed = selected[1];
+            }
+            Require(Get(offer, "Kind").ToString() == "Walk" && reversed != null && ((Vector2)Get(reversed, "To")).X < start.X &&
+                !(bool)Call(route, "IsRejected", offer),
+                "a reversible issued walk yields to a verified reversed prefix without recording a geometric failure");
             object MakeDrop(int entry) => Make(transitionType, Enum.Parse(actionType, "PlatformDrop"),
                 new Vector2(RoomX(entry), 75 * 16), new Vector2(RoomX(entry), 80 * 16),
                 new Point(entry, 75), new Point(entry, 80), 0, true,
                 Enum.ToObject(NavigationType(assembly, "NavigationTraversalDetail"), 0), Vector2.Zero);
             object drop = MakeDrop(55), other = MakeDrop(64);
+            VerifyCommittedDrop(assembly, world, caps, transitionType, drop);
             Call(route, "Reject", drop, Get(drop, "From"));
             Require((bool)Call(route, "IsRejected", drop) && !(bool)Call(route, "IsRejected", other),
                 "a rejected platform action does not block descent from a different entry");
             VerifyLateMovementReceipt(assembly, offer, start);
             ReopenKnownPassage(assembly, world, caps, transitionType);
+            EnumerateJumpLandings(assembly, caps, transitionType);
             CumulativeDropLife(assembly, transitionType, actionType);
             Console.WriteLine($"NAV GRAPH independentChunks=True generation={generation}->{Get(route, "Generation")} status={Get(route, "Status")} next={Get(offer, "Kind")}");
+        }
+
+        private static void EnumerateJumpLandings(Assembly assembly, object caps, Type transitionType)
+        {
+            const int startColumn = 113, exitColumn = 117, row = 80;
+            PlaceFixtureStrip(startColumn - 2, startColumn + 2, row, TileID.Stone);
+            PlaceFixtureTile(exitColumn, row - 5, TileID.Platforms);
+            PlaceFixtureTile(exitColumn, row - 2, TileID.Platforms);
+            object world = Make(NavigationType(assembly, "NavigationWorld"));
+            Type type = NavigationType(assembly, "NavigationTraversal");
+            Type nodeType = NavigationType(assembly, "NavigationNode");
+            object traversal = Make(type, world);
+            Type budget = NavigationType(assembly, "NavigationBudget");
+            Call(traversal, "Begin", caps, Make(budget, 1024, 16, 16), null);
+            var start = new Vector2(RoomX(startColumn), row * 16);
+            object entry = Call(traversal, "Anchor", start, true, false);
+            int option = (int)type.GetField("BasicOptions", ReflectionMembers).GetValue(null) +
+                Array.IndexOf((int[])type.GetField("JumpOffsets", ReflectionMembers).GetValue(null), exitColumn - startColumn);
+            int firstBranch = (int)type.GetField("FirstBranch", ReflectionMembers).GetValue(null);
+            var offered = new[] { entry, (object)option, firstBranch, Activator.CreateInstance(nodeType),
+                Activator.CreateInstance(transitionType), 0f };
+            Require((bool)Call(traversal, "OfferNext", offered), "one jump direction yields the highest clear landing");
+            object high = offered[4];
+            Require((bool)Call(traversal, "OfferNext", offered), "the same jump direction resumes at a lower landed pose");
+            object low = offered[4];
+            var highExit = (Point)Get(high, "ExitTile");
+            var lowExit = (Point)Get(low, "ExitTile");
+            object route = Make(NavigationType(assembly, "NavigationRoute"), world);
+            var goal = (Vector2)Get(low, "To");
+            // Bind the same body capabilities the ordinary rejection key records.
+            Call(route, "Advance", start, goal, caps, Make(budget, 1, 0, 0));
+            Call(route, "Reject", high, start);
+            Require(highExit == new Point(exitColumn, row - 5) && lowExit == new Point(exitColumn, row - 2) &&
+                (bool)Call(route, "IsRejected", high) && !(bool)Call(route, "IsRejected", low),
+                "rejection of the higher jump landing leaves the lower genuine platform available from the same entry");
+            var selected = new[] { (object)start, Activator.CreateInstance(transitionType) };
+            int published = -1;
+            string last = "none";
+            // Rejections are temporary. Exercise the ordinary search within its
+            // active rejection window, using a bounded share of the normal slice.
+            for (int slice = 0; slice < 40 && published < 0; slice++)
+            {
+                Call(route, "Advance", start, goal, caps, Make(budget, 256, 12, 8));
+                Require((bool)Call(route, "IsRejected", high), $"the same capabilities retain the specific high outlet rejection (slice={slice})");
+                if (!(bool)Call(route, "TrySelect", selected)) continue;
+                Require(!(bool)Call(high, "SameEdge", selected[1]), "the ordinary publisher respects the already-rejected high outlet");
+                last = $"{Get(selected[1], "Kind")}:{Get(selected[1], "From")}→{Get(selected[1], "To")}";
+                // Live attachment may refine the entry feet within the same support tile.
+                if (Get(selected[1], "Kind").ToString() == "Jump" && (Point)Get(selected[1], "ExitTile") == lowExit &&
+                    (Point)Get(selected[1], "EntryTile") == (Point)Get(low, "EntryTile")) published = slice;
+            }
+            Require(published >= 0, $"the same ordinary route publishes the lower landing with the high outlet rejected (last={last}, status={Get(route, "Status")})");
+            Console.WriteLine($"NAV GRAPH jump branch from={start} high={highExit} lower={lowExit} publishedSlice={published}");
+        }
+
+        private static void VerifyCommittedDrop(Assembly assembly, object world, object caps, Type transitionType, object drop)
+        {
+            object route = Make(NavigationType(assembly, "NavigationRoute"), world);
+            Type budget = NavigationType(assembly, "NavigationBudget");
+            var from = (Vector2)Get(drop, "From");
+            var landing = (Vector2)Get(drop, "To");
+            var selected = new[] { (object)from, Activator.CreateInstance(transitionType) };
+            object offered = null;
+            for (int step = 0; step < 90 && offered == null; step++)
+            {
+                Call(route, "Advance", from, landing, caps, Make(budget, 256, 24, 24));
+                if ((bool)Call(route, "TrySelect", selected) && Get(selected[1], "Kind").ToString() == "PlatformDrop") offered = selected[1];
+            }
+            Require(offered != null, "known aligned platform has a real viable drop offer");
+            Call(route, "MarkIssued", offered);
+            // The motion consumer owns the choice of when to publish this phase.
+            Call(route, "SetCommitted", true);
+            Vector2 airborne = from + new Vector2(0, 18);
+            Vector2 newGoal = from + new Vector2(48, 0);
+            for (int step = 0; step < 24; step++)
+            {
+                Call(route, "Advance", airborne, newGoal, caps, Make(budget, 256, 24, 24));
+                selected[0] = airborne;
+                Require((bool)Call(route, "TrySelect", selected) && (bool)Call(offered, "SameEdge", selected[1]),
+                    "after true platform release the graph preserves the same committed segment until the body's receipt");
+            }
+            Call(route, "Complete", offered, landing);
         }
 
         private static void CumulativeDropLife(Assembly assembly, Type transitionType, Type actionType)
@@ -130,19 +220,21 @@ namespace NativeWorldTextProbe
                 string initial = Call(descent, "Advance", body, observed, Make(budget, 512, 96, 128)).ToString();
                 object witness = Get(descent, "Witness");
                 int remainder = (int)Get(witness, "RemainingLife");
-                object chained = Make(refinement);
-                Require(initial == "Ready" && remainder > 0 && remainder < life &&
-                    (bool)Call(chained, "BeginContinuation", body, second, witness),
-                    "the first actual projected drop is survivable and carries the spent life to the next inlet");
-                string together = Call(chained, "Advance", body, observed, Make(budget, 512, 96, 128)).ToString();
+                Require(initial == "Ready" && remainder > 0 && remainder < life && body.statLife == life,
+                    "the first local projection is survivable and leaves the live body untouched");
 
-                // The second landing alone is also survivable at full life.
+                // Re-sample from the next support with the post-landing life.
+                // NativeMovingFall independently observes original Hurt in the real sequence.
                 var isolated = Make(refinement);
                 body.Bottom = new Vector2(RoomX(column), middle * 16);
                 Call(isolated, "Begin", body, second, true);
                 string alone = Call(isolated, "Advance", body, observed, Make(budget, 512, 96, 128)).ToString();
-                Require(alone == "Ready" && together == "Failed" && body.statLife == life,
-                    "the same two native-shape drops are refused in combination without predicting future healing or mutating the body");
+                Require(body.statLife == life, "the second projection at full life also leaves the live body untouched");
+                body.statLife = remainder;
+                Call(isolated, "Begin", body, second, true);
+                string together = Call(isolated, "Advance", body, observed, Make(budget, 512, 96, 128)).ToString();
+                Require(alone == "Ready" && together == "Unsafe" && body.statLife == remainder,
+                    "the next native-shape drop is refused at the new inlet's lower life");
                 Console.WriteLine($"NAV DROP LIFE initial={life} afterFirst={remainder} isolated={alone} chain={together}");
             }
             finally { Main.worldSurface = surface; }

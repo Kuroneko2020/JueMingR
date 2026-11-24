@@ -39,13 +39,13 @@ namespace NativeWorldTextProbe
                     int target = steps >= ownerReversal ? secondGoal : steps >= 520 ? firstGoal : firstGoal + (steps / 80 % 2 == 0 ? 24 : -24);
                     if (steps == ownerReversal) first.Stable = second.Stable = 0;
                     Vector2 beforeOwner = human.position, beforeFirst = run.Body.position, beforePeer = peer.position;
-                    int firstSlice = (int)Get(first.Navigation, "PlannerSlices"), secondSlice = (int)Get(second.Navigation, "PlannerSlices");
+                    int firstSlice = (int)(GetOptional(first.Navigation, "PlannerSlices") ?? 0), secondSlice = (int)(GetOptional(second.Navigation, "PlannerSlices") ?? 0);
                     long sample = run.Step(NativeAxisTo(human, target));
                     if (Vector2.DistanceSquared(beforeOwner, human.position) > .25f) ownerMoved++;
                     Measure(sample, ref elapsed, ref peak);
                     if (steps < 400) Measure(sample, ref pairedElapsed, ref pairedPeak);
-                    first.Observe(steps, beforeFirst, human, upper, lower, lip, ownerReversal, (int)Get(first.Navigation, "PlannerSlices") != firstSlice);
-                    second.Observe(steps, beforePeer, human, upper, lower, lip, ownerReversal, (int)Get(second.Navigation, "PlannerSlices") != secondSlice);
+                    first.Observe(steps, beforeFirst, human, upper, lower, lip, ownerReversal, (int)(GetOptional(first.Navigation, "PlannerSlices") ?? 0) != firstSlice);
+                    second.Observe(steps, beforePeer, human, upper, lower, lip, ownerReversal, (int)(GetOptional(second.Navigation, "PlannerSlices") ?? 0) != secondSlice);
                     if (debugWork)
                     {
                         int work = (int)Get(first.Navigation, "ExpansionWork") + (int)Get(second.Navigation, "ExpansionWork");
@@ -76,7 +76,7 @@ namespace NativeWorldTextProbe
                     "the native owner walks the original lower floor and reaches its scheduled second destination independently");
                 Require(first.Result(upper, lower, ownerReversal) && second.Result(upper, lower, ownerReversal),
                     "two autonomous native bodies retreat along the upper floor, take the far exit, descend, settle below, and follow the owner's next movement");
-                Require(first.WithoutGrant > 30 && second.WithoutGrant > 30 && (!debugWork || teamWork > 0 && teamWork <= 96),
+                Require(!debugWork || first.WithoutGrant > 30 && second.WithoutGrant > 30 && teamWork > 0 && teamWork <= 96,
                     "both bodies execute real movement while the other actor owns the shared planning slice");
             }
         }
@@ -133,7 +133,7 @@ namespace NativeWorldTextProbe
                 var route = GetOptional(Navigation, "route");
                 return $"status={Get(actor, "Status")} tick={Main.GameUpdateCount} {RouteTrace(Navigation)} " +
                     $"terminal={(route == null ? null : GetOptional(route, "corridorTerminal"))} " +
-                    $"refinement={Get(refinement, "Active")}/{Get(Navigation, "refineReady")} {Get(edge, "Kind")}:{Get(edge, "From")}→{Get(edge, "To")} " +
+                    $"refinement={Get(refinement, "Active")}/{Get(Get(refinement, "Witness"), "Valid")} {Get(edge, "Kind")}:{Get(edge, "From")}→{Get(edge, "To")} " +
                     $"irreversible={Get(edge, "Irreversible")} ticks={Get(refinement, "ticks")}";
             }
         }

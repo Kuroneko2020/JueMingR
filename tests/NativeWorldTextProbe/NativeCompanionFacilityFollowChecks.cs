@@ -262,11 +262,11 @@ namespace NativeWorldTextProbe
                     if (retargeted >= 0 && tick <= retargeted + 54 && (tick <= retargeted + 12 || (tick - retargeted) % 6 == 0))
                     {
                         var edge = Get(navigation, "ActionTransition");
-                        var delivery = Get(navigation, "LastMovementDelivery");
+                        var delivery = GetOptional(navigation, "LastMovementDelivery");
                         Console.WriteLine($"NAV FACILITY cart retarget tick={tick} age={tick - retargeted} feet={body.Bottom} speed={speedBefore:F2}→{body.velocity.X:F2} " +
                             $"accel={body.runAcceleration:F2} friction={body.runSlowdown:F2} track={body.onTrack} control={body.controlLeft}/{body.controlRight} " +
                             $"action={Get(edge, "Kind")}/{Get(edge, "Detail")}:{Get(edge, "From")}→{Get(edge, "To")} " +
-                            $"delivery={Get(delivery, "Move")}/{Get(delivery, "Activation")} deferral={Get(navigation, "LastDeferral")}");
+                            $"delivery={(delivery == null ? "debug measurement unavailable" : $"{Get(delivery, "Move")}/{Get(delivery, "Activation")}")} deferral={Get(navigation, "LastDeferral")}");
                     }
                     if (tick % 75 == 0) TraceFollow(actor, body, nearbyOwner ? "track-near" : "track", tick);
                 }
@@ -355,8 +355,9 @@ namespace NativeWorldTextProbe
                     if (attached && Get(mobility, "Action").ToString() == "ReleaseHook")
                     {
                         var navigation = Get(Get(actor, "Behavior"), "Navigator");
-                        var delivery = Get(navigation, "LastMovementDelivery");
-                        verticalRelease |= Get(delivery, "Activation").ToString() == "ReleaseHook" && (int)Get(delivery, "Move") == 0;
+                        var delivery = GetOptional(navigation, "LastMovementDelivery");
+                        verticalRelease |= delivery == null ? !body.controlLeft && !body.controlRight :
+                            Get(delivery, "Activation").ToString() == "ReleaseHook" && (int)Get(delivery, "Move") == 0;
                         detached |= hook?.active == false && body.position.Y > hangingY + 8;
                     }
                     if (i % 60 == 0) TraceFollow(actor, body, "hook", i);
@@ -409,7 +410,7 @@ namespace NativeWorldTextProbe
                 $"up={body.controlUp} down={body.controlDown} action={Get(navigation, "ActionId")}/{Get(navigation,"ActionKind")}/{Get(navigation,"ActionOutcome")} direct={Get(action, "Direct")} " +
                 $"query={Get(navigation,"QueryStatus")}/{Get(navigation,"QueryGeneration")} goal={(corridorGoal == null ? null : GetOptional(corridorGoal, "Cell"))} " +
                 $"corridor={head}/{corridor?.Count}[{string.Join(",", steps)}] verification={(route == null ? null : GetOptional(route, "verificationIndex"))} " +
-                $"refinement={Get(refinement, "Active")}/{Get(navigation, "refineReady")} " +
+                $"refinement={Get(refinement, "Active")}/{Get(Get(refinement, "Witness"), "Valid")} " +
                 $"cart={Get(mobility, "CanUseCart")}/{body.mount.Type} hook={Get(mobility, "HookRange")} facilities={localLinks?.Count}/{routeLinks?.Count}[{string.Join(",", links)}] " +
                 $"reason={Get(navigation,"LastDeferral")} status={Get(actor,"Status")}");
         }

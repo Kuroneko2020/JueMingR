@@ -220,16 +220,38 @@ namespace NativeWorldTextProbe
             human.position = new Vector2(89 * 16, 63 * 16);
             int jump = -1, landed = -1;
             float maximumY = body.position.Y;
+            object nav = Get(Get(actor, "Behavior"), "Navigator");
+            long previousAction = -1;
             for (int i = 0; i < 260; i++)
             {
                 Step(host, body);
                 maximumY = Math.Max(maximumY, body.position.Y);
                 if (jump < 0 && body.controlJump && body.gravDir == -1 && body.velocity.Y > 0) jump = i;
-                if (jump >= 0 && body.gravDir == -1 && body.position.X > 79 * 16 && body.velocity.Y == 0 &&
+                long action = (long)Get(nav, "ActionId");
+                if (i % 35 == 0 || i == jump || action != previousAction || i >= 255)
+                    Console.WriteLine($"NAV INVERTED trace step={i} pos={body.position}/{body.velocity} " +
+                        $"support={Get(nav, "Supported")} keys={body.controlLeft}/{body.controlRight}/{body.controlJump} " +
+                        $"action={action}/{Get(nav, "ActionKind")}/{Get(nav, "ActionOutcome")} query={Get(nav, "QueryStatus")}/{Get(nav, "QueryGeneration")} " +
+                        $"{NativeCompanionVerticalFollowChecks.RefinementTrace(nav)} {NativeCompanionVerticalFollowChecks.RouteTrace(nav)}");
+                previousAction = action;
+                if (jump >= 0 && body.gravDir == -1 && body.position.X > 79 * 16 && (bool)Get(nav, "Supported") &&
                     Math.Abs(body.position.Y - 63 * 16) < 2) { landed = i; break; }
             }
-            Console.WriteLine($"NAV INVERTED jump={jump} landed={landed} maxY={maximumY:F2} body={body.position} gravity={body.gravDir}");
-            Require(jump >= 0 && landed > jump && maximumY > 66 * 16,
+            int settled = -1;
+            if (landed >= 0)
+            {
+                // Native collision can already establish ceiling contact while leaving
+                // a clipped nonzero velocity for that first original update.
+                for (int i = 0; i <= 4; i++)
+                {
+                    if (i > 0) Step(host, body);
+                    if (body.velocity.Y == 0 && body.gravDir == -1 && (bool)Get(nav, "Supported") &&
+                        body.position.X > 79 * 16 && Math.Abs(body.position.Y - 63 * 16) < 2)
+                    { settled = landed + i; break; }
+                }
+            }
+            Console.WriteLine($"NAV INVERTED jump={jump} landed={landed} settled={settled} maxY={maximumY:F2} body={body.position} gravity={body.gravDir}");
+            Require(jump >= 0 && landed > jump && settled >= landed && maximumY > 66 * 16,
                 "production jumps downward away from the inverted ceiling and returns to its physical support beyond the obstruction");
             int buff = body.FindBuffIndex(BuffID.Gravitation);
             if (buff >= 0) body.DelBuff(buff);

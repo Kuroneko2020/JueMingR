@@ -4,7 +4,9 @@ using Terraria;
 
 namespace JueMingR.TerrariaHost.Companions
 {
-    internal enum CompanionRefinementResult { Pending, Ready, Failed }
+    // Ready admits the next action. A witness is present only when its
+    // predicted endpoint can be used as a physical continuation.
+    internal enum CompanionRefinementResult { Pending, Ready, Failed, Unavailable, Unsafe, Unknown }
 
     internal readonly struct CompanionMotionWitness
     {
@@ -20,9 +22,9 @@ namespace JueMingR.TerrariaHost.Companions
     // launch velocity and native contact from sample to sample across slices.
     internal sealed class CompanionActionRefinement
     {
-        private int ticks, hookType, hookPullStep, ledgeProbeOffset, runwaySteps, flightTicks, life;
+        private int ticks, hookType, ledgeProbeOffset, runwaySteps, flightTicks, life, fallStart;
         private Vector2 position, velocity;
-        private bool grounded, continuing, dropPrepared, facilityPrepared, runwayReady, checkedFlightEnd, clearedFlightBank;
+        private bool grounded, dropPrepared, facilityPrepared, runwayReady, checkedFlightEnd, clearedFlightBank;
         private CompanionFallRisk.ReleaseCorridor releaseCorridor;
         internal NavigationTransition Edge { get; private set; }
         internal bool Active { get; private set; }
@@ -40,11 +42,10 @@ namespace JueMingR.TerrariaHost.Companions
             Entry = edge.From;
             Active = true;
             ticks = 0;
-            hookType = hookPullStep = ledgeProbeOffset = runwaySteps = 0;
+            hookType = ledgeProbeOffset = runwaySteps = 0;
             flightTicks = -1;
             life = body.statLife;
             EntryProtection = CompanionFallRisk.ProtectionKey(body);
-            continuing = false;
             dropPrepared = facilityPrepared = false;
             runwayReady = false;
             checkedFlightEnd = clearedFlightBank = FlightLanding = false;
@@ -57,30 +58,7 @@ namespace JueMingR.TerrariaHost.Companions
             position = near ? body.position : CompanionNativeContact.TopLeft(body, edge.From);
             velocity = near ? body.velocity : Vector2.Zero;
             grounded = supported;
-        }
-
-        internal bool BeginContinuation(Player body, NavigationTransition edge, CompanionMotionWitness previous)
-        {
-            var expected = CompanionNativeContact.TopLeft(body, edge.From);
-            if (!previous.Valid || !CompanionMotionAction.Near(previous.Position, expected, 28f, 20f)) return false;
-            Edge = edge;
-            Entry = edge.From;
-            Active = true;
-            continuing = true;
-            ticks = hookType = hookPullStep = ledgeProbeOffset = runwaySteps = 0;
-            position = previous.Position;
-            velocity = previous.Velocity;
-            grounded = previous.Grounded;
-            flightTicks = previous.FlightTicks;
-            life = previous.RemainingLife;
-            EntryProtection = CompanionFallRisk.ProtectionKey(body);
-            dropPrepared = facilityPrepared = false;
-            runwayReady = false;
-            checkedFlightEnd = clearedFlightBank = FlightLanding = false;
-            releaseCorridor = default;
-            FallOutletX = edge.To.X;
-            Witness = default;
-            return true;
+            fallStart = supported ? (int)(position.Y / 16f) : body.fallStart;
         }
 
         internal void Reset() => Active = false;
@@ -102,7 +80,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if (!CompanionMobilityGeometry.HookAnchorAt(body, center, anchor, state.HookType, state.HookRange, swept: false))
                         return CompanionRefinementResult.Failed;
                     hookType = state.HookType;
-                    ticks = hookPullStep = 0;
+                    ticks = 0;
                 }
                 // Each segment pays its own work. A long hook stays pending
                 // across small slices; the hand stage rechecks the real ray.
@@ -113,26 +91,6 @@ namespace JueMingR.TerrariaHost.Companions
                         return CompanionRefinementResult.Failed;
                     ticks++;
                 }
-                if (continuing)
-                {
-                    var pullExit = CompanionNativeContact.TopLeft(body, Edge.To);
-                    // A projectile can reach an anchor through a slot that
-                    // rejects a player's shoulders. The continuation must
-                    // prove the entire body follows the already-proved ray.
-                    int steps = Math.Max(1, (int)Math.Ceiling(Vector2.Distance(position, pullExit) / 6f));
-                    var contact = CompanionNativeContact.PlatformContact.Native(body, false, false);
-                    while (hookPullStep < steps)
-                    {
-                        if (!budget.TryPredict()) return CompanionRefinementResult.Pending;
-                        var from = Vector2.Lerp(position, pullExit, hookPullStep / (float)steps);
-                        var to = Vector2.Lerp(position, pullExit, (hookPullStep + 1) / (float)steps);
-                        if (!CompanionNativeContact.TryMove(body, from, to - from, contact, false, out var step) ||
-                            Vector2.DistanceSquared(to, step.Position) > 1f || Hazard(body, step.Position))
-                            return CompanionRefinementResult.Failed;
-                        hookPullStep++;
-                    }
-                    return Ready(body, state, pullExit, Vector2.Zero, false);
-                }
                 return CompanionRefinementResult.Ready;
             }
             if (Edge.Kind == NavigationAction.Hoik)
@@ -142,16 +100,31 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if (Edge.Kind == NavigationAction.Door) return RefineDoor(body, state, budget);
             if (Edge.Kind == NavigationAction.Facility) return RefineFacility(body, state, budget);
+            if (Edge.Kind == NavigationAction.Mount) return RefineMount(body, state, budget);
             if (Edge.Kind != NavigationAction.Jump && Edge.Kind != NavigationAction.Flight)
             {
-                if (continuing && (Edge.Kind == NavigationAction.Walk || Edge.Kind == NavigationAction.Dash))
-                    return RefineGroundContinuation(body, state, budget);
-                if (continuing && !grounded && (Edge.Kind == NavigationAction.Mount || Edge.Kind == NavigationAction.Dismount))
-                    return CompanionRefinementResult.Failed;
                 if (!budget.TryPredict()) return CompanionRefinementResult.Pending;
                 return CompanionRefinementResult.Ready;
             }
             return RefineAscent(body, state, budget, Edge.Kind == NavigationAction.Flight);
+        }
+
+        private CompanionRefinementResult RefineMount(Player body, CompanionMobilitySnapshot state, NavigationBudget budget)
+        {
+            var choice = Edge.MountChoice;
+            if (!choice.SourceCurrent(body) || body.gravDir < 0 || state.Controlled || body.noItems || body.cursed ||
+                body.mount.Active && body.mount.Type != choice.Type) return CompanionRefinementResult.Unavailable;
+            if (!budget.TryPredict()) return CompanionRefinementResult.Pending;
+            Vector2 resized = position + new Vector2((body.width - choice.Width) * .5f, body.height - choice.Height);
+            if (!CompanionMobilityGeometry.KnownBox(resized, resized + new Vector2(choice.Width, choice.Height)))
+                return CompanionRefinementResult.Unknown;
+            if (!CompanionMobilityGeometry.BodyFits(resized, choice.Width, choice.Height) ||
+                CompanionFallRisk.OutsideModeledLiquid(body, resized, choice.Width, choice.Height))
+                return CompanionRefinementResult.Failed;
+            // The selected item's actual use owns the new body. It can be
+            // tried at this inlet, but cannot forecast an active mount
+            // or award flight reserves before the native receipt.
+            return CompanionRefinementResult.Ready;
         }
 
         private CompanionRefinementResult RefineFacility(Player body, CompanionMobilitySnapshot state, NavigationBudget budget)
@@ -203,7 +176,7 @@ namespace JueMingR.TerrariaHost.Companions
             float pull = Math.Max(.05f, body.gravity);
             float jump = Math.Max(3f, state.JumpSpeed);
             int duration = Math.Max(1, state.JumpHeight);
-            if (flight && !CompanionMotionProfile.CanFly(state) && !carpet) return CompanionRefinementResult.Failed;
+            if (flight && !CompanionMotionProfile.CanFly(state) && !carpet) return CompanionRefinementResult.Unavailable;
             bool runningJump = Edge.Detail == NavigationTraversalDetail.RunningJump;
             if (runningJump && !runwayReady)
             {
@@ -218,9 +191,22 @@ namespace JueMingR.TerrariaHost.Companions
                 checkedFlightEnd = true;
             }
             bool bank = FlightLanding && !carpet;
-            bool landingRequired = runningJump || carpet || bank || continuing && !flight;
+            bool landingRequired = carpet || bank || !flight && !hatch;
+            bool climbsToOutlet = flight && !landingRequired && !hatch && rise > 8f;
+            float climbTolerance = climbsToOutlet ? CompanionMotionAction.FlightClimbTolerance : 10f;
             int horizon = carpet ? Math.Min(240, (int)Math.Ceiling(Math.Abs(horizontal) / speed + speed / acceleration +
                 Math.Sqrt(2f * (Math.Abs(rise) + jump * duration + jump * jump / (2f * pull)) / pull)) + duration + 8) : 85;
+            if (!flight)
+            {
+                // Native low gravity can keep a successful jump above the
+                // receiving plane beyond the old fixed simulation horizon.
+                // Budget still applies to each swept update, including the
+                // actual downward contact and health check.
+                float belowHold = Math.Max(0f, jump * duration - rise);
+                int landingTime = duration + 8 +
+                    (int)Math.Ceiling((jump + Math.Sqrt(jump * jump + 2f * pull * belowHold)) / pull);
+                horizon = Math.Min(240, Math.Max(horizon, landingTime));
+            }
 
             while (ticks < horizon)
             {
@@ -239,7 +225,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if (bank && y >= CompanionMotionAction.FlightBankClearance) clearedFlightBank = true;
                     bool hasFuel = flightTicks > 0;
                     if (grounded && (carpet && ticks < duration || (hatch ? ticks < duration : ticks == 0) && rise > 8)) vy = -jump;
-                    else if (hasFuel && (bank ? !clearedFlightBank : y < -10) && (wing || state.RocketAvailable || poweredMount))
+                    else if (hasFuel && (bank ? !clearedFlightBank : y < -climbTolerance) && (wing || state.RocketAvailable || poweredMount))
                     {
                         vy = Math.Max(-jump * 1.5f, vy - pull);
                         flightTicks--;
@@ -267,18 +253,19 @@ namespace JueMingR.TerrariaHost.Companions
                 var move = new Vector2(vx, vy * gravity);
                 bool clear = CompanionNativeContact.TryMove(body, position, move,
                     CompanionNativeContact.PlatformContact.Native(body, false, false), false, out var result, throughDoor);
-                if (!clear) return CompanionRefinementResult.Failed;
-                if ((body.lavaImmune || body.lavaTime > 24 || body.lavaWet ||
-                    !CompanionMobilityGeometry.TouchesLava(result.Position, body.width, body.height)) &&
-                    !CompanionMobilityGeometry.TouchesShimmer(result.Position, body.width, body.height))
+                if (!clear) return result.Known ? CompanionRefinementResult.Failed : CompanionRefinementResult.Unknown;
+                if (!Hazard(body, result.Position))
                 {
                     position = result.Position;
                     velocity = result.Velocity;
+                    if (vy < 0f && !flight) fallStart = (int)(position.Y / 16f);
                     bool reached = CompanionMotionAction.Near(position, destination, flight ? 22f : 15f, flight ? 20f : 17f) &&
                         (!hatch || position.Y + body.height < Edge.EntryTile.Y * 16 - 4f);
-                    if (reached && (result.Ground || !landingRequired &&
-                        (flight || (position.Y - destination.Y) * gravity <= 4f)))
-                        return Ready(body, state, position, velocity, result.Ground);
+                    if (reached && result.Ground)
+                        return Ready(body, state, position, velocity, true, CompanionFallRisk.LandingFallLoss(body, position, fallStart));
+                    if (reached && !landingRequired && (!climbsToOutlet || (position.Y - destination.Y) * gravity <= climbTolerance) &&
+                        (flight && flightTicks > 2 || hatch && !flight))
+                        return Ready(body, state, position, velocity, false);
                 }
                 else return CompanionRefinementResult.Failed;
                 if (result.Ground && ticks > duration && !flight)
@@ -313,31 +300,10 @@ namespace JueMingR.TerrariaHost.Companions
             return velocity.X * direction >= 1.2f ? CompanionRefinementResult.Ready : CompanionRefinementResult.Failed;
         }
 
-        private CompanionRefinementResult RefineGroundContinuation(Player body, CompanionMobilitySnapshot state, NavigationBudget budget)
-        {
-            if (!grounded) return CompanionRefinementResult.Failed;
-            var exit = CompanionNativeContact.TopLeft(body, Edge.To);
-            var contact = CompanionNativeContact.PlatformContact.Native(body, false, false);
-            while (Math.Abs(position.X - exit.X) > 4f && ticks < 24)
-            {
-                if (!budget.TryPredict()) return CompanionRefinementResult.Pending;
-                float dx = MathHelper.Clamp(exit.X - position.X, -6f, 6f);
-                var v = new Vector2(dx, body.gravDir * Math.Max(.05f, body.gravity));
-                if (!CompanionNativeContact.TryMove(body, position, v, contact, true, out var step) || step.Wall ||
-                    !step.Ground && !CompanionNativeContact.Supported(body, step.Position) || Hazard(body, step.Position))
-                    return CompanionRefinementResult.Failed;
-                position = step.Position;
-                velocity = step.Velocity;
-                ticks++;
-            }
-            return CompanionMotionAction.Near(position, exit, 4f, 17f) ? Ready(body, state, position, velocity, true) :
-                CompanionRefinementResult.Failed;
-        }
-
         private CompanionRefinementResult Ready(Player body, CompanionMobilitySnapshot state, Vector2 exit, Vector2 exitVelocity,
             bool support, int fallLoss = 0)
         {
-            if (life <= fallLoss) return CompanionRefinementResult.Failed;
+            if (life <= fallLoss) return CompanionRefinementResult.Unsafe;
             int remaining = flightTicks;
             if (support)
             {
@@ -346,7 +312,7 @@ namespace JueMingR.TerrariaHost.Companions
                 remaining = CompanionMotionProfile.Read(body, state, true).MaxFlightTicks;
             }
             // Do not borrow possible healing from a future native update.
-            // The same loss which proves this landing feeds its successor.
+            // At the real boundary the next action samples the body again.
             Witness = new CompanionMotionWitness(exit, exitVelocity, support, remaining, life - fallLoss);
             return CompanionRefinementResult.Ready;
         }
@@ -393,9 +359,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         private static bool Hazard(Player body, Vector2 position) =>
-            !body.lavaImmune && !body.lavaWet && body.lavaTime <= 24 &&
-            CompanionMobilityGeometry.TouchesLava(position, body.width, body.height) ||
-            CompanionMobilityGeometry.TouchesShimmer(position, body.width, body.height);
+            CompanionFallRisk.OutsideModeledLiquid(body, position, body.width, body.height);
 
         private CompanionRefinementResult RefineDrop(Player body, CompanionMobilitySnapshot state, NavigationBudget budget,
             bool throughDoor = false, float clearTop = float.NegativeInfinity)
@@ -428,7 +392,6 @@ namespace JueMingR.TerrariaHost.Companions
             var dependency = releaseCorridor.Capture(budget);
             if (dependency != CompanionRefinementResult.Ready) return dependency;
             var source = CompanionNativeContact.TopLeft(body, Entry);
-            if (CompanionFallRisk.ProjectedLoss(body, Edge.From, Edge.To, grounded) >= life) return CompanionRefinementResult.Failed;
             float pull = Math.Max(.05f, body.gravity);
             var maxFall = Math.Max(4f, body.maxFallSpeed);
             float run = CompanionMotionProfile.HorizontalSpeed(body, state, false, false);
@@ -443,23 +406,23 @@ namespace JueMingR.TerrariaHost.Companions
                 int heading = !released && ledgeDirection != 0 ? ledgeDirection : Math.Sign(dx);
                 float vx = MathHelper.Clamp(velocity.X + heading * accelerate, -run, run);
                 if ((released || ledgeDirection == 0) && Math.Abs(dx) < Math.Abs(vx) + 1f) vx = dx;
-                float vy = MathHelper.Clamp(velocity.Y * gravity + pull, pull, maxFall) * gravity;
+                float vy = Math.Min(velocity.Y * gravity + pull, maxFall) * gravity;
                 bool pressDown = platform && !released && gravity > 0;
                 var contact = CompanionNativeContact.PlatformContact.Native(body, pressDown, pressDown);
                 if (!CompanionNativeContact.TryMove(body, position, new Vector2(vx, vy), contact, false, out var step, throughDoor))
-                    return CompanionRefinementResult.Failed;
+                    return step.Known ? CompanionRefinementResult.Failed : CompanionRefinementResult.Unknown;
                 if (Hazard(body, step.Position)) return CompanionRefinementResult.Failed;
 
                 ticks++;
                 position = step.Position;
                 velocity = step.Velocity;
                 float depth = (position.Y - source.Y) * gravity;
-                if (step.Ground && depth > 6f)
+                if (step.Ground && (depth > 6f || !grounded && !platform))
                 {
-                    var landed = position + new Vector2(body.width * .5f, gravity > 0 ? body.height : 0);
+                    releaseCorridor.SetLanding(position);
                     return position.Y > clearTop && CompanionMotionAction.Near(position, exit, 28f, 12f) ?
                         Ready(body, state, position, velocity, true,
-                            CompanionFallRisk.ProjectedLoss(body, Edge.From, landed, grounded)) : CompanionRefinementResult.Failed;
+                            CompanionFallRisk.LandingFallLoss(body, position, fallStart)) : CompanionRefinementResult.Failed;
                 }
                 if ((position.Y - exit.Y) * gravity > 13f || ticks >= 30 && depth <= 6f)
                     return CompanionRefinementResult.Failed;

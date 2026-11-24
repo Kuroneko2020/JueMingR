@@ -228,15 +228,15 @@ namespace NativeWorldTextProbe
                             tick < 93 ? new Vector2(79 * 16, lower * 16) : new Vector2(75 * 16, lower * 16);
                         if (tick >= 93 && tick < 108) target.X = 82 * 16;
                         Vector2 firstBefore = run.Body.position, before = second.position;
-                        int firstSlice = (int)Get(navigation, "PlannerSlices"), secondSlice = (int)Get(peerNavigation, "PlannerSlices");
+                        int firstSlice = (int)(GetOptional(navigation, "PlannerSlices") ?? 0), secondSlice = (int)(GetOptional(peerNavigation, "PlannerSlices") ?? 0);
                         long used = run.StepToward(target, new Vector2(8, 6.5f), measure: true, peer: second);
                         Measure(used, ref elapsed, ref peak);
                         largestStep = Math.Max(largestStep, Vector2.Distance(firstBefore, first.position));
                         if (Vector2.DistanceSquared(before, second.position) > .25f) otherMoves++;
-                        if (firstSlice == (int)Get(navigation, "PlannerSlices") &&
+                        if (firstSlice == (int)(GetOptional(navigation, "PlannerSlices") ?? 0) &&
                             Vector2.DistanceSquared(firstBefore, run.Body.position) > .25f)
                             unplannedFirst++;
-                        if (secondSlice == (int)Get(peerNavigation, "PlannerSlices") &&
+                        if (secondSlice == (int)(GetOptional(peerNavigation, "PlannerSlices") ?? 0) &&
                             Vector2.DistanceSquared(before, second.position) > .25f)
                             unplannedSecond++;
                         if (debugWork)
@@ -274,8 +274,7 @@ namespace NativeWorldTextProbe
                     }
                     Console.WriteLine($"FOLLOW trail turn dropAction={joined} nativeLower={lowerLanding} leftmost={leftmost:F1} leftExit={leftExit} wallCrown={crown} east={farSide} maxStep={largestStep:F2} stable={stable} peerMoves={otherMoves} shared={together} maxSamples={maxSamplesInStep} ownerRest={ownerRemainedStill}/{observedAtOwnerRest}→{previous} unplannedSteps={unplannedFirst}/{unplannedSecond} teamWork={(debugWork ? maxTeamWork : -1)}");
                     work.Report("owner-trail-team", 470, elapsed, peak);
-                    Require(together && maxSamplesInStep <= 2 && unplannedFirst > 20 && unplannedSecond > 20 &&
-                        (!debugWork || maxTeamWork <= 96) && otherMoves > 30 && ownerRemainedStill && observedAtOwnerRest != 0 && observedAtOwnerRest == previous,
+                    Require(together && maxSamplesInStep <= 2 && (!debugWork || unplannedFirst > 20 && unplannedSecond > 20 && maxTeamWork <= 96) && otherMoves > 30 && ownerRemainedStill && observedAtOwnerRest != 0 && observedAtOwnerRest == previous,
                         "two native followers observe one shared bounded owner trail and a stationary owner creates no duplicate samples");
                     bool exitedLeft = leftExit >= 0 && lowerLanding > leftExit;
                     bool crossedCrown = crown >= 0 && farSide >= crown && farSide < lowerLanding;

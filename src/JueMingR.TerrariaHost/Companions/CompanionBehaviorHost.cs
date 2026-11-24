@@ -41,7 +41,8 @@ namespace JueMingR.TerrariaHost.Companions
             Navigator.Advance(body, state, OwnerTrail, budget);
 
         internal CompanionMobilityFrame DecideMobility(Player body, Player owner, CompanionBehavior behavior, bool allowPlanning,
-            NPC combatTarget, bool closeCombat, bool canAttack, Item pursuitWeapon, CompanionMobilityState mobility)
+            NPC combatTarget, bool closeCombat, bool canAttack, Item pursuitWeapon, CompanionMobilityState mobility,
+            bool maintainMeleeApproach = false)
         {
             var currentOwner = behavior.Follow && owner != null && owner.active && !owner.dead ? owner : null;
             Navigator.ObserveOwnerTrail(OwnerTrail);
@@ -69,7 +70,10 @@ namespace JueMingR.TerrariaHost.Companions
                 velocity = Vector2.Zero;
                 spacing = 0;
             }
-            else if (mobility.Observed.Ready && !canAttack && combatTarget != null &&
+            // A close hand may enter legal swing range before its native
+            // swing connects. Keep the same bounded approach through that
+            // handoff instead of turning back toward the standby anchor.
+            else if (mobility.Observed.Ready && (!canAttack || maintainMeleeApproach) && combatTarget != null &&
                 TryCombatPosition(body, follow, combatTarget, pursuitWeapon, closeCombat, allowPlanning, out var opening))
             {
                 center = opening;

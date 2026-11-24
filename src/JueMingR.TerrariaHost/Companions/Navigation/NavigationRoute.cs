@@ -5,11 +5,10 @@ using Microsoft.Xna.Framework;
 namespace JueMingR.TerrariaHost.Companions
 {
     // One actual body owns an attachment, a corridor and at most one pending
-    // search. Offers already issued to the executor survive target revisions
-    // until the corresponding actual outcome retires them.
+    // search. A native commitment owns the input until a physical handoff.
+    // Issuing reversible input alone does not pin the published corridor.
     internal sealed class NavigationRoute
     {
-        private const int RetargetWindow = 16;
         private const int RetryWindow = 32;
         private const int MaximumFailures = 12;
 
@@ -18,12 +17,15 @@ namespace JueMingR.TerrariaHost.Companions
             internal readonly NavigationTransition Edge;
             internal readonly NavigationCapabilities Capabilities;
             internal readonly int Until, Revision;
-            internal Failure(NavigationTransition edge, NavigationCapabilities capabilities, int until, int revision)
+            internal readonly bool Geometric;
+
+            internal Failure(NavigationTransition edge, NavigationCapabilities capabilities, int until, int revision, bool geometric)
             {
                 Edge = edge;
                 Capabilities = capabilities;
                 Until = until;
                 Revision = revision;
+                Geometric = geometric;
             }
         }
 
@@ -43,13 +45,13 @@ namespace JueMingR.TerrariaHost.Companions
         private NavigationCapabilities capabilities;
         private NavigationNode corridorGoal;
         private NavigationTransition offer, checking;
-        private int worldEpoch, corridorIndex, cursor, nextRetry, retargetSince = -1, clock;
-        private int offerIndex, checkIndex, verificationIndex;
-        private bool known, candidateTerminal, corridorTerminal, offered, issued, verifying, connector;
-        private bool facilitiesChanged;
+        private int worldEpoch, corridorIndex, cursor, nextRetry, clock;
+        private int offerIndex, offerEnd, checkIndex, checkEnd, verificationIndex;
+        private bool known, offered, issued, committed, verifying, connector;
+        private bool facilitiesChanged, skipFlightMerge;
         private Vector2 trailHint;
         private Vector2 targetMotion;
-        private bool hasTrail, needFlightMount;
+        private bool hasTrail, needFlightMount, targetAirborne;
         private NavigationTransition? localFixture;
 
         internal NavigationQueryStatus Status { get; private set; }
@@ -73,13 +75,14 @@ namespace JueMingR.TerrariaHost.Companions
             candidate.Clear();
             failures.Clear();
             corridorIndex = cursor = nextRetry = 0;
-            retargetSince = -1;
-            offered = issued = verifying = false;
+            offered = issued = committed = verifying = false;
+            skipFlightMerge = false;
             facilities = Array.Empty<NavigationTransition>();
             facilitiesChanged = false;
             hasTrail = false;
             needFlightMount = false;
             targetMotion = default;
+            targetAirborne = false;
             localFixture = null;
             Status = NavigationQueryStatus.Idle;
         }
@@ -105,6 +108,10 @@ namespace JueMingR.TerrariaHost.Companions
             targetMotion = velocity;
         }
 
+        internal void SetTargetAirborne(bool airborne) => targetAirborne = airborne;
+
+        internal void SetCommitted(bool value) => committed = issued && value;
+
         internal void SetLocalFixture(NavigationTransition? fixture)
         {
             localFixture = fixture;
@@ -129,39 +136,36 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 query = null;
                 waitingReads = null;
-                if (!issued) ClearCorridor();
+                if (!committed) ClearCorridor();
             }
             capabilities = current;
             known = true;
             worldEpoch = world.Epoch;
             traversal.Begin(current, budget);
             NavigationNode start = traversal.Anchor(feet, current.Supported, actual: true);
-            NavigationNode goal = traversal.Anchor(target, true);
-            goal = traversal.FallingGoal(feet, target, targetMotion, start, goal);
+            var observed = traversal.Anchor(target, !targetAirborne);
+            bool unavailable = traversal.Unknown;
+            NavigationNode goal = traversal.FallingGoal(target, targetMotion, start, observed);
             if (traversal.Pending)
             {
                 Status = offered ? NavigationQueryStatus.ReadyPrefix : NavigationQueryStatus.PendingBudget;
                 return;
             }
-            if (!NavigationWorld.InWorld(start.Cell) || !NavigationWorld.InWorld(goal.Cell) || traversal.Unknown)
+            if (!NavigationWorld.InWorld(start.Cell) || !NavigationWorld.InWorld(goal.Cell) || unavailable)
             {
                 Status = offered ? NavigationQueryStatus.ReadyPrefix : NavigationQueryStatus.AwaitingWorldData;
                 return;
             }
 
             var localCandidate = localFixture;
-            if (!issued && needFlightMount && traversal.LocalFlightMount(feet, start, out var mount) && !IsRejected(mount))
-                localCandidate = mount;
             bool sameCorridorGoal = corridor.Count != 0 && SameGoal(corridorGoal, goal);
-            if (!issued && !sameCorridorGoal && corridor.Count != 0)
-                ClearCorridor();
-            if (query != null && (!SameGoal(query.Goal, goal) || facilitiesChanged))
-            {
-                if (retargetSince < 0) retargetSince = clock;
-                if (clock - retargetSince >= RetargetWindow || query.Status != NavigationQueryStatus.PendingBudget)
-                    query = null;
-            }
-            else retargetSince = -1;
+            if (!issued && needFlightMount && traversal.LocalFlightMount(feet, start, rejectFilter, out var mount))
+                localCandidate = mount;
+            if (!issued && !localCandidate.HasValue && !sameCorridorGoal && targetAirborne &&
+                targetMotion.Y * current.Gravity >= 1f &&
+                traversal.LocalPlatformExit(feet, target, start, rejectFilter, out var descent))
+                localCandidate = descent;
+            if (facilitiesChanged) query = null;
             if (facilitiesChanged) waitingReads = null;
             facilitiesChanged = false;
             if (waitingReads != null)
@@ -181,6 +185,8 @@ namespace JueMingR.TerrariaHost.Companions
                 var fixture = localCandidate.Value;
                 bool alreadyHead = corridorIndex < corridor.Count && corridor[corridorIndex].Kind == fixture.Kind &&
                     corridor[corridorIndex].EntryTile == fixture.EntryTile &&
+                    corridor[corridorIndex].ExitTile == fixture.ExitTile &&
+                    corridor[corridorIndex].MountChoice.Equals(fixture.MountChoice) &&
                     Math.Sign(corridor[corridorIndex].To.X - corridor[corridorIndex].From.X) ==
                     Math.Sign(fixture.To.X - fixture.From.X);
                 if (!alreadyHead)
@@ -188,26 +194,25 @@ namespace JueMingR.TerrariaHost.Companions
                     ClearCorridor();
                     corridor.Add(fixture);
                     corridorGoal = goal;
-                    corridorTerminal = false;
                     sameCorridorGoal = true;
                 }
             }
-            if (!issued && corridor.Count == 0)
+            if (!issued && (corridor.Count == 0 || !sameCorridorGoal))
             {
                 bool localTerminal = traversal.LocalLevel(feet, start, goal, out var local) && !IsRejected(local);
                 if (localTerminal || traversal.LocalDoor(feet, target, start, out local) && !IsRejected(local) ||
                     traversal.LocalTrack(feet, target, start, out local) && !IsRejected(local))
                 {
+                    ClearCorridor();
                     corridor.Add(local);
                     corridorGoal = goal;
-                    corridorTerminal = localTerminal;
                     sameCorridorGoal = true;
                 }
             }
-            if (!issued && sameCorridorGoal && corridorIndex < corridor.Count)
+            if (!issued && corridorIndex < corridor.Count)
             {
                 Prepare(feet, budget);
-                if (corridor.Count != 0)
+                if (sameCorridorGoal && corridor.Count != 0)
                 {
                     Status = offered ? NavigationQueryStatus.ReadyPrefix : NavigationQueryStatus.PendingBudget;
                     return;
@@ -231,9 +236,8 @@ namespace JueMingR.TerrariaHost.Companions
                     if (issued) Status = NavigationQueryStatus.ReadyPrefix;
                     return;
                 }
-                query = new NavigationQuery(traversal, current, start, goal, facilities, world, trailHint, hasTrail);
+                query = new NavigationQuery(traversal, current, start, goal, facilities, world, trailHint, hasTrail, observed);
                 Generation++;
-                retargetSince = -1;
             }
             query.Advance(budget, rejectFilter);
             Status = issued ? NavigationQueryStatus.ReadyPrefix : query.Status;
@@ -242,26 +246,23 @@ namespace JueMingR.TerrariaHost.Companions
                 query = null;
                 return;
             }
-            if (query.Status == NavigationQueryStatus.PendingBudget || issued) return;
+            if (query.Status == NavigationQueryStatus.PendingBudget || committed || issued && sameCorridorGoal) return;
             var completedQuery = query;
             query.CopyCorridor(candidate);
-            candidateTerminal = query.Terminal;
             bool currentGoal = SameGoal(query.Goal, goal);
             if (!currentGoal)
             {
-                // An older query may still provide a useful handoff toward
-                // the latest goal. Its distant tail cannot drive this body.
-                if (candidate.Count == 0 || Vector2.DistanceSquared(candidate[candidate.Count - 1].To, target) + 32f * 32f >=
-                    Vector2.DistanceSquared(feet, target))
-                    candidate.Clear();
-                else if (candidate.Count > 2) candidate.RemoveRange(2, candidate.Count - 2);
-                candidateTerminal = false;
+                // Allow an older result to supply a short approach to a
+                // verified outlet even when that approach goes away from
+                // the owner. A stale plain run has no such outlet evidence.
+                int entry = candidate.FindIndex(edge => edge.Kind != NavigationAction.Walk && edge.Kind != NavigationAction.Dash);
+                if (!SharesOutlet(candidate, entry)) candidate.Clear();
+                else candidate.RemoveRange(entry + 1, candidate.Count - entry - 1);
             }
-            corridorGoal = goal;
             query = null;
             if (candidate.Count == 0)
             {
-                if (currentGoal && (completedQuery.Status == NavigationQueryStatus.NoRouteInKnownGraph ||
+                if (corridor.Count == 0 && currentGoal && (completedQuery.Status == NavigationQueryStatus.NoRouteInKnownGraph ||
                     completedQuery.Status == NavigationQueryStatus.AwaitingWorldData))
                 {
                     // Retain only consulted chunks/conditions while a settled
@@ -278,16 +279,37 @@ namespace JueMingR.TerrariaHost.Companions
                             waitingRetry = Math.Min(waitingRetry, failure.Until);
                     nextRetry = 0;
                 }
-                else nextRetry = currentGoal ? clock + RetryWindow : 0;
+                else if (corridor.Count == 0) nextRetry = currentGoal ? clock + RetryWindow : 0;
                 return;
             }
-            corridor.Clear();
+            if (issued && !HasNearbyEntry(feet, candidate)) return;
+            ClearCorridor();
             corridor.AddRange(candidate);
             candidate.Clear();
-            corridorTerminal = candidateTerminal;
+            corridorGoal = goal;
             corridorIndex = cursor = 0;
             Prepare(feet, budget);
             Status = offered ? NavigationQueryStatus.ReadyPrefix : NavigationQueryStatus.PendingBudget;
+        }
+
+        private bool SharesOutlet(List<NavigationTransition> path, int entry)
+        {
+            if (entry < 0 || entry >= 8) return false;
+            var outlet = path[entry];
+            // Remote facilities are qualified against their query's target.
+            // Reconsider them under the latest request through its own graph.
+            if (outlet.Kind == NavigationAction.Facility) return false;
+            if (corridorIndex >= corridor.Count) return true;
+            for (int i = corridorIndex; i < Math.Min(corridorIndex + 8, corridor.Count); i++)
+                if (SameFailure(corridor[i], outlet)) return true;
+            return false;
+        }
+
+        private static bool HasNearbyEntry(Vector2 feet, List<NavigationTransition> path)
+        {
+            for (int i = 0; i < Math.Min(9, path.Count); i++)
+                if (Vector2.DistanceSquared(feet, path[i].From) <= 42f * 42f) return true;
+            return false;
         }
 
         internal bool TrySelect(Vector2 feet, out NavigationTransition transition)
@@ -305,39 +327,17 @@ namespace JueMingR.TerrariaHost.Companions
             if (offered && offer.SameEdge(transition)) issued = true;
         }
 
-        internal bool TryGetContinuation(NavigationTransition transition, out NavigationTransition next) =>
-            TryGetContinuation(transition, 1, out next, out _);
-
-        internal bool TryGetContinuation(NavigationTransition transition, int stepsAhead,
-            out NavigationTransition next, out bool terminal)
-        {
-            next = default;
-            terminal = false;
-            if (!offered || connector || !offer.SameEdge(transition) ||
-                stepsAhead < 1 || stepsAhead >= corridor.Count - offerIndex) return false;
-            int index = offerIndex + stepsAhead;
-            next = corridor[index];
-            terminal = corridorTerminal && index + 1 == corridor.Count;
-            return true;
-        }
-
-        internal bool IsTerminal(NavigationTransition transition) =>
-            offered && !connector && offer.SameEdge(transition) && corridorTerminal && offerIndex + 1 == corridor.Count;
-
-        internal bool ContinuesIntoRunningJump(NavigationTransition transition)
+        internal bool ContinuesWithForwardSpeed(NavigationTransition transition)
         {
             if (!offered || offer.Kind != NavigationAction.Walk || !offer.SameEdge(transition)) return false;
             int direction = Math.Sign(offer.To.X - offer.From.X);
-            int first = connector ? offerIndex : offerIndex + 1;
-            int limit = Math.Min(corridor.Count, first + 5);
-            for (int i = first; i < limit; i++)
-            {
-                var edge = corridor[i];
-                if (Math.Sign(edge.To.X - edge.From.X) != direction) return false;
-                if (edge.Kind == NavigationAction.Jump) return edge.Detail == NavigationTraversalDetail.RunningJump;
-                if (edge.Kind != NavigationAction.Walk) return false;
-            }
-            return false;
+            int index = connector ? offerIndex : offerIndex + 1;
+            if (index >= corridor.Count) return false;
+            var next = corridor[index];
+            // Adjacent support labels preserve branches without requiring a
+            // complete stop at each still-connected forward checkpoint.
+            return direction != 0 && Math.Sign(next.To.X - next.From.X) == direction &&
+                (next.Kind == NavigationAction.Walk || next.Detail == NavigationTraversalDetail.RunningJump);
         }
 
         internal bool IsTraversalApproach(NavigationTransition transition, Vector2 target)
@@ -355,24 +355,33 @@ namespace JueMingR.TerrariaHost.Companions
 
         private bool HasTraversalAfter(int first, Vector2 target)
         {
-            int limit = Math.Min(corridor.Count, first + 8);
+            // A surface can now contain several genuine one-tile inlets.
+            // Bound lookahead by physical distance so their presence does
+            // not hide the same utility or launch behind more graph edges.
+            int limit = Math.Min(corridor.Count, first + 28);
+            float approach = 0f;
             for (int i = first; i < limit; i++)
             {
                 var edge = corridor[i];
-                if (edge.Kind == NavigationAction.Facility || edge.Detail == NavigationTraversalDetail.TrackBoard ||
+                if (edge.Kind == NavigationAction.Facility || edge.Kind == NavigationAction.Mount ||
+                    edge.Detail == NavigationTraversalDetail.TrackBoard ||
                     edge.Kind == NavigationAction.Hoik) return true;
-                // The route below the obstruction still needs its native
-                // continuation proof. A competing direct walk can otherwise
-                // leave this inlet while that proof is advancing by slices.
-                if (edge.Kind == NavigationAction.PlatformDrop && edge.Irreversible && corridorTerminal &&
+                // Don't walk off a useful underpass approach while its
+                // native release and first landing proof are sliced.
+                if (edge.Kind == NavigationAction.PlatformDrop && edge.Irreversible &&
                     (edge.To.Y - target.Y) * capabilities.Gravity >= 48f) return true;
+                if (edge.Kind == NavigationAction.Drop && (target.Y - edge.From.Y) * capabilities.Gravity >= 24f &&
+                    Math.Abs(target.Y - edge.To.Y) < Math.Abs(target.Y - edge.From.Y)) return true;
                 // The existing corridor has chosen to rise above something
                 // between the body and the same-level goal. Walking straight
                 // toward the owner here can undo the approach to that launch.
-                if (edge.Kind == NavigationAction.Jump && Math.Abs(target.Y - edge.From.Y) <= 16f &&
-                    (edge.From.Y - edge.To.Y) * capabilities.Gravity >= 32f &&
-                    (target.X - edge.From.X) * Math.Sign(edge.To.X - edge.From.X) >= 24f) return true;
+                if (edge.Kind == NavigationAction.Jump &&
+                    (Math.Abs(target.Y - edge.To.Y) + 12f < Math.Abs(target.Y - edge.From.Y) ||
+                    Math.Abs(target.Y - edge.From.Y) <= 16f && (edge.From.Y - edge.To.Y) * capabilities.Gravity >= 32f &&
+                    (target.X - edge.From.X) * Math.Sign(edge.To.X - edge.From.X) >= 24f)) return true;
                 if (edge.Kind != NavigationAction.Walk) return false;
+                approach += Vector2.Distance(edge.From, edge.To);
+                if (approach > 384f) return false;
             }
             return false;
         }
@@ -380,13 +389,15 @@ namespace JueMingR.TerrariaHost.Companions
         internal void Complete(NavigationTransition transition, Vector2 actualFeet)
         {
             if (!offered || !offer.SameEdge(transition)) return;
-            offered = issued = verifying = false;
-            corridorIndex = connector ? offerIndex : offerIndex + 1;
+            offered = issued = committed = verifying = false;
+            corridorIndex = connector ? offerIndex : offerEnd + 1;
             cursor = corridorIndex;
+            skipFlightMerge = false;
             if (Vector2.DistanceSquared(actualFeet, offer.To) > 35f * 35f)
             {
                 ClearCorridor();
-                query = null;
+                // A survivable actual landing can differ from its coarse
+                // exit. The pending search may still attach from that pose.
             }
             else if (corridorIndex >= corridor.Count)
             {
@@ -397,19 +408,40 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal void Reject(NavigationTransition transition, Vector2 actualFeet)
         {
-            var edge = offered && offer.SameEdge(transition) && !connector ? corridor[offerIndex] : transition;
-            int until = clock + 48;
+            RememberFailure(transition, 48, true);
+        }
+
+        internal void Defer(NavigationTransition transition, bool awaitingTerrain)
+        {
+            RememberFailure(transition, awaitingTerrain ? 24 : 8, false);
+            if (awaitingTerrain) Status = NavigationQueryStatus.AwaitingWorldData;
+        }
+
+        internal bool TryShortenFlight(NavigationTransition transition)
+        {
+            if (!offered || committed || offerEnd == offerIndex || !offer.SameEdge(transition)) return false;
+            offered = issued = verifying = false;
+            cursor = corridorIndex;
+            skipFlightMerge = true;
+            return true;
+        }
+
+        private void RememberFailure(NavigationTransition transition, int retry, bool backoff)
+        {
+            var edge = offered && offer.SameEdge(transition) && !connector && offerEnd == offerIndex
+                ? corridor[offerIndex] : transition;
+            int until = clock + retry;
             for (int i = failures.Count - 1; i >= 0; i--)
             {
                 if (!SameFailure(failures[i].Edge, edge)) continue;
-                until = Math.Min(clock + 120, Math.Max(until, failures[i].Until + 24));
+                if (backoff) until = Math.Min(clock + 120, Math.Max(until, failures[i].Until + 24));
                 failures.RemoveAt(i);
             }
             if (failures.Count == MaximumFailures) failures.RemoveAt(0);
             // An executor can reject direct motion too. Rejections bind the
             // actual attempted direction/entry to this body and the terrain
             // revision seen during the attempt, with a finite recheck time.
-            failures.Add(new Failure(edge, capabilities, until, EdgeVersion(edge)));
+            failures.Add(new Failure(edge, capabilities, until, EdgeVersion(edge), backoff));
             ClearCorridor();
             query = null;
             waitingReads = null;
@@ -421,6 +453,14 @@ namespace JueMingR.TerrariaHost.Companions
             if (!offered || !offer.SameEdge(transition)) return;
             ClearCorridor();
             query = null;
+            waitingReads = null;
+            nextRetry = 0;
+        }
+
+        internal void Supersede(NavigationTransition transition)
+        {
+            if (!offered || !offer.SameEdge(transition)) return;
+            ClearCorridor();
             waitingReads = null;
             nextRetry = 0;
         }
@@ -439,6 +479,16 @@ namespace JueMingR.TerrariaHost.Companions
                     failure.Capabilities.SameFailureConditions(capabilities, transition.Kind) &&
                     failure.Revision == EdgeVersion(transition)) return true;
             }
+            return false;
+        }
+
+        internal bool HasRejectedLaunchNearby(Vector2 feet)
+        {
+            foreach (var failure in failures)
+                if (failure.Until > clock && failure.Geometric && failure.Edge.Kind == NavigationAction.Jump &&
+                    Vector2.DistanceSquared(feet, failure.Edge.From) <= 18f * 18f &&
+                    failure.Capabilities.SameFailureConditions(capabilities, failure.Edge.Kind) &&
+                    failure.Revision == EdgeVersion(failure.Edge)) return true;
             return false;
         }
 
@@ -474,9 +524,14 @@ namespace JueMingR.TerrariaHost.Companions
                     if (traversal.Pending) return;
                     cursor++;
                     if (!attached || IsRejected(joined)) continue;
-                    if (joined.Irreversible && !corridorTerminal) continue;
                     checking = joined;
-                    checkIndex = index;
+                    checkIndex = checkEnd = index;
+                    if (!skipFlightMerge) MergeVerticalFlight();
+                    if (checkEnd != checkIndex && IsRejected(checking))
+                    {
+                        checking = joined;
+                        checkEnd = checkIndex;
+                    }
                     verificationIndex = 0;
                     verifying = true;
                     break;
@@ -517,9 +572,33 @@ namespace JueMingR.TerrariaHost.Companions
             }
             offer = checking;
             offerIndex = checkIndex;
+            offerEnd = checkEnd;
             connector = !checking.SameEdge(corridor[checkIndex]) && checking.To == corridor[checkIndex].From;
             verifying = false;
             offered = true;
+        }
+
+        private void MergeVerticalFlight()
+        {
+            if (checking.Kind != NavigationAction.Flight || checking.Detail != NavigationTraversalDetail.None ||
+                checking.Irreversible || Math.Abs(checking.To.X - checking.From.X) > 2f ||
+                (checking.To.Y - checking.From.Y) * capabilities.Gravity >= -12f) return;
+            // A straight known shaft can keep one set of flight controls
+            // instead of slowing at every coarse air label. This is still
+            // one bounded native refinement to a local viable endpoint.
+            while (checkEnd + 1 < corridor.Count)
+            {
+                var next = corridor[checkEnd + 1];
+                if (next.Kind != NavigationAction.Flight || next.Detail != NavigationTraversalDetail.None ||
+                    next.Irreversible || next.From != checking.To || Math.Abs(next.To.X - checking.From.X) > 2f ||
+                    (next.To.Y - next.From.Y) * capabilities.Gravity >= -8f ||
+                    Math.Abs(next.To.Y - checking.From.Y) > 112f ||
+                    !traversal.KnownClear(checking.From, next.To, capabilities.Gravity, capabilities.ActiveMount, 3,
+                        checking.MountChoice)) return;
+                checking = new NavigationTransition(NavigationAction.Flight, checking.From, next.To, checking.MountChoice,
+                    checking.EntryTile, next.ExitTile, world.Revision);
+                checkEnd++;
+            }
         }
 
         private bool AlreadyAtWalkExit(Vector2 feet, NavigationTransition edge) =>
@@ -530,7 +609,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             corridor.Clear();
             corridorIndex = cursor = 0;
-            offered = issued = verifying = false;
+            offered = issued = committed = verifying = false;
+            skipFlightMerge = false;
         }
 
         private bool SameGoal(NavigationNode previous, NavigationNode current)
@@ -543,9 +623,10 @@ namespace JueMingR.TerrariaHost.Companions
             return traversal.SameGroundRegion(previous, current);
         }
 
-        private static bool SameFailure(NavigationTransition a, NavigationTransition b) =>
+        internal static bool SameFailure(NavigationTransition a, NavigationTransition b) =>
             a.Kind == b.Kind && a.Detail == b.Detail && a.RailFrame == b.RailFrame && a.RailDirection == b.RailDirection &&
-            a.RailEntryFrame == b.RailEntryFrame &&
+            a.RailEntryFrame == b.RailEntryFrame && a.MountChoice.Equals(b.MountChoice) &&
+            a.EntryTile == b.EntryTile && a.ExitTile == b.ExitTile &&
             NavigationTraversal.CellAt(a.From) == NavigationTraversal.CellAt(b.From) &&
             NavigationTraversal.CellAt(a.To) == NavigationTraversal.CellAt(b.To);
 

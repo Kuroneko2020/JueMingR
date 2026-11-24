@@ -97,7 +97,9 @@ namespace NativeWorldTextProbe
                         if (!historical && (focus == "integration" || focus == "planned" || focus == "tail"))
                             NativeCompanionNavigationChecks.Run(context, plannedOnly: focus == "planned", facilityOnly: focus == "tail");
                         else if (!historical && focus == "vertical-all")
-                            NativeCompanionVerticalFollowChecks.Run(context);
+                            NativeCompanionVerticalFollowChecks.Run(context, "vertical-all");
+                        else if (!historical && focus == "timing")
+                            NativeCompanionVerticalFollowChecks.Run(context, "timing");
                         else
                             NativeCompanionVerticalFollowChecks.Run(context, !historical && focus == "graph" ? "graph" : "moving-room", historical);
                         return;

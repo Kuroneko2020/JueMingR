@@ -26,7 +26,10 @@ namespace NativeWorldTextProbe
             var native = Activator.CreateInstance(behavior.GetType().Assembly.GetType(
                 "JueMingR.TerrariaHost.Companions.CompanionMobilityState", true), true);
             Call(native, "ObserveBody", body, false);
-            return Call(behavior, "DecideMobility", body, owner, preferences, planning, null, false, false, null, native);
+            var decide = AccessTools.Method(behavior.GetType(), "DecideMobility");
+            return decide.Invoke(behavior, decide.GetParameters().Length == 9
+                ? new object[] { body, owner, preferences, planning, null, false, false, null, native }
+                : new object[] { body, owner, preferences, planning, null, false, false, null, native, false });
         }
 
         internal static void RunJumpReachability(object host)
