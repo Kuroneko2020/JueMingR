@@ -269,6 +269,9 @@ namespace NativeWorldTextProbe
         }
         private static void Natural(object context,object host,object combat)
         {
+            // The receive-time marker is part of the hidden path display. Run
+            // the same real unlock as the neighboring composition fixtures.
+            if(!(bool)Get(host,"PathAccess"))NativeHiddenEntryChecks.RevealForComposition(context);
             var attack=Get(combat,"Attack");int cases=0,hits=0,negative=0,wallHits=0;var failures=new List<string>();
             string only=Environment.GetEnvironmentVariable("JMR_GEM_NATURAL_CASE");
             foreach(int weapon in weapons)foreach(int robe in robes)foreach(bool blocked in new[]{false,true})
@@ -284,7 +287,7 @@ namespace NativeWorldTextProbe
                     NativeToolExecutionChecks.Sample(context,Get(context,"Input"),rawMouse,true);Call(combat,"Sample");Call(host,"SampleMouse");
                     NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);preview=(AttackContact)GetOptional(attack,"ExpectedImpact");
                     Require(blocked || preview!=null,"actual pressed gem/robe component has its full prepared contact "+weapon+"/"+robe+"/"+blocked);
-                    if(preview!=null)Call(attack,"BindPresentation",preview);
+                    if(preview!=null){NativeCombatAimChecks.PrepareDisplay(host,attack);Call(attack,"BindPresentation",preview);}
                     if(preview!=null){var impact=Get(Get(host,"World"),"Impact");Call(impact,"Capture");var zoom=Main.GameViewMatrix.ZoomMatrix;Call(impact,"Project",zoom,Matrix.Invert(zoom));var b=preview.ReceiveBounds;Require((bool)Get(impact,"Visible") && Vector2.DistanceSquared((Vector2)Get(impact,"Position"),Vector2.Transform(new Vector2(b.CenterX,b.CenterY)-Main.screenPosition,zoom))<.001f,"gem preview stays on the same receive-time receiver rectangle");}
                     // Keep the same mouse-centered selection premise as the
                     // idle case while making the physical ray point away.
