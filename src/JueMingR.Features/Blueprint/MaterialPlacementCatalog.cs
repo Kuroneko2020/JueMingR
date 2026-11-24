@@ -95,13 +95,14 @@ namespace JueMingR.Features.Blueprint
         }
         public long Revision { get; }
         public string TargetVersion { get; }
-        public static bool SupportsVersion(string version) => version == "1.4.5.8" || version == "1.4.6.0";
+        public static bool SupportsVersion(string version) => version == "1.4.5.8" || version == "1.4.6.0" || version == "1.4.6.1";
         public static bool CanReadVersion(string captured, string current)
         {
-            // The original IDs and frame metadata agree across these two
-            // versions. Older captures retain their identity and are qualified
+            // The admitted versions share the original IDs and frame metadata.
+            // Older captures retain their identity and are qualified
             // against the current catalog before any native action.
-            return SupportsVersion(current) && (captured == current || captured == "1.4.5.8");
+            return SupportsVersion(current) && (captured == current || captured == "1.4.5.8" ||
+                captured == "1.4.6.0" && current == "1.4.6.1");
         }
         public bool CanReadVersion(string captured) => CanReadVersion(captured, TargetVersion);
         public BlueprintProducerCoverage Coverage { get; }

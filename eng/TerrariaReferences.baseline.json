@@ -1,22 +1,22 @@
 {
   "schemaVersion": 1,
-  "profileId": "terraria-steam-1.4.6-xna-4.0.20823.0-compile-refs",
+  "profileId": "terraria-steam-1.4.6.1-xna-4.0.20823.0-compile-refs",
   "purpose": "Fixed local compile-time references for the Windows Steam client; package target metadata records these inputs independently of runtime admission and support claims.",
   "terrariaChannelEvidence": {
     "channel": "Steam",
     "appId": "105600",
     "stateFlags": "4",
-    "buildId": "26896429",
-    "terrariaVersion": "1.4.6",
+    "buildId": "26902183",
+    "terrariaVersion": "1.4.6.1",
     "evidenceScope": "A legally installed local Steam copy inspected on 2026-11-25; no private installation path is recorded."
   },
   "files": [
     {
       "logicalName": "Terraria.exe",
       "assemblySimpleName": "Terraria",
-      "assemblyVersion": "1.4.6.0",
-      "fileVersion": "1.4.6",
-      "mvid": "e493f9b5-ffed-4b63-a1bb-eb91bbbaee71",
+      "assemblyVersion": "1.4.6.1",
+      "fileVersion": "1.4.6.1",
+      "mvid": "316ae3ed-ed52-4207-a7cf-8c70fc902a47",
       "mainUpdateMetadataToken": "0x06000D68",
       "publicKeyToken": "",
       "peMachine": "I386",
@@ -26,7 +26,7 @@
         "Requires32Bit"
       ],
       "requires32Bit": true,
-      "sha256": "E92176BA3828662638ABFE24B06517BE4D64877C45A9EA86005F62F00AA22F12",
+      "sha256": "BE4BACE6726A31750AB9CD56A6BDB60C7DE80306D53EC4107E69C6ECCFC9CE05",
       "sourceCategory": "Terraria installation",
       "redistributableByJueMingR": false,
       "copyLocal": false

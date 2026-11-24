@@ -23,10 +23,13 @@ namespace JueMingR.ArchitectureTests
             source.Values[Key(3, 3)] = new CaptureCell { X = 3, Y = 3, Layers = CaptureLayer.Tile, TileType = 999 };
             source.Values[Key(5, 5)] = new CaptureCell { X = 5, Y = 5, Layers = CaptureLayer.Tile, TileType = 1, Inactive = true, HalfBrick = true, TilePaint = 12, InvisibleTile = true };
             var snapshot = selected.Freeze(); selected.Clear();
-            var job = new CaptureJob(source, snapshot, 12, "1.4.6.0"); var records = Drain(job, 3);
+            var job = new CaptureJob(source, snapshot, 12, "1.4.6.1"); var records = Drain(job, 3);
             CaptureSummary summary = job.Summary(91);
-            Require(summary.TargetVersion == "1.4.6.0" && BlueprintPlacementCatalog.CanReadVersion("1.4.5.8", summary.TargetVersion) &&
-                !BlueprintPlacementCatalog.CanReadVersion("1.4.5.7", summary.TargetVersion), "current capture preserves its version and admits only verified older layouts");
+            Require(summary.TargetVersion == "1.4.6.1" && BlueprintPlacementCatalog.CanReadVersion("1.4.5.8", summary.TargetVersion) &&
+                BlueprintPlacementCatalog.CanReadVersion("1.4.6.0", summary.TargetVersion) &&
+                !BlueprintPlacementCatalog.CanReadVersion("1.4.5.7", summary.TargetVersion) &&
+                !BlueprintPlacementCatalog.CanReadVersion("1.4.6.2", summary.TargetVersion) &&
+                !BlueprintPlacementCatalog.CanReadVersion(summary.TargetVersion, "1.4.6.0"), "current capture preserves its version and admits only verified older layouts");
             Require(records.Count == 2 && summary.Left == 2 && summary.Top == 2 && summary.Width == 4 && summary.Height == 4, "air border trims; interior XOR hole has no cell");
             var wall = records.Single(c => c.X == 2); var tile = records.Single(c => c.X == 5);
             Require((wall.Layers & CaptureLayer.Tile) == 0 && wall.Wires == 15 && wall.LiquidKind == 3 && wall.LiquidAmount == 209 && wall.Actuator && wall.FullbrightWall, "all meaningful non-tile layers retain independent values");

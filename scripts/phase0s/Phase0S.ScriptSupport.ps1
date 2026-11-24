@@ -434,6 +434,12 @@ function Read-Phase0SRuntimeManifest {
     $historical = $values.targetAssemblyVersion -ceq '1.4.5.8' -and
         $values.reLogicAssemblyMvid -ceq 'ee258be9-88a4-423d-b3ce-84b6c35b141a' -and
         $values.reLogicResourceSha256 -ceq 'E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29'
+    $historical = $historical -or ($values.targetAssemblyVersion -ceq '1.4.6.0' -and
+        $values.targetAssemblyMvid -ceq 'e493f9b5-ffed-4b63-a1bb-eb91bbbaee71' -and
+        $values.targetAssemblySha256 -ceq 'E92176BA3828662638ABFE24B06517BE4D64877C45A9EA86005F62F00AA22F12' -and
+        $values.reLogicAssemblyMvid -ceq 'be077c52-1dbf-44ac-b6f4-d4adb13f5b2c' -and
+        $values.reLogicResourceSha256 -ceq '4204AD3D43A305665276C574FE32F7E0B96DF4A2D086D076F60226CE9BA00489' -and
+        $values.targetMethodMetadataToken -ceq '0x06000D68')
     $current = $false
     if (-not $historical) {
         $reference = Get-Phase0SCurrentReferenceIdentity
