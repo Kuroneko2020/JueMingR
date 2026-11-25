@@ -117,7 +117,10 @@ foreach($name in @('JUEMINGR_FONT_BASELINE_HOST','JUEMINGR_FONT_BASELINE_FILTER_
     $dispatch=Read-WorkloadNativeDispatch
     Assert-Route ($dispatch.selectors.Contains($name) -and $dispatch.overrides.Contains($name)) ('explicit historical font axis is registered and cleared by formal native admission '+$name)
 }
-foreach($scope in @('CompanionFontVisual','CompanionConfigVisual','CompanionCreationInputVisual','CompanionResourceBarsVisual','CompanionShowcaseVisual','CompanionNetworkCpu','CompanionPasswordCpu','CompanionSuppliesCpu','CompanionObservationCombatCpu','CompanionSessionCpu','CompanionNavigationCpu','CompanionCreationCpu','CompanionItemsCpu','CompanionCpu','AfkModeCompletionCpu','AfkModeBorrowCpu','BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
+$wormholeComparison='JUEMINGR_COMPANION_WORMHOLE_COMPARISON'
+$dispatch=Read-WorkloadNativeDispatch
+Assert-Route ($dispatch.selectors.Contains($wormholeComparison) -and $dispatch.overrides.Contains($wormholeComparison)) 'explicit wormhole candidate is cleared by formal native admission'
+foreach($scope in @('CompanionFontVisual','CompanionConfigVisual','CompanionExitVisual','CompanionCreationInputVisual','CompanionResourceBarsVisual','CompanionShowcaseVisual','CompanionNetworkCpu','CompanionWormholeCpu','CompanionPasswordCpu','CompanionSuppliesCpu','CompanionObservationCombatCpu','CompanionSessionCpu','CompanionNavigationCpu','CompanionCreationCpu','CompanionItemsCpu','CompanionCpu','AfkModeCompletionCpu','AfkModeBorrowCpu','BlueprintNearQueueCpu','RuntimeFailureBuildUsingSelectionCpu','RuntimeFailureBuildUsingScrollCpu','BlueprintImportedMaterialsCpu','BlueprintHoikSubstitutionCpu')){
     $plan=@(Get-WorkloadPlan $repositoryRoot 'checks' 'architecture.exe' @() @('check:native-'+$scope))
     Assert-Route ($plan.Count -eq 1 -and $plan[0].name -ceq ('native-'+$scope) -and $plan[0].arguments[-1] -ceq $scope) ('exact new native scope '+$scope)
     Assert-Route ($null -ne (Get-WorkloadExpectedNativeLeaf ('native-'+$scope))) ('new scope completion registered '+$scope)
@@ -127,12 +130,21 @@ foreach($helper in @('','Behavior','Continuous','Lifecycle','Persistence','Predi
     $expectedCompanionLeaf=switch -CaseSensitive ($helper) {
         'Ui' { 'native-CompanionCpu|native-CompanionSessionCpu|native-CompanionVisual|native-CompanionCreationInputVisual|native-CompanionPasswordCpu' }
         'Transport' { 'native-CompanionCpu|native-CompanionNetworkCpu' }
+        'Behavior' { 'native-CompanionCpu|native-CompanionNavigationCpu' }
         '' { 'native-CompanionCpu|native-CompanionObservationCombatCpu' }
         default { 'native-CompanionCpu' }
     }
     Assert-Route ((@(Get-WorkloadPathChecks $companionLeaf)-join '|') -ceq $expectedCompanionLeaf) ('companion private leaf retains its real callers '+$companionLeaf)
 }
-Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs') -join '|') -ceq 'native-CompanionFontVisual|native-CompanionConfigVisual|native-CompanionCreationInputVisual|native-CompanionShowcaseVisual|native-CompanionVisual|native-CompanionNetworkCpu|native-CompanionPasswordCpu|native-CompanionSuppliesCpu|native-CompanionObservationCombatCpu|native-CompanionSessionCpu|native-CompanionNavigationCpu|native-CompanionCpu|native-CompanionCreationCpu|native-CompanionItemsCpu') 'native companion preparation retains each actual CPU caller'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs') -join '|') -ceq 'native-CompanionFontVisual|native-CompanionConfigVisual|native-CompanionCreationInputVisual|native-CompanionShowcaseVisual|native-CompanionVisual|native-CompanionNetworkCpu|native-CompanionWormholeCpu|native-CompanionPasswordCpu|native-CompanionSuppliesCpu|native-CompanionObservationCombatCpu|native-CompanionSessionCpu|native-CompanionNavigationCpu|native-CompanionCpu|native-CompanionCreationCpu|native-CompanionItemsCpu|native-CompanionExitVisual') 'native companion preparation retains each actual caller'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionExitChecks.cs') -join '|') -ceq 'native-CompanionExitVisual') 'original save-and-exit body owns the exact restart and drawing scope'
+foreach($leaf in @('DynamicFollow','DoorFollow','FacilityFollow')){
+    Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanion'+$leaf+'Checks.cs')) -join '|') -ceq 'native-CompanionNavigationCpu') ('native Follow scenario uses the actual navigation consumer '+$leaf)
+}
+foreach($leaf in @('Hoik','Mixed','Live','Dash')){
+    Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.'+$leaf+'.cs')) -join '|') -ceq 'native-CompanionNavigationCpu') ('continuous movement fixture uses the actual navigation consumer '+$leaf)
+}
+Assert-Route (@((Get-WorkloadRoute @('tests/NativeWorldTextProbe/ProbeGraphics.cs')).groups) -ccontains 'shared-host') 'common graphics fixture keeps all existing consumers as well as the new exit scope'
 foreach($pair in @(@('Team','Network'),@('Navigation','Navigation'),@('Session','Session'))){
     $expected=@('native-Companion'+$pair[1]+'Cpu');if($pair[0] -ceq 'Session'){$expected+='native-CompanionVisual'}
     if($pair[0] -ceq 'Team'){$expected+='native-CompanionSuppliesCpu'} # Native TCP frame reader shared with the phone round trip.
@@ -143,7 +155,7 @@ Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompan
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionResourceBarChecks.cs') -join '|') -ceq 'native-CompanionResourceBarsVisual') 'native resource delegate oracle selects its exact graphical consumer'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionFancyResourceChecks.cs') -join '|') -ceq 'native-CompanionResourceBarsVisual') 'Fancy resource oracle shares only the direct resource graphical leaf'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionFeedbackChecks.cs') -join '|') -ceq 'native-CompanionCreationInputVisual') 'joining progress component check belongs to the actual joining input fixture'
-Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionConfigurationChecks.cs') -join '|') -ceq 'native-CompanionConfigVisual') 'configuration fixture owns its exact natural graphics leaf'
+Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionConfigurationChecks.cs') -join '|') -ceq 'native-CompanionConfigVisual|native-CompanionExitVisual') 'configuration and exit share the actual profile and UI fixture helpers'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionFontChecks.cs') -join '|') -ceq 'native-CompanionFontVisual') 'font fixture owns its actual narrow graphics leaf'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionPasswordChecks.cs') -join '|') -ceq 'native-CompanionPasswordCpu|native-CompanionConfigVisual|native-CompanionFontVisual') 'password capture is shared by its protocol and real drawing consumers'
 Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompanionSupplyWireChecks.cs') -join '|') -ceq 'native-CompanionSuppliesCpu') 'split-wallet wire witness belongs to the actual supply scope'

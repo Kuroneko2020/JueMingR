@@ -1,0 +1,803 @@
+using System;
+using System.Collections.Generic;
+using JueMingR.Platform.Companions;
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.ID;
+using static NativeWorldTextProbe.NativeInformationChecks;
+
+namespace NativeWorldTextProbe
+{
+    internal static partial class NativeCompanionVerticalFollowChecks
+    {
+        private const int AllowedOpposingPursuitKeys = 2;
+
+        private static void NativeSteadyPursuitAtLip(object context, object host, object profiles, Player human)
+        {
+            const int upper = 74, unreachableBottom = 123, endColumn = 64, ticks = 170;
+            float start = RoomX(58), lip = (endColumn + 1) * 16f;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "steady-pursuit-lip",
+                new Vector2(start, upper * 16), new Vector2(RoomX(86), upper * 16), () =>
+                {
+                    PlaceFixtureStrip(44, endColumn, upper, TileID.Stone);
+                    PlaceFixtureStrip(84, 123, upper, TileID.Stone);
+                    PlaceFixtureStrip(44, 123, unreachableBottom, TileID.Stone);
+                }))
+            {
+                Player body = run.Body;
+                var nav = Navigator(run.Actor);
+                int previousInput = 0, previousReversal = -10, facing = body.direction;
+                int consecutive = 0, longest = 0, reversals = 0, facingChanges = 0;
+                float peak = 0f, left = 0f, right = 0f;
+                for (int tick = 0; tick < ticks; tick++)
+                {
+                    float before = body.Bottom.X;
+                    run.Step(tick < 70 ? 1 : 0);
+                    int input = (body.controlRight ? 1 : 0) - (body.controlLeft ? 1 : 0);
+                    bool newDirection = input != 0 && input != previousInput;
+                    bool changed = newDirection && previousInput != 0 && body.velocity.X > .5f && human.velocity.X > .5f;
+                    if (newDirection)
+                    {
+                        if (changed)
+                        {
+                            reversals++;
+                            consecutive = tick - previousReversal <= 3 ? consecutive + 1 : 1;
+                            previousReversal = tick;
+                        }
+                        else consecutive = 0;
+                        longest = Math.Max(longest, consecutive);
+                        previousInput = input;
+                    }
+                    if (facing != body.direction) facingChanges++;
+                    float delta = body.Bottom.X - before;
+                    left += Math.Max(0f, -delta);
+                    right += Math.Max(0f, delta);
+                    peak = Math.Max(peak, Math.Abs(body.velocity.X));
+                    if (changed && reversals <= 16 || tick % 40 == 0)
+                        Console.WriteLine($"FOLLOW STEADY LIP step={tick} owner={human.Bottom}/{human.velocity} body={body.Bottom}/{body.velocity} " +
+                            $"keys={body.controlLeft}/{body.controlRight} facing={body.direction} consecutive={consecutive} {PlanStatus(nav)} {RouteTrace(nav)}");
+                    facing = body.direction;
+                }
+                Console.WriteLine($"FOLLOW STEADY LIP reversals={reversals} longest={longest} facingChanges={facingChanges} peak={peak:F2} " +
+                    $"leftDistance={left:F2} rightDistance={right:F2} dx={body.Bottom.X - start:F2} end={body.Bottom}");
+                Require(right > 30f && body.Right.X <= lip + body.width && OnFloor(body, upper) && !body.dead,
+                    "the companion approaches the unsafe solid lip without walking into the long fall");
+                Require(longest < 4, "a steady owner and unsafe edge do not cause consecutive alternation of native left and right controls");
+            }
+        }
+
+        private static void NativeSteadyGroundPursuit(object context, object host, object profiles, Player human, bool platform = false)
+        {
+            const int row = 85, ticks = 245;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, platform ? "steady-fast-platform" : "steady-fast-pursuit",
+                new Vector2(RoomX(47), row * 16), new Vector2(RoomX(61), row * 16),
+                () => PlaceFixtureStrip(43, 132, row, platform ? TileID.Platforms : TileID.Stone)))
+            {
+                Player body = run.Body;
+                body.armor[3] = new Item(ItemID.HermesBoots);
+                var nav = Navigator(run.Actor);
+                int previousInput = 0, previousTick = -10, previousFacing = body.direction, streak = 0, longest = 0, reversals = 0;
+                int near = 0, faces = 0;
+                int steadySteps = 0, wrongWayKeys = 0, steadyFaces = 0, sustained = 0, longestSteady = 0;
+                float steadyDistance = 0f;
+                float left = 0f, right = 0f, peakBody = 0f, peakOwner = 0f;
+                for (int tick = 0; tick < ticks; tick++)
+                {
+                    float bodyStart = body.Bottom.X;
+                    float bodySpeed = body.velocity.X;
+                    run.Step(1);
+                    float displacement = body.Bottom.X - bodyStart;
+                    int input = (body.controlRight ? 1 : 0) - (body.controlLeft ? 1 : 0);
+                    left += Math.Max(0f, -displacement);
+                    right += Math.Max(0f, displacement);
+                    peakBody = Math.Max(peakBody, body.velocity.X);
+                    peakOwner = Math.Max(peakOwner, human.velocity.X);
+                    if (human.Bottom.X - body.Bottom.X < 66f) near++;
+                    if (body.direction != previousFacing) faces++;
+                    // The scripted owner is still going right and both bodies are on an
+                    // uninterrupted lane. The distance and remaining lane exclude braking
+                    // to arrive, reaching the edge, and turning to follow the owner's input.
+                    if (human.velocity.X > .8f && bodySpeed > .5f && human.Bottom.X - body.Bottom.X > 96f &&
+                        OnFloor(human, row) && OnFloor(body, row) && body.Right.X < 128 * 16f)
+                    {
+                        steadySteps++;
+                        steadyDistance += displacement;
+                        if (IsOpposingPursuitKey(input)) wrongWayKeys++;
+                        if (body.direction != previousFacing) steadyFaces++;
+                        sustained = input > 0 ? sustained + 1 : 0;
+                        longestSteady = Math.Max(longestSteady, sustained);
+                        if (input < 0 && wrongWayKeys <= 12)
+                            Console.WriteLine($"FOLLOW RUNWAY reverse={tick} platform={platform} owner={human.Bottom}/{human.velocity} " +
+                                $"body={body.Bottom}/{body.velocity} previousVX={bodySpeed:F3} dx={displacement:F3} " +
+                                $"keys={body.controlLeft}/{body.controlRight} face={body.direction} {PlanStatus(nav)}");
+                    }
+                    previousFacing = body.direction;
+                    if (input == 0) continue;
+                    bool alternates = input == -previousInput && tick - previousTick <= 3;
+                    streak = alternates ? streak + 1 : 0;
+                    if (alternates && ++reversals <= 18)
+                        Console.WriteLine($"FOLLOW STEADY GROUND step={tick} input={input} facing={body.direction} " +
+                            $"owner={human.Bottom}/{human.velocity} body={body.Bottom}/{body.velocity} streak={streak} {RouteTrace(nav)}");
+                    longest = Math.Max(longest, streak);
+                    previousInput = input;
+                    previousTick = tick;
+                }
+                Console.WriteLine($"FOLLOW STEADY GROUND platform={platform} reversals={reversals} streak={longest} facingChanges={faces} near={near} " +
+                    $"steadySteps={steadySteps} wrongWayKeys={wrongWayKeys} steadyFaces={steadyFaces} steadyDistance={steadyDistance:F2} " +
+                    $"run={longestSteady} left={left:F2} right={right:F2} speeds={peakBody:F2}/{peakOwner:F2} " +
+                    $"body={body.Bottom}/{body.velocity} owner={human.Bottom}/{human.velocity}");
+                Require(steadySteps >= 50 && steadyDistance > 100f && peakBody > 4.1f && peakOwner > 2.5f && run.NativeRelocations == 0,
+                    "both real bodies cover an uninterrupted support lane while Hermes running crosses the old ground braking gate");
+                Require(wrongWayKeys <= AllowedOpposingPursuitKeys && steadyFaces <= 4 && longestSteady >= 30,
+                    "a continuous clear lane and distant same-direction owner do not repeatedly alternate acceleration with grounded reverse braking");
+                Require(near >= 20 && right > 430f && peakBody > peakOwner && run.NativeRelocations == 0,
+                    "the faster original body catches a continuously right-moving owner on clear ground");
+                Require(longest < 4, "a steady open-ground pursuit does not repeatedly alternate final left and right inputs");
+            }
+        }
+
+        private static bool IsOpposingPursuitKey(int input) => input < 0;
+
+        private static void NativePlatformPursuit(object context, object host, object profiles, Player human)
+        {
+            int opposing = 0;
+            for (int tick = 0; tick < 120; tick++)
+                if (IsOpposingPursuitKey(tick % 4 == 3 ? -1 : 1)) opposing++;
+            Require(opposing == 30 && opposing > AllowedOpposingPursuitKeys,
+                "a repeating Right Right Right Left stream cannot pass the known-open pursuit predicate");
+            NativeSteadyGroundPursuit(context, host, profiles, human, platform: true);
+        }
+
+        private static void NativeFixedPlatformBraking(object context, object host, object profiles, Player human)
+        {
+            const int row = 85;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "fixed-platform-stop",
+                new Vector2(RoomX(51), row * 16), new Vector2(RoomX(78), row * 16),
+                () => PlaceFixtureStrip(43, 132, row, TileID.Platforms)))
+            {
+                Player body = run.Body;
+                body.armor[3] = new Item(ItemID.HermesBoots);
+                run.Step();
+                Require(OnFloor(body, row) && body.accRunSpeed > 4.2f,
+                    "the fixed control section starts on actual platform support with legal Hermes speed");
+                object observed = Get(Get(run.Actor, "Mobility"), "Observed");
+                Type actionType = Get(Navigator(run.Actor), "action").GetType();
+                bool allForward = true;
+                // Static control inputs isolate the old 48px gate. The paired live
+                // fixture separately earns these speeds through original updates.
+                foreach (float speed in new[] { 4.10f, 4.12f, 5.25f })
+                {
+                    var testAction = Activator.CreateInstance(actionType, nonPublic: true);
+                    body.velocity = new Vector2(speed, 0f);
+                    int move = (int)Call(testAction, "GroundInput", body, observed, human.Bottom.X, 3f, 34f, true, true);
+                    allForward &= move == 1;
+                    Console.WriteLine($"FOLLOW FIXED PLATFORM speed={speed:F2} move={move} left={body.Left.X:F2} " +
+                        $"acceleration={body.runAcceleration:F2} slowdown={body.runSlowdown:F2} owner={human.Bottom}");
+                }
+                Require(allForward, "an unobstructed continuous platform does not change steady pursuit to opposite input past the old 48px gate");
+            }
+        }
+
+        private static void NativeOppositeAimPursuit(object context, object host, object profiles, Player human)
+        {
+            const int floor = 85, slot = 17, weapon = 41, ammo = 54;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "follow-aim-behind",
+                new Vector2(RoomX(49), floor * 16), new Vector2(RoomX(62), floor * 16),
+                () => PlaceFixtureStrip(43, 132, floor, TileID.Stone)))
+            {
+                Player body = run.Body;
+                NPC previous = Main.npc[slot];
+                var enemy = new NPC();
+                NativeCompanionNavigationChecks.InitializeTarget(enemy, slot, body.Center - new Vector2(75f, 0f));
+                enemy.damage = 0;
+                Main.npc[slot] = enemy;
+                var profile = (CompanionProfile)Get(run.Actor, "Profile");
+                try
+                {
+                    body.inventory[weapon] = new Item(ItemID.VenusMagnum);
+                    body.inventory[ammo] = new Item(ItemID.MusketBall) { stack = 40 };
+                    Require((bool)Call(host, "SetBehavior", profile.Id, new CompanionBehavior
+                    {
+                        Follow = true, AttackEnabled = true, HealthRecoveryEnabled = false,
+                        MainWeapons = new[] { new CompanionWeaponPreference(ItemID.VenusMagnum, 0, weapon) }
+                    }), "real Follow and the configured ranged attack are simultaneously active");
+                    int advancingShots = 0, forwardUse = 0, oppositeFacing = 0, reverseKeys = 0;
+                    float advance = 0f, backward = 0f;
+                    for (int tick = 0; tick < 130; tick++)
+                    {
+                        int loaded = body.inventory[ammo].stack;
+                        float before = body.Bottom.X;
+                        run.Step(1);
+                        if (enemy.active) enemy.UpdateNPC(slot);
+                        NativeCompanionNavigationChecks.UpdateOwnedShots(body);
+                        float moved = body.Bottom.X - before;
+                        advance += Math.Max(0f, moved);
+                        backward += Math.Max(0f, -moved);
+                        if (body.controlLeft) reverseKeys++;
+                        if (moved <= .4f || !body.controlUseItem || ((Vector2)Get(run.Actor, "Aim")).X >= body.Center.X) continue;
+                        forwardUse++;
+                        if (body.direction < 0) oppositeFacing++;
+                        if (body.inventory[ammo].stack < loaded) advancingShots++;
+                    }
+                    Console.WriteLine($"FOLLOW AIM BEHIND useAlongForward={forwardUse} paid={advancingShots} " +
+                        $"facesBehind={oppositeFacing} reverseKeys={reverseKeys} movement={advance:F2}/{backward:F2} health={enemy.life}/{enemy.lifeMax}");
+                    Require(forwardUse >= 12 && advancingShots >= 1 && enemy.life < enemy.lifeMax && advance > 150f &&
+                        backward < 6f && reverseKeys <= 4 && run.NativeRelocations == 0,
+                        "native shots aim and hit behind while the same body follows the moving owner to the right");
+                }
+                finally
+                {
+                    Main.npc[slot] = previous;
+                    foreach (Projectile shot in Main.projectile)
+                        if (shot.active && shot.owner == body.whoAmI) shot.Kill();
+                }
+            }
+        }
+
+        private static void NativeSteadyDashPursuit(object context, object host, object profiles, Player human)
+        {
+            const int floor = 85, runwayEnd = 151;
+            Item savedAccessory = human.armor[3];
+            int longestWait = 0;
+            try
+            {
+                human.armor[3] = new Item(ItemID.HermesBoots);
+                using (var run = new NativeFollowWorld(context, host, profiles, human, "steady-dash-pursuit",
+                    new Vector2(RoomX(37), floor * 16), new Vector2(RoomX(68), floor * 16),
+                    () => PlaceFixtureStrip(34, runwayEnd, floor, TileID.Stone)))
+                {
+                    Player body = run.Body;
+                    body.armor[3] = new Item(ItemID.EoCShield);
+                    object navigation = Navigator(run.Actor);
+                    var launches = new List<int>();
+                    int pulses = 0, wait = 0, readyAfterCooldown = 0, cooldowns = 0;
+                    bool usedDash = false;
+                    for (int tick = 0; tick < 200; tick++)
+                    {
+                        float speed = body.velocity.X;
+                        int delay = body.dashDelay;
+                        float gap = human.Bottom.X - body.Bottom.X;
+                        // The owner is still pulling away. This part of the unbroken stone
+                        // runway provides more than the shield's tested safe stopping lane.
+                        bool worthwhile = body.dashType == 2 && delay == 0 && body.releaseDash && !body.CCed &&
+                            speed >= 0f && speed < 4f && human.velocity.X > 1f && gap >= 225f &&
+                            (runwayEnd + 1) * 16f - body.Right.X >= 260f && OnFloor(body, floor) && OnFloor(human, floor);
+                        run.Step(1);
+                        bool launched = delay == 0 && body.dashDelay < 0 && body.eocDash > 0 && body.velocity.X > speed + 8f;
+                        if (delay > 0 && body.dashDelay == 0) cooldowns++;
+                        if (body.controlDash) pulses++;
+                        if (worthwhile && usedDash) readyAfterCooldown++;
+                        if (launched)
+                        {
+                            launches.Add(tick);
+                            usedDash = true;
+                            Console.WriteLine($"FOLLOW STEADY DASH launch={tick} missed={wait} gap={gap:F2} speed={speed:F2}->{body.velocity.X:F2}");
+                        }
+                        wait = worthwhile && !launched ? wait + 1 : 0;
+                        longestWait = Math.Max(longestWait, wait);
+                        if (wait >= 3 && wait <= 19)
+                            Console.WriteLine($"FOLLOW STEADY DASH wait={tick}/{wait} gap={gap:F2} speed={speed:F2}->{body.velocity.X:F2} " +
+                                $"prepared={GetOptional(navigation, "dashPreparedUntil")} check={GetOptional(navigation, "nextDashCheck")} " +
+                                $"offer={GetOptional(navigation, "hasOffer")} direct={GetOptional(Get(navigation, "action"), "Direct")} " +
+                                $"keys={body.controlLeft}/{body.controlRight}/{body.controlDash} {PlanStatus(navigation)} {RouteTrace(navigation)}");
+                    }
+                    Console.WriteLine($"FOLLOW STEADY DASH launches=[{string.Join(",", launches)}] hotkeyPulses={pulses} " +
+                        $"cooldowns={cooldowns} readyAfterCooldown={readyAfterCooldown} longestEligibleWait={longestWait} " +
+                        $"body={body.Bottom}/{body.velocity} owner={human.Bottom}/{human.velocity}");
+                    Require(launches.Count >= 3 && cooldowns >= 2 && pulses == launches.Count && readyAfterCooldown >= 1 &&
+                        OnFloor(body, floor) && OnFloor(human, floor) && human.velocity.X > 4f && run.NativeRelocations == 0,
+                        "a continuously running original owner sees distinct, rearmed shield pulses on the same clear ground");
+                }
+
+                using (var run = new NativeFollowWorld(context, host, profiles, human, "close-dash-pursuit",
+                    new Vector2(RoomX(47), floor * 16), new Vector2(RoomX(50), floor * 16),
+                    () => PlaceFixtureStrip(43, runwayEnd, floor, TileID.Stone)))
+                {
+                    Player body = run.Body;
+                    body.armor[3] = new Item(ItemID.EoCShield);
+                    float maxGap = 0f, start = body.Bottom.X;
+                    bool dashed = false;
+                    for (int tick = 0; tick < 45; tick++)
+                    {
+                        run.Step(1);
+                        maxGap = Math.Max(maxGap, human.Bottom.X - body.Bottom.X);
+                        dashed |= body.controlDash || body.dashDelay < 0;
+                    }
+                    Require(body.dashType == 2 && maxGap < 140f && body.Bottom.X > start + 25f && !dashed,
+                        "real shield gear stays in ordinary walking follow when the moving owner is already close");
+
+                    body.armor[3] = new Item();
+                    bool farWithoutGear = false;
+                    for (int tick = 0; tick < 140; tick++)
+                    {
+                        run.Step(1);
+                        farWithoutGear |= body.dashType == 0 && human.Bottom.X - body.Bottom.X > 225f;
+                        dashed |= body.controlDash || body.dashDelay < 0;
+                    }
+                    Console.WriteLine($"FOLLOW STEADY DASH controls closeMaxGap={maxGap:F2} farWithoutGear={farWithoutGear} unexpectedDash={dashed}");
+                    Require(farWithoutGear && !dashed && OnFloor(body, floor) && OnFloor(human, floor),
+                        "removing the actual shield leaves only ordinary inputs even after the owner pulls far ahead");
+                }
+                Require(longestWait <= 4,
+                    "a native-ready shield with useful lead and proven stopping room does not wait through several otherwise usable updates");
+            }
+            finally { human.armor[3] = savedAccessory; }
+        }
+
+        private static void NativeOffsetColdStart(object context, object host, object profiles, Player human)
+        {
+            const int upper = 72, lower = 86, samples = 10;
+            float start = RoomX(51);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "offset-cold-start",
+                new Vector2(start, lower * 16), new Vector2(RoomX(64), upper * 16), () =>
+                {
+                    PlaceFixtureStrip(43, 115, lower, TileID.Stone);
+                    PlaceFixtureStrip(56, 110, upper, TileID.Platforms);
+                }))
+            {
+                Player body = run.Body;
+                var nav = Navigator(run.Actor);
+                Require((long)Get(nav, "ActionId") == 0 && OnFloor(body, lower) && OnFloor(human, upper),
+                    "the cold companion has no preceding Walk and the owner starts one floor above");
+                int firstRight = -1;
+                for (int tick = 0; tick < samples; tick++)
+                {
+                    run.Step(1);
+                    if (firstRight < 0 && body.controlRight && !body.controlLeft) firstRight = tick;
+                    Require(OnFloor(body, lower) && OnFloor(human, upper),
+                        "native bodies retain contact with independent continuous supports during the cold window");
+                    if (tick <= 1 || tick == samples - 1)
+                        Console.WriteLine($"FOLLOW OFFSET COLD step={tick} owner={human.Bottom}/{human.velocity} " +
+                            $"body={body.Bottom}/{body.velocity} keys={body.controlLeft}/{body.controlRight} {RouteTrace(nav)}");
+                }
+                Require(firstRight >= 0 && firstRight <= 1 && body.Bottom.X - start > 2f && run.NativeRelocations == 0,
+                    "an immediately available lower-floor run emits right input by the first ready update and moves the original body toward the higher owner");
+            }
+        }
+
+        private static void NativeOwnerJumpFollow(object context, object host, object profiles, Player human)
+        {
+            const int floor = 86, ticks = 145;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "offset-owner-jumps",
+                new Vector2(RoomX(48), floor * 16), new Vector2(RoomX(63), floor * 16),
+                () => PlaceFixtureStrip(42, 125, floor, TileID.Stone)))
+            {
+                Player body = run.Body;
+                int rising = 0, falling = 0, elevatedUseful = 0, blank = 0, longestBlank = 0;
+                int jumps = 0, holdUntil = 0;
+                float elevatedProgress = 0f;
+                bool above = false;
+                for (int tick = 0; tick < ticks; tick++)
+                {
+                    bool supported = OnFloor(body, floor);
+                    float before = body.Bottom.X;
+                    // The owner's second press waits for the owner's own native landing.
+                    if (jumps < 2 && tick >= (jumps == 0 ? 10 : 62) && OnFloor(human, floor))
+                    {
+                        jumps++;
+                        holdUntil = tick + 14;
+                    }
+                    run.Step(1, jump: tick < holdUntil);
+                    bool nextAbove = floor * 16 - human.Bottom.Y > 20f;
+                    if (!above && nextAbove) rising++;
+                    if (above && !nextAbove) falling++;
+                    above = nextAbove;
+                    if (above && supported && human.Bottom.X - before > 96f)
+                    {
+                        elevatedUseful++;
+                        blank = body.controlRight && !body.controlLeft ? 0 : blank + 1;
+                        longestBlank = Math.Max(longestBlank, blank);
+                        elevatedProgress += body.Bottom.X - before;
+                    }
+                    else blank = 0;
+                }
+                Console.WriteLine($"FOLLOW OFFSET JUMPS thresholdCrossings={rising}/{falling} openGroundUpdates={elevatedUseful} " +
+                    $"longestMissingRight={longestBlank} groundProgress={elevatedProgress:F2} owner={human.Bottom}/{human.velocity} body={body.Bottom}/{body.velocity}");
+                Require(rising >= 2 && falling >= 2 && elevatedUseful >= 8 && longestBlank <= 1 && elevatedProgress > 12f && run.NativeRelocations == 0,
+                    "two original owner jumps and landings retain useful horizontal delivery and real progress along the companion's clear ground");
+            }
+        }
+
+        private static void NativeLandedOwnerPlatform(object context, object host, object profiles, Player human)
+        {
+            const int upper = 79, lower = 88, platform = 59, ticks = 260;
+            float start = RoomX(51);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "landed-owner-exit",
+                new Vector2(start, upper * 16), new Vector2(RoomX(73), lower * 16), () =>
+                {
+                    PlaceFixtureStrip(43, platform - 1, upper, TileID.Stone);
+                    PlaceFixtureStrip(platform, 116, upper, TileID.Platforms);
+                    PlaceFixtureStrip(43, 122, lower, TileID.Stone);
+                }))
+            {
+                Player body = run.Body;
+                int firstRight = -1, approach = -1, down = -1, crossed = -1, airControl = -1, landed = -1, resumed = -1, direction = 1;
+                float releaseGap = 0f, landingX = 0f;
+                Require(OnFloor(human, lower), "the owner starts on native lower-floor support before the companion starts following");
+                for (int tick = 0; tick < ticks && resumed < 0; tick++)
+                {
+                    if (human.Bottom.X >= RoomX(112)) direction = -1;
+                    float before = body.Bottom.X;
+                    run.Step(direction);
+                    if (firstRight < 0 && body.controlRight && !body.controlLeft) firstRight = tick;
+                    if (approach < 0 && OnFloor(body, upper) && body.Bottom.X >= start + 36f && body.controlRight) approach = tick;
+                    if (down < 0 && body.controlDown && body.Right.X > platform * 16 && OnFloor(human, lower))
+                    {
+                        down = tick;
+                        releaseGap = human.Bottom.X - body.Bottom.X;
+                    }
+                    if (crossed < 0 && body.Bottom.Y > upper * 16 + 16 && body.velocity.Y > 0f) crossed = tick;
+                    if (crossed >= 0 && landed < 0 && airControl < 0 && body.velocity.Y > 1f && body.controlRight &&
+                        body.Bottom.X > before + .25f && human.Bottom.X - body.Bottom.X > 144f) airControl = tick;
+                    if (crossed >= 0 && landed < 0 && OnFloor(body, lower)) { landed = tick; landingX = body.Bottom.X; }
+                    if (landed >= 0 && body.controlRight && body.Bottom.X >= landingX + 12f && OnFloor(body, lower)) resumed = tick;
+                }
+                Console.WriteLine($"FOLLOW LANDED OWNER firstRight={firstRight} approach={approach} down={down} gap={releaseGap:F2} cross={crossed} " +
+                    $"airControl={airControl} land={landed} resume={resumed} owner={human.Bottom}/{human.velocity} body={body.Bottom}/{body.velocity} {RouteTrace(Navigator(run.Actor))}");
+                Require(firstRight >= 0 && firstRight <= 1 && approach >= 0 && down > approach && releaseGap > 144f && crossed > down && airControl >= crossed &&
+                    landed > airControl && resumed > landed && run.NativeRelocations == 0 && !body.dead,
+                    "with the moving owner already grounded far below, the same body approaches over stone, passes through the platform, steers in the air, lands and resumes follow");
+            }
+        }
+
+        private static void NativeWallFirstLift(object context, object host, object profiles, Player human)
+        {
+            const int wall = 62, lower = 88, upper = 78, ticks = 145;
+            float wallX = wall * 16, start = wallX - 13f;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "offset-wall-lift",
+                new Vector2(start, lower * 16), new Vector2(RoomX(68), upper * 16), () =>
+                {
+                    PlaceFixtureStrip(43, 115, lower, TileID.Stone);
+                    for (int row = upper; row < lower; row++) PlaceFixtureStrip(wall, wall, row, TileID.Stone);
+                    PlaceFixtureStrip(wall, 114, upper, TileID.Stone);
+                }))
+            {
+                Player body = run.Body;
+                body.armor[3] = new Item(Starboard);
+                int wings = -1, lift = -1, cleared = -1, movedRight = -1, direction = 1;
+                Require(wallX - body.Right.X <= 4f && body.Right.X < wallX && OnFloor(body, lower) && OnFloor(human, upper),
+                    "the original body stands directly beside a high wall with its own vertical shaft open");
+                for (int tick = 0; tick < ticks && movedRight < 0; tick++)
+                {
+                    if (human.Bottom.X >= RoomX(85)) direction = -1;
+                    else if (human.Bottom.X <= RoomX(65)) direction = 1;
+                    run.Step(direction);
+                    if (wings < 0 && body.wingsLogic > 0 && body.wingTimeMax > 0) wings = tick;
+                    if (lift < 0 && body.Bottom.Y < lower * 16 - 8f && body.Right.X <= wallX + .1f && body.velocity.Y < -1f)
+                        lift = tick;
+                    if (cleared < 0 && body.Bottom.Y <= upper * 16 && body.Right.X >= wallX) cleared = tick;
+                    if (cleared >= 0 && body.Left.X > wallX + 12f && body.controlRight && body.velocity.X > .5f)
+                        movedRight = tick;
+                }
+                Console.WriteLine($"FOLLOW SIDE WALL wings={wings} lift={lift} clears={cleared} right={movedRight} " +
+                    $"owner={human.Bottom}/{human.velocity} body={body.Bottom}/{body.velocity} {RouteTrace(Navigator(run.Actor))}");
+                Require(wings >= 0 && lift >= wings && lift <= wings + 12 && cleared > lift && movedRight >= cleared &&
+                    run.NativeRelocations == 0 && !body.dead,
+                    "the winged companion lifts through its clear shaft while the wall blocks horizontal travel, then crosses toward its moving owner");
+            }
+        }
+
+        private static void NativeDirectLiftRecovery(object context, object host, object profiles, Player human)
+        {
+            const int upper = 73, floor = 86, roof = floor - 4, ownerMoves = 42, ticks = 108;
+            float start = RoomX(55);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "offset-lift-retry",
+                new Vector2(start, floor * 16), new Vector2(start + 25f, upper * 16), () =>
+                {
+                    PlaceFixtureStrip(43, 115, floor, TileID.Stone);
+                    PlaceFixtureStrip(44, 113, upper, TileID.Platforms);
+                }))
+            {
+                Player body = run.Body;
+                body.armor[3] = new Item(Starboard);
+                var nav = Navigator(run.Actor);
+                int changed = -1, contact = -1, blocked = -1, walked = -1, repeatedLift = -1;
+                long original = 0;
+                float blockedAt = 0f, blockedOwnerGap = 0f, walkedFrom = 0f, walkOwnerGap = 0f;
+                for (int tick = 0; tick < ticks; tick++)
+                {
+                    float before = body.Bottom.X;
+                    float previousVertical = body.velocity.Y;
+                    bool supported = OnFloor(body, floor);
+                    run.Step(tick < ownerMoves ? 0 : 1);
+                    long id = (long)Get(nav, "ActionId");
+                    string kind = Get(nav, "ActionKind").ToString();
+                    bool direct = id > 0 && (bool)Get(Get(nav, "action"), "Direct");
+                    if (changed < 0 && direct && kind == "Flight" && body.controlJump && body.velocity.Y < -2f)
+                    {
+                        Require(body.Top.Y >= (roof + 1) * 16, "the arriving roof does not overlap the original flight body");
+                        original = id;
+                        changed = tick;
+                        PlaceFixtureStrip(44, 105, roof, TileID.Stone);
+                    }
+                    if (changed >= 0 && contact < 0 && tick > changed && previousVertical < -.5f && body.velocity.Y >= -.1f &&
+                        Math.Abs(body.Top.Y - (roof + 1) * 16) < 1f)
+                        contact = tick;
+                    string outcome = Get(nav, "ActionOutcome").ToString();
+                    if (contact >= 0 && blocked < 0 && id == original && (outcome == "Blocked" || outcome == "Rejected"))
+                    {
+                        blocked = tick;
+                        blockedAt = body.Bottom.X;
+                        blockedOwnerGap = human.Bottom.X - blockedAt;
+                    }
+                    if (blocked >= 0 && walked < 0 && tick > blocked)
+                    {
+                        if (kind == "Flight" && body.controlJump && body.velocity.Y < -2f) repeatedLift = tick;
+                        float gap = human.Bottom.X - before;
+                        if (supported && direct && kind == "Walk" && body.controlRight && body.Bottom.X > before + .05f)
+                        { walked = tick; walkedFrom = before; walkOwnerGap = gap; }
+                    }
+                    if (tick < 5 || tick == blocked || tick == walked)
+                        Console.WriteLine($"FOLLOW DIRECT LIFT step={tick} action={id}/{direct}/{kind}/{outcome} " +
+                            $"owner={human.Bottom}/{human.velocity} body={body.Bottom}/{body.velocity} " +
+                            $"keys={body.controlLeft}/{body.controlRight}/{body.controlJump} {RouteTrace(nav)}");
+                }
+                Console.WriteLine($"FOLLOW DIRECT LIFT roof={changed} contact={contact} blocked={blocked}/{blockedAt:F2}/{blockedOwnerGap:F2} " +
+                    $"directWalk={walked}/{walkedFrom:F2}/{walkOwnerGap:F2} repeatedLift={repeatedLift} " +
+                    $"owner={human.Bottom} body={body.Bottom}");
+                // The failed lift has the same owner side and same local body position as the next ground request.
+                Require(changed >= 0 && contact > changed && blocked >= contact && walked > blocked && walked - blocked < 36 &&
+                    blockedOwnerGap > 0f && walkOwnerGap > 0f &&
+                    Math.Abs(walkedFrom - blockedAt) < 24f && repeatedLift < 0 && body.Bottom.X > walkedFrom + 8f &&
+                    Main.tile[55, roof].nactive() &&
+                    ReferenceEquals(nav, Navigator(run.Actor)) && run.NativeRelocations == 0,
+                    "after a native direct lift hits the roof and fails, the same body immediately takes the clear ground segment while the roof still blocks lift");
+            }
+        }
+
+        private static void NativeOwnerReverses(object context, object host, object profiles, Player human)
+        {
+            const int floor = 82, ticks = 325, firstStop = 67, firstReverse = 105, secondStop = 184, secondReverse = 205;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "live-owner-reversal",
+                new Vector2(RoomX(51), floor * 16), new Vector2(RoomX(58), floor * 16),
+                () => PlaceFixtureStrip(42, 108, floor, TileID.Stone)))
+            {
+                Player body = run.Body;
+                Item prior = human.armor[3];
+                try
+                {
+                    // Different native running speeds make the gap change in both directions.
+                    body.armor[3] = new Item(ItemID.HermesBoots);
+                    human.armor[3] = new Item();
+                    var timing = new List<long>(ticks);
+                    var navigation = Navigator(run.Actor);
+                    int firstRight = -1, firstUsefulLeft = -1, firstLeft = -1, leftMotion = -1;
+                    int firstUsefulRight = -1, secondRight = -1, rightMotion = -1;
+                    float initialGap = human.Center.X - body.Center.X, closestGap = initialGap, fastestBody = 0f, fastestOwner = 0f;
+                    bool slowed = false;
+                    for (int tick = 0; tick < ticks; tick++)
+                    {
+                        // Ordinary .08 native acceleration reaches only 3.8 px/update by 85.
+                        // A complete stop includes the remaining approach and native deceleration.
+                        int axis = tick < firstStop ? 1 : tick < firstReverse ? 0 : tick < secondStop ? -1 : tick < secondReverse ? 0 : 1;
+                        float before = body.Center.X;
+                        timing.Add(run.Step(axis));
+                        float gap = human.Center.X - body.Center.X;
+                        float bodySpeed = body.Center.X - before;
+                        fastestBody = Math.Max(fastestBody, Math.Abs(bodySpeed));
+                        fastestOwner = Math.Max(fastestOwner, Math.Abs(human.velocity.X));
+                        if (firstRight < 0 && body.controlRight) firstRight = tick;
+                        if (tick < firstReverse) closestGap = Math.Min(closestGap, Math.Abs(gap));
+                        if (tick >= firstStop + 6 && tick < firstReverse && Math.Abs(human.velocity.X) < 1.1f && Math.Abs(gap) < 52f &&
+                            Math.Abs(body.velocity.X) < 1.8f) slowed = true;
+                        if (tick >= firstStop && tick < firstReverse && (tick - firstStop) % 5 == 0)
+                            Console.WriteLine($"FOLLOW LIVE TURN brake tick={tick} gap={gap:F1} velocities={human.velocity.X:F2}/{body.velocity.X:F2} " +
+                                $"keys={body.controlLeft}/{body.controlRight} id={(long)Get(navigation, "ActionId")}");
+                        if (tick >= firstReverse && tick < secondStop && firstUsefulLeft < 0 && gap <= -48 && human.velocity.X < -1)
+                            firstUsefulLeft = tick;
+                        if (firstUsefulLeft >= 0 && firstLeft < 0 && body.controlLeft && !body.controlRight) firstLeft = tick;
+                        if (firstLeft >= 0 && leftMotion < 0 && bodySpeed < -.5f) leftMotion = tick;
+                        if (tick >= secondReverse && firstUsefulRight < 0 && gap >= 48 && human.velocity.X > 1)
+                            firstUsefulRight = tick;
+                        if (firstUsefulRight >= 0 && secondRight < 0 && body.controlRight && !body.controlLeft) secondRight = tick;
+                        if (secondRight >= 0 && rightMotion < 0 && bodySpeed > .5f) rightMotion = tick;
+                    }
+                    Console.WriteLine($"FOLLOW LIVE TURN firstRight={firstRight} gap={initialGap:F1}->{closestGap:F1} brake={slowed} " +
+                        $"left={firstUsefulLeft}/{firstLeft}/{leftMotion} right={firstUsefulRight}/{secondRight}/{rightMotion} " +
+                        $"peakNativeSpeed={fastestBody:F2}/{fastestOwner:F2} {NativeStepTiming(timing)} {RouteTrace(navigation)}");
+                    Require(firstRight <= 1 && firstRight >= 0 && initialGap - closestGap >= 55 && slowed &&
+                        fastestBody > fastestOwner && run.NativeRelocations == 0 && !body.dead,
+                        "on open native ground the faster companion closes a genuine gap then brakes near the slowing owner");
+                    Require(firstUsefulLeft >= 0 && firstLeft >= firstUsefulLeft && firstLeft <= firstUsefulLeft + 1 &&
+                        leftMotion >= firstLeft && leftMotion <= firstLeft + 13 && firstUsefulRight >= 0 &&
+                        secondRight >= firstUsefulRight && secondRight <= firstUsefulRight + 1 && rightMotion >= secondRight &&
+                        rightMotion <= secondRight + 13,
+                        "both actionable native owner turns reach the next available delivery and subsequent real body displacement");
+                }
+                finally { human.armor[3] = prior; }
+            }
+        }
+
+        private static void NativeMovingFall(object context, object host, object profiles, Player human)
+        {
+            const int upper = 80, lower = 111, ticks = 280;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "live-owner-deep-drop",
+                new Vector2(RoomX(56), upper * 16), new Vector2(RoomX(60), upper * 16), () =>
+                {
+                    PlaceFixtureStrip(43, 100, upper, TileID.Platforms);
+                    PlaceFixtureStrip(43, 106, lower, TileID.Stone);
+                }))
+            {
+                Player body = run.Body;
+                Item prior = human.armor[3];
+                try
+                {
+                    human.armor[3] = new Item(ItemID.LuckyHorseshoe);
+                    const int startingLife = 85;
+                    body.statLife = startingLife;
+                    body.AddBuff(BuffID.Bleeding, 600);
+                    var events = new List<string>();
+                    var navigation = Navigator(run.Actor);
+                    int direction = 1, ownerDrop = -1, ownerLand = -1, bodyDown = -1, bodyDrop = -1, bodyLand = -1;
+                    int hurt = -1, followAfterHurt = -1, closeMoving = 0, longestClose = 0;
+                    for (int tick = 0; tick < ticks; tick++)
+                    {
+                        // This patrol continues on the lower floor based only on the owner's own position.
+                        if (human.Center.X >= RoomX(91)) direction = -1;
+                        else if (human.Center.X <= RoomX(51)) direction = 1;
+                        Vector2 ownerBefore = human.Bottom, before = body.Bottom;
+                        run.Step(direction, down: tick >= 22 && ownerLand < 0);
+                        if (ownerDrop < 0 && human.Bottom.Y > upper * 16 + 4 && Math.Abs(human.velocity.X) > 1)
+                        { ownerDrop = tick; events.Add($"{tick}:owner release {human.Bottom}/{human.velocity}"); }
+                        if (ownerDrop >= 0 && ownerLand < 0 && OnFloor(human, lower))
+                        { ownerLand = tick; events.Add($"{tick}:owner land {human.Bottom}"); }
+                        if (bodyDown < 0 && body.controlDown)
+                        { bodyDown = tick; events.Add($"{tick}:body Down {body.Bottom} {RouteStep(run.Actor)}"); }
+                        if (ownerDrop >= 0 && bodyDown < 0 && tick % 8 == 0)
+                            Console.WriteLine("FOLLOW LIVE DROP pending " + RoomTrace(run, human, navigation, tick, ownerLand < 0 ? 1 : 2));
+                        if (bodyDown >= 0 && bodyDrop < 0 && body.Bottom.Y > upper * 16 + 16 && body.velocity.Y > 0)
+                        { bodyDrop = tick; events.Add($"{tick}:body released {body.Bottom}/{body.velocity}"); }
+                        if (bodyDrop >= 0 && bodyLand < 0 && OnFloor(body, lower))
+                        { bodyLand = tick; events.Add($"{tick}:body land {body.Bottom}"); }
+                        if (hurt < 0 && body.statLife < startingLife)
+                        { hurt = tick; events.Add($"{tick}:native Hurt {startingLife}->{body.statLife}"); }
+                        bool moving = Math.Abs(human.Bottom.X - ownerBefore.X) > .75f;
+                        if (hurt >= 0 && tick > hurt && followAfterHurt < 0 && moving && Math.Abs(body.Bottom.X - before.X) > 1 &&
+                            (body.controlLeft || body.controlRight)) followAfterHurt = tick;
+                        closeMoving = hurt >= 0 && moving && OnFloor(body, lower) && Math.Abs(body.Center.X - human.Center.X) < 72 ? closeMoving + 1 : 0;
+                        longestClose = Math.Max(longestClose, closeMoving);
+                    }
+                    Console.WriteLine($"FOLLOW LIVE DROP {string.Join(" | ", events)} resumed={followAfterHurt} sustained={longestClose} " +
+                        $"life={body.statLife} nativeTeleports={run.NativeRelocations} end={body.Bottom}/{human.Bottom}");
+                    Require(ownerDrop >= 22 && ownerLand > ownerDrop && bodyDown >= ownerDrop - 6 && bodyDown < ownerLand &&
+                        bodyDrop >= bodyDown && bodyLand > bodyDrop && hurt >= bodyLand && body.statLife == startingLife - 60 &&
+                        followAfterHurt > hurt && longestClose >= 16 && !body.dead && run.NativeRelocations == 0,
+                        "a horizontally moving airborne owner cues real release, native nonlethal Hurt, and sustained lower-floor follow by the original body");
+                }
+                finally { human.armor[3] = prior; }
+            }
+        }
+
+        private static void NativeAirDashSelection(object context, object host, object profiles, Player human)
+        {
+            const int floor = 97, shieldSlot = 4, packSlot = 45, wall = 61, ticks = 325;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "air-dash-live",
+                new Vector2(RoomX(58), floor * 16), new Vector2(RoomX(82), floor * 16), () =>
+                {
+                    PlaceFixtureStrip(44, 130, floor, TileID.Stone);
+                    for (int y = floor - 5; y < floor; y++) PlaceFixtureTile(wall, y, TileID.Stone);
+                }))
+            {
+                Item previous = human.armor[3];
+                Player body = run.Body;
+                object navigation = Navigator(run.Actor);
+                var profile = (CompanionProfile)Get(run.Actor, "Profile");
+                object leftClick = Enum.Parse(NavigationType(host.GetType().Assembly, "CompanionItemGesture"), "Left");
+                try
+                {
+                    human.armor[3] = new Item(Starboard);
+                    // Ordinary wings leave room for a useful dash. The Starboard's
+                    // native hover can already match or beat the shield's impulse.
+                    body.armor[3] = new Item(ItemID.AngelWings);
+                    body.armor[shieldSlot] = new Item(ItemID.EoCShield);
+                    int dash = -1, wingAndDash = -1, unequipped = -1, wingAfter = -1, wallCross = -1;
+                    int direction = 1, turns = 0, ownerMoving = 0, nearby = 0, longestNear = 0;
+                    long dashAction = 0;
+                    float maxDashSpeed = 0;
+                    for (int tick = 0; tick < ticks; tick++)
+                    {
+                        if (direction > 0 && human.Center.X >= RoomX(106) || direction < 0 && human.Center.X <= RoomX(74))
+                        { direction = -direction; turns++; }
+                        Vector2 previousOwner = human.Bottom, before = body.Bottom;
+                        float wingBefore = body.wingTime;
+                        int delayBefore = body.dashDelay;
+                        // The owner continues its original climb while the follower clears the obstruction.
+                        run.Step(direction, jump: tick < 218, down: tick >= 61 && tick < 165);
+                        if (tick < 130 && tick % 8 == 0)
+                            Console.WriteLine($"FOLLOW LIVE ABILITY tick={tick} dashType={body.dashType}/{body.dashDelay} " +
+                                $"prepared={GetOptional(navigation, "dashPreparedUntil")} wing={wingBefore}->{body.wingTime} " +
+                                RoomTrace(run, human, navigation, tick, turns));
+                        if (dash < 0 && delayBefore >= 0 && body.dashDelay < 0 && before.Y < floor * 16 - 12)
+                        {
+                            dash = tick;
+                            dashAction = (long)Get(navigation, "ActionId");
+                            maxDashSpeed = Math.Abs(body.velocity.X);
+                            Console.WriteLine($"FOLLOW LIVE ABILITY dash tick={tick} id={dashAction} route={RouteStep(run.Actor)} " +
+                                $"feet={body.Bottom} speed={body.velocity} wing={wingBefore}->{body.wingTime} controls={body.controlJump}/{body.controlDown}");
+                        }
+                        if (dash >= 0 && body.dashDelay < 0 && body.controlJump && body.wingTime < wingBefore)
+                            wingAndDash = tick;
+                        if (dash >= 0 && wingAndDash >= dash && unequipped < 0 && body.dashDelay >= 0)
+                        {
+                            Require((bool)Call(host, "ItemGesture", profile.Id, false, CompanionInventoryArea.Armor, shieldSlot, leftClick) &&
+                                (bool)Call(host, "ItemGesture", profile.Id, false, CompanionInventoryArea.Inventory, packSlot, leftClick) &&
+                                body.armor[shieldSlot].IsAir && body.inventory[packSlot].type == ItemID.EoCShield,
+                                "the ordinary item transaction actually transfers the equipped shield to the same body's backpack");
+                            unequipped = tick;
+                        }
+                        if (unequipped >= 0 && tick > unequipped && body.controlJump && body.dashType == 0 && body.wingTime < wingBefore &&
+                            Math.Abs(body.Bottom.X - before.X) > 1f && wingAfter < 0) wingAfter = tick;
+                        if (wallCross < 0 && body.Left.X >= (wall + 1) * 16 && body.Bottom.Y <= (floor - 5) * 16) wallCross = tick;
+                        bool moving = Vector2.DistanceSquared(previousOwner, human.Bottom) > .75f;
+                        if (moving) ownerMoving++;
+                        nearby = moving && unequipped >= 0 && Vector2.DistanceSquared(body.Bottom, human.Bottom) <= 96 * 96 ? nearby + 1 : 0;
+                        longestNear = Math.Max(longestNear, nearby);
+                    }
+                    Console.WriteLine($"FOLLOW LIVE ABILITY ownerMoving={ownerMoving} turns={turns} airDash={dash}/{dashAction} speed={maxDashSpeed:F2} " +
+                        $"wingsWithDash={wingAndDash} clearedWall={wallCross} unequipped={unequipped} wingOnly={wingAfter} close={longestNear} " +
+                        $"nativeTeleports={run.NativeRelocations} body={body.Bottom}/{body.velocity} owner={human.Bottom}/{human.velocity}");
+                    Require(dash >= 0 && dashAction > 0 && maxDashSpeed > 10 && wingAndDash >= dash && wallCross >= 0 &&
+                        unequipped > wingAndDash && wingAfter > unequipped && longestNear >= 12 && turns >= 2 && ownerMoving > 220 &&
+                        run.NativeRelocations == 0 && !body.dead,
+                        "the original body combines real airborne wing use and dash, then continues following with wings after the shield is transferred");
+                }
+                finally { human.armor[3] = previous; }
+            }
+        }
+
+        private static void NativeGroundMountSelection(object context, object host, object profiles, Player human)
+        {
+            const int floor = 86, ticks = 300, slowSlot = 27, fastSlot = 31;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "two-owned-mounts",
+                new Vector2(RoomX(49), floor * 16), new Vector2(RoomX(75), floor * 16),
+                () => PlaceFixtureStrip(43, 129, floor, TileID.Stone)))
+            {
+                Item prior = human.armor[3];
+                Player body = run.Body;
+                body.inventory[slowSlot] = new Item(ItemID.SlimySaddle);
+                body.inventory[fastSlot] = new Item(ItemID.BlessedApple);
+                var fast = body.inventory[fastSlot];
+                var mobility = Get(run.Actor, "Mobility");
+                var navigation = Navigator(run.Actor);
+                try
+                {
+                    human.armor[3] = new Item();
+                    int direction = 1, turns = 0, ownSources = 0, source = -1, mounted = -1, movingNear = 0, longestNear = 0;
+                    float peak = 0f;
+                    bool neverUsedSlime = true;
+                    for (int tick = 0; tick < ticks; tick++)
+                    {
+                        if (direction > 0 && human.Center.X >= RoomX(108) || direction < 0 && human.Center.X <= RoomX(81))
+                        { direction = -direction; turns++; }
+                        float ownerBefore = human.Center.X;
+                        run.Step(direction);
+                        if (ownSources == 0 && Get(Get(mobility,"Observed"), "MountChoices") is Array choices)
+                            ownSources = choices.Length;
+                        var edge = Get(navigation, "ActionTransition");
+                        var choice = Get(edge, "MountChoice");
+                        if (Get(edge, "Kind").ToString() == "Mount" && (int)Get(choice, "Type") == fast.mountType)
+                            source = (int)Get(choice, "ItemSlot");
+                        if (body.mount.Active)
+                        {
+                            neverUsedSlime &= body.mount.Type != body.inventory[slowSlot].mountType;
+                            if (body.mount.Type == fast.mountType)
+                            {
+                                if (mounted < 0) mounted = tick;
+                                peak = Math.Max(peak, Math.Abs(body.velocity.X));
+                            }
+                        }
+                        movingNear = mounted >= 0 && Math.Abs(human.Center.X - ownerBefore) > .75f &&
+                            Math.Abs(body.Center.X - human.Center.X) < 86 ? movingNear + 1 : 0;
+                        longestNear = Math.Max(longestNear, movingNear);
+                    }
+                    Console.WriteLine($"FOLLOW LIVE MOUNTS count={ownSources} plannedSlot={source} actualMount={mounted}/{fast.mountType} " +
+                        $"peak={peak:F2} unrelatedSlowUnused={neverUsedSlime} ownerTurns={turns} nearMoving={longestNear} nativeTeleports={run.NativeRelocations}");
+                    Require(ownSources == 2 && source == fastSlot && mounted >= 0 && peak > 4.5f && neverUsedSlime &&
+                        turns >= 1 && longestNear >= 18 && ReferenceEquals(fast, body.inventory[fastSlot]) && run.NativeRelocations == 0 && !body.dead,
+                        "an actual sustained ground pursuit selects the faster of two owned native mount sources and catches a moving owner");
+                }
+                finally { human.armor[3] = prior; }
+            }
+        }
+    }
+}

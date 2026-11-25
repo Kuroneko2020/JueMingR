@@ -15,6 +15,7 @@ namespace JueMingR.TerrariaHost.Input
         private readonly Func<IntPtr> gameWindow, foregroundWindow;
         private bool observed, rearming, quarantine, mapped, finalized, nativePermission, nativeUiOwnsFrame;
         internal enum ExternalModalPhase { None, ModalOwned, AwaitFocusedNeutral }
+        internal enum InventoryMouseClick { Native, Interface, CloseMenu }
         private Guid externalModalRequest;
         internal ExternalModalPhase ExternalModalState { get; private set; }
         internal bool ExternalModalBusy { get { return ExternalModalState != ExternalModalPhase.None; } }
@@ -40,6 +41,15 @@ namespace JueMingR.TerrariaHost.Input
         private Dictionary<string, bool> mappedKeys;
         private string[] keys = new string[0];
         private readonly bool[] physical = new bool[HotkeyChord.KeyCount];
+        private bool consumeInventoryOnNextMapping, inventoryHasUnownedMouseMapping;
+        private int inventoryMouseTail;
+        private static readonly Dictionary<string, Keys> keyboardCodes = BuildKeyboardCodes();
+        private static Dictionary<string, Keys> BuildKeyboardCodes()
+        {
+            var result = new Dictionary<string, Keys>(StringComparer.Ordinal);
+            foreach (Keys key in Enum.GetValues(typeof(Keys))) result[key.ToString()] = key;
+            return result;
+        }
         internal readonly HotkeyInput Hotkeys = new HotkeyInput();
         internal readonly HotkeyUseGesture UseGesture = new HotkeyUseGesture();
         internal void ClaimUseGesture(HotkeyChord chord)
@@ -100,12 +110,17 @@ namespace JueMingR.TerrariaHost.Input
             ReadOnlyMouseMask = readOnlyTail;
             // MouseInput only staged these tokens; keyboard and gamepad mappings
             // have not merged yet. Filtering here preserves shared keyboard binds.
+            int excludedMouse = OwnedMouseMask | ReadOnlyMouseMask | inventoryMouseTail;
             for (int i = mouseKeys.Count - 1; i >= 0; i--)
             {
                 string key = mouseKeys[i];
-                if (key.Length == 6 && key.StartsWith("Mouse", StringComparison.Ordinal) && key[5] >= '1' && key[5] <= '5' && ((OwnedMouseMask | ReadOnlyMouseMask) & 1 << (key[5] - '1')) != 0) mouseKeys.RemoveAt(i);
+                if (key.Length == 6 && key.StartsWith("Mouse", StringComparison.Ordinal) && key[5] >= '1' && key[5] <= '5' && (excludedMouse & 1 << (key[5] - '1')) != 0) mouseKeys.RemoveAt(i);
             }
-            if (reliable) { mouseTail &= down; readOnlyTail &= down; previousMouse = down; }
+            // The delayed keyboard press must leave an independent live
+            // mouse source for the same action available to vanilla.
+            if (consumeInventoryOnNextMapping && GetInventoryBindings() is List<string> bindings)
+                foreach (string token in mouseKeys) inventoryHasUnownedMouseMapping |= bindings.Contains(token);
+            if (reliable) { mouseTail &= down; readOnlyTail &= down; inventoryMouseTail &= down; previousMouse = down; }
         }
         internal void ConsumeOwnedMouseEdges()
         { for (int i = 0; i < 5; i++) if ((OwnedMouseMask & 1 << i) != 0) Hotkeys.ConsumePress(256 + i); }
@@ -177,6 +192,7 @@ namespace JueMingR.TerrariaHost.Input
             mapped = finalized = nativePermission = false;
             nativeUiOwnsFrame = false;
             NativeUiTransitionRequest = false;
+            inventoryHasUnownedMouseMapping = false;
             RefreshFocus();
             quarantine = !IsFocused || rearming || ExternalModalBusy;
             // .8's F7-F11/Alt+Enter precede its current keyboard refresh. A stale
@@ -208,6 +224,65 @@ namespace JueMingR.TerrariaHost.Input
         internal bool RestrictNativePermission(bool permitted)
         { return permitted && IsFocused; }
 
+        internal bool ConsumeInventoryKeyPress(bool f5Only, InventoryMouseClick mouseClick)
+        {
+            if (!CanStartActions || HotkeyPointerOwned || !string.IsNullOrEmpty(PlayerInput.ListeningTrigger)) return false;
+            var bindings = GetInventoryBindings();
+            if (bindings == null) return false;
+            bool keyboardPress = false;
+            foreach (string token in bindings)
+            {
+                if (!keyboardCodes.TryGetValue(token, out Keys key) || key == Keys.None || (int)key >= 256 ||
+                    (f5Only && key != Keys.F5) || !Hotkeys.IsNew((int)key) || token == Main.blockKey) continue;
+                // Terraria reserves Alt+Tab and Steam's Shift+Tab before binding lookup.
+                if (key == Keys.Tab && (KeyboardSample.IsKeyDown(Keys.LeftAlt) || KeyboardSample.IsKeyDown(Keys.RightAlt) ||
+                    Terraria.Social.SocialAPI.Mode == Terraria.Social.SocialMode.Steam && KeyboardSample.PressingShift())) continue;
+                Hotkeys.ConsumePress((int)key);
+                keyboardPress = true;
+            }
+            if (keyboardPress) consumeInventoryOnNextMapping = true;
+            if (f5Only || !MappedKeyboardInventory) return keyboardPress;
+
+            int mousePresses = 0;
+            bool mouseClosesMenu = false;
+            for (int button = mouseClick == InventoryMouseClick.Native ? 2 : 0; button < 5; button++)
+            {
+                int key = 256 + button;
+                int bit = 1 << button;
+                if (((OwnedMouseMask | ReadOnlyMouseMask | inventoryMouseTail) & bit) != 0 ||
+                    !Hotkeys.IsNew(key) || !bindings.Contains(HotkeyChord.KeyName(key))) continue;
+                if (button >= 2 || mouseClick == InventoryMouseClick.CloseMenu)
+                {
+                    // The same physical button can also be bound to use. Preserve
+                    // independent use bindings through the existing gesture owner.
+                    if (HotkeyChord.TryCreate(key, HotkeyModifiers.None, out var chord, out _)) ClaimUseGesture(chord);
+                    Hotkeys.ConsumePress(key);
+                    mouseClosesMenu = true;
+                }
+                mousePresses |= bit;
+            }
+            if (mousePresses == 0) return keyboardPress;
+
+            // Mouse tokens have already mapped in this frame. Own their held
+            // buttons at the existing pre-mapping filter from the next sample.
+            inventoryMouseTail |= mousePresses;
+            ConsumeMappedInventory();
+            return keyboardPress || mouseClosesMenu;
+        }
+
+        private static bool MappedKeyboardInventory => PlayerInput.Triggers.Current.Inventory &&
+            PlayerInput.Triggers.Current.LatestInputMode["Inventory"] == InputMode.Keyboard;
+
+        private static List<string> GetInventoryBindings()
+        {
+            var profile = PlayerInput.CurrentProfile;
+            return profile != null && profile.InputModes.TryGetValue(InputMode.Keyboard, out var keyboard) &&
+                keyboard.KeyStatus.TryGetValue("Inventory", out var bindings) ? bindings : null;
+        }
+
+        private static void ConsumeMappedInventory()
+        { PlayerInput.Triggers.Current.Inventory = PlayerInput.Triggers.JustPressed.Inventory = false; }
+
         internal void AfterMapping()
         {
             Mapping++;
@@ -224,6 +299,14 @@ namespace JueMingR.TerrariaHost.Input
             // guarded below; this native field only distinguishes its synthetic
             // mouse sample from a focused physical sample for release proof.
             nativePermission = FocusHelper.IsSelectedApplication;
+            if (consumeInventoryOnNextMapping)
+            {
+                consumeInventoryOnNextMapping = false;
+                // Terraria maps the previous keyboard sample, then copies the
+                // mapped value for held keys. Clear its first Inventory mapping
+                // before navigation and CopyInto, leaving other actions intact.
+                if (MappedKeyboardInventory && !inventoryHasUnownedMouseMapping) ConsumeMappedInventory();
+            }
             // Blueprint consumes semantic world requests only. Freeze them
             // before general UI/focus suppression; retain Mouse1/2 and all
             // native triggers so remapped Jump and inventory clicks still work.

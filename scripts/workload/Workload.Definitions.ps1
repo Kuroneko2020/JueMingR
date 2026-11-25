@@ -15,7 +15,7 @@ function Get-WorkloadLeafChecks {
     # This asset initializer is also called by the narrow combat fixture.
     # Preserve its worker consumers when adding the explicit combat leaf;
     # the combat scope itself must not inherit the legacy-worker group.
-    $workerAssetConsumers=@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCreationCpu','native-CompanionItemsCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
+    $workerAssetConsumers=@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionWormholeCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCreationCpu','native-CompanionItemsCpu','native-CombatInputGeometryCpu','native-CombatSkyActionCpu','native-CombatEffectsCpu','native-CombatObservationCpu','native-NpcPrivateSafety','native-NpcWorkerCatalogue','native-NpcWorkerLinked','native-NpcWorkerLifetime','native-NpcWorkerAssets','native-NpcWorkerRandom','native-NpcWorkerPlayer','native-NpcWorkerEntity','native-NpcWorkerBirth','native-NpcWorkerContext','native-NpcWorkerImmunity','native-NpcWorkerLifecycle','native-NpcWorkerFields','native-JourneySinglePlayerExit')
     foreach($scope in (Get-WorkloadNativeScopes).GetEnumerator()){
         if($scope.Value -contains 'legacy-worker'){$workerAssetConsumers+='native-'+$scope.Key}
     }
@@ -23,7 +23,7 @@ function Get-WorkloadLeafChecks {
         # These leaves are called only by the companion CPU dispatcher. Shared
         # NativeChecks/Program/fixture inputs retain their existing propagation.
         'tests/Companions/CompanionCoreChecks.cs'=@('CompanionCoreChecks')
-        'tests/NativeWorldTextProbe/NativeCompanionItemGestureChecks.cs'=@('native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionItemGestureChecks.cs'=@('native-CompanionItemsCpu','native-CompanionConfigVisual')
         'tests/NativeWorldTextProbe/NativeCompanionVoidPickupChecks.cs'=@('native-CompanionItemsCpu')
         'tests/NativeWorldTextProbe/NativeCompanionVanityShopChecks.cs'=@('native-CompanionItemsCpu')
         'tests/NativeWorldTextProbe/NativeCompanionHotkeyFeedbackChecks.cs'=@('native-CompanionConfigVisual')
@@ -37,17 +37,40 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionSupplyMenuChecks.cs'=@('native-CompanionConfigVisual')
         'tests/NativeWorldTextProbe/NativeCompanionSupplyWireChecks.cs'=@('native-CompanionSuppliesCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNavigationChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionDynamicFollowChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Hover.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Terrain.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Liquid.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Descent.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Trail.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Detour.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Contact.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Hoik.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Mixed.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Moving.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Live.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Dash.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Graph.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionWormholeChecks.cs'=@('native-CompanionWormholeCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionDoorFollowChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionFacilityFollowChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionPlannedMovementChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionShapeHandChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionExitChecks.cs'=@('native-CompanionExitVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionMobilityChecks.cs'=@('native-CompanionNavigationCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionMobilityFacilitiesChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNativeCreationChecks.cs'=@('native-CompanionVisual','native-CompanionCreationInputVisual')
         'tests/NativeWorldTextProbe/NativeCompanionFeedbackChecks.cs'=@('native-CompanionCreationInputVisual')
         'tests/NativeWorldTextProbe/NativeCompanionFontChecks.cs'=@('native-CompanionFontVisual')
-        'tests/NativeWorldTextProbe/NativeCompanionConfigurationChecks.cs'=@('native-CompanionConfigVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionConfigurationChecks.cs'=@('native-CompanionConfigVisual','native-CompanionExitVisual')
         'tests/NativeWorldTextProbe/NativeCompanionResourceBarChecks.cs'=@('native-CompanionResourceBarsVisual')
         'tests/NativeWorldTextProbe/NativeCompanionFancyResourceChecks.cs'=@('native-CompanionResourceBarsVisual')
         'tests/NativeWorldTextProbe/NativeCompanionPetPreviewChecks.cs'=@('native-CompanionVisual','native-CompanionShowcaseVisual')
         'tests/NativeWorldTextProbe/NativeCompanionSessionChecks.cs'=@('native-CompanionSessionCpu','native-CompanionVisual')
         'tests/NativeWorldTextProbe/NativeCompanionChecks.cs'=@('native-CompanionCpu','native-CompanionObservationCombatCpu')
         'tests/NativeWorldTextProbe/NativeCompanionTileContextChecks.cs'=@('native-CompanionCpu')
-        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs'=@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionWormholeCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
         'tests/NativeWorldTextProbe/NativeCompanionCoreNetworkChecks.cs'=@('native-CompanionCpu','native-CompanionObservationCombatCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNpcPhysicsChecks.cs'=@('native-CompanionCpu','native-CompanionObservationCombatCpu')
         'tests/NativeWorldTextProbe/NativeCompanionNpcStateChecks.cs'=@('native-CompanionCpu','native-CompanionObservationCombatCpu')
@@ -66,7 +89,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionNpcLocalStateChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionCoreWeaponChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionCorePersonalChecks.cs'=@('native-CompanionCpu')
-        'tests/NativeWorldTextProbe/NativeCompanionBehaviorChecks.cs'=@('native-CompanionCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionBehaviorChecks.cs'=@('native-CompanionCpu','native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionContinuousChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionLifecycleChecks.cs'=@('native-CompanionCpu')
         'tests/NativeWorldTextProbe/NativeCompanionPersistenceChecks.cs'=@('native-CompanionCpu')
@@ -411,7 +434,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatBookStaffChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatSkullChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatArcSwingChecks.cs'=@('native-CombatEffectsCpu')
-        'tests/NativeWorldTextProbe/NativeCombatAttachedShotChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttachedShotChecks.cs'=@('native-CombatEffectsCpu','native-CompanionObservationCombatCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttachedShotChecks.Companions.cs'=@('native-CompanionObservationCombatCpu')
         'tests/NativeWorldTextProbe/NativeCombatBetsyFlameChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatElectrosphereChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBarrelChecks.cs'=@('native-CombatEffectsCpu')
@@ -586,7 +610,7 @@ function Get-WorkloadLeafChecks {
         'Piranha'=@('BallisticCandidate','Observation','Cadence','ControlPreview')
         'Phoenix'=@('Cadence','ControlPreview','Observation','SelectionPreview')
         'SpecialArrow'=@('Observation')
-        'AttachedShot'=@('Cadence','ControlPreview','Observation','SelectionPreview')
+        'AttachedShot'=@('BalancedAim','Cadence','ControlPreview','Observation','SelectionPreview')
         'PhantasmEcho'=@('Cadence','Observation')
         'BetsyFlame'=@('Cadence','ControlPreview','Observation','SelectionPreview')
         'ArcSwing'=@('Cadence','ControlPreview','Observation','SelectionPreview')
@@ -637,9 +661,17 @@ function Get-WorkloadLeafChecks {
         $leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-AfkModeCompletionCpu','native-AfkModeBorrowCpu','native-AfkModeBackgroundCpu')
     }
     foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-FishingBackgroundRecoveryCpu','native-InventoryStackingCpu','native-AfkOuterBackground')}
-    $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CoinContinuationCpu','native-CoinConsumersCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionWormholeCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CoinContinuationCpu','native-CoinConsumersCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
+    foreach($path in @('tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs','tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs','tests/NativeWorldTextProbe/NativeCombatObservationChecks.cs')){
+        $leaves[$path]=@($leaves[$path])+@('native-CompanionObservationCombatCpu')
+    }
+    foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeJourneyChecks.cs',
+        'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs',
+        'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs','scripts/workload/Workload.NativeContent.ps1')){
+        $leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-CompanionExitVisual')
+    }
     $leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs'])+@('native-InventoryStackingCpu')
-    foreach($path in @("tests/NativeWorldTextProbe/NativeCombatAimFixture.cs")){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')}
+    foreach($path in @("tests/NativeWorldTextProbe/NativeCombatAimFixture.cs")){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionWormholeCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')}
     return $leaves
 }
 function Get-WorkloadNativeScopes {
@@ -649,6 +681,7 @@ function Get-WorkloadNativeScopes {
     # and GPU: they are explicit graphical obligations, never --cpu children.
     $scopes = [ordered]@{
         'CompanionNetworkCpu'=@('companion-host','shared-host');
+        'CompanionWormholeCpu'=@('companion-host','shared-host');
         'CompanionPasswordCpu'=@('companion-host','shared-host');
         'CompanionSuppliesCpu'=@('companion-host','recovery-host','items','shared-host');
         'CompanionObservationCombatCpu'=@('companion-host','combat-host','shared-host');
@@ -657,6 +690,7 @@ function Get-WorkloadNativeScopes {
         'CompanionResourceBarsVisual'=@('companion-host','shared-host');
         'CompanionCreationInputVisual'=@('companion-host','shared-host');
         'CompanionConfigVisual'=@('companion-host','shared-host');
+        'CompanionExitVisual'=@('companion-host','shared-host');
         'CompanionFontVisual'=@('companion-host','shared-host');
         'CompanionShowcaseVisual'=@('companion-host','shared-host');
         'CompanionVisual'=@('companion-host','shared-host');

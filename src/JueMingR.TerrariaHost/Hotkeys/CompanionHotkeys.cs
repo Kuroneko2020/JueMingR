@@ -9,6 +9,8 @@ namespace JueMingR.TerrariaHost.Hotkeys
     internal sealed class CompanionHotkeys
     {
         private const string Prefix = "companions.profile.";
+        private const string RecallKey = "wormhole";
+        internal const string RecallName = "传送AI到玩家";
         private static readonly string[] Keys = { "follow", "attack", "life", "mana", "buff", "growth", "respawn", "nurse", "furniture" };
         private static readonly string[] Names = { "跟随主人", "允许攻击", "主动回血", "主动回蓝", "使用增益物品", "使用成长物品", "自动复活", "护士治疗", "家具增益" };
         private readonly DynamicHotkeyOwner owner;
@@ -17,20 +19,64 @@ namespace JueMingR.TerrariaHost.Hotkeys
         private IReadOnlyList<KeyValuePair<string, string>> observedEntries;
         private HostCompanions observedHost;
         private Guid selected;
+        private CompanionDeletion removing;
+        private long removalCommand;
         private Dictionary<string, HotkeyAction> actions = new Dictionary<string, HotkeyAction>(StringComparer.Ordinal);
 
         internal CompanionHotkeys(HotkeyRegistry registry, HotkeyStateFeedback feedback)
         {
             // The profile roster is unbounded. Only persisted binds and the
             // controls currently offered by the window need registry entries.
-            owner = registry.CreateDynamicOwner(Prefix, HotkeyDocument.MaximumEntries + Keys.Length);
+            owner = registry.CreateDynamicOwner(Prefix, HotkeyDocument.MaximumEntries + Keys.Length + 1);
             this.feedback = feedback;
         }
 
         internal static string Id(CompanionProfile profile, CompanionSetting setting) =>
-            Prefix + profile.OwnerId.ToString("N") + "." + profile.Id.ToString("N") + "." + Keys[(int)setting];
+            Id(profile.OwnerId, profile.Id, (int)setting);
+
+        private static string Id(Guid ownerId, Guid profileId, int setting) =>
+            Id(ownerId, profileId, Keys[setting]);
+
+        private static string Id(Guid ownerId, Guid profileId, string key) =>
+            Prefix + ownerId.ToString("N") + "." + profileId.ToString("N") + "." + key;
+
+        internal static string RecallId(CompanionProfile profile) => Id(profile.OwnerId, profile.Id, RecallKey);
 
         internal static string Name(CompanionSetting setting) => Names[(int)setting];
+
+        internal void PollDeletions(HostCompanions host, HotkeyBindings bindings, Guid selectedProfile)
+        {
+            if (host == null) return;
+            var pending = host.PollDeletionBindings();
+            if (removing != null && bindings.CompletionId == removalCommand)
+            {
+                if (!bindings.CompletionSucceeded) host.FailDeletionBindings(removing);
+                removing = null;
+            }
+            if (pending.Count == 0 || removing != null || !bindings.Loaded || bindings.Busy) return;
+
+            // Retire dynamic actions before removing their rows. A write that
+            // was already pending keeps its own receipt and is polled first.
+            bool refreshed = false;
+            foreach (var deletion in host.Deletions)
+            {
+                if (!deletion.FilesRemoved || deletion.Error != null || deletion.Finishing) continue;
+                if (!refreshed) { Refresh(host, bindings, selectedProfile); refreshed = true; }
+                if (bindings.Protected) { host.FailDeletionBindings(deletion); continue; }
+                string row = null;
+                for (int i = 0; row == null && i <= Keys.Length; i++)
+                {
+                    string id = Id(deletion.OwnerId, deletion.ProfileId, i == Keys.Length ? RecallKey : Keys[i]);
+                    foreach (var entry in bindings.StoredEntries)
+                        if (entry.Key == id) { row = id; break; }
+                }
+                if (row == null) { host.FinishDeletionBindings(deletion); continue; }
+                if (!bindings.TryRemoveRetired(owner, row, out removalCommand, out _))
+                { host.FailDeletionBindings(deletion); continue; }
+                removing = deletion;
+                return;
+            }
+        }
 
         internal void Refresh(HostCompanions host, HotkeyBindings bindings, Guid selectedProfile)
         {
@@ -53,6 +99,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
             var ordered = new List<HotkeyAction>();
             if (profiles != null && (bound.Count > 0 || selectedProfile != Guid.Empty))
                 foreach (var profile in profiles)
+                {
                     for (int index = 0; index < Keys.Length; index++)
                     {
                         var setting = (CompanionSetting)index;
@@ -66,6 +113,15 @@ namespace JueMingR.TerrariaHost.Hotkeys
                         next.Add(id, action);
                         ordered.Add(action);
                     }
+                    string recallId = RecallId(profile);
+                    if (profile.Id != selectedProfile && !bound.Contains(recallId)) continue;
+                    string recallName = profile.Name + " · " + RecallName;
+                    if (!ReferenceEquals(host, observedHost) || !actions.TryGetValue(recallId, out var recall) || recall.Name != recallName)
+                        recall = new HotkeyAction(recallId, recallName, HotkeyContext.Gameplay,
+                            () => host.SettingProfile(profile.OwnerId, profile.Id) != null, () => host.TryManualRecall(profile.Id));
+                    next.Add(recallId, recall);
+                    ordered.Add(recall);
+                }
             if (!owner.TryReplace(ordered, out _)) return;
             actions = next;
             observedHost = host; observedProfiles = profiles; observedEntries = entries; selected = selectedProfile;

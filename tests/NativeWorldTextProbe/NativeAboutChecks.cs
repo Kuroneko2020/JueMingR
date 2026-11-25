@@ -31,6 +31,10 @@ namespace NativeWorldTextProbe
             Require(((IEnumerable)Get(layout, "Elements")).Cast<object>().Count(e => Get(e, "Kind").ToString() == "Button") == 1, "No removed help/version actions remain in the actual host page");
             var title = ((IEnumerable)Get(layout, "Elements")).Cast<object>().Single(e => Get(e, "Command").ToString() == "AboutRevealHidden");
             Require(Get(title, "Kind").ToString() == "AboutHeading" && (float)Get(title, "TextScale") > 1 && Call(page, "Hint", Get(title, "Command")) == null, "top title preserves Heading appearance without public gesture help");
+            string product = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>().InformationalVersion.Split('+')[0];
+            Require(((IEnumerable)Get(layout, "Elements")).Cast<object>().Any(element =>
+                Get(element, "Kind").ToString() == "AboutHeading" && (string)GetOptional(element, "Text") == "决明R " + product),
+                "the real About heading displays product version " + product);
             Click(context, button);
             Require(copies == 1 && copied == "915753352", "Actual Shell.ProcessInput dispatch reaches the injected clipboard outlet exactly once");
             var identity = assembly.GetType("JueMingR.TerrariaHost.Onboarding.CharacterIdentity");

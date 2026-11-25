@@ -129,13 +129,19 @@ namespace JueMingR.TerrariaHost.Companions
             if (proposed == null && !CurrentAuthentication() && ReferenceEquals(world, Main.ActiveWorldFileData)) BeginPasswordSession();
             if (!CurrentAuthentication() || !Netplay.Connection.IsConnected())
                 throw new IOException("当前服务器连接已变化。");
+            // Packet 1 uses the release of the running native client. Reading
+            // the constant from metadata avoids substituting the build's value.
+            var release = typeof(Main).GetField(nameof(Main.curRelease));
+            if (release == null || !release.IsLiteral || release.FieldType != typeof(int))
+                throw new IOException("当前游戏的队友联机握手版本不可用。");
+            string handshake = "Terraria" + ((int)release.GetRawConstantValue()).ToString(System.Globalization.CultureInfo.InvariantCulture);
             var endpoint = Netplay.Connection.Socket.GetRemoteAddress() as TcpAddress;
             var connection = endpoint == null ? steam.Open() : new CompanionConnection(endpoint.Address.ToString(), endpoint.Port);
             actor.Connection = connection;
             actor.PasswordAttempt = new PasswordAttempt { Session = session, Authentication = authentication, Connection = connection, Credential = proposed };
             actor.Status = "加入中";
             connection.Start();
-            if (!connection.TrySend(CompanionConnection.Packet(1, w => w.Write("Terraria326"))))
+            if (!connection.TrySend(CompanionConnection.Packet(1, w => w.Write(handshake))))
                 throw new IOException("队友连接已结束。");
         }
 

@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 value.Progress = new BlueprintMaterialAccumulator(); value.CatalogRevision = catalog.Revision;
             }
             read.MaterialCatalog = catalog; read.Materials = value.Progress;
-            if(read.Owner.Summary.TargetVersion!=catalog.TargetVersion)read.Materials.Unresolved("此蓝图版本的施工内容尚未确认");
+            if(!catalog.CanReadVersion(read.Owner.Summary.TargetVersion))read.Materials.Unresolved("此蓝图版本的施工内容尚未确认");
             RetainBuildSource(read);
         }
         private void SampleMaterialCell(BlueprintProjectionMatchRead read, CaptureCell target, BlueprintWorldMatchSample sample)
@@ -263,7 +263,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (target == null || !HasSession || MaterialBuildDemand?.Invoke() != true || ProjectionEditing || ProjectionCaptureBlocked ||
                 target.Identity.SessionGeneration != generation || target.PlacementRevision != MaterialCatalog?.Revision || target.PolicyRevision != substitutionRevision) return false;
             var owner = target.Range?.Owner;
-            return owner != null && ProjectionQualificationCurrent(owner) && owner.Summary.TargetVersion==MaterialCatalog.TargetVersion && projectionScene.Contains(owner) && owner.Identity.Equals(target.Identity) && ReferenceEquals(owner.Mask, target.Mask) &&
+            return owner != null && ProjectionQualificationCurrent(owner) && MaterialCatalog.CanReadVersion(owner.Summary.TargetVersion) && projectionScene.Contains(owner) && owner.Identity.Equals(target.Identity) && ReferenceEquals(owner.Mask, target.Mask) &&
                 owner.OriginX == target.OriginX && owner.OriginY == target.OriginY && owner.Match != null && (target.LocalProof || target.Range.Current) &&
                 target.Range.Version == target.RangeStamp && ProjectionMatchReadCurrent(target.Range, target.Range.RawVersion);
         }

@@ -67,7 +67,9 @@ namespace NativeWorldTextProbe
         private static void CheckChanged(object subject,Player p,Item net,string label,bool rebuild=true)
         {
             long builds=(long)Get(subject,"ShapeBuilds"),styles=(long)Get(subject,"ApplyUseStyleCalls"),hitboxes=(long)Get(subject,"GetMeleeHitboxCalls");
-            Rectangle frame=Item.GetDrawHitbox(net.type,p);int frames=Math.Max(1,(int)(net.useAnimation*(net.melee && !Terraria.ID.ItemID.Sets.NoMeleeSpeedBonus[net.type]?p.meleeSpeed:1f)));
+            Rectangle frame=Item.GetDrawHitbox(net.type,p);
+            typeof(Player).GetMethod("ApplyItemAnimation", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(p, new object[] { net });
+            int frames=p.itemAnimationMax;
             var expected=new List<Rectangle>();p.itemAnimationMax=frames;
             for(int f=frames-1;f>0;f--){p.itemAnimation=f;p.ItemCheck_ApplyUseStyle(p.HeightOffsetHitboxCenter,net,frame);bool inactive;Rectangle box;p.ItemCheck_GetMeleeHitbox(net,frame,out inactive,out box);if(!inactive)expected.Add(box);}
             long update=1000;

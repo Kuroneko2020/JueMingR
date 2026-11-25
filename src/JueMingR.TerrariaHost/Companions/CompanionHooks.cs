@@ -49,7 +49,7 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Terraria.DataStructures.MinionRespawner),"CollectMinionsFor",nameof(CollectMinions));
             Patch(typeof(Player),"KillMe",nameof(DeathBefore),finalizer:nameof(DeathFinal));
             Patch(typeof(Player),"KillMeForGood",nameof(PermanentDeath));
-            Patch(typeof(Player),"Spawn",nameof(ItemRecallBefore),transpiler:nameof(SpawnLocals));
+            Patch(typeof(Player),"Spawn",nameof(ItemRecallBefore),postfix:nameof(OwnerSpawnAfter),transpiler:nameof(SpawnLocals));
             Patch(typeof(Player),"Teleport",transpiler:nameof(TeleportPresentation));
             Patch(typeof(Player),"PickupItem",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Player),"GrabItems",nameof(UseBefore),finalizer:nameof(ScopeFinal));
@@ -60,6 +60,11 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Projectile),"AI_075",transpiler:nameof(DrillTileGate));
             Patch(typeof(Projectile),"Damage",nameof(ProjectileBefore),nameof(ProjectileDamageAfter),nameof(ScopeFinal));
             Patch(typeof(Projectile),"Kill",nameof(ProjectileBefore),finalizer:nameof(ScopeFinal));
+            // 1.4.6 can reclaim a projectile without Kill effects. Its own
+            // packet 29 still needs the leased actor's native owner scope.
+            var despawn = AccessTools.Method(typeof(Projectile), "Despawn", Type.EmptyTypes);
+            if (despawn != null && !despawn.IsStatic && despawn.ReturnType == typeof(void))
+                Harmony.Patch(despawn, prefix: Hook(nameof(ProjectileBefore)), finalizer: Hook(nameof(ScopeFinal)));
             Patch(typeof(NetMessage),"SendPacketToServer",nameof(Send));
             Patch(typeof(MessageBuffer),"GetData",nameof(Packet),nameof(PacketAfter));
             Patch(typeof(NPC),"GetPendingDamage",nameof(ObservationPending));
@@ -82,6 +87,7 @@ namespace JueMingR.TerrariaHost.Companions
             F5.CompanionCreationHooks.Install(Harmony);
             F5.CompanionPetPreviewHooks.Install(Harmony);
             InstallFurnitureHooks();
+            InstallMobilityHooks();
             CompanionSupplyHooks.Install(value);
             installed=true;
         }
@@ -155,6 +161,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private sealed class PlayerStep
         {
+            internal HostCompanions.Actor Actor;
             internal int X,Y;
             internal NPC[] Npcs;
             internal uint[,] StaticHits;
@@ -168,9 +175,10 @@ namespace JueMingR.TerrariaHost.Companions
             var a=host?.Owned(__instance);if(a==null)return true;
             if(!a.Ready || a.Closing || a.Faulted)return false;
             if(a.LastUpdate==Main.GameUpdateCount)return false;
-            __state=new PlayerStep{X=Player.tileTargetX,Y=Player.tileTargetY,StaticHits=host.EnterObservedNpcHitState(Main.npc),Previous=playerStep,EntryScope=current};__state.Npcs=host.EnterNpcObservation();
+            __state=new PlayerStep{Actor=a,X=Player.tileTargetX,Y=Player.tileTargetY,StaticHits=host.EnterObservedNpcHitState(Main.npc),Previous=playerStep,EntryScope=current};__state.Npcs=host.EnterNpcObservation();
             playerStep=__state;
             a.LastUpdate=Main.GameUpdateCount;
+            a.Mobility.WingRunSampled=false;
             PurgeCompanionEnergy(__instance);
             host.Control(a);
             return true;
@@ -190,13 +198,18 @@ namespace JueMingR.TerrariaHost.Companions
                 ApplyHumanShieldHits(__state.HumanShieldHits);
             }
             if(__exception!=null){var a=host?.Owned(__instance);if(a!=null){
-                a.Status="人物更新失败："+__exception.Message;a.Faulted=true;a.Body.controlUseItem=false;a.Body.channel=false;return null;}}return __exception;
+                HostCompanions.RetireMobilityHand(a);a.Status="人物更新失败："+__exception.Message;a.Faulted=true;a.Body.controlUseItem=false;a.Body.channel=false;return null;}}return __exception;
         }
         private static void UseBefore(Player __instance,MethodBase __originalMethod,ref Scope __state)
         {
             var a=host?.Owned(__instance);
             if(a==null || !a.Ready || a.Closing || __originalMethod.Name=="UpdateBuffs" && ReferenceEquals(a,CurrentActor))return;
             bool use=__originalMethod.Name=="ItemCheck";
+            if(use && host.PrepareMobilityItem(a,out Vector2 mobilityAim))
+            {
+                __state=new Scope(a,mobilityAim,__instance.controlUseItem,false);
+                return;
+            }
             if(use)
             {
                 var hits=host.EnterObservedNpcHitState(Main.npc);var table=host.EnterNpcObservation();
@@ -222,7 +235,7 @@ namespace JueMingR.TerrariaHost.Companions
             // wire. The independent shoot, self-use and timer paths stay native.
             if(current==null || !ReferenceEquals(current.Actor.Body,__instance))return true;
             var hand=current.Actor.Supplies;
-            return current.TileInteractionReady && hand.HeldOnce==null && hand.RestoreSelection<0;
+            return current.TileInteractionReady && hand.HeldOnce==null && hand.RestoreSelection<0 && current.Actor.Mobility.PreviousSelection<0;
         }
         private static bool PreviewBefore(Player __instance)
         {
@@ -335,7 +348,16 @@ namespace JueMingR.TerrariaHost.Companions
 
             if(Main.netMode!=1 || current==null || current.Actor.Connection==null)return true;
             int length=data[0]|data[1]<<8;var copy=new byte[length];Buffer.BlockCopy(data,0,copy,0,length);
-            current.PacketAccepted=current.Actor.Connection.TrySend(copy);
+            var connection = current.Actor.Connection;
+            bool teleport = copy[2] == 65;
+            if (teleport) host.ObserveWormholeSend(current.Actor, copy, null);
+            try { current.PacketAccepted = connection.TrySend(copy); }
+            catch (CompanionConnection.SendQueueFullException) when (teleport && !connection.IsRelay)
+            {
+                host.ObserveWormholeSend(current.Actor, copy, false);
+                throw;
+            }
+            if (teleport) host.ObserveWormholeSend(current.Actor, copy, current.PacketAccepted);
             if(current.PacketAccepted)host.RecordActorPacket(current.Actor,copy);
             return false;
         }
@@ -424,6 +446,7 @@ namespace JueMingR.TerrariaHost.Companions
             // block owns DelBuff/compaction after expiry. Neither is replayed.
             if(falls!=1 || lavas!=1 || contacts!=1 || expiredBuffs!=1)throw new InvalidOperationException("Companion native survival layout changed: fall="+falls+" lava="+lavas+" contact="+contacts+" buffs="+expiredBuffs);
             ExtendActiveBodyUpdate(c);
+            ExtendMobilityUpdate(c);
             return c;
         }
         private static void ContactThenGrapple(Player p)
@@ -431,10 +454,18 @@ namespace JueMingR.TerrariaHost.Companions
             var a=host?.Owned(p);
             if(a!=null && a.Ready && !a.Closing && !p.dead)
                 using(Enter(a,a.Aim))
-                {p.Update_NPCCollision();if(!p.shimmering){var tile=(Collision.HurtTile)hurtTile.Invoke(p,null);if(tile.type>=0)touchDamage.Invoke(p,new object[]{tile.type,tile.x,tile.y});}shimmer.Invoke(p,null);}
-            p.GrappleMovement();
+                {p.Update_NPCCollision();if(!p.shimmering){var tile=(Collision.HurtTile)hurtTile.Invoke(p,null);if(tile.type>=0)touchDamage.Invoke(p,new object[]{tile.type,tile.x,tile.y});}shimmer.Invoke(p,null);p.GrappleMovement();}
+            else p.GrappleMovement();
         }
         private static Player SpawnLocal(){return Spawning??Main.LocalPlayer;}
+        private static void OwnerSpawnAfter(Player __instance, PlayerSpawnContext context, bool __runOriginal)
+        {
+            // An original recall/revival may place the owner at the very
+            // same coordinates. It still starts a new observed trail segment.
+            if (__runOriginal && !__instance.dead && (context == PlayerSpawnContext.RecallFromItem ||
+                context == PlayerSpawnContext.ReviveFromDeath || context == PlayerSpawnContext.TeamSwap))
+                host?.ObserveOwnerWarp(__instance);
+        }
         private static bool ItemRecallBefore(Player __instance,PlayerSpawnContext context)
         {
             var actor=current?.Actor;

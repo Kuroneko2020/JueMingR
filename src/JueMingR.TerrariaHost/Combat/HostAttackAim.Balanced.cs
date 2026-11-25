@@ -36,13 +36,18 @@ namespace JueMingR.TerrariaHost.Combat
                 return Math.Min(NpcPredictionCache.Horizon,Math.Max(16,handDelay+emission+(int)Math.Ceiling(Vector2.Distance(player.MountedCenter,target.Center+target.netOffset)/closingSpeed)+16));
             }
             if(BalancedHeld(item))captured=AttackAmmoSnapshot.CaptureController(player,item,item.shoot==705?12:14);
+            return BalancedFlightPreferred(player,item,captured,target,handDelay,BalancedHeld(item)?Control.BalancedLaunchDelay:0);
+        }
+        private static int BalancedFlightPreferred(Player player,Item item,AttackAmmoSnapshot captured,NPC target,int handDelay=0,int controlDelay=0)
+        {
             AttackMotion motion;float speed=captured==null?1:captured.Speed;int updates=1;
-            if(captured!=null && HostRepresentativeAttack.TryMotion(captured,out motion)){speed=motion.Speed;updates=motion.Updates;}
+            if(captured!=null && HostAttachedShotAttack.Handles(captured.Projectile))
+            {motion=HostAttachedShotAttack.FlightMotion(ContentSamples.ProjectilesByType[captured.Projectile],speed);updates=motion.Updates;}
+            else if(captured!=null && HostRepresentativeAttack.TryMotion(captured,out motion)){speed=motion.Speed;updates=motion.Updates;}
             if(item.shoot==705 && player.phantomPhoneixCounter+1>=3)speed=16;
             // Include the actual next launch delay and a modest finite tail.
             // Display's 120-point preference never becomes an attack demand.
-            int delay=handDelay;
-            if(BalancedHeld(item))delay=Math.Max(delay,Control.BalancedLaunchDelay);
+            int delay=Math.Max(handDelay,controlDelay);
             float closing=Math.Max(1,speed*updates-target.velocity.Length());
             return Math.Min(NpcPredictionCache.Horizon,Math.Max(16,delay+(int)Math.Ceiling(Vector2.Distance(player.MountedCenter,target.Center+target.netOffset)/closing)+16));
         }
@@ -54,23 +59,25 @@ namespace JueMingR.TerrariaHost.Combat
             if(captured==null || HostHeldAttack.Weapon(item.type) || HostYoyoNavigation.Weapon(item) || HostWhipAttack.Weapon(item) || HostDirectionalControl.Weapon(player,item))return false;
             if(HostNativeArrowBirthAttack.Weapon(item.type))return true;
             if(HostSkyAttack.Handles(item.type))return true;
+            if(HostAttachedShotAttack.Handles(captured.Projectile))return true;
             Projectile body;if(!ContentSamples.ProjectilesByType.TryGetValue(captured.Projectile,out body))return false;
             if(HostNorthPoleAttack.Handles(body.type) || HostSpearShardAttack.Handles(body.type))return true;
             AttackMotion motion;
-            if(!HostSkyAttack.Handles(item.type) && !HostAttachedShotAttack.Handles(body.type) &&
+            if(!HostSkyAttack.Handles(item.type) &&
                 (item.useAmmo==AmmoID.Arrow || item.useAmmo==AmmoID.Bullet) &&
                 (body.arrow || HostAmmoSteeringAttack.Handles(body.type) || HostAmmoImpactAttack.Handles(body.type) || HostArrowFamilyAttack.Handles(body.type) || HostSpecialArrowAttack.Handles(body.type)) &&
                 HostRepresentativeAttack.TryMotion(captured,out motion))return true;
             // Dedicated remote births, melee motors and major bounce/explosion
             // mechanisms retain their own solver. This replaces the ordinary
             // projectile branch before it captures a receive/ambient root.
-            return !HostSkyAttack.Handles(item.type) && !HostAttachedShotAttack.Handles(captured.Projectile) &&
+            return !HostSkyAttack.Handles(item.type) &&
                 captured.WeaponType!=4953 && !HostEffectAttack.Handles(captured.Projectile) &&
                 !HostMeleeAttack.Handles(body) && HostAttackModels.TryRead(captured,out motion);
         }
-        private static HostAttackSolution SolveBalancedHand(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,HostAttackClock clock,PredictionTerrain cells,out HostAttackObstacles root,bool advanced=false)
+        private static HostAttackSolution SolveBalancedHand(Player player,Item item,AttackAmmoSnapshot captured,NpcTrajectory timeline,Vector2 start,HostAttackClock clock,PredictionTerrain cells,out HostAttackObstacles root,bool advanced=false,Player liveOwner=null,HostAttackPlayerFrame? preparedPlayer=null)
         {
             root=null;
+            if(HostAttachedShotAttack.Handles(captured.Projectile))return HostAttachedShotAttack.PrepareHand(player,liveOwner??player,item,captured,timeline,start,clock,cells,out root,preparedPlayer);
             if(HostNativeArrowBirthAttack.Weapon(item.type))return HostNativeArrowBirthAttack.Prepare(player,item,captured,timeline,start,clock,cells,null,advanced);
             if(HostSkyAttack.Handles(item.type))
             {
@@ -128,7 +135,7 @@ namespace JueMingR.TerrariaHost.Combat
                     else
                     {
                         nextOrigin=origin+new Vector2(motion.X-player.position.X,motion.Y-player.position.Y);
-                        nextSolution=SolveBalancedHand(player,item,captured,timeline,nextOrigin,clock,terrain,out obstacles,true);
+                        nextSolution=SolveBalancedHand(player,item,captured,timeline,nextOrigin,clock,terrain,out obstacles,true,preparedPlayer:new HostAttackPlayerFrame(motion,frame.Environment));
                     }
                     next=nextSolution.Contact;currentSolution=nextSolution;current=next;
                 }
@@ -155,7 +162,9 @@ namespace JueMingR.TerrariaHost.Combat
                 NativeBirthInputsCurrent(player,weapon) &&
                 Vector2.DistanceSquared(HostAttackModels.LaunchOrigin(player,weapon),Main.GameUpdateCount==prepared?origin:nextOrigin)<=4 &&
                 environmentState.Current && (handTerrain==null?terrain.Unchanged:handTerrain.Current && handMotionTerrain!=null && handMotionTerrain.Current) &&
-                (solution.Contact==null || obstacles==null || (checkAmmo?obstacles.UnchangedForHandStart:obstacles.Unchanged)) && (checkAmmo?ammo.Matches(player,weapon):ammo.IdentityMatches(player,weapon));
+                (solution.Contact==null || obstacles==null || (checkAmmo?obstacles.UnchangedForHandStart:obstacles.Unchanged)) &&
+                (checkAmmo?ammo.Matches(player,weapon):ammo.IdentityMatches(player,weapon)) &&
+                (!checkAmmo || ammo.Projectile!=1024 || ammo.CardFireType!=3 || solution.Contact!=null || !HostAttachedShotAttack.HasOutstandingCard(Main.projectile,player.whoAmI));
         }
         private bool BalancedMotionCurrent(Player player,NpcTrajectory timeline)
         {
@@ -222,7 +231,7 @@ namespace JueMingR.TerrariaHost.Combat
                     if(item.type==4953 && player.itemAnimation>delay+(phase==HostAttackPhase.CompletedWorld?1:0))
                     {body.itemAnimation=player.itemAnimation;body.itemAnimationMax=player.itemAnimationMax;}
                 }
-                plan.Solution=SolveBalancedHand(body,item,captured,timeline,HostAttackModels.LaunchOrigin(body,item),new HostAttackClock(timeline,phase,delay),plan.Terrain,out plan.Obstacles,advance>0);
+                plan.Solution=SolveBalancedHand(body,item,captured,timeline,HostAttackModels.LaunchOrigin(body,item),new HostAttackClock(timeline,phase,delay),plan.Terrain,out plan.Obstacles,advance>0,player,new HostAttackPlayerFrame(motion,frame.Environment));
             }
             plan.Balanced=true;plan.Contact=plan.Solution.Contact;return true;
         }

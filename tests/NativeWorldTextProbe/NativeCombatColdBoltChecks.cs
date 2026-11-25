@@ -46,7 +46,7 @@ namespace NativeWorldTextProbe
                         // This full native damage component deliberately owns a
                         // synthetic121-point path, not a cold Main deadline.
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));
-                        NativeToolExecutionChecks.Sample(context,input,mouse,true);Call(combat,"Sample");
+                        NativeToolExecutionChecks.Sample(context,input,mouse,true);Call(combat,"Sample");Call(host,"SampleMouse");
                         NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);preview=(AttackContact)GetOptional(attack,"ExpectedImpact");
                         Require(blocked?preview==null:preview!=null,"cold bolt actual held-stage feasibility: item="+row[0]+" scene="+scene+" preview="+preview?.Tick);
                         NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,true,true,25,true,true));long start=Main.GameUpdateCount;bool born=false;

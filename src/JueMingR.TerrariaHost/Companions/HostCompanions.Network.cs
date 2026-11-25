@@ -57,6 +57,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var connection = a.Connection;
             if (connection == null) return;
+            RetireWormholes(a);
             string deathFailure = null;
             bool unconfirmedDeath = connection.HasUnconfirmedDeath;
             if (unconfirmedDeath && !connection.Finished)
@@ -229,9 +230,18 @@ namespace JueMingR.TerrariaHost.Companions
                     if(!WorldPacket(a,packet))continue;
                     if(packet.Length>decoder.readBuffer.Length)throw new InvalidDataException("队友世界数据帧过大。");
                     Buffer.BlockCopy(packet,0,decoder.readBuffer,0,packet.Length);decoder.ResetReader();Decoding=a;
-                    try{int type;if(id==39 || id==65)using(CompanionHooks.Enter(a,a.Aim))decoder.GetData(0,packet.Length,out type);else decoder.GetData(0,packet.Length,out type);}finally{Decoding=null;}
+                    try
+                    {
+                        if (id == 65) decodingWormhole = MatchWormholeReply(a, packet);
+                        int type;
+                        if (id == 39 || id == 65)
+                            using (CompanionHooks.Enter(a, a.Aim)) decoder.GetData(0, packet.Length, out type);
+                        else decoder.GetData(0, packet.Length, out type);
+                    }
+                    finally { Decoding = null; decodingWormhole = null; }
                 }
             }
+            PumpWormholes(a);
         }
         private Actor Observer(Vector2 position)
         {
@@ -271,7 +281,9 @@ namespace JueMingR.TerrariaHost.Companions
             if(id==14 && length>=3)return AcceptPrimarySlotChange(a,slot,data[start+2]==1);
             // Own team echoes arrive on the human stream, excluding the AI's
             // sender connection. They cannot overwrite a later local team intent.
-            if(a!=null && (id==4 || id==5 || id==12 || id==13 || id==16 || id==42 || id==45 || id==157 || id==50 || id==117 || id==118 || id==135))return false;
+            // Portal 96 is also a client-owned echo: the actual player's local
+            // portal consumer already applied it and submitted its movement.
+            if(a!=null && (id==4 || id==5 || id==12 || id==13 || id==16 || id==42 || id==45 || id==96 || id==157 || id==50 || id==117 || id==118 || id==135))return false;
             if((id==27 || id==29) && length>=5)
             {var key=(ProjectileKey)BitConverter.ToInt32(data,start+1);Projectile projectile;if(key.TryGetActive(out projectile) && ProjectileActor(projectile)!=null)return false;if(key.Spawner!=owner?.whoAmI && (HasActors || projectileSources.Count!=0))return RouteProjectile(null,data,start,length);}
             // Primary NPC 23/28/162 always retain their original native order.
@@ -387,6 +399,7 @@ namespace JueMingR.TerrariaHost.Companions
             CompanionHooks.Spawning=p;try{p.Spawn(context);}finally{CompanionHooks.Spawning=null;}
             // Native Spawn chooses the real position for joins and revivals.
             // The deserialized body's pre-spawn center is not a world cursor.
+            a.Mobility.Reset(a.Generation);
             a.Behavior=new CompanionBehaviorHost();a.Combat.Reset();SetAttackTarget(a,null);IdleAim(a);
         }
         private void RestoreMinions(Actor a)

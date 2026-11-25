@@ -249,7 +249,7 @@ namespace JueMingR.TerrariaHost.F5
             set
             {
                 CompanionUi?.Close();companions=value;
-                CompanionUi=value==null?null:new CompanionWindow(value,inputState,State.Layout.DynamicTextSize);
+                CompanionUi=value==null?null:new CompanionWindow(value,inputState,State.Layout.DynamicTextSize) { CreationShell=this };
                 if (CompanionUi != null && hotkeys?.CompanionSettings != null)
                 {
                     CompanionUi.HotkeyClicked = OpenCompanionHotkey;
@@ -264,11 +264,10 @@ namespace JueMingR.TerrariaHost.F5
         {
             if(CompanionUi==null)return;
             if(CompanionUi.Visible){CompanionUi.Close();return;}
-            // Misc already owns this validated release and its physical tail.
-            // Close the parent first, then open the same independent window;
-            // hidden-page cleanup must never retire the newly opened view.
-            CloseAndSubmitPosition();
-            ToggleCompanionWindow(anchor,true,null);
+            ToggleCompanionWindow(null);
+            // A narrow viewport or unavailable resources can reject the open.
+            // Commit the parent departure only after the independent view survives preparation.
+            if(CompanionUi.Visible) CloseShellAndSubmitPosition(keepCompanion:true);
         }
         // Notes hover may coexist with this keyboard action. An existing drag
         // and its final consumed release sample must finish before a new window.
@@ -293,7 +292,7 @@ namespace JueMingR.TerrariaHost.F5
             // Keep shared physical history intact: one accepted edge clears this
             // epoch, without suppressing unrelated held movement until release.
             inputState.ConsumeHotkeyActions();
-            ToggleCompanionWindow(default(F5Rect),true,chord);
+            ToggleCompanionWindow(chord);
         }
         private bool CompanionHotkeyPointerFree(HotkeyChord chord)
         {
@@ -306,16 +305,16 @@ namespace JueMingR.TerrariaHost.F5
             const HotkeyModifiers control=HotkeyModifiers.LeftControl|HotkeyModifiers.RightControl;
             return !Main.playerInventory || chord.MainKey!=256 || (chord.Modifiers&control)==0;
         }
-        private void ToggleCompanionWindow(F5Rect anchor,bool independent,HotkeyChord chord)
+        private void ToggleCompanionWindow(HotkeyChord chord)
         {
             if(CompanionUi==null)return;
-            if(CompanionUi.Visible){if(independent)CompanionUi.ToggleIndependent(chord);else CompanionUi.Close();return;}
+            if(CompanionUi.Visible){CompanionUi.ToggleIndependent(chord);return;}
             CloseBlueprintReplacementConfiguration();CaptureUi?.Close();FishingUi?.CloseOverlay();RecoveryUi?.PotionPopup.Close();
             HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();MapPopup?.Suspend();FootprintPopup?.Close();
             renderer.RefreshResources();
             renderer.Prepare(State,PlayerInput.OriginalScreenSize.X,PlayerInput.OriginalScreenSize.Y,Main.UIScaleMatrix.M11);
             State.CancelControlCapture();
-            if(independent)CompanionUi.ToggleIndependent(chord);else CompanionUi.Toggle(anchor);
+            CompanionUi.ToggleIndependent(chord);
             CompanionUi.Prepare(Main.UIScaleMatrix,PlayerInput.OriginalScreenSize);
         }
         private MiscAutomationPanel EnsureMiscUi()
@@ -397,6 +396,8 @@ namespace JueMingR.TerrariaHost.F5
         private bool nativeControlPriorInterface;
         private bool failed, failureNotified, positionRestored, failureCleanupAttempted;
         internal Exception CleanupFailure { get; private set; }
+        internal F5FailureReport FailureReport { get; set; }
+        internal bool OwnsCompanionCreation => !failed && !biome.SharedRuntime.HasFailed && biome.SharedRuntime.IsSessionActive;
         private bool adjustmentPending;
         private long adjustmentRequest;
         private Matrix matrix;
@@ -775,7 +776,7 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         internal void BeforeInput()
-        { if (biome.SharedRuntime.HasFailed) { FailClosed(); return; } try { CompanionUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); hotkeys?.PollHiddenRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && BlueprintMaterialsUi?.Visible != true); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MiscUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && !SecondaryModalVisible); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch { FailClosed(); } }
+        { if (biome.SharedRuntime.HasFailed) { FailClosed(); return; } try { CompanionUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); hotkeys?.PollHiddenRegistration(); CheckLabelSession(); BlueprintUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && BlueprintMaterialsUi?.Visible != true); FishingUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MapPopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); StylePopup?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); notes.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); ReforgeUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); MiscUi?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText && !SecondaryModalVisible); items?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); Browser?.BeforeInput(!failed && CanPresentNow && inputState.CanPrepareText); } catch (Exception exception) { FailClosed("before-input",exception); } }
 
         internal void ProcessInput()
         {
@@ -830,6 +831,7 @@ namespace JueMingR.TerrariaHost.F5
                 var secondaryEntry = SecondaryEntryAt(pointer, screen);
                 bool dynamicEntry = SecondaryDynamicAt(pointer,screen);
                 bool materialsWasVisible = BlueprintMaterialsUi?.Visible == true;
+                bool inventoryCloseBlocked = State.Visible && SecondaryModalVisible;
                 bool materialsParentEntry=materialsWasVisible && BlueprintMaterialsUi.Captured==false && !BlueprintMaterialsUi.Contains(pointer.X,pointer.Y) &&
                     (BlueprintUi?.MaterialsEntryAt(pointer)==true || BlueprintPlacedUi?.MaterialsEntryAt(pointer)==true);
                 BlueprintMaterialsUi?.Process(inputActive, pointer, inputState.SampleFocused, PlayerInput.ScrollWheelDeltaForUI, f5);
@@ -908,12 +910,33 @@ namespace JueMingR.TerrariaHost.F5
                     inputState.SampleFocused, PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed, inputState.Hotkeys.IsNew(256),
                     f5 || cancelGesture, pointer.X, pointer.Y, matrix, renderer.FontIdentity, renderer.SkinGeneration);
                 popupPointer|=(CombatInterval?.OwnsPointer==true || CombatRadius?.OwnsPointer==true || ViewZoom?.OwnsPointer==true);
+                bool closeFromInventory = false;
+                if (inputActive && State.Ready && (State.Visible || f5) && !inventoryCloseBlocked &&
+                    !SecondaryModalVisible && !adjusting && !adjustmentPending && !(TargetGestureBusy?.Invoke() ?? false) &&
+                    RecoveryUi?.Selecting != true && items?.Selecting != true && !Main.blockInput && !Main.drawingPlayerChat &&
+                    !Main.editSign && !Main.editChest && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText && !notes.OtherTextOwner)
+                {
+                    // A shared F5/Inventory binding is one gesture. While closed,
+                    // F5 opens the menu and its delayed native mapping is consumed.
+                    bool wasVisible = State.Visible;
+                    var mouseClick = Input.HostInputState.InventoryMouseClick.Native;
+                    if (wasVisible && PlayerInput.Triggers.Current.Inventory && (inputState.Hotkeys.IsNew(256) || inputState.Hotkeys.IsNew(257)))
+                    {
+                        // Our pointer owners retain the real click, even when it
+                        // also maps to Inventory. Native surfaces retain theirs.
+                        if (popupPointer || TargetPointOwned(pointer)) mouseClick = Input.HostInputState.InventoryMouseClick.Interface;
+                        else if (!Main.playerInventory && Main.LocalPlayer is Player player && !player.mouseInterface && !player.lastMouseInterface &&
+                            player.talkNPC < 0 && player.sign < 0) mouseClick = Input.HostInputState.InventoryMouseClick.CloseMenu;
+                    }
+                    closeFromInventory = inputState.ConsumeInventoryKeyPress(f5Only: !wasVisible, mouseClick: mouseClick) && wasVisible;
+                }
                 State.Update(new F5Input
                 {
                     Width = screen.X, Height = screen.Y, Scale = matrix.M11, X = pointer.X, Y = pointer.Y,
                     Active = inputActive,
                     Focused = inputState.SampleFocused,
                     F5 = f5,
+                    CloseMenu = closeFromInventory,
                     Left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed,
                     Right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed,
                     BlockPointer = popupPointer,
@@ -1057,7 +1080,7 @@ namespace JueMingR.TerrariaHost.F5
                     gameplay, admit: admitHotkey);
                 QuickItems?.AfterDispatch(gameplay);
             }
-            catch { FailClosed(); ConsumeSample(); }
+            catch (Exception exception) { FailClosed("input",exception); ConsumeSample(); }
         }
 
         // The world editor remains suspended while F5 is visible. Only an
@@ -1134,6 +1157,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (deaths != null) State.Layout.SetDeathInformation(deaths.CountText, deaths.DaysText);
                 if (worldObjects != null) State.Layout.SetWorldObjectSettings(worldObjects.Preferences.Value);
                 hotkeys?.Bindings.Poll();
+                hotkeys?.CompanionSettings?.PollDeletions(companions, hotkeys.Bindings, CompanionUi?.HotkeyProfile ?? Guid.Empty);
                 SubmitPosition();
                 // Do not consume a required alert while normal game text is hidden.
                 if (!Main.gameMenu && !Main.hideUI)
@@ -1198,7 +1222,7 @@ namespace JueMingR.TerrariaHost.F5
                 CompanionUi?.Prepare(matrix,PlayerInput.OriginalScreenSize);
                 Browser?.Prepare(CanPresentNow && LayersReady, matrix);
             }
-            catch { FailClosed(); }
+            catch (Exception exception) { FailClosed("prepare",exception); }
         }
 
         internal bool BeginPointerLayer()
@@ -1222,7 +1246,7 @@ namespace JueMingR.TerrariaHost.F5
                     if (companionSlotHover == null) Main.instance.MouseTextNoOverride(null);
                 }
             }
-            catch { FailClosed(); }
+            catch (Exception exception) { FailClosed("pointer-layer",exception); }
             return true;
         }
 
@@ -1240,7 +1264,7 @@ namespace JueMingR.TerrariaHost.F5
                 hoverLease = true;
                 Main.mouseText = true;
             }
-            catch { FailClosed(); }
+            catch (Exception exception) { FailClosed("hover-layer",exception); }
             return true;
         }
 
@@ -1299,7 +1323,7 @@ namespace JueMingR.TerrariaHost.F5
                     if (companionHotkeyPopup) renderer.DrawPopup(HotkeyPopup);
                 }
             }
-            catch { FailClosed(); }
+            catch (Exception exception) { FailClosed("draw",exception); }
             return true;
         }
 
@@ -1473,7 +1497,10 @@ namespace JueMingR.TerrariaHost.F5
         private void CloseForUnavailablePresentation()
         { if (TemporaryPresentationUnavailable) SuspendForTemporaryUnavailability(!inputState.IsFocused); else CloseAndSubmitPosition(); }
 
-        internal void CloseAndSubmitPosition() { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); ViewZoom?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); CompanionUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
+        internal void CloseAndSubmitPosition() => CloseShellAndSubmitPosition(keepCompanion:false);
+
+        private void CloseShellAndSubmitPosition(bool keepCompanion)
+        { secondaryNavigation++; CloseBlueprintReplacementConfiguration(); CombatInterval?.Cancel(); CombatRadius?.Cancel(); ViewZoom?.Cancel(); BlueprintMaterialsUi?.Close(); BlueprintPlacedUi?.Close(); BlueprintUi?.Suspend(); MiscUi?.Suspend(); FishingUi?.Suspend(); CaptureUi?.Close(); if(!keepCompanion)CompanionUi?.Close(); MiningUi?.Suspend(); CancelInformationAdjustment(false); HotkeyPopup?.Close(); StylePopup?.Close(); DeathPopup?.Close(); MapPopup?.Suspend(); FootprintPopup?.Close(); State.Close(); notes.Suspend(); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); SubmitPosition(); }
 
         internal void CancelForFocusLoss()
         {
@@ -1491,8 +1518,12 @@ namespace JueMingR.TerrariaHost.F5
             notes.Suspend(true); items?.Suspend(); RecoveryUi?.Suspend(); ReforgeUi?.Suspend(); Browser?.Suspend(); RestoreLeases();
         }
 
-        internal void FailClosed()
+        internal void ReportCreationFailure(string phase,Exception primary,Exception cleanup,string state)
+        { FailureReport?.Record(true,phase,primary,cleanup,$"shellFailed={failed};managerVisible={CompanionUi?.Visible==true};{state}"); }
+
+        internal void FailClosed(string phase=null,Exception primary=null)
         {
+            string snapshot=primary==null?null:$"shellFailed={failed};managerVisible={CompanionUi?.Visible==true};"+CompanionCreationSession.DescribeFor(this);
             failed = true; State.Ready = false;
             if (failureCleanupAttempted) return;
             failureCleanupAttempted = true;
@@ -1508,6 +1539,11 @@ namespace JueMingR.TerrariaHost.F5
             AttemptFailureCleanup(() => BlueprintUi?.Suspend());
             AttemptFailureCleanup(() => MiscUi?.Suspend());
             AttemptFailureCleanup(() => FishingUi?.Suspend());
+            AttemptFailureCleanup(() =>
+            {
+                Exception creationCleanup=CompanionCreationSession.DisposeFor(this);
+                if(CleanupFailure==null)CleanupFailure=creationCleanup;
+            });
             AttemptFailureCleanup(() => CompanionUi?.Close());
             AttemptFailureCleanup(() => CaptureUi?.Close());
             AttemptFailureCleanup(() => MiningUi?.Suspend());
@@ -1527,6 +1563,7 @@ namespace JueMingR.TerrariaHost.F5
             AttemptFailureCleanup(RestoreLeases);
             AttemptFailureCleanup(notes.FailClosed);
             AttemptFailureCleanup(renderer.Dispose);
+            FailureReport?.Record(false,phase,primary,CleanupFailure,snapshot);
         }
         private void AttemptFailureCleanup(Action cleanup)
         {

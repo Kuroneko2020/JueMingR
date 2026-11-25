@@ -26,14 +26,15 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal static Player Draft(string name, byte difficulty)
         { return new Player { whoAmI = 255, name = name ?? "", difficulty = difficulty, voiceVariant = 1, statLife = 100, statLifeMax = 100, statMana = 20, statManaMax = 20 }; }
-        internal static void Validate(Player draft)
+        internal static string DraftRejection(Player draft)
         {
-            if (draft == null) throw new InvalidOperationException("请先创建人物草稿。");
+            if (draft == null) return "请先创建人物草稿。";
             string name = (draft.name ?? "").Trim();
-            if (name.Length == 0 || name.Length > Player.nameLen) throw new InvalidOperationException("请输入 1 至 " + Player.nameLen + " 个字符的人物名字。");
+            if (name.Length == 0 || name.Length > Player.nameLen) return "请输入 1 至 " + Player.nameLen + " 个字符的人物名字。";
             if (draft.difficulty > 3 || !Hairstyles.Contains(draft.hair) || draft.skinVariant < 0 || draft.skinVariant >= 10 ||
                 !PlayerVoiceID.VariantOrder.Contains(draft.voiceVariant) || Single.IsNaN(draft.voicePitchOffset) || Single.IsInfinity(draft.voicePitchOffset) || draft.voicePitchOffset < -1 || draft.voicePitchOffset > 1)
-                throw new InvalidOperationException("人物外观、声音或难度无效，请重新选择。");
+                return "人物外观、声音或难度无效，请重新选择。";
+            return null;
         }
         internal static void CopyAppearance(Player source, Player target)
         {
@@ -63,6 +64,7 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Player, object> submittedDrafts = new System.Runtime.CompilerServices.ConditionalWeakTable<Player, object>();
         internal Player NewCreationDraft() { return CompanionCreation.Draft("", (byte)(Main.GameMode == 3 ? 3 : 0)); }
         internal IReadOnlyList<int> GetCreationHairstyles() { return CompanionCreation.Hairstyles; }
+        internal bool CreationSavePending => LastCreatedId!=Guid.Empty&&!profiles.IsSaved(LastCreatedId);
         internal void RandomizeCreation(Player draft) { CompanionCreation.Randomize(draft); }
         internal void PreviewCreationVoice(Player draft)
         {
@@ -73,14 +75,17 @@ namespace JueMingR.TerrariaHost.Companions
             try { draft.position = new Vector2(-1,-1); draft.PlayHurtSound(); }
             finally { draft.position = prior; }
         }
+        // The native UI caller owns unexpected exceptions. Ordinary rejection
+        // stays in the same draft and never enters that caller's fault path.
         internal bool CreateDraft(Player draft)
         {
             if (!CanCreate) return Result(false,ArchiveNotice??"队友档案尚未就绪。");
             if (draft == null) return Result(false,"请先创建人物草稿。");
             object accepted;
             if (submittedDrafts.TryGetValue(draft,out accepted)) return Result(false,"此人物已经创建。");
-            try { var profile=profiles.CreateDraft(draft); submittedDrafts.Add(draft,new object()); return Created(profile); }
-            catch (Exception e) { return Result(false,e.Message); }
+            if (!profiles.TryCreateDraft(draft,out var profile,out var rejection)) return Result(false,rejection);
+            submittedDrafts.Add(draft,new object());
+            return Created(profile);
         }
     }
 }

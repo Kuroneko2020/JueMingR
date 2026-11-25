@@ -215,13 +215,14 @@ $setupFileName=$packageDirectoryName+'-Setup.exe'
 $setupPath=Join-Path $stagingRoot $setupFileName
 Copy-Phase0SBuilderFileCreateNew (Join-Path $setupBuildRoot 'bin/JueMingR.Setup/x86/Release/net472/JueMingR.Setup.exe') $setupPath
 $setupResources=@(foreach($file in $bundle.files){[ordered]@{name=('JueMingR.Setup.Payload.'+$file.path);path=$file.path;length=$file.length;sha256=$file.sha256}})
+$game = (Get-Phase0SCurrentReferenceIdentity).Game
 $externalBuildRecord=[ordered]@{
     schemaVersion=1;distributionFormat='two-file-1';sourceCommit=$sourceCommit;clean=($null -eq $admission);
     workspaceDirty=($null -ne $admission);committedProductSourceClean=$true;releaseEligible=($null -eq $admission -and -not $StageDevelopmentRecord);
     workspace=$admission;packageId=$packageId;sdk='10.0.203';configuration='Release';blueprintDiagnostic=[bool]$BlueprintDiagnostic;targetGestureDiagnostic=[bool]$TargetGestureDiagnostic;
     targetFramework='net472';platformTarget='x86';buildEntry='scripts/build.ps1';solution='JueMingR.sln';
     sourceBuildRecordSha256=(Get-Phase0SFileSha256 $buildRecordPath);sourceFingerprint=$buildRecord.sourceFingerprint;workload=$buildRecord.workload;
-    target=[ordered]@{simpleName='Terraria';version='1.4.5.8';mvid='2c29f6c3-4bd9-4add-9c58-da159804e083';sha256='960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3'};
+    target=[ordered]@{simpleName=$game.assemblySimpleName;version=$game.assemblyVersion;mvid=$game.mvid;sha256=$game.sha256};
     harmony=[ordered]@{package='Lib.Harmony';version='2.4.2';assemblyMvid=$harmonyIdentity.mvid;assemblySha256=$harmonyIdentity.sha256;licenseSha256=(Get-Phase0SFileSha256 $harmonyLicensePath)};
     packageDirectory=[ordered]@{name='';files=@($bundle.files)};bundle=$bundle;
     archive=[ordered]@{fileName=$zipFileName;length=[long](Get-Item -LiteralPath $zipPath).Length;sha256=(Get-Phase0SFileSha256 $zipPath)};

@@ -31,7 +31,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
                 // Main allocates this array before Initialize sets its values.
                 // These locked-client sentinels distinguish that early array
                 // from initialized safety facts; no initializer is invoked here.
-                return typeof(Main).Assembly.GetName().Version == new Version(1, 4, 5, 8) && substitutionExclusions.Count == 3 &&
+                return BlueprintPlacementCatalog.SupportsVersion(typeof(Main).Assembly.GetName().Version.ToString()) && substitutionExclusions.Count == 3 &&
                     Main.wallHouse != null && Main.wallHouse.Length >= WallID.Count && Main.wallHouse[WallID.Stone] && Main.wallHouse[WallID.Wood] && !Main.wallHouse[WallID.DirtUnsafe];
             }
         }

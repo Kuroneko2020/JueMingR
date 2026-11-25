@@ -25,7 +25,7 @@ namespace NativeWorldTextProbe
                 // Normal source-side network owners are absent from the tiny
                 // component fixture. Populate disconnected server peers so the
                 // unmodified network tail can run; no SendData is suppressed.
-                Netplay.Clients=new RemoteClient[256];for(int i=0;i<256;i++)Netplay.Clients[i]=new RemoteClient{Id=i,Socket=new TcpSocket()};NetMessage.buffer=new MessageBuffer[257];for(int i=0;i<257;i++)NetMessage.buffer[i]=new MessageBuffer{whoAmI=i};
+                Netplay.Clients=new RemoteClient[256];for(int i=0;i<256;i++)Netplay.Clients[i]=new RemoteClient{Id=i};NetMessage.buffer=new MessageBuffer[257];for(int i=0;i<257;i++)NetMessage.buffer[i]=new MessageBuffer{whoAmI=i};
                 Main.netMode=2;Main.dedServ=true;var source=Spawn(snail?359:690,0);source.position.Y=960-source.height;human.Center=source.Center+new Vector2(-20,0);source.TargetClosest();Main.rand=new UnifiedRandom(1);source.UpdateNPC(Slot);if(!snail)source.UpdateNPC(Slot);Main.netMode=1;Main.dedServ=dedicated;
                 byte[] packet=serialize(Slot);PlainNpcPacket(host,plain,packet);deliver(packet);var observed=((NPC[])Get(host,"observedNpcs"))[Slot];var reference=plain[Slot];
                 Require(reference.Size==observed.Size && reference.scale==observed.scale && reference.position==observed.position && reference.noTileCollide==observed.noTileCollide && reference.immortal==observed.immortal && reference.dontTakeDamage==observed.dontTakeDamage,"actual same23 first decoder phase matches ordinary defaults rather than unpublished source fields");

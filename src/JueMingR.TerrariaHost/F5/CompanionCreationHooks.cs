@@ -35,37 +35,65 @@ namespace JueMingR.TerrariaHost.F5
         {h.Patch(AccessTools.Method(type,method),new HarmonyMethod(typeof(CompanionCreationHooks),prefix),finalizer:finalizer==null?null:new HarmonyMethod(typeof(CompanionCreationHooks),finalizer));}
         private static CompanionCreationSession Current {get {var s=CompanionCreationSession.Active;return s!=null&&s.Valid&&s.Owns(Main.InGameUI.CurrentState)?s:null;}}
         private static CompanionCreationSession OwnedActive {get {var s=CompanionCreationSession.Active;return s!=null&&s.Owns(Main.InGameUI.CurrentState)?s:null;}}
-        private static bool Update(UserInterface __instance,Microsoft.Xna.Framework.GameTime __0,out IDisposable __state)
+        private struct DispatchState
         {
-            __state=null;var s=OwnedActive;
+            internal CompanionCreationSession Session;
+            internal IDisposable Scope;
+            internal bool Draw;
+        }
+        private static bool Update(UserInterface __instance,Microsoft.Xna.Framework.GameTime __0,out DispatchState __state)
+        {
+            __state=default(DispatchState);var s=OwnedActive;
             if(ReferenceEquals(__instance,Main.InGameUI)&&s!=null&&!s.Dispatching){s.QueueNativeUpdate(__0);return false;}
             return Begin(__instance,false,out __state);
         }
-        private static bool Draw(UserInterface __instance,out IDisposable __state) {return Begin(__instance,true,out __state);}
-        private static bool Begin(UserInterface ui,bool draw,out IDisposable state)
+        private static bool Draw(UserInterface __instance,out DispatchState __state) {return Begin(__instance,true,out __state);}
+        private static bool Begin(UserInterface ui,bool draw,out DispatchState state)
         {
-            state=null;if(!ReferenceEquals(ui,Main.InGameUI))return true;
+            state=default(DispatchState);if(!ReferenceEquals(ui,Main.InGameUI))return true;
             var s=OwnedActive;if(s==null)return true;
-            if(!s.Valid){CompanionCreationSession.DisposeFor(s.Host);return false;}
-            if(!draw&&!s.InputAllowed) {
-                // A focus-loss neutral sample is not a physical MouseUp. Drop
-                // native LastDown/LastClicked before it can submit a keyboard;
-                // keep the native page and its draft for trusted reactivation.
-                ui.ResetLasts();return false;
+            try
+            {
+                if(!s.Valid){CompanionCreationSession.DisposeFor(s.Host);return false;}
+                if(!draw&&!s.InputAllowed) {
+                    // A focus-loss neutral sample is not a physical MouseUp.
+                    // Drop native LastDown/LastClicked before trust resumes.
+                    ui.ResetLasts();return false;
+                }
+                state=new DispatchState { Session=s, Scope=s.Enter(draw), Draw=draw };
+                return true;
             }
-            state=s.Enter(draw);return true;
+            catch(Exception exception) {s.Recover(draw?"prepare-draw":"prepare-update",exception);return false;}
         }
-        private static Exception DispatchFinally(Exception __exception,IDisposable __state) {__state?.Dispose();return __exception;}
+        private static Exception DispatchFinally(Exception __exception,DispatchState __state)
+        {
+            var session=__state.Session;
+            if(session==null)return __exception;
+            Exception cleanup=null;
+            try {__state.Scope.Dispose();} catch(Exception exception) {cleanup=exception;}
+            if(__exception!=null||cleanup!=null)
+                session.Recover(__state.Draw?"native-draw":"native-update",__exception??cleanup,__exception==null?null:cleanup);
+            return null;
+        }
         private static bool Hair(HairstyleUnlocksHelper __instance) {return !ReferenceEquals(__instance,CompanionCreationSession.Active?.Hairstyles);}
         // Weak exact-instance ownership outlives the active session. A delayed
         // callback from our retired creator must never become vanilla file I/O.
         // Ordinary native creators were never marked and retain their own exits.
-        private static bool IsCreator(UICharacterCreation c) {return Current?.InputAllowed==true&&ReferenceEquals(c,Current.Creator);}
-        private static bool Name(UICharacterCreation __instance) {if(!CompanionCreationSession.WasManaged(__instance))return true;if(IsCreator(__instance))Current.Name(false);return false;}
-        private static bool NameAndCreate(UICharacterCreation __instance) {if(!CompanionCreationSession.WasManaged(__instance))return true;if(IsCreator(__instance))Current.Name(true);return false;}
-        private static bool Submit(UICharacterCreation __instance) {if(!CompanionCreationSession.WasManaged(__instance))return true;if(IsCreator(__instance))Current.Submit();return false;}
-        private static bool Cancel(UICharacterCreation __instance) {if(!CompanionCreationSession.WasManaged(__instance))return true;if(IsCreator(__instance))Current.Cancel();return false;}
-        private static bool InstanceBack(UICharacterCreation __instance) {if(!CompanionCreationSession.WasManaged(__instance))return true;if(IsCreator(__instance))Current.Back();return false;}
+        private static bool InvokeCreator(UICharacterCreation creator,string phase,Action<CompanionCreationSession> action)
+        {
+            if(!CompanionCreationSession.WasManaged(creator))return true;
+            var s=Current;
+            if(s?.InputAllowed==true&&ReferenceEquals(creator,s.Creator))
+            {
+                try {action(s);} catch(Exception exception) {s.Recover(phase,exception);}
+            }
+            return false;
+        }
+        private static bool Name(UICharacterCreation __instance) => InvokeCreator(__instance,"open-naming",s=>s.Name(false));
+        private static bool NameAndCreate(UICharacterCreation __instance) => InvokeCreator(__instance,"open-naming",s=>s.Name(true));
+        private static bool Submit(UICharacterCreation __instance) => InvokeCreator(__instance,"submit",s=>s.Submit());
+        private static bool Cancel(UICharacterCreation __instance) => InvokeCreator(__instance,"cancel",s=>s.Cancel());
+        private static bool InstanceBack(UICharacterCreation __instance) => InvokeCreator(__instance,"back",s=>s.Back());
         private static bool MenuNameCallback(UICharacterCreation __instance) {return !CompanionCreationSession.WasManaged(__instance);}
         private static bool KeyboardSubmit(UIVirtualKeyboard __instance) {if(!CompanionCreationSession.WasManaged(__instance))return true;var s=Current;if(s==null||!ReferenceEquals(__instance,s.Keyboard))return false;if(s.InputAllowed)return true;s.RequestKeyboardSubmit();return false;}
         private static bool KeyboardCancel() {var s=Current;if(s==null||!ReferenceEquals(Main.InGameUI.CurrentState,s.Keyboard)||s.InputAllowed)return true;s.RequestBack();return false;}

@@ -8,10 +8,10 @@ using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Combat
 {
-    // Locked 1.4.5.8 AI113 hand roles only. These value copies never run AI,
-    // Damage, Kill, birth or random. An attachment disables Damage, not
-    // UpdatePosition: native Center=NPC.Center-velocity*2 then moves once.
-    internal static class HostAttachedShotAttack
+    // AI113 hand roles observed on 1.4.5.8 and checked on 1.4.6.1. These
+    // value copies never run AI, Damage, Kill, birth or random. Attachment
+    // disables Damage. Native Center=NPC.Center-velocity*2 still moves once.
+    internal static partial class HostAttachedShotAttack
     {
         private static readonly int[] sceneTypes={598,636,953,1024};
         internal static bool Handles(int type){return type==598 || type==636 || type==1024;}
@@ -40,18 +40,7 @@ namespace JueMingR.TerrariaHost.Combat
             if(s.Phase==0)
             {
                 s.Clock+=1f;
-                if(s.Clock>=(sample.type==1024?60:45))
-                {s.Velocity.X*=sample.type==636?.995f:.98f;s.Velocity.Y+=sample.type==636?.15f:.35f;}
-                if(sample.type==1024 && s.Velocity.Y>12)s.Velocity.Y=12;
-                s.Rotation=s.Velocity.ToRotation()+(float)Math.PI/2;
-                if(sample.type==1024)
-                {
-                    s.Rotation-=(float)Math.PI/2;
-                    float angle=(float)Math.PI/30f,amplitude=40f*s.Curve;
-                    double bend=(double)(amplitude*angle*angle)*(0.0-Math.Sin(s.Clock*angle));
-                    if(s.Clock==1f)bend+=(double)(amplitude*angle);
-                    s.Velocity+=Vector2.UnitY.RotatedBy(s.Rotation)*(float)bend;
-                }
+                AdvanceFlight(sample.type,s.Clock,s.Curve,ref s.Velocity,out s.Rotation);
             }
             if(s.Phase==1)
             {
@@ -113,6 +102,21 @@ namespace JueMingR.TerrariaHost.Combat
             return true;
         }
         internal static void Finish(ref State s){if(s.Alive && --s.Left<=0)Kill(ref s);}
+        private static int GravityStart(int type){return type==1024?60:45;}
+        private static float Gravity(int type){return type==636?.15f:.35f;}
+        private static float Drag(int type){return type==636?.995f:.98f;}
+        private static void AdvanceFlight(int type,float clock,float curve,ref Vector2 velocity,out float rotation)
+        {
+            if(clock>=GravityStart(type)){velocity.X*=Drag(type);velocity.Y+=Gravity(type);}
+            if(type==1024 && velocity.Y>12)velocity.Y=12;
+            rotation=velocity.ToRotation()+(float)Math.PI/2;
+            if(type!=1024)return;
+            rotation-=(float)Math.PI/2;
+            float angle=(float)Math.PI/30f,amplitude=40f*curve;
+            double bend=(double)(amplitude*angle*angle)*(0.0-Math.Sin(clock*angle));
+            if(clock==1f)bend+=(double)(amplitude*angle);
+            velocity+=Vector2.UnitY.RotatedBy(rotation)*(float)bend;
+        }
         internal static Rectangle DamageBox(int type,Vector2 position,int width,int height)
         {var b=new Rectangle((int)position.X,(int)position.Y,width,height);if(type==1024)b.Inflate(6,6);return b;}
         internal static bool Collides(int type,Rectangle shot,MotionRect target)
@@ -144,38 +148,28 @@ namespace JueMingR.TerrariaHost.Combat
             foreach(var source in family)if(source.active){var shot=Copy(source);group.Add(Make(group,shot,new State(shot),shot.whoAmI,false));}
             return group;
         }
-        private static Projectile[] Observe(Player player,HostAttackObstacles obstacles,Projectile sample)
+        private static Projectile[] Observe(Player player)
         {
-            var family=new List<Projectile>();foreach(var q in Main.projectile)if(q.owner==player.whoAmI && (Handles(q.type) || q.type==953) && (q.active || q.type==1024))family.Add(q);
+            var family=new List<Projectile>();
+            for(int i=0;i<Main.maxProjectiles;i++)
+            {
+                var shot=Main.projectile[i];
+                if(shot.owner==player.whoAmI && (Handles(shot.type) || shot.type==953) && (shot.active || shot.type==1024))family.Add(shot);
+            }
             // Include inactive retained cards: ItemCheck_Shoot's reset/query
             // has no active gate. Every real full key and AI field is leased.
-            var observed=family.ToArray();obstacles.CaptureOwnedProjectileFamily(observed,player.whoAmI,sceneTypes);return observed;
+            return family.ToArray();
         }
         internal static AttackContact Solve(Player player,AttackAmmoSnapshot ammo,NpcTrajectory timeline,Vector2 origin,int age,bool beforeNpc,PredictionTerrain terrain,HostAttackObstacles obstacles,int delay,HostAttackPlayerFrame? preparedPlayer=null)
         {
             var sample=new Projectile();sample.SetDefaults(ammo.Projectile);sample.owner=player.whoAmI;sample.damage=ammo.Damage;
-            var family=Observe(player,obstacles,sample);var targets=obstacles.CaptureAttachmentTargets(sample);var slots=obstacles.CaptureBirthSlots();
+            var family=Observe(player);obstacles.CaptureOwnedProjectileFamily(family,player.whoAmI,sceneTypes);
+            var targets=obstacles.CaptureAttachmentTargets(sample);var slots=obstacles.CaptureBirthSlots();
             int mode=sample.type==1024?ammo.CardFireType:0;
             if(mode==3)
             {
                 var group=Capture(player,timeline,terrain,obstacles,origin,family,targets,slots);
-                if(!BeforeLaunch(group,player,preparedPlayer,age,beforeNpc,delay))return null;
-                bool outstanding=false;
-                foreach(var actual in family)if(actual.type==1024)
-                {var member=group.Find(actual.whoAmI);if(member==null?actual.ai[0]!=2:member.Shot.type==1024 && member.State.Phase!=2)outstanding=true;}
-                if(outstanding)
-                {
-                    // The native Player pass includes inactive retained cards,
-                    // in ascending slot order, before any NPC movement.
-                    foreach(var actual in family)if(actual.type==1024)
-                    {
-                        var member=group.Find(actual.whoAmI);if(member==null){var q=Copy(actual);member=Make(group,q,new State(q),q.whoAmI,true);group.Add(member);}
-                        if(member.Shot.type!=1024)continue; // A real copied birth replaced the retained slot.
-                        member.Primary=true;Recall(ref member.State,member.Shot.width,member.Shot.height);member.Receivers.ResetLocalHitHistory();
-                        AttackContact hit;bool pass=Damage(group,member,age,0,delay+1,true,out hit);if(!pass)return null;if(hit!=null)return hit;
-                    }
-                    return Run(group,age+1,delay+1,true);
-                }
+                AttackContact recall;if(TryRecall(group,player,family,preparedPlayer,age,beforeNpc,delay,out recall))return recall;
                 mode=0; // Original resets mode3 before Shoot when no old A0<2.
             }
             int limit=Math.Min(120,timeline.Count-age-1);if(limit<=0)return null;
@@ -202,6 +196,25 @@ namespace JueMingR.TerrariaHost.Combat
             }
             return null;
         }
+        private static bool TryRecall(Group group,Player player,Projectile[] family,HostAttackPlayerFrame? prepared,int age,bool beforeNpc,int delay,out AttackContact contact)
+        {
+            contact=null;
+            if(!BeforeLaunch(group,player,prepared,age,beforeNpc,delay))return true;
+            bool outstanding=false;
+            foreach(var actual in family)if(actual.type==1024)
+            {var member=group.Find(actual.whoAmI);if(member==null?actual.ai[0]!=2:member.Shot.type==1024 && member.State.Phase!=2)outstanding=true;}
+            if(!outstanding)return false;
+            // The native Player pass includes inactive retained cards in
+            // ascending slot order, before any NPC movement.
+            foreach(var actual in family)if(actual.type==1024)
+            {
+                var member=group.Find(actual.whoAmI);if(member==null){var q=Copy(actual);member=Make(group,q,new State(q),q.whoAmI,true);group.Add(member);}
+                if(member.Shot.type!=1024)continue; // A real copied birth replaced the retained slot.
+                member.Primary=true;Recall(ref member.State,member.Shot.width,member.Shot.height);member.Receivers.ResetLocalHitHistory();
+                if(!Damage(group,member,age,0,delay+1,true,out contact) || contact!=null)return true;
+            }
+            contact=Run(group,age+1,delay+1,true);return true;
+        }
         private static bool BeforeLaunch(Group group,Player launch,HostAttackPlayerFrame? prepared,int age,bool beforeNpc,int delay)
         {
             if(delay>0 && group.Members.Count>0)
@@ -219,7 +232,8 @@ namespace JueMingR.TerrariaHost.Combat
         internal static AttackContact Known(Player player,Projectile shot,NpcTrajectory timeline,HostAttackClock clock,PredictionTerrain terrain,HostAttackObstacles obstacles)
         {
             if(!Handles(shot.type) || !shot.active || shot.damage<=0)return null;
-            var family=Observe(player,obstacles,shot);var targets=obstacles.CaptureAttachmentTargets(shot);var slots=obstacles.CaptureBirthSlots();
+            var family=Observe(player);obstacles.CaptureOwnedProjectileFamily(family,player.whoAmI,sceneTypes);
+            var targets=obstacles.CaptureAttachmentTargets(shot);var slots=obstacles.CaptureBirthSlots();
             var group=Capture(player,timeline,terrain,obstacles,shot.Center+shot.velocity.SafeNormalize(Vector2.UnitX)*10000,family,targets,slots);
             var selected=group.Find(shot.whoAmI);if(selected==null)return null;selected.Primary=true;
             if(clock.Phase==HostAttackPhase.Projectiles)

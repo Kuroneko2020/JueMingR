@@ -95,9 +95,14 @@ namespace JueMingR.TerrariaHost.Companions
 
         private bool ItemOwnerCurrent()
         {
-            return Thread.CurrentThread.ManagedThreadId == itemThread && ArchiveIdentityCurrent() && owner.active &&
+            return ItemCommandOwnerCurrent() &&
                 !owner.dead && !owner.ghost && !Main.LocalPlayerHasPendingInventoryActions();
         }
+
+        // Giving a command to a living teammate does not take a turn with the
+        // human's inventory. Actual transfers still require ItemOwnerCurrent.
+        private bool ItemCommandOwnerCurrent() =>
+            Thread.CurrentThread.ManagedThreadId == itemThread && ArchiveIdentityCurrent() && owner.active;
 
         private bool ItemActorCurrent(Guid id, Actor actor)
         { return actor != null && CanTransfer(id) && !actor.Faulted && !actor.Body.ghost && profiles.OwnsActivation(id, actor.Generation); }
@@ -288,7 +293,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void FlushItemSync(bool immediate = false)
         {
-            if (pendingItemSync.Count == 0 || !immediate && Main.GameUpdateCount < nextItemSync) return;
+            if (pendingItemSync.Count == 0 || CompanionHooks.CurrentActor != null || !immediate && Main.GameUpdateCount < nextItemSync) return;
             nextItemSync = Main.GameUpdateCount + 60;
             for (int i = pendingItemSync.Count - 1; i >= 0; i--)
             {
@@ -309,7 +314,11 @@ namespace JueMingR.TerrariaHost.Companions
                 try
                 {
                     if (pending.Actor == null) NetMessage.SendData(5, -1, -1, null, pending.Body.whoAmI, pending.Slot);
-                    else using (CompanionHooks.Enter(pending.Actor, pending.Actor.Aim)) NetMessage.SendData(5, -1, -1, null, pending.Body.whoAmI, pending.Slot);
+                    else using (var scope = CompanionHooks.Enter(pending.Actor, pending.Actor.Aim))
+                    {
+                        NetMessage.SendData(5, -1, -1, null, pending.Body.whoAmI, pending.Slot);
+                        if (!scope.PacketAccepted) continue;
+                    }
                     pendingItemSync.RemoveAt(i);
                 }
                 catch (Exception) { /* Latest real slots remain authoritative for the bounded retry. */ }

@@ -18,7 +18,9 @@ internal static class Program
             Console.WriteLine("PATHS base="+AppDomain.CurrentDomain.BaseDirectory+" cwd="+Environment.CurrentDirectory);
             Console.WriteLine("MANAGER "+AppDomain.CurrentDomain.DomainManager.GetType().Assembly.FullName);
             AppDomain.CurrentDomain.AssemblyResolve += ResolveReLogic;
-            target=Assembly.Load("Terraria, Version=1.4.5.8, Culture=neutral, PublicKeyToken=null");
+            string gamePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Terraria.exe");
+            target=Assembly.Load(AssemblyName.GetAssemblyName(gamePath));
+            Console.WriteLine("GAME "+target.FullName+" "+target.ManifestModule.ModuleVersionId);
             target.GetType("Terraria.Program",true).GetField("SavePath",Flags).SetValue(null,Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"isolated-user"));
             Assembly.Load("ReLogic, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null");
             var state=AppDomain.CurrentDomain.DomainManager.GetType().GetField("state",Flags);

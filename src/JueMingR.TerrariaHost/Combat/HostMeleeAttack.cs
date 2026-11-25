@@ -13,6 +13,7 @@ namespace JueMingR.TerrariaHost.Combat
     {
         private static readonly MethodInfo copy=typeof(object).GetMethod("MemberwiseClone",BindingFlags.Instance|BindingFlags.NonPublic);
         private static readonly MethodInfo spearOffset=typeof(Projectile).GetMethod("AI_019_Spears_GetSpearOffsetRelativeToPlayer",BindingFlags.Instance|BindingFlags.NonPublic);
+        private static readonly bool[] legacyNoMeleeSpeedBonus=typeof(ItemID.Sets).GetField("NoMeleeSpeedBonus")?.GetValue(null) as bool[];
         internal static Player PlayerCopy(Player player){return (Player)copy.Invoke(player,null);}
         internal static float SpearOffset(Projectile shot,Player player){return (float)spearOffset.Invoke(shot,new object[]{player,player.itemAnimation,player.itemAnimationMax});}
         internal static int DerivedSpearChild(int parent){return parent==222?228:parent==730?732:parent==130?131:parent==342?343:0;}
@@ -32,11 +33,15 @@ namespace JueMingR.TerrariaHost.Combat
         internal static bool Rapier(int type){return type==802 || type==842 || type>=938 && type<=945 || type==1127;}
         internal static bool RawCursor(int weaponType){return weaponType==4956 || weaponType==5669;}
         internal static bool Handles(Projectile sample){return HostMonkStaffAttack.Handles(sample.type) || HostArcSwingAttack.Handles(sample.type) || Rapier(sample.type) || sample.aiStyle==19 || ProjectileID.Sets.IsAWhip[sample.type] && sample.type!=1035 || HostBoomerangAttack.Handles(sample.type) || sample.type==611 || sample.type==933 || sample.type==1100;}
+        // 1.4.6 applies the held item's melee bonus before computing the native
+        // use-time multiplier. The older game excluded items at animation time.
+        internal static bool UsesMeleeSpeed(Item item)
+        {return item.melee && (legacyNoMeleeSpeedBonus==null || !legacyNoMeleeSpeedBonus[item.type]);}
         internal static int AnimationDuration(Player player,Item item)
         {
             // ApplyItemAnimation multiplies by native speed factors. Faster
             // melee has a smaller factor; reciprocal duration is incorrect.
-            if(item.melee && !ItemID.Sets.NoMeleeSpeedBonus[item.type])return Math.Max(1,(int)(item.useAnimation*player.meleeSpeed));
+            if(UsesMeleeSpeed(item))return Math.Max(1,(int)(item.useAnimation*player.meleeSpeed));
             if(item.summon && ItemID.Sets.SummonerWeaponThatScalesWithAttackSpeed[item.type])return Math.Max(1,(int)(item.useAnimation*player.summonerWeaponSpeedBonus*player.whipUseTimeMultiplier));
             int extra=item.autoReuse && item.reuseDelay==0 && item.useTime<=item.useAnimation && item.shoot>0 && item.useStyle==5?1:0;
             return Math.Max(1,item.useAnimation+extra);

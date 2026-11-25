@@ -7,7 +7,7 @@ namespace JueMingR.Features.Companions
 {
     // Game-thread semantic owner. One background worker performs mechanical I/O;
     // completion never replaces a newer in-memory resource revision with disk data.
-    public sealed class CompanionProfileManager : IDisposable
+    public sealed partial class CompanionProfileManager : IDisposable
     {
         private sealed class Entry
         {
@@ -125,10 +125,12 @@ namespace JueMingR.Features.Companions
         private void MergeLoaded(string key, CompanionOwnerArchive loaded)
         {
             owners[key] = loaded.OwnerId; ownerErrors[loaded.OwnerId] = loaded.Error;
+            foreach (var deletion in loaded.Deletions)
+                if (!IsDeleting(deletion.ProfileId)) BeginDeletion(deletion, 0);
             foreach (var profile in loaded.Profiles)
                 // The game-thread owner may already contain a later unsaved
                 // resource revision. Loading an alias must never replace it.
-                if (!entries.ContainsKey(profile.Id))
+                if (!IsDeleting(profile.Id) && !entries.ContainsKey(profile.Id))
                     entries.Add(profile.Id, new Entry { Profile = validateLoaded?.Invoke(profile) ?? profile, Published = true, SavedRevision = profile.Revision });
         }
         private void RefreshError()
@@ -138,13 +140,14 @@ namespace JueMingR.Features.Companions
             if (LoadError != null) messages.Add(LoadError);
             bool saveError = false;
             foreach (var entry in entries.Values)
-                if (entry.Profile.OwnerId == OwnerId && entry.SaveError != null) { messages.Add(entry.SaveError); saveError = true; }
+                if (entry.Profile.OwnerId == OwnerId && entry.SaveError != null && !IsDeleting(entry.Profile.Id))
+                { messages.Add(entry.SaveError); saveError = true; }
             if (saveError) messages.Add("当前人物数据保留在内存，请重试保存。");
             Error = messages.Count == 0 ? null : String.Join("；", messages);
         }
 
         public CompanionProfile Find(Guid id)
-        { Entry entry; return entries.TryGetValue(id, out entry) && entry.Profile.OwnerId == OwnerId ? entry.Profile : null; }
+        { Entry entry; return !IsDeleting(id) && entries.TryGetValue(id, out entry) && entry.Profile.OwnerId == OwnerId ? entry.Profile : null; }
         public CompanionProfile FindActivated(Guid id, long generation)
         { return OwnsActivation(id, generation) ? entries[id].Profile : null; }
         public CompanionProfile FindName(string name)
@@ -155,14 +158,15 @@ namespace JueMingR.Features.Companions
         }
         public void Add(CompanionProfile profile)
         {
-            if (!Ready || Loading || LoadError != null || profile.OwnerId != OwnerId || entries.ContainsKey(profile.Id)) throw new InvalidOperationException("当前创建者不可创建此人物。");
-            if (FindName(profile.Name) != null) throw new InvalidOperationException("已有此人物。");
+            if (!Ready || Loading || LoadError != null || profile.OwnerId != OwnerId || IsDeleting(profile.Id) || entries.ContainsKey(profile.Id))
+                throw new InvalidOperationException("当前创建者不可创建此人物。");
+            if (NameInUse(profile.Name)) throw new InvalidOperationException("已有此人物。");
             entries.Add(profile.Id, new Entry { Profile = profile }); QueueSave(profile);
         }
         public void Update(CompanionProfile profile, long activation = 0)
         {
             Entry entry;
-            if (!entries.TryGetValue(profile.Id, out entry) || profile.OwnerId != entry.Profile.OwnerId || profile.Revision <= entry.Profile.Revision || profile.DataEpoch < entry.Profile.DataEpoch)
+            if (IsDeleting(profile.Id) || !entries.TryGetValue(profile.Id, out entry) || profile.OwnerId != entry.Profile.OwnerId || profile.Revision <= entry.Profile.Revision || profile.DataEpoch < entry.Profile.DataEpoch)
                 throw new InvalidOperationException("队友人物修订已失效。");
             // Normal commands require the published owner. An accepted recall
             // keeps only its exact activation through a character change.
@@ -170,7 +174,7 @@ namespace JueMingR.Features.Companions
                 throw new InvalidOperationException("队友实例已失效。");
             if (entry.Activation != 0 && profile.DataEpoch != entry.Profile.DataEpoch &&
                 (activation == 0 || entry.SavedRevision != entry.Profile.Revision))
-                throw new InvalidOperationException("请先收回队友再清空人物存档。");
+                throw new InvalidOperationException("请先收回队友再清空配置。");
             if (entry.Settings != null)
                 for (int i = 0; i < entry.Settings.Length; i++)
                 {
@@ -184,18 +188,18 @@ namespace JueMingR.Features.Companions
         public bool TryReserve(Guid id, out long generation)
         {
             generation = 0; Entry entry;
-            if (!entries.TryGetValue(id, out entry) || entry.Profile.OwnerId != OwnerId || entry.Profile.PermanentlyDead || entry.SavedRevision == 0 || entry.Activation != 0) return false;
+            if (IsDeleting(id) || !entries.TryGetValue(id, out entry) || entry.Profile.OwnerId != OwnerId || entry.Profile.PermanentlyDead || entry.SavedRevision == 0 || entry.Activation != 0) return false;
             entry.Activation = generation = checked(++nextActivation); return true;
         }
         public bool OwnsActivation(Guid id, long generation)
-        { Entry entry; return generation > 0 && entries.TryGetValue(id, out entry) && entry.Activation == generation; }
+        { Entry entry; return generation > 0 && !IsDeleting(id) && entries.TryGetValue(id, out entry) && entry.Activation == generation; }
         public void Release(Guid id, long generation)
         { Entry entry; if (generation > 0 && entries.TryGetValue(id, out entry) && entry.Activation == generation) entry.Activation = 0; }
         public bool IsSaved(Guid id)
         { Entry entry; return entries.TryGetValue(id, out entry) && entry.SavedRevision == entry.Profile.Revision; }
         public long SettingRevision(Guid id, CompanionSetting setting)
         {
-            if (!entries.TryGetValue(id, out var entry) || entry.Profile.OwnerId != OwnerId) return 0;
+            if (IsDeleting(id) || !entries.TryGetValue(id, out var entry) || entry.Profile.OwnerId != OwnerId) return 0;
             // Observation starts with an actual key press. Unbound and unused
             // switches get no per-profile tracking or per-frame roster work.
             if (entry.Settings == null) entry.Settings = new SettingReceipt[SettingCount];
@@ -205,7 +209,7 @@ namespace JueMingR.Features.Companions
         }
         public long CompletedSettingRevision(Guid id, CompanionSetting setting, out bool succeeded)
         {
-            SettingReceipt receipt = entries.TryGetValue(id, out var entry) && entry.Profile.OwnerId == OwnerId
+            SettingReceipt receipt = !IsDeleting(id) && entries.TryGetValue(id, out var entry) && entry.Profile.OwnerId == OwnerId
                 ? entry.Settings?[(int)setting] : null;
             succeeded = receipt?.Succeeded == true;
             return receipt?.Completed ?? 0;
@@ -241,7 +245,8 @@ namespace JueMingR.Features.Companions
         private void Refresh()
         {
             var result = new List<CompanionProfile>();
-            foreach (var entry in entries.Values) if (entry.Published && entry.Profile.OwnerId == OwnerId) result.Add(entry.Profile);
+            foreach (var entry in entries.Values)
+                if (entry.Published && entry.Profile.OwnerId == OwnerId && !IsDeleting(entry.Profile.Id)) result.Add(entry.Profile);
             result.Sort((a, b) => StringComparer.Ordinal.Compare(a.Name, b.Name)); profiles = result.AsReadOnly();
         }
         private void QueueSave(CompanionProfile profile)
@@ -264,7 +269,7 @@ namespace JueMingR.Features.Companions
                 Complete(() =>
                 {
                     Entry entry;
-                    if (!entries.TryGetValue(id, out entry)) return;
+                    if (IsDeleting(id) || !entries.TryGetValue(id, out entry)) return;
                     entry.SavedRevision = Math.Max(entry.SavedRevision, candidate.Revision);
                     CompleteSettings(entry, candidate.Revision, true);
                     entry.Published = true; entry.SaveError = null;
@@ -278,7 +283,7 @@ namespace JueMingR.Features.Companions
                 Complete(() =>
                 {
                     Entry entry;
-                    if (entries.TryGetValue(id, out entry))
+                    if (!IsDeleting(id) && entries.TryGetValue(id, out entry))
                     {
                         entry.SaveError = exception.Message;
                         CompleteSettings(entry, candidate.Revision, false);

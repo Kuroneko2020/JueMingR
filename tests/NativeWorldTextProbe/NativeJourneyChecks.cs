@@ -291,7 +291,7 @@ namespace NativeWorldTextProbe
             return 0;
         }
 
-        private static void Prepare(object context)
+        internal static void Prepare(object context)
         {
             NativeCombatAimChecks.Initialize();
             CreativeItemSacrificesCatalog.Instance.Initialize();

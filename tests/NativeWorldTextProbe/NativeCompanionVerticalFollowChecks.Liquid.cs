@@ -1,0 +1,93 @@
+using System;
+using System.Runtime.ExceptionServices;
+using Microsoft.Xna.Framework;
+using Terraria;
+using Terraria.ID;
+using static NativeWorldTextProbe.NativeInformationChecks;
+
+namespace NativeWorldTextProbe
+{
+    internal static partial class NativeCompanionVerticalFollowChecks
+    {
+        internal static void LiquidEntry(object host, object profiles, Player human)
+        {
+            ExceptionDispatchInfo first = null;
+            try { OrdinaryWater(host, profiles, human); }
+            catch (Exception error) { Console.WriteLine(error); first = ExceptionDispatchInfo.Capture(error); }
+            try { WaterSurface(host, profiles, human); }
+            catch (Exception error) { Console.WriteLine(error); if (first == null) first = ExceptionDispatchInfo.Capture(error); }
+            first?.Throw();
+        }
+
+        private static void OrdinaryWater(object host, object profiles, Player human)
+        {
+            const int upper = 80, bottom = 86, x = 60 * 16 + 8;
+            using (var run = new Scenario(host, profiles, human, "ordinary-water-drop", x, upper, () =>
+            {
+                Fill(45, 88, upper, TileID.Platforms);
+                Fill(45, 88, bottom, TileID.Stone);
+                for (int column = 45; column <= 88; column++)
+                    for (int row = bottom - 2; row < bottom; row++) Main.tile[column, row].liquid = byte.MaxValue;
+            }))
+            {
+                int down = -1, wet = -1, landed = -1, walked = -1, stable = 0;
+                float lastX = x;
+                for (int tick = 0; tick < 240; tick++)
+                {
+                    int desired = tick < 110 ? x : x + 124;
+                    run.StepToward(new Vector2(desired, bottom * 16), new Vector2(2.3f, 4));
+                    Player body = run.Body;
+                    if (down < 0 && body.controlDown) down = tick;
+                    if (wet < 0 && body.wet && !body.lavaWet && !body.honeyWet && !body.shimmerWet) wet = tick;
+                    if (wet >= 0 && landed < 0 && OnFloor(body, bottom)) { landed = tick; lastX = body.Center.X; }
+                    if (tick >= 110 && landed >= 0 && walked < 0 && body.Center.X - lastX > 32 && body.controlRight) walked = tick;
+                    bool ordinaryWet = body.wet && !body.lavaWet && !body.honeyWet && !body.shimmerWet;
+                    bool nearOnBottom = ordinaryWet && OnFloor(body, bottom) && OnFloor(human, bottom) &&
+                        Math.Abs(body.Center.X - human.Center.X) <= OrdinaryFollowSpacing + .01f && Math.Abs(body.velocity.X) < .5f;
+                    stable = walked >= 0 && nearOnBottom ? stable + 1 : 0;
+                }
+                Console.WriteLine($"FOLLOW ordinary water down={down} wet={wet} landed={landed} walked={walked} stable={stable} distance={Math.Abs(run.Body.Center.X - human.Center.X):F2} body={run.Body.Bottom} status={Get(run.Actor, "Status")}");
+                Require(down >= 0 && wet > down && landed >= wet && walked >= 110 && stable >= 16,
+                    "the same actual actor drops from dry support, enters breathable ordinary water and follows on the submerged bottom");
+            }
+
+        }
+
+        private static void WaterSurface(object host, object profiles, Player human)
+        {
+            const int row = 83, upper = 77, shore = 65, farShore = 84, start = 68 * 16 + 8, goal = 91 * 16;
+            const int waterline = row * 16 + 6;
+            using (var run = new Scenario(host, profiles, human, "water-walk-surface", start, upper, () =>
+            {
+                Fill(62, 72, upper, TileID.Platforms);
+                Fill(46, shore, row, TileID.Stone);
+                Fill(farShore, 106, row, TileID.Stone);
+                Fill(46, 106, row + 24, TileID.Stone);
+                for (int x = shore + 1; x < farShore; x++)
+                    for (int y = row; y < row + 24; y++) Main.tile[x, y].liquid = y == row ? (byte)128 : byte.MaxValue;
+            }, ItemID.WaterWalkingBoots))
+            {
+                int down = -1, surface = -1, wet = 0, supportedRun = 0, longestSupport = 0, reached = -1;
+                Require(run.Body.waterWalk || run.Body.waterWalk2, "actual equipped boots apply a native water-walking effect");
+                for (int tick = 0; tick < 325; tick++)
+                {
+                    int ownerX = tick < 90 ? start : goal;
+                    int ownerY = human.Left.X < farShore * 16 ? waterline : row * 16;
+                    run.StepToward(new Vector2(ownerX, ownerY), new Vector2(3.2f, 4));
+                    var body = run.Body;
+                    if (down < 0 && body.controlDown) down = tick;
+                    if (body.wet) wet++;
+                    bool inBasin = body.Left.X > (shore + 1) * 16 + 12 && body.Right.X < farShore * 16 - 12;
+                    bool supported = inBasin && Math.Abs(body.Bottom.Y - waterline) < .25f && Math.Abs(body.velocity.Y) < .25f;
+                    if (surface < 0 && down >= 0 && supported) surface = tick;
+                    supportedRun = supported && body.velocity.X > .6f ? supportedRun + 1 : 0;
+                    longestSupport = Math.Max(longestSupport, supportedRun);
+                    if (body.Center.X > goal - 28 && OnFloor(body, row)) { reached = tick; break; }
+                }
+                Console.WriteLine($"FOLLOW water-walking boots down={down} surface={surface} nativeSupportRun={longestSupport} wet={wet} reached={reached} body={run.Body.Bottom} status={Get(run.Actor, "Status")}");
+                Require(down >= 0 && surface > down && longestSupport >= 20 && wet == 0 && reached > surface,
+                    "the equipped body drops onto half-full water, stays dry and walks to the far solid shore in the same Follow");
+            }
+        }
+    }
+}

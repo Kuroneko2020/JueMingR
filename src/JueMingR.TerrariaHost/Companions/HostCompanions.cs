@@ -45,6 +45,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal JueMingR.Platform.Combat.PredictionPlayerMotion? AimPlayer;internal uint AimPlayerTick,AimPlayerAnchor;
             internal long LastAimAttempt;
             internal CompanionBehaviorHost Behavior=new CompanionBehaviorHost();
+            internal readonly CompanionMobilityState Mobility = new CompanionMobilityState();
             internal bool HasAim;
             internal bool Dirty,Faulted,WasUsing;
             internal bool DeathObserved,PermanentDeathPending,TileReachPending;
@@ -84,7 +85,16 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly NpcPredictionSource prediction=new NpcPredictionSource();
         private readonly JueMingR.Features.Combat.CombatPredictionWork work=new JueMingR.Features.Combat.CombatPredictionWork(2);
         private object world;private Player owner;private long session;private int planningTurn;private uint planningStep=UInt32.MaxValue,aimStep;
+        private CompanionOwnerTrail ownerTrail;
         private Actor planningActor;
+        private readonly List<Actor> planningActors = new List<Actor>();
+        private readonly NavigationWorld navigationWorld = new NavigationWorld();
+        private readonly NavigationBudget navigationBudget = new NavigationBudget(2600, 96, 48);
+        private uint navigationTurn;
+        private bool navigationActive;
+#if DEBUG
+        internal NavigationBudget NavigationBudgetOverride = null;
+#endif
         private long aimAttempt;
         private uint aimSelectionStep=UInt32.MaxValue;
         private Actor aimSelected;
@@ -151,7 +161,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(failed || !ArchiveIdentityCurrent())return Result(false,"当前不能加入队友。");
             if(actors.ContainsKey(id))return Result(false,"该人物已加入或正在加入。");var profile=Find(id);if(profile==null)return Result(false,"人物不存在。");
-            if(profile.PermanentlyDead)return Result(false,"该人物已永久死亡；明确清空人物后可重新创建身体。");
+            if(profile.PermanentlyDead)return Result(false,"该人物已永久死亡。清空配置后可重新创建身体。");
             long reservation=0;
             try
             {
@@ -242,7 +252,7 @@ namespace JueMingR.TerrariaHost.Companions
                 try
                 {
                     a.Profile=profiles.Reset(id,a.Generation);
-                    if(Find(id)!=null)Feedback="人物已清空，正在保存。";
+                    if(Find(id)!=null)Feedback="配置已清空，正在保存。";
                     a.TerminalFailure=null;
                 }
                 catch(Exception error) { a.TerminalFailure=error.Message; }
@@ -260,9 +270,9 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 resetAfterRecall.Add(id);
                 if(!actor.Closing) CloseActor(actor,null);
-                return Result(true,"正在收回并清空人物。");
+                return Result(true,"正在收回并清空配置。");
             }
-            try{profiles.Reset(id);previews.Remove(id);states.Remove(id);return Result(true,"人物已清空，正在保存。");}catch(Exception e){return Result(false,e.Message);}
+            try{profiles.Reset(id);previews.Remove(id);states.Remove(id);return Result(true,"配置已清空，正在保存。");}catch(Exception e){return Result(false,e.Message);}
         }
         internal bool RestoreBehavior(Guid id){return SetBehavior(id,new CompanionBehavior());}
         internal bool SaveFailed(Guid id){Actor a;return Find(id)!=null && (HasPendingItemCapture(id) || profiles.SaveFailed(id) || actors.TryGetValue(id,out a) && (a.TeamSavePending || a.Closing && !a.CloseCaptured));}
@@ -284,10 +294,14 @@ namespace JueMingR.TerrariaHost.Companions
         public void OnSessionEnded()
         {
             RetireArchiveIdentity();
+            navigationWorld.Reset();
+            navigationActive=false;
             owner=null;world=null;EndPasswordSession();prediction.EndWorld();CompanionThreatField.Reset();EndRetiringConnectionSession();steam.Dispose();ClearWorldSources();
         }
         private void RetireArchiveIdentity()
         {
+            ownerTrail?.BreakSegment();
+            ownerTrail=null;
             F5.CompanionCreationSession.DisposeFor(this);
             CancelItemGesture();
             foreach(var actor in actors.Values.ToArray())if(!actor.Closing)CloseActor(actor,null);
@@ -334,16 +348,51 @@ namespace JueMingR.TerrariaHost.Companions
             if(!ArchiveIdentityCurrent())return;
             FlushItemSync();
             FlushSourceRequests();RequestSharedTerrain();
-            if(actors.Count==0)return;
+            if(actors.Count==0)
+            {
+                if(navigationActive){navigationWorld.Reset();navigationActive=false;}
+                ownerTrail?.BreakSegment();
+                ownerTrail=null;
+                return;
+            }
             if(planningStep!=Main.GameUpdateCount)
             {
                 planningStep=Main.GameUpdateCount;
-                var active=actors.Values.Where(a=>a.Ready && !a.Closing && !a.Faulted && a.Body.active && !a.Body.dead && !a.Body.CCed).ToArray();
-                // One movement/target-refresh slice per real world step,
-                // independent of attacking, channel release or packet phase.
-                // Retained navigation prefixes remain usable by every body;
-                // fresh aiming opportunities have their separate scheduler.
-                planningActor=active.Length==0?null:active[(int)((uint)planningTurn++%(uint)active.Length)];
+                planningActors.Clear();
+                bool observedOwner=false;
+                foreach (var a in actors.Values)
+                    if (a.Ready && !a.Closing && !a.Faulted && a.Body.active && !a.Body.dead)
+                    {
+                        if (!a.Body.CCed) planningActors.Add(a);
+                        if (a.Preferences.Follow)
+                        {
+                            if (!observedOwner)
+                            {
+                                ObserveFollowOwner();
+                                observedOwner=true;
+                            }
+                            a.Behavior.OwnerTrail=ownerTrail;
+                        }
+                        else a.Behavior.OwnerTrail=null;
+                    }
+                if (!observedOwner && ownerTrail!=null)
+                { ownerTrail.BreakSegment(); ownerTrail=null; }
+                // The combat/source-refresh cadence stays separate. Every
+                // body still stages its own controls before its one update.
+                planningActor=planningActors.Count==0?null:planningActors[(int)((uint)planningTurn++%(uint)planningActors.Count)];
+                if(planningActors.Count!=0)
+                {
+                    navigationActive=true;
+                    var actor=planningActors[(int)(navigationTurn++%(uint)planningActors.Count)];
+                    var budget=navigationBudget;
+#if DEBUG
+                    if(NavigationBudgetOverride!=null)budget=NavigationBudgetOverride;
+#endif
+                    budget.Reset();
+                    try { actor.Behavior.AdvanceMovement(actor.Body,actor.Mobility,budget); }
+                    catch(Exception e) { CloseActor(actor,e.Message); }
+                }
+                planningActors.Clear();
             }
             foreach(var a in actors.Values.ToArray())
             {
@@ -359,6 +408,15 @@ namespace JueMingR.TerrariaHost.Companions
                 catch(Exception e){CloseActor(a,e.Message);}
             }
         }
+        private CompanionOwnerTrail ObserveFollowOwner()
+        {
+            ownerTrail = ownerTrail ?? new CompanionOwnerTrail();
+            ownerTrail.Observe(owner, Main.GameUpdateCount);
+            return ownerTrail;
+        }
+
+        internal void ObserveOwnerWarp(Player player)
+        { if (ReferenceEquals(owner, player)) ownerTrail?.BreakSegment(); }
         public void FailClosed(){OnSessionEnded();failed=true;}
         private void Exit(object sender,EventArgs args){Dispose();}
         // CLR shutdown never reads native objects. Normal game-thread leaving

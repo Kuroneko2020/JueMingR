@@ -117,7 +117,7 @@ namespace JueMingR.TerrariaHost.Movement
         }
         private static bool Latch(Tile t, int type)
         { return t != null && t.nactive() && (Main.tileSolid[t.type] || t.type == 314 || type == 865 && (TileID.Sets.IsATreeTrunk[t.type] || t.type == 323)); }
-        private static float Range(int type)
+        internal static float Range(int type)
         {
             if (type >= 230 && type <= 235) return 300 + (type - 230) * 30;
             if (type >= 646 && type <= 649 || type == 322 || type == 332) return 550;

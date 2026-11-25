@@ -255,7 +255,7 @@ namespace NativeWorldTextProbe
                 peer.NoDelay = true;
                 peer.GetStream().ReadTimeout = 5000;
                 peers.Add(peer);
-                Netplay.Clients[slot] = new RemoteClient { Id = slot, Socket = new TcpSocket(peer) };
+                Netplay.Clients[slot] = Program.CreateRemoteClient(slot, 0, new TcpSocket(peer));
                 var message = Read(peer, 1);
                 Server(() => Decode(message, slot));
                 Require(Netplay.Clients[slot].State == -1, "native message 1 admits this independent challenged stream");
@@ -280,10 +280,10 @@ namespace NativeWorldTextProbe
                 Server(() => Decode(frame, slot));
                 var remote = Netplay.Clients[slot];
                 if (success)
-                    Require(remote.State == 1 && !remote.PendingTermination, "native message 38 produces normal acceptance 3");
+                    Require(remote.State == 1 && remote.Status == RemoteClient.ConnStatus.Active, "native message 38 produces normal acceptance 3");
                 else
                 {
-                    Require(remote.PendingTermination, "native message 38 schedules termination with the original rejection reason");
+                    Require(remote.Status == RemoteClient.ConnStatus.PendingTermination, "native message 38 schedules termination with the original rejection reason");
                     NativeQuickItemChecks.Until(() =>
                     { Pump(); return peer.Client.Poll(0, SelectMode.SelectRead) && peer.Available == 0; });
                     peer.Dispose();
@@ -337,7 +337,7 @@ namespace NativeWorldTextProbe
             {
                 int slot = owner.whoAmI;
                 Netplay.Connection.State = 1;
-                Netplay.Clients[slot] = new RemoteClient { Id = slot, State = -1, Socket = new TcpSocket(primaryPeer) };
+                Netplay.Clients[slot] = Program.CreateRemoteClient(slot, -1, new TcpSocket(primaryPeer));
                 NetMessage.SendData(38);
                 byte[] submitted = Read(primaryPeer, 38);
                 Server(() => Decode(submitted, slot));

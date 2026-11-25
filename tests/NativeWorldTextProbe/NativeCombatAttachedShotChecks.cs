@@ -15,11 +15,13 @@ namespace NativeWorldTextProbe
     // Actual locked NewProjectile/Update/Damage/positive Strike are the
     // oracle. A representative hand preview is not a claim that the game's
     // unseen card signs equal the representative; Known uses each real ai2.
-    internal static class NativeCombatAttachedShotChecks
+    internal static partial class NativeCombatAttachedShotChecks
     {
         private const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
         private static Assembly assembly;private static Type model,stateType;private static NPC target;private static Projectile receiving;
         private static bool hand;private static int born,positive,explosions,solves;private static object ammo;private static Vector2 raw;
+        private static Player delayedRecallOwner;
+        private static Vector2? delayedRecallPose;
         private static void SolveWork(){solves++;}
         private static readonly HashSet<int> modes=new HashSet<int>();
         // Native pools can reuse the object itself. Keep each birth key with its
@@ -87,11 +89,12 @@ namespace NativeWorldTextProbe
             audit.Patch(AccessTools.Method(typeof(NPC),"StrikeNPC",new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)}),postfix:new HarmonyMethod(typeof(NativeCombatAttachedShotChecks),nameof(Strike)));
             try
             {
-                string leaf=Environment.GetEnvironmentVariable("JMR_ATTACHED_SHOT_ONLY");Console.WriteLine("ATTACHED actual leaf="+(leaf??"motor,lifecycle,natural"));
-                Require(string.IsNullOrEmpty(leaf) || leaf=="motor" || leaf=="lifecycle" || leaf=="natural","attached shot selector is explicit");
+                string leaf=Environment.GetEnvironmentVariable("JMR_ATTACHED_SHOT_ONLY");Console.WriteLine("ATTACHED actual leaf="+(leaf??"motor,lifecycle,natural,ordinary"));
+                Require(string.IsNullOrEmpty(leaf) || leaf=="motor" || leaf=="lifecycle" || leaf=="natural" || leaf=="ordinary","attached shot selector is explicit");
                 if(string.IsNullOrEmpty(leaf) || leaf=="motor")Motors(context);
                 if(string.IsNullOrEmpty(leaf) || leaf=="lifecycle")Lifecycle(context);
-                if(string.IsNullOrEmpty(leaf) || leaf=="natural")Natural(context);
+                if(string.IsNullOrEmpty(leaf) || leaf=="natural"){Natural(context);EmptyRecall(context);MovingDelayedRecall(context);}
+                if(string.IsNullOrEmpty(leaf) || leaf=="ordinary")NativeCombatBalancedAimChecks.RunAttachedOrdinary(context);
             }
             finally{hand=false;receiving=null;Main.windPhysics=wind;audit.UnpatchAll(audit.Id);NativeCombatObservationChecks.Save(Get(context,"CombatObservation"),new ObservationOptions());NativeCombatCadenceChecks.Save(Get(context,"Combat"),new CombatOptions());}
         }
@@ -215,7 +218,15 @@ namespace NativeWorldTextProbe
         {
             var p=Reset(context,3378);target=Target(4,new Vector2(950,350));
             int localSlot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),new Vector2(850,350),new Vector2(7,0),598,20,0,p.whoAmI);
-            int foreignSlot=Projectile.NewProjectile(p.GetProjectileSource_Item(p.HeldItem),new Vector2(350,350),Vector2.Zero,598,0,0,1);
+            int myPlayer=Main.myPlayer,foreignSlot;
+            // 1.4.6.1 NewProjectile requires the live owner at this entry.
+            // Use the same native ownership context as any other local hand.
+            try
+            {
+                Main.myPlayer=1;var other=Main.LocalPlayer;
+                foreignSlot=Projectile.NewProjectile(other.GetProjectileSource_Item(new Item(3378)),new Vector2(350,350),Vector2.Zero,598,0,0,other.whoAmI);
+            }
+            finally{Main.myPlayer=myPlayer;}
             Require(Main.projectile[foreignSlot].active && Main.projectile[foreignSlot].owner!=p.whoAmI,"same-type foreign body really exists before local family capture");
             var local=Main.projectile[localSlot];var path=Timeline(target);var args=new object[]{p,new[]{local},path,Clock(path),Terrain(),null};Static(model,"KnownFamily",args);var lease=args[5];
             Require(lease!=null && (bool)Get(lease,"Current"),"existing foreign same-type body does not immediately retire the precisely owned local family lease");
@@ -263,22 +274,93 @@ namespace NativeWorldTextProbe
                     // Keep actual input cadence. Consumable3378 receives a
                     // second lightpress; auto-reuse weapons hold naturally.
                     bool use=item==3378?frame==0 || frame==27:true;
-                    AttackContact prepared=null;
+                    bool prepared=false;
                     if(use)
                     {
                         NativeToolExecutionChecks.Sample(context,Get(context,"Input"),raw,true);Call(Get(context,"Combat"),"Sample");
-                        NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);prepared=(AttackContact)GetOptional(attack,"ExpectedImpact");
-                        if(frame==0)Require(prepared!=null,"actual AI113 first pressed hand prepares under1000ms mechanism allowance");
+                        NativeCombatAimChecks.PrepareMechanismFixture(host,attack,target,0);
+                        var solution=NativeCombatAimChecks.ReadSolution(attack);
+                        prepared=solution.HasPoint && solution.Reachability=="Reachable";
+                        if(frame==0)Require(prepared && solution.Contact==null,"AI113 first pressed hand prepares a reachable representative under mechanism allowance");
                     }
                     NativeCombatSelectionPreviewChecks.Step(context,raw,use);
                     if(born>previousBorn && (bool)Get(attack,"hasConsumedInput") && Convert.ToString(Get(Get(attack,"consumedInput"),"Kind"))=="Enhanced")enhanced=true;
-                    if(Main.projectile.Any(q=>q.active) && prepared!=null)ongoing=true;
+                    if(Main.projectile.Any(q=>q.active) && prepared)ongoing=true;
                     if(item==5461 && previousMode==3 && (int)Get(p,"killingCardFireType")==0)recallDamage+=positive-previousPositive;
                 }
                 Require(born>0 && positive>0 && known.Any(v=>v.Item2!=null) && ongoing && enhanced,"actual Enhanced hand birth/observed Known replay/positive Strike and sustained pressed preparation are exercised for item"+item);
                 if(item==5461)Require(modes.Contains(0) && modes.Contains(1) && modes.Contains(2) && recallDamage>0,"real single/reverse/fan/recall cycle includes immediate positive recall Damage without invented birth");
                 Console.WriteLine("PASS attached natural item="+item+" births="+born+" positive="+positive+" known="+known.Count(v=>v.Item2!=null)+" ongoing="+ongoing+" recall="+recallDamage+" modes="+string.Join(",",modes));hand=false;
             }
+        }
+        private static void EmptyRecall(object context)
+        {
+            var shots=Main.projectile;
+            // An isolated native pool rules out inactive retained slots too.
+            Main.projectile=shots.Select((q,i)=>new Projectile{whoAmI=i}).ToArray();
+            try
+            {
+                var p=Reset(context,5461);p.position=new Vector2(650,646);p.ResetFallDamage();p.releaseUseItem=true;
+                Main.screenPosition=new Vector2(500,400);for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);
+                target=NativeCombatControlPreviewChecks.Dummy(2,56,40);raw=p.Center-new Vector2(160,80);
+                var host=Get(context,"CombatObservation");var attack=Get(Get(context,"Combat"),"Attack");
+                NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,true,50,true,true));
+                for(int i=0;i<3;i++)NativeCombatBalancedAimChecks.StepAt(context,raw,false);
+                Set(p,"killingCardFireType",3);
+                ammo=Static(assembly.GetType("JueMingR.TerrariaHost.Combat.AttackAmmoSnapshot",true),"Capture",p,p.HeldItem);hand=true;
+                NativeCombatBalancedAimChecks.StepAt(context,raw,true);
+                bool enhanced=(bool)Get(attack,"hasConsumedInput") && (uint)Get(attack,"consumedInputStep")==Main.GameUpdateCount && Get(Get(attack,"consumedInput"),"Kind").ToString()=="Enhanced";
+                for(int i=0;i<21;i++)NativeCombatBalancedAimChecks.StepAt(context,raw,false);
+                Require(enhanced && born==1 && modes.SetEquals(new[]{0}) && (int)Get(p,"killingCardFireType")==1 && positive>0,
+                    "real empty mode3 resets to one mode0 birth and receives without inventing a recall body");
+                Console.WriteLine("PASS attached empty native mode3 -> mode0 birth and positive receive");
+            }
+            finally{hand=false;Main.projectile=shots;}
+        }
+
+        private static void ObserveRecallLaunch(object __0,Player __1,bool __result)
+        {
+            if(delayedRecallOwner==null || !__result)return;
+            var frame=(PredictionPlayerMotion)Get(Get(__0,"PlayerFrame"),"Motion");
+            Require(!ReferenceEquals(__1,delayedRecallOwner) && ReferenceEquals(frame.PlayerToken,delayedRecallOwner) &&
+                ReferenceEquals(Get(Get(__0,"Root"),"player"),delayedRecallOwner),"future recall uses a private launch pose and the real owner's resource lease");
+            delayedRecallPose=new Vector2(frame.X,frame.Y);
+        }
+
+        private static void MovingDelayedRecall(object context)
+        {
+            var shots=Main.projectile;Main.projectile=shots.Select((q,i)=>new Projectile{whoAmI=i}).ToArray();
+            var audit=new Harmony("JueMingR.Tests.MovingDelayedRecall");
+            try
+            {
+                var p=Reset(context,5461);p.position=new Vector2(650,646);p.ResetFallDamage();p.releaseUseItem=true;
+                Main.screenPosition=new Vector2(470,400);Main.GameViewMatrix.Zoom=Vector2.One;
+                for(int x=5;x<115;x++)NativeToolsChecks.Tile(x,43,1);
+                var npc=Target(2,new Vector2(1060,620));var aim=Get(Get(context,"Combat"),"Attack");
+                void NativeMove(bool fire)
+                {
+                    NativeToolExecutionChecks.Sample(context,Get(context,"Input"),new Vector2(490,635),fire,1);
+                    Call(Get(context,"Combat"),"Sample");NativeQuickItemChecks.BeginWorldStep();p.Update(p.whoAmI);npc.UpdateNPC(npc.whoAmI);Call(context,"UpdateRuntime");
+                }
+                NativeMove(false);NativeMove(true);NativeMove(false);
+                Require(p.velocity.X>0 && p.itemTime>1 && Main.projectile.Any(q=>q.active && q.type==1024 && q.owner==p.whoAmI),
+                    "real native card use leaves a live retained card, positive velocity and cooldown");
+                Set(p,"killingCardFireType",3);
+                var setup=aim.GetType().GetMethod("PrepareBalancedPlan",Flags);var plan=Activator.CreateInstance(setup.GetParameters()[0].ParameterType,true);
+                var phase=Enum.Parse(setup.GetParameters()[2].ParameterType,"CompletedWorld");
+                audit.Patch(model.GetMethod("BeforeLaunch",Flags),postfix:new HarmonyMethod(typeof(NativeCombatAttachedShotChecks),nameof(ObserveRecallLaunch)));
+                var before=p.position;int oldTime=p.itemTime;
+                delayedRecallOwner=p;delayedRecallPose=null;
+                using(new CombatPredictionWork(1000).Enter(Main.GameUpdateCount))Require((bool)setup.Invoke(aim,new[]{plan,Timeline(npc),phase}),"prepare actual delayed balanced card path");
+                delayedRecallOwner=null;
+                int delay=(int)Get(plan,"Delay");
+                Require(delay>0 && delayedRecallPose.HasValue && p.position==before && p.itemTime==oldTime,"future recall captures its nonzero-delay pose without mutating real position or cooldown");
+                for(int elapsed=0;elapsed<=delay;elapsed++)NativeMove(false);
+                Require(delayedRecallPose.Value.X>before.X+2 && Vector2.DistanceSquared(p.position,delayedRecallPose.Value)<1,
+                    "future recall pose agrees with independently advanced real native player at the delayed ItemCheck boundary");
+                Console.WriteLine("PASS attached delayed return pose delay="+delay+" from="+before+" expected="+delayedRecallPose+" native="+p.position);
+            }
+            finally{delayedRecallOwner=null;delayedRecallPose=null;audit.UnpatchAll(audit.Id);Main.projectile=shots;}
         }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using HarmonyLib;
 using JueMingR.Features.Combat;
 using JueMingR.Platform.Combat;
 using JueMingR.Platform.Companions;
@@ -6,6 +7,7 @@ using JueMingR.TerrariaHost.Combat;
 using JueMingR.TerrariaHost.Recovery;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.GameContent;
 using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Companions
@@ -77,7 +79,8 @@ namespace JueMingR.TerrariaHost.Companions
         internal int LastSlot = -1, TurretCount;
         internal Item LastWeapon;
         internal Projectile ControlledShot;
-        internal uint SelectedTick, TurretCountTick = UInt32.MaxValue;
+        internal uint SelectedTick, SummonCountTick = UInt32.MaxValue;
+        internal float OccupiedMinionSlots;
         internal int NearbyCount, NearbyOffset;
         internal CompanionAttackChoice Choice, ReadyChoice, Hand, Pursuit;
         internal CompanionAttackChoice Probe;
@@ -102,7 +105,7 @@ namespace JueMingR.TerrariaHost.Companions
             Array.Clear(Proofs,0,Proofs.Length);ProofCursor=0;
             Array.Clear(Rejections,0,Rejections.Length);NextSummon=0;
             ControlledShot=null;
-            LastSlot=-1;LastWeapon=null;TurretCountTick=UInt32.MaxValue;
+            LastSlot=-1;LastWeapon=null;SummonCountTick=UInt32.MaxValue;
             NearbyCount = InventoryCursor = ProbeCursor = NearbyOffset = 0;
             Array.Clear(Nearby, 0, Nearby.Length);
         }
@@ -119,6 +122,33 @@ namespace JueMingR.TerrariaHost.Companions
     {
         private const int CompanionCombatRadius = 1600;
         private const int FallbackWeaponsPerSweep = 5;
+        private static readonly Func<Projectile, float> ReadMinionSlots = BindMinionSlots();
+        private static readonly AccessTools.FieldRef<Item, int> LegacyItemWidth = BindItemDimension("width");
+        private static readonly AccessTools.FieldRef<Item, int> LegacyItemHeight = BindItemDimension("height");
+
+        private static Func<Projectile, float> BindMinionSlots()
+        {
+            // 1.4.6 stores integral slot costs, while 1.4.5.8 uses Single.
+            // Bind once so neither CLR nor the scan accesses the wrong type.
+            var field = typeof(Projectile).GetField("minionSlots");
+            if (field?.FieldType == typeof(int))
+            {
+                var read = AccessTools.FieldRefAccess<Projectile, int>(field);
+                return shot => read(shot);
+            }
+            if (field?.FieldType == typeof(float))
+            {
+                var read = AccessTools.FieldRefAccess<Projectile, float>(field);
+                return shot => read(shot);
+            }
+            return null;
+        }
+
+        private static AccessTools.FieldRef<Item, int> BindItemDimension(string name)
+        {
+            var field = typeof(Item).GetField(name);
+            return field?.FieldType == typeof(int) ? AccessTools.FieldRefAccess<Item, int>(field) : null;
+        }
 
         private bool TargetCurrent(Actor a, NPC target, int generation)
         {
@@ -137,30 +167,30 @@ namespace JueMingR.TerrariaHost.Companions
             if (!DoesStaySummoned(item)) return true;
             var body=a.Body;var state=a.Combat;
             if (Main.GameUpdateCount < state.NextSummon || !ContentSamples.ProjectilesByType.TryGetValue(item.shoot, out var sample)) return false;
-            if (!item.sentry)
+            int slots = item.sentry ? 0 : ItemID.Sets.StaffMinionSlotsRequired[item.type];
+            if (item.sentry ? body.maxTurrets <= 0 || !sample.sentry : !sample.minion || slots <= 0 || ReadMinionSlots == null) return false;
+            // Read the two owner capacities once per tick without invoking
+            // DespawnMinionsOverCap, which may kill an existing summon.
+            if (state.SummonCountTick != Main.GameUpdateCount)
             {
-                // Native FreeUpPetsAndMinions uses the staff's slot cost.
-                // A companion maintains its minions without ordering a cast
-                // that would force the native replacement of another one.
-                float slots=ItemID.Sets.StaffMinionSlotsRequired[item.type];
-                return sample.minion && slots>0 && body.slotsMinions+slots<=body.maxMinions;
+                state.SummonCountTick = Main.GameUpdateCount;
+                state.OccupiedMinionSlots = 0;
+                state.TurretCount = 0;
+                for (int i = 0; i < Main.maxProjectiles; i++)
+                {
+                    var shot = Main.projectile[i];
+                    if (shot == null || !shot.active || shot.owner != body.whoAmI) continue;
+                    if (shot.sentry) state.TurretCount++;
+                    if (ReadMinionSlots != null) state.OccupiedMinionSlots += Math.Max(0f, ReadMinionSlots(shot));
+                }
             }
-            if (body.maxTurrets <= 0 || !sample.sentry) return false;
-            // Native capacity is per owner, not per projectile type. Only a
-            // considered sentry reads the table, once for this body's decision.
-            if(state.TurretCountTick!=Main.GameUpdateCount)
-            {
-                state.TurretCountTick=Main.GameUpdateCount;state.TurretCount=0;
-                foreach(var shot in Main.projectile)
-                    if(shot!=null && shot.active && shot.owner==body.whoAmI && shot.sentry)state.TurretCount++;
-            }
-            return state.TurretCount<body.maxTurrets;
+            return item.sentry ? state.TurretCount < body.maxTurrets : state.OccupiedMinionSlots + slots <= body.maxMinions;
         }
 
-        private bool LegalResources(Actor a,int slot,Item item,out int manaCost)
+        private bool LegalResources(Actor a,int slot,Item item,out int manaCost,bool afterShapeExit=false)
         {
             manaCost = 0;
-            if (!CompanionItemRules.WeaponEligible(item) || a.Body.noItems || a.Body.CCed ||
+            if (!CompanionItemRules.WeaponEligible(item) || !afterShapeExit && a.Body.noItems || a.Body.CCed ||
                 a.Body.silence && item.mana > 0 || !AttackSourceAvailable(a,slot)) return false;
             var rejected=a.Combat.Rejections[slot];
             if(ReferenceEquals(rejected.Weapon,item) && rejected.Type==item.type && rejected.Prefix==item.prefix && Main.GameUpdateCount<rejected.Until)return false;
@@ -195,7 +225,20 @@ namespace JueMingR.TerrariaHost.Companions
         {
             // Conservative basic range for hand hits, whips and thrusts. More
             // involved projectiles can still prove reach with their real solver.
-            if (item.shoot <= 0) return MathHelper.Clamp(Math.Max(item.width, item.height) * player.GetAdjustedItemScale(item) + 8, 44, 96);
+            if (item.shoot <= 0)
+            {
+                // Melee geometry in 1.4.6 starts with the draw frame. Keep the
+                // minimum reach while the asset is unavailable to this client.
+                int size;
+                if (LegacyItemWidth != null && LegacyItemHeight != null) size = Math.Max(LegacyItemWidth(item), LegacyItemHeight(item));
+                else
+                {
+                    if (Main.dedServ || Main.instance == null || TextureAssets.Item[item.type]?.IsLoaded != true) return 44;
+                    var frame = Item.GetDrawHitbox(item.type, player);
+                    size = Math.Max(frame.Width, frame.Height);
+                }
+                return MathHelper.Clamp(size * player.GetAdjustedItemScale(item) + 8, 44, 96);
+            }
             if (item.sentry) return 420;
             if (DoesStaySummoned(item)) return 660;
             if (HostFlailAttack.Weapon(item)) return HostFlailAttack.ThrowRange(player,item);
@@ -314,11 +357,11 @@ namespace JueMingR.TerrariaHost.Companions
             return result;
         }
 
-        private bool CurrentAttack(Actor a, CompanionAttackChoice choice, out int manaCost, out Vector2 point)
+        private bool CurrentAttack(Actor a, CompanionAttackChoice choice, out int manaCost, out Vector2 point, bool afterShapeExit = false)
         {
             manaCost = 0; point = a.Body.Center;
             return choice.SameWeapon(a.Body) && TargetCurrent(a, choice.Target, choice.TargetGeneration) &&
-                LegalResources(a,choice.Slot,choice.Weapon,out manaCost) &&
+                LegalResources(a,choice.Slot,choice.Weapon,out manaCost,afterShapeExit) &&
                 AttackLine(a, choice, new CompanionShotGeometry(a.Body, choice.Weapon), out point);
         }
 
@@ -358,7 +401,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
 
-        private void ChooseAttacks(Actor a, CompanionBehavior preferences)
+        private void ChooseAttacks(Actor a, CompanionBehavior preferences, bool afterShapeExit)
         {
             var state = a.Combat;
             NearbyTargets(a);
@@ -372,7 +415,7 @@ namespace JueMingR.TerrariaHost.Companions
             int[] main = state.Preferences;
             MapWeaponSlots(a.Body, preferences.MainWeapons, main);
             for (int i = 0; i < preferences.MainWeapons.Length; i++)
-                EvaluateWeapon(a, main[i], ref desired, ref ready, ref probeOrder);
+                EvaluateWeapon(a, main[i], afterShapeExit, ref desired, ref ready, ref probeOrder);
             var preferred = desired;
 
             // Even when the preferred plan needs mana, have a legal fallback
@@ -381,7 +424,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 int retain = state.ReadyChoice.Weapon != null ? state.ReadyChoice.Slot : state.Choice.Weapon != null ? state.Choice.Slot : -1;
                 if (retain >= 0 && Array.IndexOf(main, retain, 0, preferences.MainWeapons.Length) < 0)
-                    EvaluateWeapon(a, retain, ref desired, ref ready, ref probeOrder);
+                    EvaluateWeapon(a, retain, afterShapeExit, ref desired, ref ready, ref probeOrder);
                 int eligible = 0;
                 for (int checkedSlots = 0; checkedSlots < CompanionBehavior.MainInventorySlots && eligible < FallbackWeaponsPerSweep; checkedSlots++)
                 {
@@ -390,7 +433,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if (slot == retain || Array.IndexOf(main, slot, 0, preferences.MainWeapons.Length) >= 0 ||
                         !CompanionItemRules.WeaponEligible(a.Body.inventory[slot])) continue;
                     eligible++;
-                    EvaluateWeapon(a, slot, ref desired, ref ready, ref probeOrder);
+                    EvaluateWeapon(a, slot, afterShapeExit, ref desired, ref ready, ref probeOrder);
                 }
             }
 
@@ -402,7 +445,7 @@ namespace JueMingR.TerrariaHost.Companions
                 var probe = state.Probe;
                 bool mainProbe = Array.IndexOf(main, probe.Slot, 0, preferences.MainWeapons.Length) >= 0;
                 int manaCost;
-                if (LegalResources(a,probe.Slot,probe.Weapon,out manaCost))
+                if (LegalResources(a,probe.Slot,probe.Weapon,out manaCost,afterShapeExit))
                 {
                     if (mainProbe) Prefer(ref preferred, probe);
                     Prefer(ref desired, probe);
@@ -413,12 +456,12 @@ namespace JueMingR.TerrariaHost.Companions
             state.ReadyChoice = ready;
         }
 
-        private void EvaluateWeapon(Actor a, int slot, ref CompanionAttackChoice desired, ref CompanionAttackChoice ready, ref int probeOrder)
+        private void EvaluateWeapon(Actor a, int slot, bool afterShapeExit, ref CompanionAttackChoice desired, ref CompanionAttackChoice ready, ref int probeOrder)
         {
             if (slot < 0) return;
             var weapon = a.Body.inventory[slot];
             int manaCost;
-            if (!LegalResources(a,slot,weapon,out manaCost)) return;
+            if (!LegalResources(a,slot,weapon,out manaCost,afterShapeExit)) return;
             bool missingMana = manaCost > a.Body.statMana;
             var state = a.Combat;
             var geometry = new CompanionShotGeometry(a.Body, weapon);

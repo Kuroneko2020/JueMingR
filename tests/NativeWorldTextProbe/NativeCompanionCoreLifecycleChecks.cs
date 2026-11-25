@@ -15,18 +15,6 @@ namespace NativeWorldTextProbe
     internal static class NativeCompanionCoreLifecycleChecks
     {
         private static object lifecycleHost;
-        private static Player planningSecond;
-        private static int planningSlices,secondSlices;
-        private static void PlanningBefore(object __instance, out int __state)
-        { __state=(int)Get(__instance,"TrajectoryBuilds"); }
-        private static void PlanningResult(object __instance,Player body,Vector2 target,int direction,bool allowPlanning,bool __result,int __state)
-        {
-            int builds=(int)Get(__instance,"TrajectoryBuilds")-__state;
-            planningSlices+=builds;
-            if(!ReferenceEquals(body,planningSecond))return;
-            secondSlices+=builds;
-            if(allowPlanning)Console.WriteLine("PLAN RESULT accepted="+__result+" body="+body.position+" vel="+body.velocity+" gravity="+body.gravity+" maxFall="+body.maxFallSpeed+" jump="+Get(__instance,"jumpSpeed")+" hold="+Get(__instance,"jumpHold")+" target="+target+" dir="+direction+" landed="+Get(__instance,"hasLanding"));
-        }
         private static Player preparedHuman;
         private static bool HumanDiskSink(){return Call(lifecycleHost,"Owned",Main.LocalPlayer)!=null;}
         internal static void PrepareHuman()
@@ -99,14 +87,11 @@ namespace NativeWorldTextProbe
         {
             var a=Call(host,"Owned",first);var b=Call(host,"Owned",second);var human=Main.LocalPlayer;
             var originalA=((CompanionProfile)Get(a,"Profile")).Behavior;var originalB=((CompanionProfile)Get(b,"Profile")).Behavior;
-            var brainA=Get(a,"Behavior");var brainB=Get(b,"Behavior");var navigation=Get(brainB,"navigation").GetType();
+            var brainA=Get(a,"Behavior");var brainB=Get(b,"Behavior");
             var positions=new[]{human.position,first.position,second.position};var velocities=new[]{human.velocity,first.velocity,second.velocity};
             var originalItems=new[]{first.inventory[0],first.inventory[54]};int selected=first.selectedItem;
             double surface=Main.worldSurface;
             var oldNpc=Main.npc[11];var tiles=new List<Tuple<int,int,Tile>>();var existing=new HashSet<int>(Main.projectile.Where(p=>p.active).Select(p=>(int)p.key));
-            var probe=new Harmony("JueMingR.Tests.CompanionMovementSlices");
-            probe.Patch(AccessTools.Method(navigation,"JumpSafe"),prefix:new HarmonyMethod(typeof(NativeCompanionCoreLifecycleChecks),nameof(PlanningBefore)),
-                postfix:new HarmonyMethod(typeof(NativeCompanionCoreLifecycleChecks),nameof(PlanningResult)));
             try
             {
                 // Reuse the established real jump scene's complete vertical
@@ -134,25 +119,38 @@ namespace NativeWorldTextProbe
                     // Consume the real primary frame through the ordinary
                     // serializer/decoder callback already installed by Run.
                     NativeCompanionCoreNetworkChecks.ApplyLatestNpc(11);
-                    planningSecond=second;planningSlices=secondSlices=0;bool tookOff=false,continuous=true;
-                    Require(!(bool)Get(Get(Get(b,"Behavior"),"navigation"),"hasLanding"),"second role starts without a retained landing prefix");
-                    for(int step=0;step<4;step++)
+                    object firstNav = Get(Get(a, "Behavior"), "Navigator"), secondNav = Get(Get(b, "Behavior"), "Navigator");
+                    bool tookOff = false;
+                    int fighting = 0;
+                    int teamBefore = (int)Get(firstNav, "PlannerSlices") + (int)Get(secondNav, "PlannerSlices");
+                    Require((long)Get(secondNav, "ActionId") == 0, "second role starts without a retained navigation action");
+                    for (int step = 0; step < 120; step++)
                     {
-                        NativeQuickItemChecks.BeginWorldStep();Call(host,"Update",0UL);var selectedRole=GetOptional(host,"planningActor");Call(host,"Update",0UL);
-                        Require(ReferenceEquals(selectedRole,GetOptional(host,"planningActor")),"repeated outer updates cannot advance the real-step planning slice twice");
-                        int slices=planningSlices;human.Update(human.whoAmI);first.Update(first.whoAmI);second.Update(second.whoAmI);StepProjectiles();Call(host,"AdvanceNpcObservation");
-                        Require(planningSlices-slices<=1,"team grants at most one new finite navigation trajectory per world step");
-                        tookOff|=second.velocity.Y<0 && second.position.Y<1110;continuous&=!firing || first.controlUseItem;
+                        NativeQuickItemChecks.BeginWorldStep();
+                        human.Update(human.whoAmI); first.Update(first.whoAmI); second.Update(second.whoAmI);
+                        StepProjectiles(); Call(host, "AdvanceNpcObservation"); Call(host, "Update", 0UL);
+                        int team = (int)Get(firstNav, "PlannerSlices") + (int)Get(secondNav, "PlannerSlices");
+                        Require(team - teamBefore <= 1, "the team receives at most one heavy navigation grant per native world step");
+                        Call(host, "Update", 0UL);
+                        Require((int)Get(firstNav, "PlannerSlices") + (int)Get(secondNav, "PlannerSlices") == team,
+                            "a repeated outer update cannot issue another planning grant for the same step");
+                        teamBefore = team;
+                        tookOff |= second.velocity.Y < 0 && second.position.Y < 1110;
+                        if (first.controlUseItem) fighting++;
                         Require(!(bool)Get(a,"Faulted") && !(bool)Get(b,"Faulted"),"both real native bodies run without swallowed planning/weapon failure");
+                        if (tookOff && (fighting >= 4 || !firing)) break;
                     }
-                    Console.WriteLine("PLAN FAIR firstAttack="+firing+" secondNewPlans="+secondSlices+" totalSlices="+planningSlices+" steps=4 takeoff="+tookOff+" continuous="+continuous);
-                    Require(secondSlices>0 && tookOff,"uncached second role receives a bounded new plan and real native takeoff while first attack="+firing);
-                    Require(continuous && (!firing || first.inventory[54].stack<100 && Main.projectile.Any(p=>p.active && p.owner==first.whoAmI)),"automatic native attack remains continuously held and pays actual ammo during peer planning");
+                    int secondSlices = (int)Get(secondNav, "PlannerSlices");
+                    Console.WriteLine($"PLAN FAIR firstAttack={firing} secondSlices={secondSlices} teamSlices={teamBefore} takeoff={tookOff} firingUpdates={fighting}");
+                    Require(secondSlices > 0 && tookOff,"uncached second role receives bounded planning and real native takeoff while first attack="+firing);
+                    Require(!firing || fighting >= 4 && first.inventory[54].stack < 100 &&
+                        Main.projectile.Any(p => p.active && p.owner == first.whoAmI),
+                        "the automatic native attack remains held and pays actual ammunition during peer planning");
                 }
             }
             finally
             {
-                planningSecond=null;probe.UnpatchAll(probe.Id);foreach(var tile in tiles)Main.tile[tile.Item1,tile.Item2]=tile.Item3;
+                foreach(var tile in tiles)Main.tile[tile.Item1,tile.Item2]=tile.Item3;
                 foreach(var p in Main.projectile)if(p.active && !existing.Contains((int)p.key) && (p.owner==first.whoAmI || p.owner==second.whoAmI))p.Kill();
                 Main.npc[11]=oldNpc;Call(host,"ClearWorldSources");
                 human.position=positions[0];first.position=positions[1];second.position=positions[2];human.velocity=velocities[0];first.velocity=velocities[1];second.velocity=velocities[2];

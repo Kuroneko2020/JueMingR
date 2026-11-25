@@ -78,7 +78,7 @@ namespace NativeWorldTextProbe
             // Server simulation runs only in this isolated process. Product
             // runtime is not polled while its client globals are temporarily lent.
             Main.netMode=2;Main.dedServ=true;Main.myPlayer=255;
-            var a=new CombatSocket();var b=new CombatSocket();Netplay.Clients[0]=new RemoteClient{Id=0,State=10,Socket=a};Netplay.Clients[1]=new RemoteClient{Id=1,State=10,Socket=b};Main.player[1].active=true;Main.player[1].name="Second fixture player";
+            var a=new CombatSocket();var b=new CombatSocket();Netplay.Clients[0]=Program.CreateRemoteClient(0,10,a);Netplay.Clients[1]=Program.CreateRemoteClient(1,10,b);Main.player[1].active=true;Main.player[1].name="Second fixture player";
             Boss(4,true);Boss(50,false);CombatNetworkFixture.Receive(request,0);
             Require(a.Packets.Count==2 && b.Packets.Count==2,"original server command broadcasts each recent report to both active players");
             Main.netMode=1;Main.dedServ=false;Main.myPlayer=0;Main.player[1].active=false;NPCDamageTracker.Reset();

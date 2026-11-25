@@ -127,10 +127,24 @@ namespace JueMingR.Platform.Companions
 
     public sealed class CompanionOwnerArchive
     {
-        public CompanionOwnerArchive(Guid ownerId, IReadOnlyList<CompanionProfile> profiles, string error = null)
-        { OwnerId = ownerId; Profiles = profiles ?? throw new ArgumentNullException(nameof(profiles)); Error = error; }
+        public CompanionOwnerArchive(Guid ownerId, IReadOnlyList<CompanionProfile> profiles, string error = null,
+            IReadOnlyList<CompanionDeletion> deletions = null)
+        { OwnerId = ownerId; Profiles = profiles ?? throw new ArgumentNullException(nameof(profiles)); Error = error; Deletions = deletions ?? Array.Empty<CompanionDeletion>(); }
         public Guid OwnerId { get; }
         public IReadOnlyList<CompanionProfile> Profiles { get; }
+        public string Error { get; }
+        public IReadOnlyList<CompanionDeletion> Deletions { get; }
+    }
+
+    public sealed class CompanionDeletion
+    {
+        public CompanionDeletion(Guid ownerId, Guid profileId, string name, bool filesRemoved = false, string error = null, bool finishing = false)
+        { OwnerId = ownerId; ProfileId = profileId; Name = name; FilesRemoved = filesRemoved; Error = error; Finishing = finishing; }
+        public Guid OwnerId { get; }
+        public Guid ProfileId { get; }
+        public string Name { get; }
+        public bool FilesRemoved { get; }
+        public bool Finishing { get; }
         public string Error { get; }
     }
 
@@ -141,5 +155,7 @@ namespace JueMingR.Platform.Companions
         CompanionOwnerArchive LoadOwner(string characterKey);
         void LinkOwner(string characterKey, Guid ownerId);
         void Save(CompanionProfile profile);
+        void DeleteFiles(CompanionDeletion deletion, long maximumRevision);
+        void FinishDeletion(CompanionDeletion deletion);
     }
 }

@@ -179,6 +179,10 @@ override	JUEMINGR_ANNOUNCEMENT_CANDIDATE
 override	JUEMINGR_BROWSER_CANDIDATE
 override	JUEMINGR_COMBAT_COST_CANDIDATE
 override	JUEMINGR_COMBAT_GEOMETRY_CANDIDATE
+override	JUEMINGR_COMPANION_NAV_COMPARISON
+selector	JUEMINGR_COMPANION_NAV_FOCUS
+override	JUEMINGR_COMPANION_EXIT_COMPARISON
+override	JUEMINGR_COMPANION_WORMHOLE_COMPARISON
 selector	JUEMINGR_EYE_COMBO_ONLY
 selector	JUEMINGR_EYE_COMBO_SCENE
 selector	JUEMINGR_FLIGHT_BOUNDARY_ONLY
@@ -418,6 +422,7 @@ leaf	CompanionItemsCpu	companions-items
 leaf	CompanionNavigationCpu	companions-navigation
 leaf	CompanionSessionCpu	companions-session
 leaf	CompanionNetworkCpu	companions-network
+leaf	CompanionWormholeCpu	companions-wormhole
 leaf	CompanionPasswordCpu	companions-password
 leaf	CompanionSuppliesCpu	companions-supplies
 leaf	CompanionObservationCombatCpu	companions-observation-combat
@@ -425,4 +430,5 @@ leaf	CompanionShowcaseVisual	companions-showcase
 leaf	CompanionResourceBarsVisual	companions-resource-bars
 leaf	CompanionCreationInputVisual	companions-creation-input
 leaf	CompanionConfigVisual	companions-config
+leaf	CompanionExitVisual	companions-exit
 leaf	CompanionFontVisual	companions-font

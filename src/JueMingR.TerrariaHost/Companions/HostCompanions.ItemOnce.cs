@@ -28,7 +28,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if (area != CompanionInventoryArea.Inventory)
             { reason = "请先将物品移到队友主背包。"; return false; }
-            if (!ItemOwnerCurrent() || !actors.TryGetValue(id, out var actor) || !ItemActorCurrent(id, actor))
+            if (!ItemCommandOwnerCurrent() || !actors.TryGetValue(id, out var actor) || !ItemActorCurrent(id, actor))
             { reason = "队友当前不能使用物品。"; return false; }
             if (itemDraft != null || Main.mouseItem?.IsAir == false)
             { reason = "请先放回手中的物品。"; return false; }
@@ -64,12 +64,16 @@ namespace JueMingR.TerrariaHost.Companions
             return state.Once != null || state.HeldSource.Found || state.Quick.Found || state.RestoreSelection >= 0;
         }
 
-        private bool ItemOnceEligible(Actor actor, int slot, bool portable, out CompanionSupplyKind? kind, out string reason)
+        private bool ItemOnceEligible(Actor actor, int slot, bool portable, out CompanionSupplyKind? kind, out string reason, bool alreadyAccepted = false)
         {
             var body = actor.Body;
             kind = null;
             reason = null;
-            if (!SupplyActorReady(actor) || body.ghost || body.spectating >= 0 || body.noItems || body.CCed || body.cursed)
+            bool canWaitForShapeExit = !portable && HandlessShape(body);
+            // Only the matching command already waiting for a lawful shape
+            // exit survives a curse that arrives after admission.
+            if (!SupplyActorReady(actor) || body.ghost || body.spectating >= 0 || body.cursed && !(alreadyAccepted && canWaitForShapeExit) ||
+                !canWaitForShapeExit && (body.noItems || body.CCed))
             { reason = "队友当前无法使用物品。"; return false; }
             if (slot < 0 || slot >= 50 || body.inventory[slot]?.IsAir != false)
             { reason = "请选择队友主背包中的物品。"; return false; }
@@ -248,12 +252,16 @@ namespace JueMingR.TerrariaHost.Companions
             string reason = null;
             if (command.Session != session || !ReferenceEquals(command.World, world) || !SourceCurrent(actor, command.Source) ||
                 command.Source.Item.prefix != command.Prefix ||
-                !ItemOnceEligible(actor, command.Source.Slot, command.Portable, out var admittedKind, out reason))
+                !ItemOnceEligible(actor, command.Source.Slot, command.Portable, out var admittedKind, out reason, alreadyAccepted: true))
             {
                 state.Once = null;
                 Feedback = reason ?? "物品或队友状态已变化，本次使用已取消。";
                 return false;
             }
+            // Keep the exact source until the movement scheduler makes room.
+            // Even QuickHeal's native item check can refuse while a handless
+            // shape cannot dismount, so the manual command is still pending.
+            if (HandlessShape(actor.Body)) return true;
             if (!admittedKind.HasValue || admittedKind == CompanionSupplyKind.Growth) return true;
             state.Once = null;
             UseQuick(actor, admittedKind.Value, command.Source, manual: true);

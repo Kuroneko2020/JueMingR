@@ -11,6 +11,13 @@ namespace JueMingR.TerrariaHost.Companions
     // belong to the game thread; a slow consumer faults this one connection.
     internal sealed class CompanionConnection : IDisposable
     {
+        // Only the direct TCP queue can prove a frame was rejected before
+        // anything wrote to its transport. Relay exceptions carry no such proof.
+        internal sealed class SendQueueFullException : IOException
+        {
+            internal SendQueueFullException() : base("队友发送队列已满。") { }
+        }
+
         private readonly string host; private readonly int port;
         private readonly object gate=new object();
         private readonly Queue<byte[]> incoming=new Queue<byte[]>(),outgoing=new Queue<byte[]>();
@@ -38,7 +45,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if(relay!=null)relay((byte[])packet.Clone());
                 else
                 {
-                    if(outgoingBytes+packet.Length>4*1024*1024)throw new IOException("队友发送队列已满。");
+                    if (outgoingBytes + packet.Length > 4 * 1024 * 1024) throw new SendQueueFullException();
                     outgoing.Enqueue((byte[])packet.Clone());outgoingBytes+=packet.Length;
                 }
                 // The first native ping sent after the latest accepted death

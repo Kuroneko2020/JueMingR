@@ -5,7 +5,9 @@ if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) { $RepositoryRoot = Join-Path
 $root = [IO.Path]::GetFullPath($RepositoryRoot)
 $references = Join-Path $root 'external\TerrariaRefs'
 $target = Join-Path $references 'Terraria.exe'
-if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ine '960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3') { throw 'Unrecognized item host target.' }
+$baseline = Get-Content -LiteralPath (Join-Path $root 'eng/TerrariaReferences.baseline.json') -Raw | ConvertFrom-Json
+$game = @($baseline.files | Where-Object logicalName -CEQ 'Terraria.exe')
+if ($game.Count -ne 1 -or (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -cne $game[0].sha256) { throw 'Unrecognized item host target.' }
 # Reflection-only metadata/IL: no game method or static constructor is executed.
 $resolver = [ResolveEventHandler] {
     param($sender, $eventArgs)
@@ -68,6 +70,6 @@ try {
         Write-Output "ABI: $name Item[] read sites=$reads"
     }
     Write-Output ('ABI: FillAmmo gates=' + (($gates | ForEach-Object { $_ -join ',' }) -join ' | '))
-    Write-Output 'PASS: fixed 1.4.5.8 item host read-only metadata/IL shape. This is not hook execution or game acceptance.'
+    Write-Output ('PASS: pinned Terraria ' + $game[0].assemblyVersion + ' item-host metadata and IL shape; hook execution and gameplay were not exercised.')
 }
 finally { [AppDomain]::CurrentDomain.remove_ReflectionOnlyAssemblyResolve($resolver) }

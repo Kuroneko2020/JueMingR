@@ -7,6 +7,7 @@ using JueMingR.Platform.Hotkeys;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
+using Terraria.ID;
 using static NativeWorldTextProbe.NativeInformationChecks;
 using static NativeWorldTextProbe.NativeCompanionConfigurationChecks;
 
@@ -14,6 +15,7 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCompanionHotkeyFeedbackChecks
     {
+        internal const Keys WormholeKey = Keys.NumPad7;
         internal static void Run(object context, object window, object host, Guid first, Guid second,
             Action<string> click, Action release, ProbeGraphics graphics, string output)
         {
@@ -133,13 +135,72 @@ namespace NativeWorldTextProbe
                 Call(shell, "OpenCompanions", Get(Get(Get(shell, "State"), "Layout"), "Viewport"));
                 release(); click("profile:" + first + "/"); release();
                 var icons = ((IEnumerable)Get(window, "controls")).Cast<object>().Where(c => GetOptional(c, "HotkeyId") != null).ToArray();
-                Require(icons.Length == 9 && icons.All(icon => (string)Get(icon, "Hint") == "双击设置功能开关快捷键"),
-                    "all nine concrete key controls carry the shared toggle explanation");
+                string recallId = firstKeys + "wormhole";
+                var recallIcon = icons.Single(icon => (string)Get(icon, "HotkeyId") == recallId);
+                Require(icons.Length == 10 && icons.Where(icon => icon != recallIcon).All(icon =>
+                    (string)Get(icon, "Hint") == "双击设置功能开关快捷键") &&
+                    (string)Get(recallIcon, "Hint") == "双击设置传送AI到玩家快捷键",
+                    "nine concrete key controls retain their toggle hint and one recall control describes the one-shot action");
                 NativeToolsUiChecks.UiFrame(context, NativeToolsUiChecks.Point(Get(icons[0], "Rect")), false);
                 var hint = Get(window, "hint");
                 Require((bool)Get(hint, "Visible") && (string)Get(hint, "text") == "双击设置功能开关快捷键",
                     "real pointer hover reaches the shared hint layout");
-                Console.WriteLine("PASS nine companion switch keys, current names and exact archive receipts, independent Smart/Fast modes, real native text, silent F5 and unchanged input.");
+
+                var actorBody = (Player)Call(host, "GetBody", first);
+                Vector2 oldPosition = actorBody.position;
+                const int slot = 43;
+                var previousItem = actorBody.inventory[slot];
+                actorBody.position = Main.LocalPlayer.position + new Vector2(96, 0);
+                try
+                {
+                    string button = "manual-wormhole/";
+                    release();
+                    var recallButton = ((IEnumerable)Get(window, "controls")).Cast<object>()
+                        .Single(c => ((string)Get(c, "Key")).StartsWith(button, StringComparison.Ordinal));
+                    string displayId = "companions.wormhole." + first.ToString("N");
+                    Require(!(bool)Get(recallButton, "Enabled") && (string)Get(recallButton, "Hint") == "需要消耗虫洞药水" &&
+                        (bool)Get(recallIcon, "Enabled"), "no-potion portal button is disabled with a live bind control");
+                    NativeToolsUiChecks.UiFrame(context, NativeToolsUiChecks.Point(Get(recallButton, "Rect")), false);
+                    Require((bool)Get(hint, "Visible") && (string)Get(hint, "text") == "需要消耗虫洞药水",
+                        "disabled recall exposes the exact resource reason through actual hover");
+                    graphics.Image(Path.Combine(output, "companion-wormhole-config.png"), () => Call(window, "Draw"), Matrix.Identity, Main.screenWidth, Main.screenHeight);
+                    int layouts = (int)Get(window, "LayoutBuilds");
+                    actorBody.inventory[slot] = new Item(ItemID.WormholePotion);
+                    release();
+                    Require((bool)Get(recallButton, "Enabled") && (int)Get(window, "LayoutBuilds") == layouts,
+                        "potion arrival activates the existing control without rebuilding the window");
+                    click(button);
+                    var latest = NativeShortFeedbackChecks.Entries(display).Where(e => (string)Get(e, "Id") == displayId).ToArray();
+                    Require(actorBody.Bottom == Main.LocalPlayer.Bottom && actorBody.inventory[slot].IsAir &&
+                        latest.Count(e => ((string)Get(e, "Text")).Contains("已传送")) == 1,
+                        "a physical configuration click executes original recall and displays exactly one success result. AI=" + actorBody.Bottom +
+                        " owner=" + Main.LocalPlayer.Bottom + " stock=" + actorBody.inventory[slot].stack + " result=" +
+                        String.Join("|", latest.Select(e => (string)Get(e, "Text"))));
+                    actorBody.position = Main.LocalPlayer.position + new Vector2(96, 0);
+                    release();
+                    Require(!(bool)Get(recallButton, "Enabled") && (int)Get(window, "LayoutBuilds") == layouts,
+                        "the exhausted slot immediately disables the same control without rebuilding it");
+                    Call(display, "Remove", displayId);
+                    bind(recallId, WormholeKey);
+                    click("binding-" + recallId + "/"); click("binding-" + recallId + "/");
+                    Require((bool)Get(Get(shell, "HotkeyPopup"), "Visible"), "the recall bind opens the actual shared popup while unavailable");
+                    press(WormholeKey); release();
+                    Require(!NativeShortFeedbackChecks.Entries(display).Any(e => (string)Get(e, "Id") == displayId),
+                        "the original binding popup consumed the recall edge");
+                    press(Keys.Escape); release();
+                    click("profile:" + second + "/"); Call(window, "Close"); release();
+                    press(WormholeKey);
+                    var one = NativeShortFeedbackChecks.Entries(display).Single(entry => (string)Get(entry, "Id") == displayId);
+                    press(WormholeKey);
+                    Require((string)Get(one, "Text") == "需要消耗虫洞药水" &&
+                        ReferenceEquals(one, NativeShortFeedbackChecks.Entries(display).Single(e => (string)Get(e, "Id") == displayId)),
+                        "real gameplay key identifies the named AI while the panel is closed and a held key does not repeat the no-potion result");
+                    release();
+                    Call(shell, "OpenCompanions", Get(Get(Get(shell, "State"), "Layout"), "Viewport"));
+                    release(); click("profile:" + first + "/"); release();
+                }
+                finally { actorBody.position = oldPosition; actorBody.inventory[slot] = previousItem; }
+                Console.WriteLine("PASS nine companion switch keys plus the actual one-shot recall key, shared physical binding popup, exact archive receipts, and native short feedback.");
             }
             finally
             {

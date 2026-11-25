@@ -43,7 +43,7 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(player.itemAnimation>0)return SolvePrepared(player,item,timeline,clock,terrain,playerFrame,steps:steps);
             var body=(Player)copy.Invoke(player,null);
-            int frames=item.melee && !ItemID.Sets.NoMeleeSpeedBonus[item.type]?Math.Max(1,(int)(item.useAnimation*player.meleeSpeed)):item.useAnimation;
+            int frames=HostMeleeAttack.UsesMeleeSpeed(item)?Math.Max(1,(int)(item.useAnimation*player.meleeSpeed)):item.useAnimation;
             body.itemAnimation=body.itemAnimationMax=frames;
             if(item.type==121)volcano.SetValue(body,true);
             return SolvePrepared(body,item,timeline,clock,terrain,playerFrame,steps:steps,newHand:true);

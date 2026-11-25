@@ -46,7 +46,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             Flow.Token = token; Flow.ContentHandle = new ContentHandle(token.OperationId); Flow.Progress = 0; Flow.Total = selection.Count;
             Flow.Summary = null; Flow.DraftName = "新蓝图"; Flow.ExcludeUnreliable = false; Flow.ExcludedObjectIds = Array.Empty<int>();
             Flow.SelectedAssetId = null; SetFlow(BlueprintCaptureStatus.Starting, "正在准备采集…");
-            capture = new CaptureJob(new BlueprintCaptureSource(() => HasSession && State.Active && State.ModeGeneration == token.ModeGeneration), selection, latestTick);
+            capture = new CaptureJob(new BlueprintCaptureSource(() => HasSession && State.Active && State.ModeGeneration == token.ModeGeneration),
+                selection, latestTick, typeof(Main).Assembly.GetName().Version.ToString());
             Shell?.BlueprintUi?.ShowCapture(); return true;
         }
         internal void SetDraftName(string value) { if (Flow.Status == BlueprintCaptureStatus.DraftReady && Flow.DraftName != value) { Flow.DraftName = value; Flow.Revision++; } }

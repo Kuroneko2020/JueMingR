@@ -19,7 +19,9 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal sealed class CompanionProfiles : IDisposable
     {
-        private const int NativeRelease = 326;
+        // The embedded body omits the .plr file header. Verified 1.4.5.8 and
+        // 1.4.6 serializers share this layout, including the 326 read path.
+        private const int NativePayloadFormat = 326;
         private static readonly MethodInfo Serialize = AccessTools.Method(typeof(Player), "Serialize", new[] { typeof(PlayerFileData), typeof(Player), typeof(BinaryWriter) });
         private static readonly MethodInfo Deserialize = AccessTools.Method(typeof(Player), "Deserialize", new[] { typeof(PlayerFileData), typeof(Player), typeof(BinaryReader), typeof(int), typeof(bool).MakeByRefType() });
         private static readonly MethodInfo SaveTemporary = AccessTools.Method(typeof(Player), "SaveTemporaryItemSlotContents");
@@ -52,6 +54,7 @@ namespace JueMingR.TerrariaHost.Companions
                 profile.DataEpoch, preferences, profile.NativeData, profile.PermanentlyDead);
         }
         internal IReadOnlyList<CompanionProfile> Profiles { get { return manager.Profiles; } }
+        internal IReadOnlyList<CompanionDeletion> Deletions => manager.Deletions;
         internal Guid OwnerId { get { return manager.OwnerId; } }
         internal bool Ready { get { return manager.Ready && installed; } }
         internal bool CanCreate { get { return Ready && !manager.Loading && manager.LoadError == null; } }
@@ -69,24 +72,47 @@ namespace JueMingR.TerrariaHost.Companions
         internal string SaveError(Guid id) { return manager.SaveError(id); }
         internal void RetrySave(Guid id) { manager.RetrySave(id); }
         internal void RetryLoad() { manager.RetryLoad(); }
+        internal bool RequestDeletion(Guid owner, Guid id) => manager.RequestDeletion(owner, id);
+        internal bool IsDeletionComplete(Guid id) => manager.IsDeletionComplete(id);
+        internal bool RetryDeletion(Guid owner, Guid id) => manager.RetryDeletion(owner, id);
+        internal void FinishDeletion(Guid owner, Guid id) => manager.FinishDeletion(owner, id);
+        internal void FailDeletionBindings(Guid owner, Guid id) => manager.FailDeletionBindings(owner, id);
         internal bool TryReserve(CompanionProfile profile, out long generation) { return manager.TryReserve(profile.Id, out generation); }
         internal void Release(CompanionProfile profile, long generation) { manager.Release(profile.Id, generation); }
         internal bool OwnsActivation(Guid id, long generation) { return manager.OwnsActivation(id, generation); }
 
         internal CompanionProfile Create(string name, bool journey)
-        { return CreateDraft(CompanionCreation.Draft(name, (byte)(journey ? 3 : 0))); }
-
-        internal CompanionProfile CreateDraft(Player draft)
         {
-            CompanionCreation.Validate(draft);
+            if (TryCreateDraft(CompanionCreation.Draft(name, (byte)(journey ? 3 : 0)), out var profile, out var rejection)) return profile;
+            throw new InvalidOperationException(rejection);
+        }
+
+        internal bool TryCreateDraft(Player draft, out CompanionProfile profile, out string rejection)
+        {
+            profile=null;
+            rejection=CompanionCreation.DraftRejection(draft);
+            if (rejection!=null) return false;
             string name = draft.name.Trim();
-            if (!CanCreate) throw new InvalidOperationException(LoadError ?? "队友档案尚未就绪。");
-            var existing = manager.FindName(name);
-            if (existing != null) throw new InvalidOperationException("已有此人物，请在左侧选择。");
+            if (!CanCreate) { rejection=LoadError??"队友档案尚未就绪。"; return false; }
+            if (manager.NameInUse(name))
+            {
+                // A deleted card disappears before its durable cleanup ends.
+                // Identify that owner's pending name so this draft can retry
+                // after its receipt settles instead of unnecessarily renaming.
+                foreach (var deletion in manager.Deletions)
+                    if (deletion.OwnerId == OwnerId && String.Equals(deletion.Name, name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        rejection = deletion.Error == null ? "同名队友正在删除，请稍后重试创建。" :
+                            "同名队友删除尚未完成，请返回队友配置页重试删除。";
+                        return false;
+                    }
+                rejection = "该名字已被你的另一名队友使用，请修改名字。";
+                return false;
+            }
             Player body = NewCharacter(name, draft.difficulty);
             CompanionCreation.CopyAppearance(draft, body);
-            var profile = new CompanionProfile(Guid.NewGuid(), OwnerId, name, 1, 1, new CompanionBehavior(), Capture(body));
-            manager.Add(profile); return profile;
+            profile = new CompanionProfile(Guid.NewGuid(), OwnerId, name, 1, 1, new CompanionBehavior(), Capture(body));
+            manager.Add(profile); return true;
         }
 
         internal Player LoadBody(CompanionProfile profile)
@@ -97,10 +123,11 @@ namespace JueMingR.TerrariaHost.Companions
             using (var stream = new MemoryStream(profile.NativeData, false))
             using (var reader = new BinaryReader(stream, new UTF8Encoding(false, true)))
             {
-                if (reader.ReadInt32() != NativeRelease) throw new InvalidDataException("队友人物数据与当前原版版本不符。");
+                if (reader.ReadInt32() != NativePayloadFormat)
+                    throw new InvalidDataException("当前游戏无法读取这份队友人物数据。");
                 if (loading) throw new InvalidOperationException("Nested companion character load.");
                 loading = true;
-                try { Deserialize.Invoke(null, new object[] { file, body, reader, NativeRelease, false }); }
+                try { Deserialize.Invoke(null, new object[] { file, body, reader, NativePayloadFormat, false }); }
                 finally { loading = false; }
                 if (stream.Position != stream.Length) throw new InvalidDataException("队友人物数据含未读取内容。");
             }
@@ -167,7 +194,7 @@ namespace JueMingR.TerrariaHost.Companions
             using (var stream = new MemoryStream())
             using (var writer = new BinaryWriter(stream, new UTF8Encoding(false, true)))
             {
-                writer.Write(NativeRelease); serializing = body;
+                writer.Write(NativePayloadFormat); serializing = body;
                 try { Serialize.Invoke(null, new object[] { File(body), body, writer }); }
                 finally { serializing = null; }
                 writer.Flush(); return stream.ToArray();

@@ -1,21 +1,23 @@
 {
   "schemaVersion": 1,
-  "profileId": "terraria-steam-1.4.5.8-xna-4.0.20823.0-compile-refs",
-  "purpose": "Fixed local compile-time references for the approved project skeleton and Phase 0-T biome display; this profile is not a runtime, loading, compatibility, or support claim.",
+  "profileId": "terraria-steam-1.4.6.1-xna-4.0.20823.0-compile-refs",
+  "purpose": "Fixed local compile-time references for the Windows Steam client; package target metadata records these inputs independently of runtime admission and support claims.",
   "terrariaChannelEvidence": {
     "channel": "Steam",
     "appId": "105600",
     "stateFlags": "4",
-    "buildId": "24893155",
-    "terrariaVersion": "1.4.5.8",
-    "evidenceScope": "A legally installed local Steam copy inspected on 2026-09-01; no private installation path is recorded."
+    "buildId": "26902183",
+    "terrariaVersion": "1.4.6.1",
+    "evidenceScope": "A legally installed local Steam copy inspected on 2026-11-25; no private installation path is recorded."
   },
   "files": [
     {
       "logicalName": "Terraria.exe",
       "assemblySimpleName": "Terraria",
-      "assemblyVersion": "1.4.5.8",
-      "fileVersion": "1.4.5.8",
+      "assemblyVersion": "1.4.6.1",
+      "fileVersion": "1.4.6.1",
+      "mvid": "316ae3ed-ed52-4207-a7cf-8c70fc902a47",
+      "mainUpdateMetadataToken": "0x06000D68",
       "publicKeyToken": "",
       "peMachine": "I386",
       "peFormat": "PE32",
@@ -24,7 +26,7 @@
         "Requires32Bit"
       ],
       "requires32Bit": true,
-      "sha256": "960A03BFF6050CF7BE16DFC1A7B19E10FC2C4F8F835A6A3B135A50DD9E6BA2F3",
+      "sha256": "BE4BACE6726A31750AB9CD56A6BDB60C7DE80306D53EC4107E69C6ECCFC9CE05",
       "sourceCategory": "Terraria installation",
       "redistributableByJueMingR": false,
       "copyLocal": false
@@ -42,7 +44,8 @@
         "Requires32Bit"
       ],
       "requires32Bit": true,
-      "sha256": "E1C5DCCEFFF5FD1C789FF712BABFA1A305FCED0D03C96EF30F2C14D99AA0AF29",
+      "sha256": "4204AD3D43A305665276C574FE32F7E0B96DF4A2D086D076F60226CE9BA00489",
+      "mvid": "be077c52-1dbf-44ac-b6f4-d4adb13f5b2c",
       "sourceCategory": "Terraria.exe embedded assembly",
       "embeddedResourceName": "Terraria.Libraries.ReLogic.ReLogic.dll",
       "redistributableByJueMingR": false,
