@@ -66,7 +66,7 @@ namespace JueMingR.TerrariaHost.Companions
             phase = direct ? Phase.Travel : Phase.Approach;
             Committed = false;
             best = float.NegativeInfinity;
-            noProgress = waiting = elapsed = sequence = 0;
+            noProgress = waiting = elapsed = sequence = observedToolRejection = 0;
             roofEscape = roofEscapeAge = ledgeBrakeDirection = 0;
             roofDropping = false;
             hasDelivery = startedMovement = airborne = hookReleasing = dashIssued = dashBraking = unsafeRelease = false;
@@ -95,20 +95,28 @@ namespace JueMingR.TerrariaHost.Companions
             hasDelivery = true;
         }
 
-        internal bool CompletedFacilityReceipt(CompanionMobilityState native) => Id != 0 &&
-            Edge.Kind == NavigationAction.Facility && delivered.ActionId == Id && delivered.Generation == native.Generation &&
-            delivered.Activation != CompanionMovementActivation.None && delivered.Activation == native.Action &&
-            delivered.Sequence == native.Sequence && native.Result == CompanionMobilityResult.Completed;
+        // A shared-world warp can complete between body updates. Its own
+        // facility activation identifies that result even without a delivery
+        // this update. Releasing a hook is only an approach to the facility.
+        internal bool CompletedFacilityReceipt(CompanionMobilityState native) =>
+            Edge.Kind == NavigationAction.Facility && native.Result == CompanionMobilityResult.Completed &&
+            native.Action == FacilityActivation && MatchesNativeTool(native);
 
         // A later offer can name another sub-operation before the original
         // command finishes. The native sequence still names this action.
-        internal bool AwaitingNativeTool(CompanionMobilityState native) => native.Result == CompanionMobilityResult.Started &&
-            !native.ShapeHandExit && native.Action != CompanionMovementActivation.None && native.Sequence == ToolSequence(native.Action);
+        private bool MatchesNativeTool(CompanionMobilityState native) =>
+            Id != 0 && !native.ShapeHandExit && native.Action != CompanionMovementActivation.None &&
+            native.Sequence == ToolSequence(native.Action);
 
+        internal bool AwaitingNativeTool(CompanionMobilityState native) =>
+            native.Result == CompanionMobilityResult.Started && MatchesNativeTool(native);
+
+        // A retracting hook no longer pulls the body or can catch the anchor.
+        // Its projectile still finishes disappearing in the native update.
         internal bool CanYieldIntent(CompanionMobilityState native, bool supported) =>
-            !native.Observed.DashActive && !native.Observed.GrappleInFlight &&
-            (supported && (!Committed || Edge.Kind == NavigationAction.Hoik && Outcome == CompanionActionOutcome.Blocked) ||
-                native.Observed.GrappleAttached);
+            !AwaitingNativeTool(native) && !native.Observed.DashActive && !native.Observed.GrappleInFlight &&
+            (Outcome == CompanionActionOutcome.Complete || native.Observed.GrappleAttached ||
+                supported && (!Committed || Edge.Kind == NavigationAction.Hoik && Outcome == CompanionActionOutcome.Blocked));
 
         internal CompanionMobilityFrame Input(Player body, CompanionMobilityState native, bool supported,
             Vector2 liveTarget, Vector2 liveVelocity, float spacing, int threatDirection, bool emergency,
@@ -788,28 +796,45 @@ namespace JueMingR.TerrariaHost.Companions
             frame.DoorPass = passage;
         }
 
+        private CompanionMovementActivation FacilityActivation
+        {
+            get
+            {
+                switch (Edge.Detail)
+                {
+                    case NavigationTraversalDetail.Pylon: return CompanionMovementActivation.Pylon;
+                    case NavigationTraversalDetail.Portal: return CompanionMovementActivation.Portal;
+                    case NavigationTraversalDetail.Teleporter: return CompanionMovementActivation.Teleporter;
+                    case NavigationTraversalDetail.Rod: return CompanionMovementActivation.Rod;
+                    default: return CompanionMovementActivation.None;
+                }
+            }
+        }
+
         private void Facility(Player body, CompanionMobilitySnapshot state, ref CompanionMobilityFrame frame)
         {
-            switch (Edge.Detail)
+            var activation = FacilityActivation;
+            switch (activation)
             {
-                case NavigationTraversalDetail.Pylon:
-                    SetTool(ref frame, CompanionMovementActivation.Pylon, TileCenter(Edge.ExitTile));
+                case CompanionMovementActivation.Pylon:
+                    SetTool(ref frame, activation, TileCenter(Edge.ExitTile));
                     break;
-                case NavigationTraversalDetail.Portal:
+                case CompanionMovementActivation.Portal:
                     frame.Move = Math.Sign(Edge.InteractionPosition.X - body.Center.X);
-                    SetTool(ref frame, CompanionMovementActivation.Portal, Edge.InteractionPosition);
+                    SetTool(ref frame, activation, Edge.InteractionPosition);
                     break;
-                case NavigationTraversalDetail.Teleporter:
-                    SetTool(ref frame, CompanionMovementActivation.Teleporter, TileCenter(Edge.EntryTile));
+                case CompanionMovementActivation.Teleporter:
+                    SetTool(ref frame, activation, TileCenter(Edge.EntryTile));
                     break;
-                case NavigationTraversalDetail.Rod:
-                    SetTool(ref frame, CompanionMovementActivation.Rod, Edge.To);
+                case CompanionMovementActivation.Rod:
+                    SetTool(ref frame, activation, Edge.To);
                     frame.ItemSlot = state.RodSlot;
                     break;
             }
         }
 
         private CompanionMovementActivation tool;
+        private int observedToolRejection;
         private int ToolSequence(CompanionMovementActivation activation) => unchecked((int)(Id * 16 + (int)activation));
 
         private void SetTool(ref CompanionMobilityFrame frame, CompanionMovementActivation activation, Vector2 point)
@@ -829,13 +854,48 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal CompanionActionOutcome Observe(Player body, CompanionMobilityState native, bool supported, Vector2 latestTarget, bool atGoal)
         {
-            if (!hasDelivery || delivered.Generation != native.Generation) return Outcome;
+            bool deliveredNow = hasDelivery && delivered.Generation == native.Generation;
             hasDelivery = false;
-            Deferral = delivered.Deferral;
-            if (unsafeRelease) return Outcome = CompanionActionOutcome.Superseded;
-            elapsed++;
             var feet = CompanionNativeContact.Feet(body);
             var state = native.Observed;
+            if (deliveredNow)
+            {
+                Deferral = delivered.Deferral;
+                InNativeMotion |= delivered.ToolAdmitted || delivered.Jump && !supported ||
+                    IsDrop && (feet.Y - Edge.From.Y) * body.gravDir > 6f;
+                if (Edge.Kind == NavigationAction.Hoik && (body.position.X - delivered.Position.X) * delivered.Move >
+                    Math.Max(7f, body.accRunSpeed + 2f))
+                {
+                    // Real collision has moved the body inside the teeth.
+                    // Its already-checked direction owns the exit.
+                    InNativeMotion = Committed = true;
+                }
+            }
+            startedMovement |= !supported || deliveredNow && delivered.Move != 0 && Math.Abs(body.position.X - delivered.Position.X) > .08f;
+            airborne |= !supported;
+            // Read physical ownership before interpreting a terminal receipt.
+            // A rejected command can still leave a moving body, while a body
+            // already on support no longer owns the previous tool's commitment.
+            bool fallReleased = IsDrop && FallReleased(body, feet, supported);
+            if (fallReleased) phase = Phase.Travel;
+            bool launched = Edge.Kind == NavigationAction.Jump || Edge.Kind == NavigationAction.Door ||
+                Edge.Kind == NavigationAction.Flight && (FlightLanding || Edge.Detail == NavigationTraversalDetail.CarpetGlide);
+            if (Edge.Kind != NavigationAction.Hoik)
+                Committed = state.DashActive || !supported && (fallReleased || launched && (airborne || InNativeMotion)) ||
+                    AwaitingNativeTool(native);
+
+            // Native state retains the last receipt. Consume its own failure
+            // once so later physical updates can still complete a handoff.
+            if (native.Result == CompanionMobilityResult.Rejected && MatchesNativeTool(native) &&
+                observedToolRejection != native.Sequence)
+            {
+                observedToolRejection = native.Sequence;
+                return Outcome = CompanionActionOutcome.Rejected;
+            }
+            if (CompletedFacilityReceipt(native)) return Outcome = CompanionActionOutcome.Complete;
+            if (!deliveredNow) return Outcome;
+            if (unsafeRelease) return Outcome = CompanionActionOutcome.Superseded;
+            elapsed++;
             if (DashPlanRejected && !state.DashActive &&
                 (Edge.Kind == NavigationAction.Dash || Edge.Detail == NavigationTraversalDetail.FlightDash))
                 return Outcome = CompanionActionOutcome.Superseded;
@@ -849,45 +909,24 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if (Edge.Kind == NavigationAction.Mount && Edge.MountChoice.Valid && body.mount.Active &&
                 body.mount.Type == Edge.MountChoice.Type) return Outcome = CompanionActionOutcome.Complete;
-            InNativeMotion |= delivered.ToolAdmitted || delivered.Jump && !supported ||
-                (Edge.Kind == NavigationAction.Drop || Edge.Kind == NavigationAction.PlatformDrop) &&
-                (feet.Y - Edge.From.Y) * body.gravDir > 6f;
-            if (Edge.Kind == NavigationAction.Hoik && (body.position.X - delivered.Position.X) * delivered.Move >
-                Math.Max(7f, body.accRunSpeed + 2f))
-            {
-                // Real collision has moved the body inside the teeth. Its
-                // already-checked direction owns the exit through danger.
-                InNativeMotion = Committed = true;
-            }
             if (delivered.Sequence != 0 && delivered.Activation != CompanionMovementActivation.None &&
-                delivered.Sequence == native.Sequence && delivered.Activation == native.Action)
+                delivered.Sequence == native.Sequence && delivered.Activation == native.Action &&
+                native.Result == CompanionMobilityResult.Completed)
             {
-                if (native.Result == CompanionMobilityResult.Rejected) return Outcome = CompanionActionOutcome.Rejected;
-                if (native.Result == CompanionMobilityResult.Completed)
+                if (native.Action == CompanionMovementActivation.Gravity && Edge.Kind == NavigationAction.Gravity ||
+                    native.Action == CompanionMovementActivation.Dismount && Edge.Kind == NavigationAction.Dismount ||
+                    native.Action == CompanionMovementActivation.QuickMount && Edge.Kind == NavigationAction.Mount ||
+                    native.Action == CompanionMovementActivation.ReleaseHook && hookReleasing && Edge.Kind == NavigationAction.Hook)
+                    return Outcome = CompanionActionOutcome.Complete;
+                if (native.Action == CompanionMovementActivation.ReleaseHook && hookReleasing)
                 {
-                    if (Edge.Kind == NavigationAction.Facility || Edge.Kind == NavigationAction.Gravity || Edge.Kind == NavigationAction.Dismount ||
-                        Edge.Kind == NavigationAction.Mount && native.Action == CompanionMovementActivation.QuickMount ||
-                        hookReleasing && Edge.Kind == NavigationAction.Hook)
-                        return Outcome = CompanionActionOutcome.Complete;
-                    if (hookReleasing) { hookReleasing = false; waiting = 0; }
+                    hookReleasing = false;
+                    waiting = 0;
                 }
             }
 
             float horizontal = Math.Sign(Edge.To.X - Edge.From.X);
             float vertical = (feet.Y - Edge.From.Y) * body.gravDir;
-            startedMovement |= !supported || delivered.Move != 0 && Math.Abs(body.position.X - delivered.Position.X) > .08f;
-            airborne |= !supported;
-            // Commitment follows actual native state. Normal steering can be
-            // replaced while a body is moving. A released fall or launch
-            // needs continuous control until its next actual contact.
-            bool fallReleased = IsDrop && FallReleased(body, feet, supported);
-            if (fallReleased) phase = Phase.Travel;
-            bool launched = Edge.Kind == NavigationAction.Jump || Edge.Kind == NavigationAction.Door ||
-                Edge.Kind == NavigationAction.Flight && (FlightLanding || Edge.Detail == NavigationTraversalDetail.CarpetGlide);
-            if (Edge.Kind != NavigationAction.Hoik)
-                Committed = state.DashActive || !supported && (fallReleased ||
-                    launched && (airborne || InNativeMotion)) ||
-                    AwaitingNativeTool(native);
 
             if (Direct)
             {

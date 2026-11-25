@@ -182,7 +182,7 @@ namespace JueMingR.TerrariaHost.Companions
                 // A shared-world decoder can apply a confirmed warp between
                 // our native updates. Retire the old input before staging the
                 // next frame, allowing only its matching facility receipt.
-                if (action.CompletedFacilityReceipt(native))
+                if (native.Generation == actionGeneration && action.CompletedFacilityReceipt(native))
                 {
 #if DEBUG
                     FacilityUses++;
@@ -522,10 +522,10 @@ namespace JueMingR.TerrariaHost.Companions
                 // action. Otherwise changing intent earns no route failure.
                 // The first real landing or settled hook owns the handoff,
                 // even when the old edge's endpoint was never reached.
-                if (!action.AwaitingNativeTool(native) && (result == CompanionActionOutcome.Complete ||
-                    action.CanYieldIntent(native, supported)))
+                bool completedFacility = result == CompanionActionOutcome.Complete && action.Edge.Kind == NavigationAction.Facility;
+                if (completedFacility || action.CanYieldIntent(native, supported))
                 {
-                    if (result == CompanionActionOutcome.Complete && action.Edge.Kind == NavigationAction.Facility)
+                    if (completedFacility)
                     {
 #if DEBUG
                         FacilityUses++;

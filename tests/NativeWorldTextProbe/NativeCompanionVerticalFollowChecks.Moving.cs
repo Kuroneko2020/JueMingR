@@ -467,13 +467,19 @@ namespace NativeWorldTextProbe
 
         private static void NativeOwnerWarpDuringHook(object context, object host, object profiles, Player human)
         {
+            NativeOwnerWarpDuringHook(context, host, profiles, human, removeAnchor: false);
+            NativeOwnerWarpDuringHook(context, host, profiles, human, removeAnchor: true);
+        }
+
+        private static void NativeOwnerWarpDuringHook(object context, object host, object profiles, Player human, bool removeAnchor)
+        {
             const int shaftLeft = 108, shaftRight = 111, anchor = 110, anchorRow = 66, floor = 73;
             var start = new Vector2(anchor * 16, floor * 16);
             var above = new Vector2(anchor * 16, anchorRow * 16);
-            using (var run = new NativeFollowWorld(context, host, profiles, human, "warp-hook", start, start, () =>
+            using (var run = new NativeFollowWorld(context, host, profiles, human, removeAnchor ? "warp-hook-rejected" : "warp-hook", start, start, () =>
             {
                 PlaceFixtureStrip(95, 120, floor, TileID.Stone);
-                for (int y = 65; y < floor; y++)
+                for (int y = 65; y < (removeAnchor ? floor - 3 : floor); y++)
                 {
                     PlaceFixtureTile(shaftLeft, y, TileID.Stone);
                     PlaceFixtureTile(shaftRight, y, TileID.Stone);
@@ -488,9 +494,13 @@ namespace NativeWorldTextProbe
                 var navigation = Navigator(run.Actor);
                 Projectile projectile = null;
                 int birth = -1, away = -1, returned = -1, attached = -1, received = -1, released = -1, landed = -1;
+                int rejected = -1, firstSafe = -1, retired = -1, resumed = -1, hookGone = -1, movingOwner = 0, motion = -1;
+                int birthKey = 0, repeatBirths = 0, movingFollow = 0;
                 int sequence = 0;
                 long oldAction = 0;
-                bool lostReceipt = false;
+                bool lostReceipt = false, committedAtBirth = false, retiringInFlight = false, resumedOldAction = false;
+                bool rejectedDuringRetraction = false;
+                float followFrom = run.Body.Bottom.X, followTravel = 0;
                 try
                 {
                     Main.projHook[gear.shoot] = ContentSamples.ProjectilesByType[gear.shoot].aiStyle == 7;
@@ -506,10 +516,25 @@ namespace NativeWorldTextProbe
                         }
                         else if (away >= 0 && returned < 0)
                         {
-                            WarpOwnerTo(human, start);
+                            WarpOwnerTo(human, removeAnchor ? new Vector2(RoomX(106), floor * 16) : start);
                             returned = tick;
+                            if (removeAnchor)
+                            {
+                                Require(projectile.active && projectile.ai[0] == 0 && Main.tile[anchor, anchorRow].nactive(),
+                                    "the original hook is still flying toward the intact anchor before the terrain edit");
+                                WorldGen.KillTile(anchor, anchorRow, noItem: true);
+                                Require(!Main.tile[anchor, anchorRow].nactive(), "the original tile edit removes the hook anchor before impact");
+                            }
                         }
-                        run.Step();
+                        Vector2 ownerBefore = human.Bottom, bodyBefore = body.Bottom;
+                        if (removeAnchor && returned >= 0)
+                        {
+                            if (motion < 0 && human.Center.X <= RoomX(98) || motion > 0 && human.Center.X >= RoomX(106))
+                                motion = -motion;
+                            run.Step(motion);
+                            if (Vector2.DistanceSquared(ownerBefore, human.Bottom) > .25f) movingOwner++;
+                        }
+                        else run.Step();
                         var currentHook = (Projectile)GetOptional(mobility, "Hook");
                         if (birth < 0 && currentHook?.active == true && currentHook.owner == body.whoAmI && currentHook.type == gear.shoot &&
                             Get(mobility, "Result").ToString() == "Started")
@@ -517,9 +542,15 @@ namespace NativeWorldTextProbe
                             birth = tick;
                             sequence = (int)Get(mobility, "Sequence");
                             oldAction = (long)Get(navigation, "ActionId");
+                            committedAtBirth = (bool)Get(navigation, "ActionCommitted");
                             projectile = currentHook;
+                            birthKey = (int)currentHook.key;
                         }
-                        if (returned >= 0 && received < 0 && (int)Get(mobility, "Sequence") != sequence) lostReceipt = true;
+                        int toolSequence = (int)Get(mobility, "Sequence");
+                        string toolState = Get(mobility, "Result").ToString();
+                        if (returned >= 0 && received < 0 && rejected < 0 && toolSequence != sequence) lostReceipt = true;
+                        if (birth >= 0 && toolSequence == sequence && currentHook?.active == true && (int)currentHook.key != birthKey)
+                            repeatBirths++;
                         if (projectile?.active == true)
                         {
                             int previousIndex = Main.ProjectileUpdateLoopIndex;
@@ -531,20 +562,69 @@ namespace NativeWorldTextProbe
                             finally { Main.ProjectileUpdateLoopIndex = previousIndex; }
                             if (attached < 0 && projectile.ai[0] == 2) attached = tick;
                         }
-                        if (returned >= 0 && received < 0 && (int)Get(mobility, "Sequence") == sequence &&
-                            Get(mobility, "Result").ToString() == "Completed") received = tick;
+                        if (returned >= 0 && received < 0 && toolSequence == sequence && toolState == "Completed") received = tick;
+                        if (removeAnchor && returned >= 0)
+                        {
+                            if (hookGone < 0 && projectile?.active == false) hookGone = tick;
+                            bool retiring = (bool)Get(navigation, "retireIntent");
+                            retiringInFlight |= retiring && projectile?.active == true && projectile.ai[0] == 0f &&
+                                toolState == "Started" && toolSequence == sequence;
+                            if (rejected < 0 && toolSequence == sequence && toolState == "Rejected")
+                            {
+                                rejected = tick;
+                                rejectedDuringRetraction = projectile?.active == true && projectile.ai[0] == 1f;
+                            }
+                            var observed = Get(mobility, "Observed");
+                            if (rejected >= 0 && firstSafe < 0 && (bool)Get(navigation, "Supported") &&
+                                !(bool)Get(observed, "GrappleAttached") && !(bool)Get(observed, "GrappleInFlight"))
+                                firstSafe = tick;
+                            long activeAction = (long)Get(navigation, "ActionId");
+                            if (firstSafe >= 0 && retired < 0 && !retiring &&
+                                (activeAction != oldAction || Get(navigation, "ActionOutcome").ToString() == "Superseded"))
+                                retired = tick;
+                            bool movingLeft = body.controlLeft && bodyBefore.X - body.Bottom.X > .04f;
+                            if (retired >= 0 && resumed < 0 && activeAction != 0 && activeAction != oldAction && movingLeft)
+                            {
+                                resumed = tick;
+                                followFrom = bodyBefore.X;
+                            }
+                            if (resumed >= 0)
+                            {
+                                resumedOldAction |= activeAction == oldAction || retiring;
+                                if (movingLeft) movingFollow++;
+                                followTravel = Math.Max(followTravel, followFrom - body.Bottom.X);
+                            }
+                            if (hookGone >= 0 && movingOwner >= 30 && movingFollow >= 8 && followTravel >= 8) landed = tick;
+                        }
                         if (received >= 0 && released < 0 && body.controlJump && projectile?.active == false) released = tick;
                         if (released >= 0 && OnFloor(body, floor)) landed = tick;
-                        if (tick % 25 == 0 || tick == birth || tick == returned || tick == received || tick == released || tick == landed)
-                            Console.WriteLine($"FOLLOW WARP hook frame={Main.GameUpdateCount} step={tick} body={body.Bottom}/{body.velocity} " +
+                        if (tick % 25 == 0 || tick == birth || tick == returned || tick == received || tick == released || tick == landed ||
+                            tick == rejected || tick == firstSafe || tick == retired || tick == resumed || tick == hookGone)
+                            Console.WriteLine($"FOLLOW WARP hook removeAnchor={removeAnchor} frame={Main.GameUpdateCount} step={tick} " +
+                                $"owner={human.Bottom}/{human.velocity} body={body.Bottom}/{body.velocity} supported={Get(navigation, "Supported")} " +
                                 $"hook={projectile?.active}/{projectile?.ai[0]} command={Get(mobility, "Action")}/{Get(mobility, "Result")}/" +
-                                $"{Get(mobility, "Sequence")} retire={Get(navigation, "retireIntent")} jump={body.controlJump} {PlanStatus(navigation)}");
+                                $"{toolSequence} committed={Get(navigation, "ActionCommitted")} retire={Get(navigation, "retireIntent")} " +
+                                $"left={body.controlLeft} jump={body.controlJump} {PlanStatus(navigation)}");
                     }
                 }
                 finally
                 {
                     body.RemoveAllGrapplingHooks();
                     Main.projHook[gear.shoot] = originalHookAdmission;
+                }
+                if (removeAnchor)
+                {
+                    Console.WriteLine($"FOLLOW WARP rejected hook old={oldAction}/{sequence} birth={birth} away={away} return={returned} " +
+                        $"rejected={rejected} supported={firstSafe} gone={hookGone} retired={retired} resumed={resumed} " +
+                        $"ownerMoving={movingOwner} followerMoving={movingFollow}/{followTravel:F2}px sameSequenceBirths={repeatBirths} " +
+                        $"oldActionReturned={resumedOldAction} lostReceipt={lostReceipt}");
+                    Require(oldAction > 0 && committedAtBirth && retiringInFlight && away > birth && returned > away &&
+                        attached < 0 && received < 0 && rejected > returned && rejectedDuringRetraction &&
+                        firstSafe >= rejected && retired == firstSafe && resumed > retired && resumed - retired <= 3 &&
+                        hookGone > rejected && movingOwner >= 30 && movingFollow >= 8 && followTravel >= 8 &&
+                        !resumedOldAction && repeatBirths == 0 && !lostReceipt && run.NativeRelocations == 0,
+                        "the matching rejected native hook retires on real support and the same body follows a moving owner without re-firing that sequence");
+                    return;
                 }
                 Console.WriteLine($"FOLLOW WARP hook old={oldAction}/{sequence} birth={birth} away={away} return={returned} " +
                     $"attached={attached} matchingReceipt={received} release={released} land={landed} lostReceipt={lostReceipt}");
