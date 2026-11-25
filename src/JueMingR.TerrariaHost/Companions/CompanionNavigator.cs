@@ -722,6 +722,7 @@ namespace JueMingR.TerrariaHost.Companions
             route.SetLocalFixture(LocalFixture(body, feet, budget) ?? groundMount ?? LocalRiseFixture(body, native, feet, budget));
             route.SetTargetMotion(targetVelocity);
             route.SetTargetAirborne(targetAirborne);
+            route.SetHookContact(state.GrappleAttached && !state.GrappleInFlight);
             route.SetNeedFlightMount(needFlightMount);
             route.Advance(feet, target, capabilities, budget);
             if (route.Status == NavigationQueryStatus.PendingBudget)

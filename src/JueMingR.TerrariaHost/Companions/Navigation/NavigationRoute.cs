@@ -57,7 +57,7 @@ namespace JueMingR.TerrariaHost.Companions
         private bool facilitiesChanged, skipFlightMerge, verificationChanged;
         private Vector2 trailHint;
         private Vector2 targetMotion;
-        private bool hasTrail, needFlightMount, targetAirborne;
+        private bool hasTrail, needFlightMount, targetAirborne, attachedHook;
         private NavigationTransition? localFixture;
 
         internal NavigationQueryStatus Status { get; private set; }
@@ -89,6 +89,7 @@ namespace JueMingR.TerrariaHost.Companions
             needFlightMount = false;
             targetMotion = default;
             targetAirborne = false;
+            attachedHook = false;
             localFixture = null;
             Status = NavigationQueryStatus.Idle;
         }
@@ -115,6 +116,8 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         internal void SetTargetAirborne(bool airborne) => targetAirborne = airborne;
+
+        internal void SetHookContact(bool attached) => attachedHook = attached;
 
         internal void SetCommitted(bool value) => committed = issued && value;
 
@@ -179,6 +182,8 @@ namespace JueMingR.TerrariaHost.Companions
                 localCandidate = mount;
             if (!issued && !localCandidate.HasValue && corridorIndex > lastTraversal &&
                 traversal.LocalHoik(feet, target, start, out var hoik) && !IsRejected(hoik)) localCandidate = hoik;
+            if (!issued && attachedHook && !localCandidate.HasValue &&
+                traversal.LocalAttachedDrop(feet, start, goal, goalPose, out var hookDrop)) localCandidate = hookDrop;
             // A local release can feed the next layer even after the owner has
             // landed far to the side. Keep a usable corridor to the same goal.
             if (!issued && !localCandidate.HasValue && corridorIndex >= corridor.Count && start.Grounded)

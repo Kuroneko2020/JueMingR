@@ -407,6 +407,26 @@ namespace JueMingR.TerrariaHost.Companions
             return false;
         }
 
+        internal bool LocalAttachedDrop(Vector2 feet, NavigationNode start, NavigationNode goal, Vector2? goalPose,
+            out NavigationTransition edge)
+        {
+            edge = default;
+            if (start.Medium != NavigationMedium.Air || !goal.Grounded) return false;
+            Vector2 target = goalPose ?? Feet(goal);
+            if (Math.Abs(target.X - feet.X) > 36f || (target.Y - feet.Y) * start.Gravity < 16f) return false;
+
+            // The real hanging pose may fit between walls even when its
+            // coarse air node's center overlaps one. Keep the actual inlet
+            // and verify the receiving floor before proposing a release.
+            if (!Drop(start, 0, out var landing, out var kind, feet)) return false;
+            var exit = Feet(landing);
+            if (!SameGroundRegion(landing, goal, exit, goalPose)) return false;
+            bool irreversible = (exit.Y - feet.Y) * start.Gravity > Math.Max(80f, caps.JumpHeight);
+            edge = new NavigationTransition(kind, feet, exit, start.MountChoice, start.Cell, landing.Cell,
+                world.Revision, irreversible);
+            return true;
+        }
+
         internal bool LocalPlatformExit(Vector2 feet, Vector2 target, NavigationNode from,
             Predicate<NavigationTransition> rejected, out NavigationTransition edge)
         {
