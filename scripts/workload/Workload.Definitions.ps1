@@ -23,7 +23,7 @@ function Get-WorkloadLeafChecks {
         # These leaves are called only by the companion CPU dispatcher. Shared
         # NativeChecks/Program/fixture inputs retain their existing propagation.
         'tests/Companions/CompanionCoreChecks.cs'=@('CompanionCoreChecks')
-        'tests/NativeWorldTextProbe/NativeCompanionItemGestureChecks.cs'=@('native-CompanionItemsCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionItemGestureChecks.cs'=@('native-CompanionItemsCpu','native-CompanionConfigVisual')
         'tests/NativeWorldTextProbe/NativeCompanionVoidPickupChecks.cs'=@('native-CompanionItemsCpu')
         'tests/NativeWorldTextProbe/NativeCompanionVanityShopChecks.cs'=@('native-CompanionItemsCpu')
         'tests/NativeWorldTextProbe/NativeCompanionHotkeyFeedbackChecks.cs'=@('native-CompanionConfigVisual')
@@ -434,7 +434,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatBookStaffChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatSkullChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatArcSwingChecks.cs'=@('native-CombatEffectsCpu')
-        'tests/NativeWorldTextProbe/NativeCombatAttachedShotChecks.cs'=@('native-CombatEffectsCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttachedShotChecks.cs'=@('native-CombatEffectsCpu','native-CompanionObservationCombatCpu')
+        'tests/NativeWorldTextProbe/NativeCombatAttachedShotChecks.Companions.cs'=@('native-CompanionObservationCombatCpu')
         'tests/NativeWorldTextProbe/NativeCombatBetsyFlameChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatElectrosphereChecks.cs'=@('native-CombatEffectsCpu')
         'tests/NativeWorldTextProbe/NativeCombatBarrelChecks.cs'=@('native-CombatEffectsCpu')
@@ -609,7 +610,7 @@ function Get-WorkloadLeafChecks {
         'Piranha'=@('BallisticCandidate','Observation','Cadence','ControlPreview')
         'Phoenix'=@('Cadence','ControlPreview','Observation','SelectionPreview')
         'SpecialArrow'=@('Observation')
-        'AttachedShot'=@('Cadence','ControlPreview','Observation','SelectionPreview')
+        'AttachedShot'=@('BalancedAim','Cadence','ControlPreview','Observation','SelectionPreview')
         'PhantasmEcho'=@('Cadence','Observation')
         'BetsyFlame'=@('Cadence','ControlPreview','Observation','SelectionPreview')
         'ArcSwing'=@('Cadence','ControlPreview','Observation','SelectionPreview')
@@ -661,6 +662,9 @@ function Get-WorkloadLeafChecks {
     }
     foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs')){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-FishingBackgroundRecoveryCpu','native-InventoryStackingCpu','native-AfkOuterBackground')}
     $leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeQuickItemChecks.cs'])+@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionWormholeCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CoinContinuationCpu','native-CoinConsumersCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')
+    foreach($path in @('tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs','tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs','tests/NativeWorldTextProbe/NativeCombatObservationChecks.cs')){
+        $leaves[$path]=@($leaves[$path])+@('native-CompanionObservationCombatCpu')
+    }
     foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeJourneyChecks.cs',
         'tests/NativeWorldTextProbe/NativeCompanionCoreLifecycleChecks.cs',
         'tests/NativeWorldTextProbe/NativeCombatAimFixture.cs','scripts/workload/Workload.NativeContent.ps1')){

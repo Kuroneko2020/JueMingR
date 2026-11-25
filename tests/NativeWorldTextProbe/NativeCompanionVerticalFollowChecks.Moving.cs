@@ -287,6 +287,340 @@ namespace NativeWorldTextProbe
             WorldGen.SquareTileFrame(RoomDoor, RoomLower - 2);
         }
 
+        private static void NativeOwnerWarpReturn(object context, object host, object profiles, Player human, bool attacking = false)
+        {
+            float floor = RoomLower * 16;
+            float innerWall = RoomPartition * 16;
+            Vector2 left = new Vector2(innerWall - 10.5f, floor);
+            Vector2 right = new Vector2(innerWall + 26.5f, floor);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, attacking ? "warp-shots" : "warp-return", left, left, BuildMovingRoom))
+            {
+                run.JoinPeer(attacking ? "warp-shots-peer" : "warp-return-peer", left - new Vector2(20f, 0f));
+                var first = Navigator(run.Actor);
+                var peer = Navigator(run.PeerActor);
+                for (int tick = 0; tick < 10; tick++) run.Step();
+                var trail = Get(host, "ownerTrail");
+                int initialSegment = (int)Get(trail, "Segment");
+                WarpOwnerTo(human, new Vector2(RoomX(86), RoomUpper * 16 - 64));
+                for (int tick = 0; tick < 2; tick++) run.Step();
+                int awaySegment = (int)Get(trail, "Segment");
+                WarpOwnerTo(human, right);
+                run.Step(1);
+                var published = (Vector2)Get(first, "Target");
+                var peerPublished = (Vector2)Get(peer, "Target");
+                bool air = (bool)Get(first, "targetAirborne"), peerAir = (bool)Get(peer, "targetAirborne");
+                object firstQuery = GetOptional(Get(first, "route"), "query");
+                string returnMedium = firstQuery == null ? null : Get(Get(firstQuery, "Goal"), "Medium").ToString();
+                Console.WriteLine($"FOLLOW WARP return frame={Main.GameUpdateCount} segments={initialSegment}/{awaySegment}/{Get(trail, "Segment")} " +
+                    $"owner={human.Bottom}/{human.velocity} support={OnFloor(human, RoomLower)} first={published}/{air} peer={peerPublished}/{peerAir} " +
+                    $"{PlanStatus(first)} {RouteTrace(first)} medium={returnMedium} peer={PlanStatus(peer)} {RouteTrace(peer)}");
+
+                int direction = 1, moved = 0, crossed = -1, peerCrossed = -1, firstInputs = 0, peerInputs = 0;
+                int firstShotInMotion = -1, peerShotInMotion = -1;
+                const int enemySlot = 17;
+                NPC savedEnemy = Main.npc[enemySlot];
+                if (attacking)
+                {
+                    var enemy = new NPC();
+                    enemy.SetDefaults(NPCID.Zombie);
+                    enemy.whoAmI = enemySlot;
+                    enemy.active = enemy.noGravity = enemy.noTileCollide = true;
+                    enemy.life = enemy.lifeMax = 100000;
+                    enemy.damage = 0;
+                    enemy.aiStyle = -1;
+                    enemy.Center = new Vector2(RoomX(74), floor - 24);
+                    Main.npc[enemySlot] = enemy;
+                    EquipWarpAttack(host, run.Actor, run.Body);
+                    EquipWarpAttack(host, run.PeerActor, run.Peer);
+                }
+                try
+                {
+                    for (int tick = 0; tick < 570; tick++)
+                    {
+                        if (direction < 0 && human.Center.X <= right.X || direction > 0 && human.Center.X >= RoomX(74))
+                            direction = -direction;
+                        Vector2 before = human.Bottom, firstBefore = run.Body.Bottom, peerBefore = run.Peer.Bottom;
+                        int firstAmmo = run.Body.inventory[54].stack, peerAmmo = run.Peer.inventory[54].stack;
+                        run.Step(direction);
+                        if (Vector2.DistanceSquared(before, human.Bottom) > .25f) moved++;
+                        if (HasMovementInput(run.Body)) firstInputs++;
+                        if (HasMovementInput(run.Peer)) peerInputs++;
+                        if (crossed < 0 && run.Body.Left.X >= innerWall + 16 && OnFloor(run.Body, RoomLower)) crossed = tick;
+                        if (peerCrossed < 0 && run.Peer.Left.X >= innerWall + 16 && OnFloor(run.Peer, RoomLower)) peerCrossed = tick;
+                        if (firstShotInMotion < 0 && HasMovementInput(run.Body) && Vector2.DistanceSquared(run.Body.Bottom, firstBefore) > .04f &&
+                            firstAmmo > run.Body.inventory[54].stack) firstShotInMotion = tick;
+                        if (peerShotInMotion < 0 && HasMovementInput(run.Peer) && Vector2.DistanceSquared(run.Peer.Bottom, peerBefore) > .04f &&
+                            peerAmmo > run.Peer.inventory[54].stack) peerShotInMotion = tick;
+                        if (crossed >= 0 && peerCrossed >= 0 && (!attacking || firstShotInMotion >= 0 && peerShotInMotion >= 0)) break;
+                    }
+                }
+                finally
+                {
+                    Main.npc[enemySlot] = savedEnemy;
+                    if (attacking)
+                        foreach (var projectile in Main.projectile)
+                            if (projectile.active && (projectile.owner == run.Body.whoAmI || projectile.owner == run.Peer.whoAmI) &&
+                                projectile.type == ProjectileID.Bullet) projectile.Kill();
+                }
+                Console.WriteLine($"FOLLOW WARP native pursuit attack={attacking} moved={moved} first={crossed}/{firstInputs}/{GetOptional(first, "PlannerSlices")} " +
+                    $"peer={peerCrossed}/{peerInputs}/{GetOptional(peer, "PlannerSlices")} simultaneousAmmoUse={firstShotInMotion}/{peerShotInMotion} " +
+                    $"body={run.Body.Bottom} peerBody={run.Peer.Bottom}");
+                Require(awaySegment > initialSegment && (int)Get(trail, "Segment") > awaySegment &&
+                    !air && !peerAir && Math.Abs(published.Y - floor) < 1 && Math.Abs(peerPublished.Y - floor) < 1 &&
+                    (returnMedium == null || returnMedium == "Ground"),
+                    "the first two native bodies after the actual warp return publish the new owner's solid contact in that update");
+                Require(crossed >= 0 && peerCrossed >= 0 && moved > 30 && firstInputs > 10 && peerInputs > 10 &&
+                    run.NativeRelocations == 0 && !run.Body.dead && !run.Peer.dead,
+                    "both ordinary bodies use original input to route around the solid partition while the returned owner keeps moving");
+                Require(attacking ? firstShotInMotion >= 0 && peerShotInMotion >= 0 : firstShotInMotion < 0 && peerShotInMotion < 0,
+                    "each actor spends its own real ammunition during movement only in the enabled attack comparison");
+                if (!attacking)
+                {
+                    uint warpedAt = 0, firstReadAt = 0;
+                    int segmentBefore = (int)Get(trail, "Segment");
+                    Vector2 publishedBefore = default;
+                    run.Step(betweenFollowers: () =>
+                    {
+                        warpedAt = Main.GameUpdateCount;
+                        firstReadAt = (uint)Get(Get(trail, "previous"), "Tick");
+                        publishedBefore = (Vector2)Get(first, "Target");
+                        WarpOwnerTo(human, left);
+                    });
+                    var sameUpdatePose = (Vector2)Get(peer, "Target");
+                    bool valid = !(bool)Get(peer, "targetAirborne") && sameUpdatePose == human.Bottom;
+                    Console.WriteLine($"FOLLOW WARP same-update firstObserved={firstReadAt} warped={warpedAt} after={Main.GameUpdateCount} " +
+                        $"segment={segmentBefore}/{Get(trail, "Segment")} firstTarget={publishedBefore} peerTarget={sameUpdatePose} valid={valid}");
+                    Require(firstReadAt == warpedAt && warpedAt == Main.GameUpdateCount &&
+                        (int)Get(trail, "Segment") > segmentBefore && valid && publishedBefore.X > innerWall,
+                        "the second original Player.Update reads the real new support after a warp within the same game update");
+                }
+            }
+        }
+
+        private static bool HasMovementInput(Player body) =>
+            body.controlLeft || body.controlRight || body.controlJump || body.controlDown;
+
+        private static void EquipWarpAttack(object host, object actor, Player body)
+        {
+            const int weaponSlot = 41;
+            body.inventory[weaponSlot] = new Item(ItemID.Musket);
+            body.inventory[54] = new Item(ItemID.MusketBall) { stack = 999 };
+            var profile = (CompanionProfile)Get(actor, "Profile");
+            Require((bool)Call(host, "SetBehavior", profile.Id, new CompanionBehavior
+            {
+                Follow = true, AttackEnabled = true, HealthRecoveryEnabled = false,
+                MainWeapons = new[] { new CompanionWeaponPreference(ItemID.Musket, 0, weaponSlot) }
+            }), "enable an ordinary ammunition-using weapon through the real companion configuration");
+        }
+
+        private static void NativeOwnerLandsWhileQueryPending(object context, object host, object profiles, Player human)
+        {
+            float floor = RoomLower * 16, wall = RoomPartition * 16;
+            Vector2 left = new Vector2(wall - 10.5f, floor);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "warp-contact", left,
+                new Vector2(RoomX(69), floor - 20), BuildMovingRoom))
+            {
+                var navigation = Navigator(run.Actor);
+                object oldAir = null;
+                int firstAir = -1, landed = -1, firstGround = -1, oldSearchOnGround = -1, sharedAirFrames = 0;
+                int initialSegment = -1, contactSegment = -1, oldExpanded = 0;
+                float priorX = human.Bottom.X;
+                for (int tick = 0; tick < 75; tick++)
+                {
+                    run.Step(1);
+                    object trail = Get(host, "ownerTrail"), route = Get(navigation, "route");
+                    int segment = (int)Get(trail, "Segment");
+                    if (initialSegment < 0) initialSegment = segment;
+                    object query = GetOptional(route, "query");
+                    string medium = query == null ? null : Get(Get(query, "Goal"), "Medium").ToString();
+                    bool pending = query != null && Get(query, "Status").ToString() == "PendingBudget";
+                    if (firstAir < 0 && pending && medium == "Air")
+                    {
+                        firstAir = tick;
+                        oldAir = query;
+                    }
+                    else if (pending && ReferenceEquals(query, oldAir) && human.Bottom.X > priorX + .01f)
+                        sharedAirFrames++;
+                    if (pending && ReferenceEquals(query, oldAir)) oldExpanded = (int)Get(oldAir, "expanded");
+                    if (landed < 0 && OnFloor(human, RoomLower))
+                    {
+                        landed = tick;
+                        contactSegment = segment;
+                    }
+                    if (landed >= 0 && firstGround < 0 && pending && ReferenceEquals(query, oldAir) && oldSearchOnGround < 0)
+                        oldSearchOnGround = tick;
+                    if (firstGround < 0 && medium == "Ground") firstGround = tick;
+                    if (tick < 14)
+                        Console.WriteLine($"FOLLOW WARP landing frame={Main.GameUpdateCount} tick={tick} segment={segment} " +
+                            $"owner={human.Bottom}/{human.velocity} targetAir={Get(navigation, "targetAirborne")} query={medium}/{PlanStatus(navigation)}");
+                    priorX = human.Bottom.X;
+                }
+                int finalOldExpanded = oldAir == null ? -1 : (int)Get(oldAir, "expanded");
+                Console.WriteLine($"FOLLOW WARP landing oldAir={firstAir} sameQueryWhileMoving={sharedAirFrames} " +
+                    $"nativeGround={landed} firstGround={firstGround} oldAfterContact={oldSearchOnGround} " +
+                    $"oldExpansions={oldExpanded}/{finalOldExpanded} segment={initialSegment}/{contactSegment}");
+                Require(firstAir >= 0 && sharedAirFrames > 0 && landed > firstAir && initialSegment == contactSegment &&
+                    oldSearchOnGround < 0 && firstGround >= firstAir && firstGround <= landed && finalOldExpanded == oldExpanded,
+                    "an in-progress Air search survives ordinary coordinates and releases its budget when the native landing invalidates its target");
+            }
+        }
+
+        private static void NativeOwnerWarpDuringHook(object context, object host, object profiles, Player human)
+        {
+            const int shaftLeft = 108, shaftRight = 111, anchor = 110, anchorRow = 66, floor = 73;
+            var start = new Vector2(anchor * 16, floor * 16);
+            var above = new Vector2(anchor * 16, anchorRow * 16);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "warp-hook", start, start, () =>
+            {
+                PlaceFixtureStrip(95, 120, floor, TileID.Stone);
+                for (int y = 65; y < floor; y++)
+                {
+                    PlaceFixtureTile(shaftLeft, y, TileID.Stone);
+                    PlaceFixtureTile(shaftRight, y, TileID.Stone);
+                }
+                PlaceFixtureTile(anchor, anchorRow, TileID.Stone);
+            }))
+            {
+                var body = run.Body;
+                var gear = new Item(ItemID.GrapplingHook);
+                bool originalHookAdmission = Main.projHook[gear.shoot];
+                var mobility = Get(run.Actor, "Mobility");
+                var navigation = Navigator(run.Actor);
+                Projectile projectile = null;
+                int birth = -1, away = -1, returned = -1, attached = -1, received = -1, released = -1, landed = -1;
+                int sequence = 0;
+                long oldAction = 0;
+                bool lostReceipt = false;
+                try
+                {
+                    Main.projHook[gear.shoot] = ContentSamples.ProjectilesByType[gear.shoot].aiStyle == 7;
+                    body.miscEquips[4] = gear;
+                    for (int tick = 0; tick < 10; tick++) run.Step();
+                    WarpOwnerTo(human, above);
+                    for (int tick = 0; tick < 280 && landed < 0; tick++)
+                    {
+                        if (birth >= 0 && away < 0)
+                        {
+                            WarpOwnerTo(human, new Vector2(RoomX(115), floor * 16));
+                            away = tick;
+                        }
+                        else if (away >= 0 && returned < 0)
+                        {
+                            WarpOwnerTo(human, start);
+                            returned = tick;
+                        }
+                        run.Step();
+                        var currentHook = (Projectile)GetOptional(mobility, "Hook");
+                        if (birth < 0 && currentHook?.active == true && currentHook.owner == body.whoAmI && currentHook.type == gear.shoot &&
+                            Get(mobility, "Result").ToString() == "Started")
+                        {
+                            birth = tick;
+                            sequence = (int)Get(mobility, "Sequence");
+                            oldAction = (long)Get(navigation, "ActionId");
+                            projectile = currentHook;
+                        }
+                        if (returned >= 0 && received < 0 && (int)Get(mobility, "Sequence") != sequence) lostReceipt = true;
+                        if (projectile?.active == true)
+                        {
+                            int previousIndex = Main.ProjectileUpdateLoopIndex;
+                            try
+                            {
+                                Main.ProjectileUpdateLoopIndex = projectile.whoAmI;
+                                projectile.Update(projectile.whoAmI);
+                            }
+                            finally { Main.ProjectileUpdateLoopIndex = previousIndex; }
+                            if (attached < 0 && projectile.ai[0] == 2) attached = tick;
+                        }
+                        if (returned >= 0 && received < 0 && (int)Get(mobility, "Sequence") == sequence &&
+                            Get(mobility, "Result").ToString() == "Completed") received = tick;
+                        if (received >= 0 && released < 0 && body.controlJump && projectile?.active == false) released = tick;
+                        if (released >= 0 && OnFloor(body, floor)) landed = tick;
+                        if (tick % 25 == 0 || tick == birth || tick == returned || tick == received || tick == released || tick == landed)
+                            Console.WriteLine($"FOLLOW WARP hook frame={Main.GameUpdateCount} step={tick} body={body.Bottom}/{body.velocity} " +
+                                $"hook={projectile?.active}/{projectile?.ai[0]} command={Get(mobility, "Action")}/{Get(mobility, "Result")}/" +
+                                $"{Get(mobility, "Sequence")} retire={Get(navigation, "retireIntent")} jump={body.controlJump} {PlanStatus(navigation)}");
+                    }
+                }
+                finally
+                {
+                    body.RemoveAllGrapplingHooks();
+                    Main.projHook[gear.shoot] = originalHookAdmission;
+                }
+                Console.WriteLine($"FOLLOW WARP hook old={oldAction}/{sequence} birth={birth} away={away} return={returned} " +
+                    $"attached={attached} matchingReceipt={received} release={released} land={landed} lostReceipt={lostReceipt}");
+                Require(oldAction > 0 && away > birth && returned > away && attached >= returned && received >= attached &&
+                    released > received && landed > released && !lostReceipt && run.NativeRelocations == 0,
+                    "the real in-flight hook settles under its original command and releases by native Jump after the owner's return");
+            }
+        }
+
+        private static void NativeOwnerWarpDuringJump(object context, object host, object profiles, Player human)
+        {
+            float floor = RoomLower * 16, wall = RoomPartition * 16;
+            Vector2 left = new Vector2(wall - 10.5f, floor);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "warp-jump", left,
+                new Vector2(wall + 26.5f, floor), BuildMovingRoom))
+            {
+                var navigation = Navigator(run.Actor);
+                Player body = run.Body;
+                long oldAction = 0;
+                int roof = 0;
+                for (int tick = 0; tick < 160 && oldAction == 0; tick++)
+                {
+                    run.Step(1);
+                    if (human.Center.X >= RoomX(74)) break;
+                    if (Get(navigation, "ActionKind").ToString() != "Jump" || !body.controlJump || body.velocity.Y >= -2 ||
+                        !(bool)Get(navigation, "ActionCommitted")) continue;
+                    oldAction = (long)Get(navigation, "ActionId");
+                    roof = (int)Math.Floor((body.Top.Y - 2) / 16) - 1;
+                    PlaceFixtureStrip(RoomPartition - 2, RoomPartition - 1, roof, TileID.Stone);
+                }
+                Require(oldAction != 0, "the native jump has committed before the owner leaves");
+                WarpOwnerTo(human, new Vector2(RoomX(87), (RoomUpper - 4) * 16));
+                run.Step();
+                WarpOwnerTo(human, new Vector2(RoomX(60), floor));
+                int ceiling = -1, contact = -1, resumed = -1, oldJumpAfterContact = -1;
+                string contactOutcome = null;
+                for (int tick = 0; tick < 75; tick++)
+                {
+                    Vector2 before = body.Bottom;
+                    float previousVy = body.velocity.Y;
+                    run.Step(human.Center.X > RoomX(48) ? -1 : 1);
+                    var delivery = GetOptional(navigation, "LastMovementDelivery");
+                    long currentAction = (long)Get(navigation, "ActionId");
+                    if (ceiling < 0 && previousVy < -.5f && body.velocity.Y >= -.02f &&
+                        Math.Abs(body.Top.Y - (roof + 1) * 16) < 1f) ceiling = tick;
+                    if (contact >= 0 && currentAction == oldAction && body.controlJump && oldJumpAfterContact < 0)
+                        oldJumpAfterContact = tick;
+                    if (contact < 0 && (bool)Get(navigation, "Supported") && Math.Abs(body.Bottom.Y - floor) < 1f)
+                    {
+                        contact = tick;
+                        contactOutcome = Get(navigation, "ActionOutcome").ToString();
+                    }
+                    if (contact >= 0 && currentAction != oldAction && body.controlLeft && before.X - body.Bottom.X > .1f && resumed < 0)
+                        resumed = tick;
+                    if (tick < 18 || tick == contact || tick == resumed)
+                        Console.WriteLine($"FOLLOW WARP jump frame={Main.GameUpdateCount} tick={tick} owner={human.Bottom}/{human.velocity} " +
+                            $"body={body.Bottom}/{body.velocity} support={Get(navigation, "Supported")} action={currentAction}/{Get(navigation, "ActionOutcome")}/" +
+                            $"{Get(navigation, "ActionCommitted")} retire={Get(navigation, "retireIntent")} left={body.controlLeft} jump={body.controlJump} " +
+                            $"deliver={(delivery == null ? body.controlJump.ToString() : GetOptional(delivery, "ActionId"))}/" +
+                            $"{(delivery == null ? Get(navigation, "LastDeferral") : GetOptional(delivery, "Deferral"))} {RouteTrace(navigation)}");
+                }
+                Console.WriteLine($"FOLLOW WARP jump outcome old={oldAction} ceiling={ceiling} contact={contact}/{contactOutcome} reissued={oldJumpAfterContact} resumed={resumed}");
+                Require(ceiling >= 0 && contact > ceiling && contactOutcome == "Superseded" && oldJumpAfterContact < 0 &&
+                    resumed > contact && resumed - contact <= 3 && Main.tile[RoomPartition - 1, roof].nactive(),
+                    "the real blocked jump keeps its airborne control and gives the new direction the next safe grounded input");
+            }
+        }
+
+        private static void WarpOwnerTo(Player human, Vector2 feet)
+        {
+            Vector2 before = human.Bottom;
+            human.Teleport(feet - new Vector2(human.width * .5f, human.height), 0);
+            Require(Vector2.DistanceSquared(feet, human.Bottom) < 1f && Vector2.DistanceSquared(before, human.Bottom) > 48f * 48f,
+                "original Player.Teleport moved the human owner to the intended site");
+        }
+
         private static void MovingNearPartition(object context, object host, object profiles, Player human, bool interruptJump = false)
         {
             float innerWall = RoomPartition * 16;

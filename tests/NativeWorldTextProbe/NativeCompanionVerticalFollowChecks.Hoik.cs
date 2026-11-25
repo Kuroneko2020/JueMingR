@@ -237,7 +237,8 @@ namespace NativeWorldTextProbe
                 PeerActor = Call(host, "Owned", body);
             }
 
-            internal long Step(int direction = 0, bool jump = false, bool down = false, bool up = false, bool dash = false)
+            internal long Step(int direction = 0, bool jump = false, bool down = false, bool up = false, bool dash = false,
+                Action betweenFollowers = null)
             {
                 NativeToolExecutionChecks.Sample(context, input, human.Center, false, direction);
                 var controls = PlayerInput.Triggers.Current;
@@ -249,6 +250,7 @@ namespace NativeWorldTextProbe
                 {
                     human.Update(human.whoAmI);
                     if (!recalled) Body.Update(Body.whoAmI);
+                    betweenFollowers?.Invoke();
                     if (!recalled && Peer != null) Peer.Update(Peer.whoAmI);
                     Call(context, "UpdateRuntime");
                 }

@@ -23,11 +23,23 @@ namespace NativeWorldTextProbe
         private static Projectile damageSource;
         private static Vector2 physical;
         private static int item,frame,births,enhanced,basic,hits,firstHit,primaryHits,primaryEnhanced,handStarts,oldHeavyCalls,primaryType,sideChecks,swappedPrimary;
+        private static int representativeBirths;
+        private static float firstVerticalError;
+        private static Vector2 preparedPoint;
+        private static uint preparedTick;
+        private static bool preparedRepresentative;
         private static readonly Dictionary<int,int> hitTypes=new Dictionary<int,int>();
         private static readonly List<string> facts=new List<string>();
         private static void Heavy(){oldHeavyCalls++;}
         private static void ArrowLane(int __6){if(item==2624 && __6!=2)sideChecks++;}
         private static void Hand(Player __instance,Item __0){if(ReferenceEquals(__instance,player) && __0.type==item)handStarts++;}
+        private static void BeforeBorrow(Player __0,Item __1)
+        {
+            if(!ReferenceEquals(__0,player) || __1.type!=item || !IsAttached())return;
+            var value=NativeCombatAimChecks.ReadSolution(attack);
+            preparedRepresentative=value.Route=="representative" && value.Contact==null && value.Reachability=="Reachable";
+            preparedTick=Main.GameUpdateCount;preparedPoint=value.Point;
+        }
         private static void Born(int __result)
         {
             if(player==null || __result<0 || __result>=Main.maxProjectiles)return;
@@ -41,6 +53,9 @@ namespace NativeWorldTextProbe
             // A held parent's emission can legitimately follow its earlier AI
             // read. Record it rather than inventing a same-tick hand receipt.
             var point=current?(Vector2)Get(packet,"Point"):Vector2.Zero;
+            // BeginShot retires its prepared value before native birth. Match
+            // the observed pre-borrow point to the real stamped input receipt.
+            if(kind=="Enhanced" && IsAttached() && shot.type==primaryType && preparedRepresentative && preparedTick==Main.GameUpdateCount && preparedPoint==point)representativeBirths++;
             facts.Add("birth frame="+frame+" guc="+Main.GameUpdateCount+" type="+shot.type+" key="+shot.key+" kind="+kind+" point="+point+" pos="+shot.Center+" velocity="+shot.velocity);
             if(current)Require(Vector2.DistanceSquared(point,physical)>4,"balanced native consumer must differ from the opposite physical mouse");
         }
@@ -56,10 +71,17 @@ namespace NativeWorldTextProbe
             // selected bullet. Other rows retain the full per-type account.
             // Swordfish's 1107..1109 are the three legal visual variants of
             // the primary emitted shard, not secondary damage channels.
-            if(primaryType==0 || type==primaryType || primaryType==1107 && type>=1107 && type<=1109)primaryHits++;
+            if(primaryType==0 || type==primaryType || primaryType==1107 && type>=1107 && type<=1109)
+            {
+                if(IsAttached() && primaryHits==0 && damageSource!=null)firstVerticalError=Math.Abs(damageSource.Center.Y-receiver.Center.Y);
+                primaryHits++;
+            }
             facts.Add("hit frame="+frame+" type="+type+" key="+(damageSource==null?"none":damageSource.key.ToString())+" damage="+__result);
         }
-        internal static void Run(object context)
+        private static bool IsAttached(){return item==3378 || item==3543 || item==5461;}
+        internal static void Run(object context){Run(context,false);}
+        internal static void RunAttachedOrdinary(object context){Run(context,true);}
+        private static void Run(object context,bool attached)
         {
             var host=Get(context,"CombatObservation");attack=Get(Get(context,"Combat"),"Attack");
             var audit=new Harmony("JueMingR.Tests.BalancedAim20261017");
@@ -69,11 +91,24 @@ namespace NativeWorldTextProbe
             audit.Patch(typeof(Projectile).GetMethod("Damage",F),prefix:new HarmonyMethod(typeof(NativeCombatBalancedAimChecks),nameof(Damage)),postfix:new HarmonyMethod(typeof(NativeCombatBalancedAimChecks),nameof(DamageDone)));
             audit.Patch(typeof(NPC).GetMethod("StrikeNPC",F,null,new[]{typeof(int),typeof(float),typeof(int),typeof(bool),typeof(bool),typeof(int)},null),postfix:new HarmonyMethod(typeof(NativeCombatBalancedAimChecks),nameof(Hit)));
             var assembly=attack.GetType().Assembly;
+            audit.Patch(attack.GetType().GetMethod("BeginShot",F),prefix:new HarmonyMethod(typeof(NativeCombatBalancedAimChecks),nameof(BeforeBorrow)));
             audit.Patch(assembly.GetType("JueMingR.TerrariaHost.Combat.HostNativeArrowBirthAttack",true).GetMethod("Birth",F),prefix:new HarmonyMethod(typeof(NativeCombatBalancedAimChecks),nameof(ArrowLane)));
             foreach(var pair in new[]{new[]{"HostHeldAmmoFamilyAttack","KnownFamily"},new[]{"HostHeldAmmoFamilyAttack","IsolatedFamily"},new[]{"HostHeldAmmoFamilyAttack","CaptureForSolve"},new[]{"HostHeldAmmoFamilyAttack","ExplicitBirthBatch"}})
             {var method=assembly.GetType("JueMingR.TerrariaHost.Combat."+pair[0],true).GetMethod(pair[1],F);if(method!=null)audit.Patch(method,prefix:new HarmonyMethod(typeof(NativeCombatBalancedAimChecks),nameof(Heavy)));}
             try
             {
+                if(attached)
+                {
+                    Scene(context,3543,0,700,0,false,0);
+                    Scene(context,3543,0,700,-70,true,0);
+                    Scene(context,3543,0,395,-23,true,5);
+                    Scene(context,3378,0,650,-50,true,0);
+                    Scene(context,3378,0,600,-50,true,7);
+                    Scene(context,5461,0,700,-70,true,0);
+                    Scene(context,98,97,650,-60,true,0);
+                    Scene(context,3540,40,650,-65,true,0);
+                    return;
+                }
                 if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="modes"){Modes(context);return;}
                 if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="motion"){NativeCombatBallisticMotionChecks.Run(context);return;}
                 if(Environment.GetEnvironmentVariable("JMR_BALANCED_SUITE")=="phase"){NativeCombatBalancedPhaseChecks.Run(context);return;}
@@ -157,24 +192,38 @@ namespace NativeWorldTextProbe
             if(modifier==3)NativeToolsChecks.Tile(63,40,1);
             foreach(var n in Main.npc)n.active=false;foreach(var q in Main.projectile)q.active=false;
             receiver=Main.npc[2];receiver.SetDefaults(3);receiver.whoAmI=2;receiver.active=true;receiver.width=receiver.height=34;
-            receiver.Center=player.Center+new Vector2(distance,height);receiver.aiStyle=-1;receiver.noGravity=receiver.noTileCollide=true;receiver.velocity=moving?new Vector2(-1,-.15f):Vector2.Zero;
+            receiver.Center=player.Center+new Vector2(distance,height);receiver.aiStyle=-1;receiver.noGravity=receiver.noTileCollide=true;
+            receiver.velocity=!moving?Vector2.Zero:modifier==5?new Vector2(0,1):new Vector2(modifier==7?.5f:-1,-.15f);
             receiver.life=receiver.lifeMax=100000;receiver.knockBackResist=0;receiver.dontTakeDamage=receiver.friendly=receiver.immortal=false;Array.Clear(receiver.immune,0,receiver.immune.Length);
             Main.screenPosition=new Vector2(480.25f,400.75f);Main.GameViewMatrix.Zoom=Vector2.One;Main.rand=new Terraria.Utilities.UnifiedRandom(7193);Main.windPhysics=false;
             physical=player.Center+new Vector2(-240,-100);item=weapon;births=enhanced=basic=hits=primaryHits=primaryEnhanced=handStarts=oldHeavyCalls=sideChecks=swappedPrimary=0;firstHit=-1;facts.Clear();hitTypes.Clear();
-            primaryType=item==3475?14:item==3540?1:item==1947?(distance>100?343:342):item==2331?(distance>100?1107:367):0;
+            representativeBirths=0;firstVerticalError=float.PositiveInfinity;preparedRepresentative=false;
+            primaryType=item==3378?598:item==3543?636:item==5461?1024:item==3475?14:item==3540?1:item==1947?(distance>100?343:342):item==2331?(distance>100?1107:367):0;
             NativeCombatObservationChecks.Save(host,new ObservationOptions(false,true,false,false,false,50,true,true));
-            for(frame=0;frame<210;frame++)
+            var work=(CombatPredictionWork)Get(host,"PredictionWork");var costs=new List<double>();int exhausted=0;
+            for(frame=0;frame<(modifier==5?48:210);frame++)
             {
                 // A real release separates two admitted native holders. The
                 // second press must choose changed ammo through PickAmmo.
                 if(modifier==4 && frame==90){player.inventory[54].SetDefaults(278);player.inventory[54].stack=999;}
-                Step(context,frame>=6 && frame<170 && (modifier!=4 || frame<90 || frame>=110) && (item!=1947 && item!=2331 || (frame-6)%40<30));
+                // The center-margin receiver travels downward through the
+                // floor later in the run. Give it one full near-range flight.
+                Step(context,frame>=6 && frame<(modifier==5?8:170) && (modifier!=4 || frame<90 || frame>=110) && (item!=1947 && item!=2331 || (frame-6)%40<30));
+                if(frame>=6 && frame<170){costs.Add(work.UsedMilliseconds);if(work.Exceeded)exhausted++;}
             }
             foreach(string fact in facts)Console.WriteLine("BALANCED item="+item+" "+fact);
             Console.WriteLine("BALANCED summary item="+item+" ammo="+ammo+" dx="+distance+" dy="+height+" moving="+moving+" handStarts="+handStarts+" births="+births+" enhanced="+enhanced+" primaryEnhanced="+primaryEnhanced+" basic="+basic+" hits="+hits+" primaryHits="+primaryHits+" firstHit="+firstHit+" oldHeavy="+oldHeavyCalls+" types="+string.Join(";",hitTypes.Select(p=>p.Key+":"+p.Value)));
             Require(handStarts>0 && births>0,"balanced scenario must really attack through original ItemCheck");
             Require(primaryEnhanced>0,"production public preparation must provide and actually consume a main-channel future point");
             Require(primaryHits>0,"ordinary original primary motion must effectively receive the selected target");
+            if(IsAttached())
+            {
+                costs.Sort();Console.WriteLine("ATTACHED ordinary item="+item+" representativeBirths="+representativeBirths+" firstCenterYError="+firstVerticalError+
+                    " chargedUpdateP95Ms="+costs[(int)(costs.Count*.95)]+" exceeded="+exhausted+"/"+costs.Count);
+                Require(representativeBirths>0,"attached natural birth consumed reachable first-flight input without contact");
+                if(modifier==5)Require(firstVerticalError<=9,"slow vertical target receives a near-center first flight instead of a one-tick edge graze");
+                if(modifier==7)Require(firstHit>=66,"real slow javelin falls and reaches the receding target outside a fixed 60-update window");
+            }
             Require(oldHeavyCalls==0,"migrated primary mechanism must not fall back to the old full ammo world");
             if(modifier==3)Require(sideChecks>0,"blocked central Tsunami channel must receive a bounded side-lane check");
             if(modifier==4)

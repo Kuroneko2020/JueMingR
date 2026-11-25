@@ -71,6 +71,7 @@ namespace JueMingR.TerrariaHost.Companions
             bool maintainMeleeApproach = valid && chosen.CloseCombat && ReferenceEquals(chosen.Target, movementTarget) &&
                 chosen.TargetGeneration == pursuit.TargetGeneration;
             a.Behavior.Navigator.BindWorld(navigationWorld);
+            a.Behavior.OwnerTrail=behavior.Follow?ObserveFollowOwner():null;
             var frame=a.Behavior.DecideMobility(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening,pursuit.Weapon,
                 a.Mobility, maintainMeleeApproach);
             // Urgent movement may use the next legal hand edge before queued

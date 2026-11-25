@@ -32,15 +32,22 @@ namespace JueMingR.TerrariaHost.Combat
         {
             if(item==null || item.IsAir || item.shoot<=0)return default(HostAttackSolution);
             var identity=CombatSelection.Identity(target,session);
+            AttackAmmoSnapshot captured=null;
             bool continuing=false;
             try{
             if(capture)
             {
-                prediction.CompletedPlayerBoundary=player.whoAmI;prediction.Cache.Demand(1,1,60);
+                // Use the normal flight demand for a fresh attached hand.
+                // A slow bone javelin can arrive past the old fixed 60-frame
+                // window. This only changes the desired prefix under the
+                // existing shared actor allowance.
+                if(HostAttachedShotAttack.Handles(item.shoot))captured=AttackAmmoSnapshot.Capture(player,item);
+                int horizon=captured!=null && HostAttachedShotAttack.Handles(captured.Projectile)?BalancedFlightPreferred(player,item,captured,target):60;
+                prediction.CompletedPlayerBoundary=player.whoAmI;prediction.Cache.Demand(1,1,horizon);
                 // Primary and secondary packets received at T are consumed by
                 // the next real player phase T+1, before NPCs move. The sample
                 // epoch is T, not today's player clock (which would give -1).
-                prediction.PrepareActionPrefix(identity,sampleTick,60,60);timeline=prediction.Cache.Read(1);terrain=null;
+                prediction.PrepareActionPrefix(identity,sampleTick,horizon,horizon);timeline=prediction.Cache.Read(1);terrain=null;
                 playerPremise=timeline?.PlayerCondition.Kind==PredictionPlayerConditionKind.HeldControls?(PredictionPlayerMotion?)timeline.PlayerCondition.Sample:null;
                 if(playerPremise.HasValue)playerAnchor=playerTick=Main.GameUpdateCount-(playerPremise.Value.PlayerIndex>player.whoAmI?1U:0U);
             }
@@ -91,7 +98,8 @@ namespace JueMingR.TerrariaHost.Combat
                 var point=timeline[age];
                 if(Vector2.DistanceSquared(target.position,new Vector2(point.Bounds.X,point.Bounds.Y))>4 || Vector2.DistanceSquared(target.velocity,new Vector2(point.Vx,point.Vy))>.01f)return default(HostAttackSolution);
             }
-            var captured=AttackAmmoSnapshot.Capture(player,item);if(captured==null)return default(HostAttackSolution);
+            if(captured==null)captured=AttackAmmoSnapshot.Capture(player,item);
+            if(captured==null)return default(HostAttackSolution);
             var start=HostAttackModels.LaunchOrigin(player,item);
             HostAttackSolution result;
             // This dispatch matches the human hand: ordinary actions replay

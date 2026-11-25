@@ -60,6 +60,7 @@ namespace NativeWorldTextProbe
                 // Its default 0 is the housing NPC cursor and suppresses even
                 // a vanilla backpack tooltip. The live game's idle value is -1.
                 Main.instance.SetMouseNPC(-1,-1);
+                EquipmentSlots(context, window, host, human, body, graphics, output, matrix, screen);
                 human.inventory[0]=new Item(ItemID.DirtBlock) { stack=20 }; human.inventory[1]=new Item();
                 body.inventory[0]=new Item(ItemID.DirtBlock) { stack=10 };
                 Call(window,"Prepare",matrix,screen);
@@ -150,6 +151,115 @@ namespace NativeWorldTextProbe
                 Main.instance.SetMouseNPC(npcIndex,npcType);
                 Main.FavoriteKey=favoriteKey;body.dye[0]=oldDye;body.Loadouts[1].Dye[0]=savedStoredDye;
                 Frame(context,Vector2.Zero,false);Main.ClearHoverItem();
+            }
+        }
+
+        private static void EquipmentSlots(object context, object window, object host, Player human, Player body,
+            ProbeGraphics graphics, string output, Matrix matrix, Vector2 screen)
+        {
+            // Terraria 1.4.6.1 ItemSlot.Draw, Extra[54] for contexts 19, 20, 18, 17 and 16.
+            int[] types = { ItemID.Carrot, ItemID.MagicLantern, ItemID.Minecart, ItemID.SlimySaddle, ItemID.GrapplingHook };
+            int[] icons = { 10, 17, 7, 13, 4 };
+            int[] dyeSlots = { 2, 4 };
+            var ownerGear = Get(window, "ownerGearPage");
+            var companionGear = Get(window, "companionGearPage");
+            var players = new[] { human, body };
+            var previousItems = players.Select(player => player.miscEquips.ToArray()).ToArray();
+            var previousDyes = players.Select(player => player.miscDyes.ToArray()).ToArray();
+            var previousBag = players.Select(player => player.inventory[2]).ToArray();
+            NativeCompanionItemGestureChecks.InitializeNativeEquipment();
+            graphics.LoadItemTextures(types.Concat(new[] { (int)ItemID.RedDye, ItemID.BlueDye }).ToArray());
+
+            Vector2 Point(object control) => NativeToolsUiChecks.Point(Get(control, "Rect")) * matrix.M11;
+            void Click(object control)
+            {
+                var pointer = Point(control);
+                Frame(context, pointer, false, true);
+                Frame(context, pointer, false);
+            }
+            void CheckCell(bool owner, string area, int slot, int type, int frame)
+            {
+                var cell = Slot(window, owner, slot, area);
+                int actualType = (int)Get(cell, "ItemType"), actualFrame = (int)Get(cell, "EmptyIcon");
+                Require(actualType == type && actualFrame == frame,
+                    $"{(owner ? "owner" : "companion")} {area} {slot}: item {actualType}, native empty frame {actualFrame}, expected item {type}, frame {frame}");
+            }
+
+            try
+            {
+                Set(window, "ownerGearPage", 2);
+                Set(window, "companionGearPage", 2);
+                Call(window, "Invalidate");
+                foreach (var player in players)
+                    for (int slot = 0; slot < icons.Length; slot++)
+                    {
+                        player.miscEquips[slot] = new Item();
+                        player.miscDyes[slot] = new Item();
+                    }
+                Call(window, "Prepare", matrix, screen);
+                foreach (bool owner in new[] { true, false })
+                    for (int slot = 0; slot < icons.Length; slot++) CheckCell(owner, "Misc", slot, 0, icons[slot]);
+                graphics.Image(Path.Combine(output, "companion-native-misc-empty-slots.png"),
+                    () => Call(window, "Draw"), matrix, (int)screen.X, (int)screen.Y);
+
+                for (int side = 0; side < players.Length; side++)
+                {
+                    bool owner = side == 0;
+                    var player = players[side];
+                    for (int slot = 0; slot < types.Length; slot++)
+                    {
+                        int wrongSlot = (slot + 1) % types.Length;
+                        player.inventory[2] = new Item(types[slot]);
+                        Call(window, "Prepare", matrix, screen);
+                        Click(Slot(window, owner, 2));
+                        Click(Slot(window, owner, wrongSlot, "Misc"));
+                        Require(((Item)Get(host, "CursorItem")).type == types[slot] && player.miscEquips[wrongSlot].IsAir,
+                            "physical equipment deposit rejects a different slot category and retains the held item");
+                        CheckCell(owner, "Misc", wrongSlot, 0, icons[wrongSlot]);
+                        Click(Slot(window, owner, slot, "Misc"));
+                        Require(player.inventory[2].IsAir && player.miscEquips[slot].type == types[slot] && !(bool)Get(host, "HasItemGesture"),
+                            $"physical deposit writes {(owner ? "owner" : "companion")} Misc {slot}: bag {player.inventory[2].type}, gear {player.miscEquips[slot].type}, expected {types[slot]}, feedback {GetOptional(window, "feedback")}");
+                        CheckCell(owner, "Misc", slot, types[slot], -1);
+                        Click(Slot(window, owner, slot, "Misc"));
+                        Click(Slot(window, owner, 2));
+                        Require(player.miscEquips[slot].IsAir && player.inventory[2].type == types[slot] && !(bool)Get(host, "HasItemGesture"),
+                            "physical withdrawal restores the item to the original bag slot");
+                        CheckCell(owner, "Misc", slot, 0, icons[slot]);
+                    }
+
+                    foreach (int slot in dyeSlots)
+                    {
+                        int type = slot == 2 ? ItemID.RedDye : ItemID.BlueDye;
+                        player.inventory[2] = new Item(type);
+                        Call(window, "Prepare", matrix, screen);
+                        CheckCell(owner, "MiscDye", slot, 0, 1);
+                        var equipment = Point(Slot(window, owner, slot, "Misc"));
+                        var dye = Point(Slot(window, owner, slot, "MiscDye"));
+                        Require(dye.X == equipment.X && dye.Y > equipment.Y, "misc dye directly below the matching equipment slot");
+                        Click(Slot(window, owner, 2));
+                        Click(Slot(window, owner, slot, "MiscDye"));
+                        Require(player.miscDyes[slot].type == type && player.miscEquips[slot].IsAir && !(bool)Get(host, "HasItemGesture"),
+                            "physical dye deposit writes the matching native dye index");
+                        CheckCell(owner, "MiscDye", slot, type, -1);
+                    }
+                    Require(player.miscDyes[2].type == ItemID.RedDye && player.miscDyes[4].type == ItemID.BlueDye,
+                        "minecart and hook dye keep distinct indices");
+                }
+                Console.WriteLine("PASS both equipment columns: five exact vanilla empty frames, five accepted and rejected physical slot transfers and withdrawals, and distinct minecart/hook dye pairing.");
+            }
+            finally
+            {
+                Call(host, "CancelItemGesture");
+                for (int side = 0; side < players.Length; side++)
+                {
+                    Array.Copy(previousItems[side], players[side].miscEquips, previousItems[side].Length);
+                    Array.Copy(previousDyes[side], players[side].miscDyes, previousDyes[side].Length);
+                    players[side].inventory[2] = previousBag[side];
+                }
+                Set(window, "ownerGearPage", ownerGear);
+                Set(window, "companionGearPage", companionGear);
+                Call(window, "Invalidate");
+                Call(window, "Prepare", matrix, screen);
             }
         }
     }

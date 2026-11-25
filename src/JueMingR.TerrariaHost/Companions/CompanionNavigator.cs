@@ -35,7 +35,7 @@ namespace JueMingR.TerrariaHost.Companions
         private int offeredLifeCost, offeredProtection, activeLifeCost, activeProtection;
         private bool hasOffer, hasTarget, supported, targetChanged, retireIntent, rescuePending, rescuing, offeredFlightLanding;
         private bool offeredLandingRisk, activeLandingRisk;
-        private bool actionEmergency, knowsPositionRevision, keepAirContact, hasBlockedRoof, targetAirborne;
+        private bool actionEmergency, knowsPositionRevision, keepAirContact, hasBlockedRoof, targetAirborne, targetContactKnown;
         private CompanionOwnerTrail observedTrail;
         private uint nextFacilities, pendingSince, nextDashCheck, nextCruiseCheck, nextMountCheck, dashPreparedUntil, lastRescue;
         private Vector2 target, targetVelocity;
@@ -104,7 +104,6 @@ namespace JueMingR.TerrariaHost.Companions
             dashPlan = default;
             previousGravity = 0;
             pylonCount = -1;
-            observedTrail = null;
             knowsPositionRevision = false;
             actionEmergency = false;
             activeLandingRisk = false;
@@ -115,11 +114,24 @@ namespace JueMingR.TerrariaHost.Companions
             nextStallCheck = StallUpdates;
         }
 
-        internal void IntentChanged()
+        internal void IntentChanged(CompanionMobilityState native)
         {
+            // The target and its segment are published together by Control.
+            // A later native owner warp can arrive after Control but before
+            // this body's planner slice. Retire that target before any work.
+            hasTarget = false;
             targetChanged = true;
             ClearPrefix();
-            if (action.Id != 0 && !Terminal(action.Outcome) && action.Committed)
+            route?.Reset();
+            pendingSince = nextFacilities = dashPreparedUntil = retrySuspendedAt = 0;
+            dashPreparation.Reset();
+            dashPlan = default;
+            // A latched hook already controls the body even after its
+            // launch receipt completes. Its next input may release it
+            // against the newly published target using the actual hang.
+            bool attachedHook = action.Edge.Kind == NavigationAction.Hook && native.Observed.GrappleAttached;
+            if (action.Id != 0 && !Terminal(action.Outcome) &&
+                (action.Committed || attachedHook || action.AwaitingNativeTool(native)))
             {
                 retireIntent = true;
                 return;
@@ -127,24 +139,25 @@ namespace JueMingR.TerrariaHost.Companions
             // An owner warp invalidates the staged entry before the next
             // actual key. A body already airborne finishes its own action.
             action.Reset();
-            route?.Reset();
             retireIntent = false;
         }
 
-        internal void ObserveOwnerTrail(CompanionOwnerTrail trail)
+        internal bool ObserveOwnerTrail(CompanionOwnerTrail trail, CompanionMobilityState native)
         {
             int segment = trail?.Segment ?? 0;
-            if (ReferenceEquals(trail, observedTrail) && trailSegment != segment) IntentChanged();
+            bool changed = !ReferenceEquals(trail, observedTrail) || trailSegment != segment;
+            if (changed) IntentChanged(native);
             observedTrail = trail;
             trailSegment = segment;
+            return changed;
         }
 
         internal CompanionMobilityFrame Decide(Player body, CompanionMobilityState native, Vector2 feetGoal, Vector2 targetVelocity,
-            float desiredSpacing, bool emergency, int threatDirection, bool ownerInAir)
+            float desiredSpacing, bool emergency, int threatDirection, bool ownerInAir, bool contactKnown)
         {
 #if DEBUG
             int reads = CompanionNativeContact.Reads, steps = CompanionNativeContact.Predictions, braking = CompanionNativeContact.BrakingTicks;
-            try { return DecideCurrent(body, native, feetGoal, targetVelocity, desiredSpacing, emergency, threatDirection, ownerInAir); }
+            try { return DecideCurrent(body, native, feetGoal, targetVelocity, desiredSpacing, emergency, threatDirection, ownerInAir, contactKnown); }
             finally
             {
                 ImmediateContactReads += CompanionNativeContact.Reads - reads;
@@ -152,12 +165,12 @@ namespace JueMingR.TerrariaHost.Companions
                 ImmediateBrakingTicks += CompanionNativeContact.BrakingTicks - braking;
             }
 #else
-            return DecideCurrent(body, native, feetGoal, targetVelocity, desiredSpacing, emergency, threatDirection, ownerInAir);
+            return DecideCurrent(body, native, feetGoal, targetVelocity, desiredSpacing, emergency, threatDirection, ownerInAir, contactKnown);
 #endif
         }
 
         private CompanionMobilityFrame DecideCurrent(Player body, CompanionMobilityState native, Vector2 feetGoal, Vector2 targetVelocity,
-            float desiredSpacing, bool emergency, int threatDirection, bool ownerInAir)
+            float desiredSpacing, bool emergency, int threatDirection, bool ownerInAir, bool contactKnown)
         {
             if (native.Generation != bodyGeneration)
             {
@@ -188,6 +201,7 @@ namespace JueMingR.TerrariaHost.Companions
             spacing = desiredSpacing;
             hasTarget = true;
             targetAirborne = ownerInAir;
+            targetContactKnown = contactKnown;
             if (!native.Observed.Ready) supported = CompanionNativeContact.ObservedSupport(body);
             keepAirContact = ownerInAir && !supported && native.Observed.WingHover && CompanionMotionProfile.Wings(native.Observed);
             if (body.CCed || native.Observed.Controlled)
@@ -502,6 +516,28 @@ namespace JueMingR.TerrariaHost.Companions
                 return;
             }
             var result = action.Observe(body, native, supported, target, action.Direct && CloseTarget(body, CompanionNativeContact.Feet(body)));
+            if (retireIntent)
+            {
+                // A matching native facility can complete during the old
+                // action. Otherwise changing intent earns no route failure.
+                // The first real landing or settled hook owns the handoff,
+                // even when the old edge's endpoint was never reached.
+                if (!action.AwaitingNativeTool(native) && (result == CompanionActionOutcome.Complete ||
+                    action.CanYieldIntent(native, supported)))
+                {
+                    if (result == CompanionActionOutcome.Complete && action.Edge.Kind == NavigationAction.Facility)
+                    {
+#if DEBUG
+                        FacilityUses++;
+#endif
+                    }
+                    else action.Outcome = CompanionActionOutcome.Superseded;
+                    retireIntent = false;
+                }
+                else if (Terminal(result)) action.Outcome = CompanionActionOutcome.Running;
+                if (repositioned || gravityChanged) RetireBinding();
+                return;
+            }
             if (result == CompanionActionOutcome.Running)
             {
                 Vector2 feet = CompanionNativeContact.Feet(body);
@@ -578,11 +614,6 @@ namespace JueMingR.TerrariaHost.Companions
                     route?.Reject(action.Edge, CompanionNativeContact.Feet(body));
                 ClearPrefix();
             }
-            if (retireIntent && (action.Id == 0 || Terminal(result)))
-            {
-                retireIntent = false;
-                route?.Reset();
-            }
         }
 
         private void RetireBinding()
@@ -609,6 +640,7 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal void Advance(Player body, CompanionMobilityState native, CompanionOwnerTrail trail, NavigationBudget budget)
         {
+            ObserveOwnerTrail(trail, native);
             if (!hasTarget || route == null || native.Observed.Controlled) return;
 #if DEBUG
             PlannerSlices++;
@@ -634,8 +666,7 @@ namespace JueMingR.TerrariaHost.Companions
             Vector2 feet = CompanionNativeContact.Feet(body);
             var state = native.Observed;
             if (TryPrepareRescue(body, native, feet, budget)) return;
-            ObserveOwnerTrail(trail);
-            if (retireIntent) return;
+            if (retireIntent || !targetContactKnown) return;
             if (state.DashReady && !native.AwaitingEquipmentObservation &&
                 Math.Abs(target.X - feet.X) > 48f && unchecked((int)(Main.GameUpdateCount - nextDashCheck)) >= 0)
             {

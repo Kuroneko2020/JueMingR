@@ -19,19 +19,26 @@ namespace JueMingR.TerrariaHost.Companions
         {
             internal long Sequence;
             internal uint Tick;
-            internal Vector2 Feet, Velocity;
+            internal Vector2 Center, Feet, Velocity;
+            internal int Width;
+            internal float Gravity;
             internal Contact Mode;
-            internal bool Landmark;
+            internal bool Landmark, SupportKnown;
         }
 
         private readonly Sample[] points = new Sample[Capacity];
         private Sample previous, latest;
+        private Player observedOwner;
         private bool hasObservation;
         private long write, first = 1;
         internal int Segment { get; private set; }
         internal long Latest => first <= write ? write : 0;
         internal long First => first;
-        internal bool RecentlyGrounded => hasObservation && (previous.Mode & Contact.Supported) != 0;
+        internal bool TryGetCurrent(out Sample pose)
+        {
+            pose = previous;
+            return hasObservation;
+        }
 
         internal void BreakSegment()
         {
@@ -69,23 +76,35 @@ namespace JueMingR.TerrariaHost.Companions
         internal void Observe(Player owner, uint tick)
         {
             if (owner == null || !owner.active || owner.dead) { BreakSegment(); return; }
-            if (hasObservation && previous.Tick == tick) return;
-            bool supported = CompanionNativeContact.OwnerHasSupport(owner);
+            if (!ReferenceEquals(observedOwner, owner)) BreakSegment();
             // Point at the contacted side, including inverted gravity.
-            var feet = owner.gravDir >= 0 ? owner.Bottom : owner.Top;
-            var sample = new Sample { Tick = tick, Feet = feet, Velocity = owner.velocity, Mode = ReadMode(owner, supported) };
+            var feet = CompanionNativeContact.Feet(owner);
+            var center = owner.Center;
+            var velocity = owner.velocity;
+            float gravity = owner.gravDir;
+            // More than one body can read this native pose in one world
+            // step. A real warp invalidates it even when the tick is unchanged.
+            const Contact changingContact = Contact.Down | Contact.Wet | Contact.Rope | Contact.Rail | Contact.Mount;
+            var medium = ReadMedium(owner);
+            if (hasObservation && previous.Tick == tick && previous.Center == center && previous.Feet == feet &&
+                previous.Velocity == velocity && previous.Gravity == gravity && previous.Width == owner.width &&
+                (previous.Mode & changingContact) == medium) return;
+            bool supportKnown = CompanionNativeContact.TryOwnerSupport(owner, out bool supported);
+            var sample = new Sample { Tick = tick, Center = center, Feet = feet, Velocity = velocity, Width = owner.width,
+                Gravity = gravity, Mode = ReadMode(owner, medium, supported), SupportKnown = supportKnown };
             if (hasObservation)
             {
                 uint elapsed = unchecked(tick - previous.Tick);
                 // Native teleports notify the host directly. This also
                 // bounds discontinuities without splitting fast native runs.
                 float travel = 48 + Math.Max(sample.Velocity.Length(), previous.Velocity.Length()) * Math.Min(12u, elapsed) * 2;
-                if (elapsed > 12 || Vector2.DistanceSquared(sample.Feet, previous.Feet) > travel * travel) BreakSegment();
+                if (elapsed > 12 || previous.Gravity != gravity ||
+                    Vector2.DistanceSquared(sample.Feet, previous.Feet) > travel * travel) BreakSegment();
             }
             bool newSegment = !hasObservation;
-            bool leftLedge = !newSegment && (previous.Mode & Contact.Supported) != 0 && !supported &&
+            bool leftLedge = !newSegment && supportKnown && (previous.Mode & Contact.Supported) != 0 && !supported &&
                 sample.Velocity.Y * owner.gravDir > .1f;
-            sample.Landmark = newSegment || sample.Mode != previous.Mode ||
+            sample.Landmark = newSegment || sample.Mode != previous.Mode || supportKnown != previous.SupportKnown ||
                 DirectionChanged(previous.Velocity, sample.Velocity);
             if (!newSegment && sample.Landmark &&
                 Vector2.DistanceSquared(latest.Feet, previous.Feet) >= 6 * 6)
@@ -106,6 +125,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if (sample.Landmark || Vector2.DistanceSquared(latest.Feet, sample.Feet) >= 16 * 16) Append(sample);
             previous = sample;
+            observedOwner = owner;
             hasObservation = true;
         }
 
@@ -120,17 +140,23 @@ namespace JueMingR.TerrariaHost.Companions
             before.LengthSquared() >= 1 && after.LengthSquared() >= 1 &&
             Vector2.Dot(before, after) < before.Length() * after.Length() * .65f;
 
-        private static Contact ReadMode(Player player, bool supported)
+        private static Contact ReadMedium(Player player)
         {
-            Contact result = supported ? Contact.Supported : Contact.Air;
+            Contact result = Contact.Air;
             if (player.stairFall) result |= Contact.Down;
             if (player.wet) result |= Contact.Wet;
             if (player.pulley) result |= Contact.Rope;
             if (player.onTrack) result |= Contact.Rail;
             if (player.mount.Active) result |= Contact.Mount;
+            return result;
+        }
+
+        private static Contact ReadMode(Player player, Contact medium, bool supported)
+        {
+            Contact result = supported ? medium | Contact.Supported : medium;
             // Open leaves are still a useful landmark at a narrow door.
             Point at = player.Center.ToTileCoordinates();
-            var tile = WorldGen.InWorld(at.X, at.Y) ? Main.tile[at.X, at.Y] : null;
+            var tile = CompanionMobilityGeometry.Known(at.X, at.Y) ? Main.tile[at.X, at.Y] : null;
             if (tile != null && tile.nactive() && (tile.type == TileID.OpenDoor || tile.type == TileID.ClosedDoor))
                 result |= Contact.Door;
             return result;

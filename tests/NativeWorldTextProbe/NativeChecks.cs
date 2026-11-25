@@ -64,6 +64,9 @@ namespace NativeWorldTextProbe
             }
             if(scope=="CompanionPasswordCpu" || scope=="CompanionSuppliesCpu" || scope=="CompanionObservationCombatCpu")
             {
+                string comparison=scope=="CompanionObservationCombatCpu" ? Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE") : null;
+                if(comparison!=null && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT")!=null)
+                    throw new InvalidOperationException("Explicit companion combat comparisons have no formal scope qualification.");
                 Directory.CreateDirectory(output);
                 Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user-"+Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
@@ -71,7 +74,7 @@ namespace NativeWorldTextProbe
                     if(scope=="CompanionPasswordCpu"){NativeCompanionPasswordChecks.Run(context);NativeScopeDispatch.Enter("companions-password");}
                     else if(scope=="CompanionSuppliesCpu"){NativeCompanionSupplyChecks.Run(context);NativeScopeDispatch.Enter("companions-supplies");}
                     else {NativeCompanionChecks.RunObservationCombat(context);NativeScopeDispatch.Enter("companions-observation-combat");}
-                },processing:true,shortFeedback:true);return 0;
+                },processing:true,shortFeedback:true,candidateAssembly:comparison);return 0;
             }
             if(scope=="CompanionSessionCpu")
             {
@@ -100,6 +103,8 @@ namespace NativeWorldTextProbe
                             NativeCompanionVerticalFollowChecks.Run(context, "vertical-all");
                         else if (!historical && focus == "timing")
                             NativeCompanionVerticalFollowChecks.Run(context, "timing");
+                        else if (!historical && focus == "warp-return")
+                            NativeCompanionVerticalFollowChecks.Run(context, "warp-return");
                         else
                             NativeCompanionVerticalFollowChecks.Run(context, !historical && focus == "graph" ? "graph" : "moving-room", historical);
                         return;

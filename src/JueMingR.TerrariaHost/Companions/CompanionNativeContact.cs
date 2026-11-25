@@ -128,23 +128,25 @@ namespace JueMingR.TerrariaHost.Companions
                 PlatformContact.Geometry(platforms), false, out var contact) && contact.Ground;
         }
 
-        internal static bool ObservedSupport(Player body)
+        internal static bool ObservedSupport(Player body) => TryObserveSupport(body, out bool supported) && supported;
+
+        private static bool TryObserveSupport(Player body, out bool supported)
         {
+            supported = false;
             if (body == null || body.shimmering || body.grappling[0] >= 0 || body.carpetFrame != -1 || body.IsRidingTracks)
-                return false;
+                return true;
             float vertical = body.velocity.Y * body.gravDir;
-            if (vertical < -NativeSlopeRestSpeed) return false;
-            {
-                var contact = PlatformContact.Native(body, body.controlDown, body.stairFall);
-                float stepY = MathHelper.Clamp(body.gravity + Math.Max(0, vertical), .05f,
-                    Math.Max(.05f, body.maxFallSpeed)) * body.gravDir;
-                if (!TryMove(body, body.position, new Vector2(0, stepY), contact, false, out Step step) || !step.Ground)
-                    return false;
-                // Native Y velocity can still be the previous clipped
-                // displacement in the first frame on a floor. Admit that
-                // precise contact, never an approaching sweep's endpoint.
-                return vertical <= 1 || Vector2.DistanceSquared(step.Position, body.position) <= .0001f;
-            }
+            if (vertical < -NativeSlopeRestSpeed) return true;
+            var contact = PlatformContact.Native(body, body.controlDown, body.stairFall);
+            float stepY = MathHelper.Clamp(body.gravity + Math.Max(0, vertical), .05f,
+                Math.Max(.05f, body.maxFallSpeed)) * body.gravDir;
+            if (!TryMove(body, body.position, new Vector2(0, stepY), contact, false, out Step step))
+                return false;
+            // Native Y velocity can still be the previous clipped
+            // displacement in the first frame on a floor. Admit that
+            // precise contact, never an approaching sweep's endpoint.
+            supported = step.Ground && (vertical <= 1 || Vector2.DistanceSquared(step.Position, body.position) <= .0001f);
+            return true;
         }
         private static bool ClearBody(Player body,Vector2 position,bool throughDoor=false)
         {
@@ -198,11 +200,14 @@ namespace JueMingR.TerrariaHost.Companions
             return !mobility.GrappleAttached && !mobility.Pulley && !mobility.Track && !mobility.Shimmer && vertical >= 0 && vertical <= 1;
         }
 
-        internal static bool OwnerHasSupport(Player body)
+        internal static bool TryOwnerSupport(Player body, out bool supported)
         {
-            float vertical = body.velocity.Y * body.gravDir;
-            if (body.pulley || body.stairFall || vertical < 0 || vertical > 1) return false;
-            return ObservedSupport(body);
+            if (body.pulley || body.stairFall)
+            {
+                supported = false;
+                return true;
+            }
+            return TryObserveSupport(body, out supported);
         }
 
     }

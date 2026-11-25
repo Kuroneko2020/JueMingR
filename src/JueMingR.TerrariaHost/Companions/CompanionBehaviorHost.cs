@@ -18,7 +18,7 @@ namespace JueMingR.TerrariaHost.Companions
         private int threatStamp;
         private NPC openingTarget;
         private Item openingWeapon;
-        private int openingGeneration;
+        private int openingGeneration, openingSegment;
         private uint openingUntil, nextTacticalProbe;
         private Vector2 openingPosition, enemyAtOpening;
         private PredictionTerrain.CellLease openingTerrain;
@@ -45,17 +45,25 @@ namespace JueMingR.TerrariaHost.Companions
             bool maintainMeleeApproach = false)
         {
             var currentOwner = behavior.Follow && owner != null && owner.active && !owner.dead ? owner : null;
-            Navigator.ObserveOwnerTrail(OwnerTrail);
+            bool segmentChanged = Navigator.ObserveOwnerTrail(OwnerTrail, mobility);
             if (!initialized || !ReferenceEquals(goalOwner, currentOwner))
             {
                 initialized = true;
                 goalOwner = currentOwner;
                 anchor = body.Center;
                 openingTarget = null;
-                Navigator.IntentChanged();
+                if (!segmentChanged) Navigator.IntentChanged(mobility);
             }
-            Vector2 center = currentOwner?.Center ?? anchor;
-            Vector2 follow = center, velocity = currentOwner?.velocity ?? Vector2.Zero;
+            if (segmentChanged)
+            {
+                openingTarget = null;
+                openingTerrain = null;
+                nextTacticalProbe = Main.GameUpdateCount;
+            }
+            CompanionOwnerTrail.Sample pose = default;
+            bool hasPose = currentOwner != null && OwnerTrail?.TryGetCurrent(out pose) == true;
+            Vector2 center = hasPose ? pose.Center : currentOwner?.Center ?? anchor;
+            Vector2 follow = center, velocity = hasPose ? pose.Velocity : currentOwner?.velocity ?? Vector2.Zero;
             float spacing = currentOwner == null ? 0f : 34f;
             bool needsAir = body.wet && body.breath < body.breathMax / 3 && !body.gills && !mobility.Observed.BreathProtected;
             if (!body.wet) { lastAir = body.Center; hasAir = true; }
@@ -83,17 +91,23 @@ namespace JueMingR.TerrariaHost.Companions
             else if (canAttack || combatTarget == null) openingTarget = null;
 
             Vector2 goal = center + new Vector2(0, body.height * .5f * body.gravDir);
-            bool followInAir = false;
-            if (currentOwner != null && center == follow && body.gravDir == currentOwner.gravDir)
+            bool followInAir = false, targetContactKnown = true;
+            if (currentOwner != null && center == follow)
             {
+                const CompanionOwnerTrail.Contact nativeMedium = CompanionOwnerTrail.Contact.Wet |
+                    CompanionOwnerTrail.Contact.Rope | CompanionOwnerTrail.Contact.Rail;
+                bool mediumObserved = (pose.Mode & nativeMedium) != 0;
+                targetContactKnown = hasPose && (pose.SupportKnown || mediumObserved);
                 // Foot contact, not differences in armor/mount sprite sizes,
-                // defines the shared target floor. The owner's trail can
-                // identify a recently supported target without claiming AI reach.
-                if (OwnerTrail?.RecentlyGrounded == true)
-                    goal = CompanionNativeContact.Feet(currentOwner);
-                else followInAir = OwnerTrail != null && !currentOwner.wet && !currentOwner.pulley;
+                // defines the shared target floor. History gaps alone cannot
+                // prove the current owner is airborne.
+                if (hasPose && body.gravDir == pose.Gravity)
+                {
+                    if ((pose.Mode & CompanionOwnerTrail.Contact.Supported) != 0) goal = pose.Feet;
+                    else followInAir = pose.SupportKnown && !mediumObserved;
+                }
             }
-            return Navigator.Decide(body, mobility, goal, velocity, spacing, needsAir || lava || threat, escape, followInAir);
+            return Navigator.Decide(body, mobility, goal, velocity, spacing, needsAir || lava || threat, escape, followInAir, targetContactKnown);
         }
 
         private bool TryCombatPosition(Player body, Vector2 follow, NPC target, Item weapon, bool closeCombat,
@@ -111,6 +125,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if (ReferenceEquals(openingTarget, target) && ReferenceEquals(openingWeapon, weapon) &&
                 openingGeneration == target.generation && Main.GameUpdateCount < openingUntil &&
+                openingSegment == (OwnerTrail?.Segment ?? 0) &&
                 Vector2.DistanceSquared(enemy, enemyAtOpening) < 24f * 24f &&
                 Vector2.DistanceSquared(openingPosition, follow) <= leash * leash && openingTerrain.Current)
             {
@@ -133,6 +148,7 @@ namespace JueMingR.TerrariaHost.Companions
                 openingTarget = target;
                 openingWeapon = weapon;
                 openingGeneration = target.generation;
+                openingSegment = OwnerTrail?.Segment ?? 0;
                 enemyAtOpening = enemy;
                 position = openingPosition = destination;
                 openingUntil = Main.GameUpdateCount + 45;

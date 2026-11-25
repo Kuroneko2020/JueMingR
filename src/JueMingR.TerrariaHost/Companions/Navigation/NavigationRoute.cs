@@ -164,6 +164,15 @@ namespace JueMingR.TerrariaHost.Companions
                 return;
             }
 
+            // The query's endpoint and heuristic are bound together. A live
+            // positional drift can still use its old exit, while an obsolete
+            // medium or different contacted floor cannot spend another slice.
+            if (query != null && ObsoleteGoal(query.Goal, goal, query.GoalPose, goalPose))
+            {
+                query = null;
+                nextRetry = 0;
+            }
+
             var localCandidate = localFixture;
             bool sameCorridorGoal = corridor.Count != 0 && SameGoal(corridorGoal, goal, corridorGoalPose, goalPose);
             if (!issued && needFlightMount && traversal.LocalFlightMount(feet, start, rejectFilter, out var mount))
@@ -665,6 +674,17 @@ namespace JueMingR.TerrariaHost.Companions
             // A tile-distance comparison would merge positions on the
             // opposite sides of a wall or above/below distinct platforms.
             return traversal.SameGroundRegion(previous, current, previousPose, currentPose);
+        }
+
+        private bool ObsoleteGoal(NavigationNode previous, NavigationNode current, Vector2? previousPose, Vector2? currentPose)
+        {
+            if (previous.Gravity != current.Gravity || previous.Medium != current.Medium) return true;
+            // Nearby separated floors can be distinguished from gradual
+            // slopes. Horizontal pursuit and open-air travel keep the search
+            // as the owner moves beyond the original terminal envelope.
+            return current.Grounded && Math.Abs(previous.Cell.Y - current.Cell.Y) > 1 &&
+                Math.Abs(previous.Cell.X - current.Cell.X) <= 18 &&
+                !SameGoal(previous, current, previousPose, currentPose) && !traversal.Pending && !traversal.Unknown;
         }
 
         internal static bool SameFailure(NavigationTransition a, NavigationTransition b) =>

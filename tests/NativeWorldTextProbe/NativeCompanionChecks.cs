@@ -47,6 +47,7 @@ namespace NativeWorldTextProbe
             {
                 var body = (Player)Call(host, "GetBody", list[0].Id);
                 NativeBasicCombat(host, body, isolation);
+                NativeCombatAttachedShotChecks.CompanionOrdinary(context, host, body, list[1].Id);
                 NativeCompanionCoreNetworkChecks.RunObservationCombat(host, body, list[1].Id);
             }
             finally

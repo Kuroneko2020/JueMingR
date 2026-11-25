@@ -100,6 +100,16 @@ namespace JueMingR.TerrariaHost.Companions
             delivered.Activation != CompanionMovementActivation.None && delivered.Activation == native.Action &&
             delivered.Sequence == native.Sequence && native.Result == CompanionMobilityResult.Completed;
 
+        // A later offer can name another sub-operation before the original
+        // command finishes. The native sequence still names this action.
+        internal bool AwaitingNativeTool(CompanionMobilityState native) => native.Result == CompanionMobilityResult.Started &&
+            !native.ShapeHandExit && native.Action != CompanionMovementActivation.None && native.Sequence == ToolSequence(native.Action);
+
+        internal bool CanYieldIntent(CompanionMobilityState native, bool supported) =>
+            !native.Observed.DashActive && !native.Observed.GrappleInFlight &&
+            (supported && (!Committed || Edge.Kind == NavigationAction.Hoik && Outcome == CompanionActionOutcome.Blocked) ||
+                native.Observed.GrappleAttached);
+
         internal CompanionMobilityFrame Input(Player body, CompanionMobilityState native, bool supported,
             Vector2 liveTarget, Vector2 liveVelocity, float spacing, int threatDirection, bool emergency,
             bool keepAirContact, bool ownerInAir, bool rollingWalk)
@@ -800,6 +810,8 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         private CompanionMovementActivation tool;
+        private int ToolSequence(CompanionMovementActivation activation) => unchecked((int)(Id * 16 + (int)activation));
+
         private void SetTool(ref CompanionMobilityFrame frame, CompanionMovementActivation activation, Vector2 point)
         {
             if (tool != activation || sequence == 0)
@@ -807,7 +819,7 @@ namespace JueMingR.TerrariaHost.Companions
                 // A sub-operation (e.g. release after hook pull) must not
                 // consume the previous native receipt of the same action.
                 tool = activation;
-                sequence = unchecked((int)(Id * 16 + (int)activation));
+                sequence = ToolSequence(activation);
             }
             frame.Sequence = sequence;
             frame.Activation = activation;
@@ -875,7 +887,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (Edge.Kind != NavigationAction.Hoik)
                 Committed = state.DashActive || !supported && (fallReleased ||
                     launched && (airborne || InNativeMotion)) ||
-                    delivered.ToolAdmitted && native.Result == CompanionMobilityResult.Started;
+                    AwaitingNativeTool(native);
 
             if (Direct)
             {

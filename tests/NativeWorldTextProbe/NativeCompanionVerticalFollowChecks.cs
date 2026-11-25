@@ -94,6 +94,14 @@ namespace NativeWorldTextProbe
                     (h, p, owner) => TriangleProxyFollow(context, h, p, owner),
                     (h, p, owner) => MovingStarboardRoom(context, h, p, owner)
                 };
+                var warpReturn = new Action<object, object, Player>[]
+                {
+                    (h, p, owner) => NativeOwnerWarpReturn(context, h, p, owner),
+                    (h, p, owner) => NativeOwnerWarpDuringJump(context, h, p, owner),
+                    (h, p, owner) => NativeOwnerLandsWhileQueryPending(context, h, p, owner),
+                    (h, p, owner) => NativeOwnerWarpDuringHook(context, h, p, owner),
+                    (h, p, owner) => NativeOwnerWarpReturn(context, h, p, owner, attacking: true)
+                };
                 var timing = moving;
                 if (!historical)
                 {
@@ -136,13 +144,15 @@ namespace NativeWorldTextProbe
                     System.Linq.Enumerable.Concat(practicalFollow, System.Linq.Enumerable.Concat(contact,
                         System.Linq.Enumerable.Concat(longerFollow, System.Linq.Enumerable.Concat(hoik, structure)))));
                 if (!historical) full = System.Linq.Enumerable.Concat(full,
-                    System.Linq.Enumerable.Concat(edgeTrials, System.Linq.Enumerable.Concat(shaped, dashSources)));
+                    System.Linq.Enumerable.Concat(edgeTrials, System.Linq.Enumerable.Concat(shaped,
+                        System.Linq.Enumerable.Concat(dashSources, warpReturn))));
                 var scenarios = comparisonFocus == "terrain" ? terrain : comparisonFocus == "vertical" ? existing :
                     comparisonFocus == "wormhole-follow" ? practicalFollow :
                     comparisonFocus == "detour-descent" ? longerFollow : comparisonFocus == "contact-descent" ? contact :
                     comparisonFocus == "hoik-baseline" ? hoik : comparisonFocus == "movement-structure" ? structure :
                     comparisonFocus == "graph" ? new Action<object, object, Player>[] { RouteGraphContracts } :
                     comparisonFocus == "timing" ? timing :
+                    comparisonFocus == "warp-return" ? warpReturn :
                     comparisonFocus == "moving-room" ?
                         historical ? moving : System.Linq.Enumerable.Concat(moving, new Action<object, object, Player>[] { RouteGraphContracts }) :
                         full;

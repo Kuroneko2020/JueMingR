@@ -57,9 +57,8 @@ namespace NativeWorldTextProbe
         private static void Saved(object host, Guid id)
         { var profiles = Get(host, "profiles"); NativeQuickItemChecks.Until(() => { Call(profiles, "Pump"); return (bool)Call(profiles, "IsSaved", id); }); }
 
-        internal static void Run(object context)
+        internal static void InitializeNativeEquipment()
         {
-            NativeCombatAimChecks.Initialize();
             // SetDefaults derives Item.dye from the native shader registry,
             // not the type's case body. This CPU fixture bypasses Main.Load's
             // registration. Run the real basic-color registration, which only
@@ -86,6 +85,12 @@ namespace NativeWorldTextProbe
                 nativeCart.mountType >= 0 && MountID.Sets.Cart[nativeCart.mountType] &&
                 nativeMount.mountType >= 0 && !MountID.Sets.Cart[nativeMount.mountType],
                 "actual native metadata must classify hook, light pet, vanity pet, minecart and mount before exact misc-slot tests");
+        }
+
+        internal static void Run(object context)
+        {
+            NativeCombatAimChecks.Initialize();
+            InitializeNativeEquipment();
             Main.spawnTileX=60;Main.spawnTileY=58;Main.leftWorld=Main.topWorld=0;Main.rightWorld=Main.maxTilesX*16;Main.bottomWorld=Main.maxTilesY*16;
             for(int x=2;x<118;x++){Main.tile[x,60].active(true);Main.tile[x,60].type=TileID.Stone;}
             new Harmony("JueMingR.Tests.QuickItemOutlets").Unpatch(AccessTools.Method(typeof(Player), "Spawn"), HarmonyPatchType.Prefix, "JueMingR.Tests.QuickItemOutlets");

@@ -368,8 +368,7 @@ namespace JueMingR.TerrariaHost.Companions
                         {
                             if (!observedOwner)
                             {
-                                ownerTrail=ownerTrail??new CompanionOwnerTrail();
-                                ownerTrail.Observe(owner,planningStep);
+                                ObserveFollowOwner();
                                 observedOwner=true;
                             }
                             a.Behavior.OwnerTrail=ownerTrail;
@@ -409,6 +408,13 @@ namespace JueMingR.TerrariaHost.Companions
                 catch(Exception e){CloseActor(a,e.Message);}
             }
         }
+        private CompanionOwnerTrail ObserveFollowOwner()
+        {
+            ownerTrail = ownerTrail ?? new CompanionOwnerTrail();
+            ownerTrail.Observe(owner, Main.GameUpdateCount);
+            return ownerTrail;
+        }
+
         internal void ObserveOwnerWarp(Player player)
         { if (ReferenceEquals(owner, player)) ownerTrail?.BreakSegment(); }
         public void FailClosed(){OnSessionEnded();failed=true;}

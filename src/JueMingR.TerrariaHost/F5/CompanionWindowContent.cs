@@ -260,11 +260,25 @@ namespace JueMingR.TerrariaHost.F5
             if(type==0)
             {
                 if(c.Area==CompanionInventoryArea.Dye||c.Area==CompanionInventoryArea.MiscDye)c.EmptyIcon=1;
-                else if(c.Area==CompanionInventoryArea.Misc)c.EmptyIcon=new[]{4,13,17,10,7}[c.Slot];
+                else if(c.Area==CompanionInventoryArea.Misc)c.EmptyIcon=MiscEquipmentIcon(c.Slot);
                 else if(c.Area==CompanionInventoryArea.Armor)c.EmptyIcon=c.Slot%10<3?(c.Slot>=10?3:0)+(c.Slot%10)*6:c.Slot>=10?2:11;
                 else if(c.Area==CompanionInventoryArea.Inventory&&c.Slot>=50)c.Placeholder=c.Slot<54?"币":"弹";
             }
             ItemPresentationUpdates++;return changedType;
+        }
+        private static int MiscEquipmentIcon(int slot)
+        {
+            // Match Terraria's ItemSlot.Draw frames in Extra[54] using the same
+            // equipment context as both actors' native slots.
+            switch (CompanionItemRules.EquipmentContext(CompanionInventoryArea.Misc, slot))
+            {
+                case ItemSlot.Context.EquipPet: return 10;
+                case ItemSlot.Context.EquipLight: return 17;
+                case ItemSlot.Context.EquipMinecart: return 7;
+                case ItemSlot.Context.EquipMount: return 13;
+                case ItemSlot.Context.EquipGrapple: return 4;
+                default: return -1;
+            }
         }
         private void RefreshAvailability(Player body)
         {
