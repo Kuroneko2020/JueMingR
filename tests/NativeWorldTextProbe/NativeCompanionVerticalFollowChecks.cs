@@ -78,6 +78,7 @@ namespace NativeWorldTextProbe
                         (h, p, owner) => NativeMovingFall(context, h, p, owner),
                         (h, p, owner) => NativeAirDashSelection(context, h, p, owner),
                         (h, p, owner) => NativeGroundMountSelection(context, h, p, owner),
+                        (h, p, owner) => NativePendingDashRun(context, h, p, owner),
                         (h, p, owner) => MovingNearPartition(context, h, p, owner),
                         (h, p, owner) => MovingNearPartition(context, h, p, owner, interruptJump: true),
                         (h, p, owner) => MovingStarboardCeiling(context, h, p, owner),

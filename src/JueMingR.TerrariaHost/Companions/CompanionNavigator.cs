@@ -372,11 +372,9 @@ namespace JueMingR.TerrariaHost.Companions
                 ClearPrefix();
                 return false;
             }
-            // These tools may legitimately wait for the live hand. A walk
-            // already steering to this inlet remains available meanwhile.
-            return !native.Observed.HandBusy || offered.Kind != NavigationAction.Mount && offered.Kind != NavigationAction.Dismount &&
-                offered.Kind != NavigationAction.Hook && offered.Detail != NavigationTraversalDetail.TrackBoard &&
-                offered.Detail != NavigationTraversalDetail.Rod;
+            // StageMobilityInputs owns the native hand. A ready tool must
+            // reach it to request the release edge while combat holds use.
+            return true;
         }
 
         private void Begin(NavigationTransition edge, bool direct, bool emergency)

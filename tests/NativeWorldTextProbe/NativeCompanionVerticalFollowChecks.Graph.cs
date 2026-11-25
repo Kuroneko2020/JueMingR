@@ -388,6 +388,64 @@ namespace NativeWorldTextProbe
             }
         }
 
+        private static void NativePendingDashRun(object context, object host, object profiles, Player human)
+        {
+            const int startColumn = 52, exitColumn = 60, upper = 84, lower = 93;
+            var start = new Vector2(RoomX(startColumn), upper * 16);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "pending-dash-run", start, start, () =>
+                {
+                    PlaceFixtureStrip(43, exitColumn - 2, upper, TileID.Stone);
+                    PlaceFixtureStrip(exitColumn - 1, 100, upper, TileID.Platforms);
+                    PlaceFixtureStrip(43, 100, lower, TileID.Stone);
+                }))
+            {
+                Player body = run.Body;
+                body.armor[3] = new Item(ItemID.EoCShield);
+                var nav = Navigator(run.Actor);
+                Assembly assembly = host.GetType().Assembly;
+                Type transitionType = NavigationType(assembly, "NavigationTransition");
+                Type budgetType = NavigationType(assembly, "NavigationBudget");
+                var mobility = Get(run.Actor, "Mobility");
+                for (int tick = 0; tick < 4 && body.dashType == 0; tick++) run.Step();
+                var observed = Get(mobility, "Observed");
+                Require(body.dashType != 0 && (bool)Get(observed, "DashReady") && OnFloor(body, upper),
+                    "the same body has observed its real shield and stands on the original runway");
+                var readCaps = NavigationType(assembly, "CompanionMotionProfile").GetMethod("Read", ReflectionMembers);
+                object caps = readCaps.Invoke(null, new[] { body, observed, true });
+                object world = Get(host, "navigationWorld");
+                var traversal = Make(NavigationType(assembly, "NavigationTraversal"), world);
+                Call(traversal, "Begin", caps, Make(budgetType, 512, 96, 96), null);
+                var from = Call(traversal, "Anchor", body.Bottom, true, true);
+                var dash = new[] { from, (object)32, Activator.CreateInstance(from.GetType()), Activator.CreateInstance(transitionType), 0f };
+                Require((bool)Call(traversal, "IsApplicable", from, 32) && (bool)Call(traversal, "Offer", dash) &&
+                    Get(dash[3], "Kind").ToString() == "Dash", "the live graph finds the shield's right runway edge using the original supports");
+                var outlet = new[] { dash[2], (object)4, Activator.CreateInstance(from.GetType()), Activator.CreateInstance(transitionType), 0f };
+                Require((bool)Call(traversal, "Offer", outlet) && Get(outlet[3], "Kind").ToString() == "PlatformDrop",
+                    $"the whole native body can pass through the runway's platform to a real lower contact from {Get(dash[3], "To")}");
+                var route = Get(nav, "route");
+                Call(route, "Advance", body.Bottom, human.Bottom, caps, Make(budgetType, 256, 24, 24));
+                Call(route, "ClearCorridor");
+                // Supply the graph's own two edges to the consumer at the
+                // publication boundary, before the remaining verification slice.
+                Call(route, "AddCorridorEdge", dash[3]);
+                Call(route, "AddCorridorEdge", outlet[3]);
+                var slice = Make(budgetType, 2, 1, 1);
+                Call(route, "Prepare", body.Bottom, slice);
+                var approach = new[] { (object)body.Bottom, Vector2.Zero };
+                var offer = new[] { (object)body.Bottom, Activator.CreateInstance(transitionType) };
+                Require((int)Get(slice, "Expansions") == 1 && !(bool)Call(route, "TrySelect", offer) &&
+                    (bool)Call(route, "TryTraversalApproach", approach), "ordinary nonzero work leaves a real, still-unissued runway prefix");
+                human.Bottom = new Vector2(RoomX(exitColumn + 5), lower * 16);
+                float before = body.Bottom.X;
+                run.Step(1);
+                Console.WriteLine($"NAV PENDING DASH from={Get(dash[3], "From")} to={Get(dash[3], "To")} " +
+                    $"approach={approach[1]} nativeRight={body.controlRight} dx={body.Bottom.X - before:F2} nativeDash={body.dashDelay} {RouteTrace(nav)}");
+                Require((Vector2)approach[1] == (Vector2)Get(dash[3], "To") && body.controlRight && !body.controlLeft &&
+                    body.Bottom.X > before + .05f && body.dashDelay >= 0 && OnFloor(body, upper),
+                    "a pending dash prefix keeps native walking toward the runway exit until its own action is ready");
+            }
+        }
+
         private static void VerifyLateMovementReceipt(Assembly assembly, object edge, Vector2 feet)
         {
             var body = new Player { active = true, width = 20, height = 42, gravDir = 1 };

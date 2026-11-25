@@ -358,10 +358,11 @@ namespace JueMingR.TerrariaHost.Companions
             var first = corridor[corridorIndex];
             if (Vector2.DistanceSquared(feet, first.From) > 42f * 42f || corridorIndex > lastTraversal)
                 return false;
-            // This is a steering waypoint while proof is pending. The live
-            // Walk still sweeps and brakes on its own support. Only a refined
-            // offer can release that support or start the next traversal.
-            approach = first.Kind == NavigationAction.Walk ? first.To : first.From;
+            // Walk and Dash share a ground-run waypoint while proof is
+            // pending. Ordinary steering still sweeps and brakes on its own
+            // support. Only a refined offer can start the native dash or
+            // the next traversal.
+            approach = first.Kind == NavigationAction.Walk || first.Kind == NavigationAction.Dash ? first.To : first.From;
             return true;
         }
 

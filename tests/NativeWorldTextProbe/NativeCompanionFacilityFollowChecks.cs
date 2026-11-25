@@ -124,7 +124,12 @@ namespace NativeWorldTextProbe
             try
             {
                 Call(host, "SetBehavior", profile.Id, new CompanionBehavior { Follow = true, AttackEnabled = false, HealthRecoveryEnabled = false });
-                foreach (Action<object, object, Player, Player> test in new Action<object, object, Player, Player>[] { Rope, Track, TrackNearOwner, WiredPads, Grapple })
+                foreach (Action<object, object, Player, Player> test in new Action<object, object, Player, Player>[]
+                {
+                    Rope, Track, TrackNearOwner, WiredPads,
+                    (h, a, p, o) => Grapple(h, a, p, o, attacking: false),
+                    (h, a, p, o) => Grapple(h, a, p, o, attacking: true)
+                })
                 {
                     // These cases replace the map premise between trials.
                     // Give each its own tile-array identity so cached facts from
@@ -319,9 +324,9 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS native companion Follow wired pads: own switch pulse, verified discontinuity and ordinary movement from the actual destination.");
         }
 
-        private static void Grapple(object host, object actor, Player body, Player human)
+        private static void Grapple(object host, object actor, Player body, Player human, bool attacking)
         {
-            const int leftWall = 108, rightWall = 111, anchorX = 110, anchorY = 66, floor = 73;
+            const int leftWall = 108, rightWall = 111, anchorX = 110, anchorY = 66, floor = 73, weaponSlot = 41, enemySlot = 17;
             Floor(102, 115, floor);
             for (int y = 65; y < floor; y++)
             { TileAt(leftWall, y, TileID.Stone); TileAt(rightWall, y, TileID.Stone); }
@@ -329,14 +334,47 @@ namespace NativeWorldTextProbe
             var gear = body.miscEquips[4];
             var hookItem = new Item(ItemID.GrapplingHook);
             bool nativeHook = Main.projHook[hookItem.shoot];
+            var profile = (CompanionProfile)Get(actor, "Profile");
+            var preference = profile.Behavior.Clone();
+            var weapon = body.inventory[weaponSlot];
+            var enemy = Main.npc[enemySlot];
+            int mana = body.statMana, maxMana = body.statManaMax, effectiveMana = body.statManaMax2, selected = body.selectedItem;
             try
             {
                 Main.projHook[hookItem.shoot] = ContentSamples.ProjectilesByType[hookItem.shoot].aiStyle == 7;
                 body.miscEquips[4] = hookItem;
                 Place(host, actor, body, human, anchorX * 16, floor);
-                human.Bottom = new Vector2(anchorX * 16, (anchorY - 1) * 16);
                 var mobility = Get(actor, "Mobility");
+                int held = 0, releasedHand = -1, shotAt = -1;
+                if (attacking)
+                {
+                    var target = new NPC();
+                    target.SetDefaults(NPCID.Zombie);
+                    target.whoAmI = enemySlot;
+                    target.active = target.noGravity = target.noTileCollide = true;
+                    target.life = target.lifeMax = 100000;
+                    target.damage = 0;
+                    target.aiStyle = -1;
+                    target.Center = body.Center - new Vector2(0, 46);
+                    Main.npc[enemySlot] = target;
+                    body.statMana = body.statManaMax = body.statManaMax2 = 200;
+                    body.inventory[weaponSlot] = new Item(ItemID.LastPrism);
+                    Require((bool)Call(host, "SetBehavior", profile.Id, new CompanionBehavior
+                    {
+                        Follow = true, AttackEnabled = true, HealthRecoveryEnabled = false,
+                        MainWeapons = new[] { new CompanionWeaponPreference(ItemID.LastPrism, 0, weaponSlot) }
+                    }), "configure actual sustained ranged attack while the hook goal is dormant");
+                    for (int tick = 0; tick < 40 && held < 6; tick++)
+                    {
+                        Step(host, body);
+                        bool busy = (bool)Get(Get(mobility, "Observed"), "HandBusy");
+                        held = body.controlUseItem && body.channel && busy && body.statMana < 200 ? held + 1 : 0;
+                    }
+                    Require(held >= 6, "the companion is already continuously using and paying for its real channelled weapon");
+                }
+                human.Bottom = new Vector2(anchorX * 16, (anchorY - 1) * 16);
                 int initialKey = (int)Get(mobility, "HookKey");
+                var navigation = Get(Get(actor, "Behavior"), "Navigator");
                 Projectile hook = null;
                 bool shot = false, attached = false, verticalRelease = false, detached = false;
                 float hangingY = body.position.Y;
@@ -344,8 +382,11 @@ namespace NativeWorldTextProbe
                 {
                     var current = (Projectile)GetOptional(mobility, "Hook");
                     if (current != null && (int)Get(mobility, "HookKey") != initialKey && current.owner == body.whoAmI && current.type == hookItem.shoot)
-                    { hook = current; shot = true; }
+                    { hook = current; if (!shot) shotAt = i; shot = true; }
                     Step(host, body, hook);
+                    if (attacking && releasedHand < 0 && Get(navigation, "LastDeferral").ToString() == "ReleaseInput" &&
+                        Get(mobility, "Action").ToString() == "Hook" && !body.controlUseItem)
+                        releasedHand = i;
                     if (!attached && hook?.active == true && hook.ai[0] == 2 && body.position.Y < (floor - 4) * 16)
                     {
                         attached = true;
@@ -354,13 +395,19 @@ namespace NativeWorldTextProbe
                     }
                     if (attached && Get(mobility, "Action").ToString() == "ReleaseHook")
                     {
-                        var navigation = Get(Get(actor, "Behavior"), "Navigator");
                         var delivery = GetOptional(navigation, "LastMovementDelivery");
                         verticalRelease |= delivery == null ? !body.controlLeft && !body.controlRight :
                             Get(delivery, "Activation").ToString() == "ReleaseHook" && (int)Get(delivery, "Move") == 0;
                         detached |= hook?.active == false && body.position.Y > hangingY + 8;
                     }
-                    if (i % 60 == 0) TraceFollow(actor, body, "hook", i);
+                    if (i % 60 == 0) TraceFollow(actor, body, attacking ? "hook-hand" : "hook", i);
+                }
+                if (attacking)
+                {
+                    Console.WriteLine($"NAV FACILITY attack release held={held} releaseInput={releasedHand} hook={shotAt} pulled={attached} " +
+                        $"body={body.Bottom} channel={body.channel} combatInput={body.controlUseItem} mana={body.statMana}");
+                    Require(releasedHand >= 0 && shotAt > releasedHand && attached,
+                        "a ready native hook first gets the actual combat-hand release input and then pulls the original body upward");
                 }
                 Require(shot && attached && verticalRelease && detached && !(bool)Get(actor, "Faulted"),
                     $"Follow chooses its own hook, pulls upward, then releases to the lower target: birth={shot} attached={attached} release={verticalRelease} down={detached} body={body.position} action={Get(mobility, "Action")}/{Get(mobility, "Result")} status={Get(actor, "Status")}");
@@ -371,6 +418,19 @@ namespace NativeWorldTextProbe
                 body.RemoveAllGrapplingHooks();
                 body.miscEquips[4] = gear;
                 Main.projHook[hookItem.shoot] = nativeHook;
+                if (attacking)
+                {
+                    Main.npc[enemySlot] = enemy;
+                    Call(host, "SetBehavior", profile.Id, preference);
+                    for (int tick = 0; tick < 4; tick++) Step(host, body);
+                    foreach (var projectile in Main.projectile)
+                        if (projectile.active && projectile.owner == body.whoAmI && projectile.type == ProjectileID.LastPrism) projectile.Kill();
+                    body.inventory[weaponSlot] = weapon;
+                    body.selectedItemState.Select(selected);
+                    body.statMana = mana;
+                    body.statManaMax = maxMana;
+                    body.statManaMax2 = effectiveMana;
+                }
             }
         }
 
