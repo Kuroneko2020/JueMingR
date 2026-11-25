@@ -7,13 +7,18 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal static class CompanionGroundRun
     {
-        internal static bool CanDash(Player body, int direction, int dash, float goalX)
+        internal static bool CanDash(Player body, int direction, int dash, float goalX) =>
+            TryGroundDash(body, direction, dash, goalX, out _);
+
+        internal static bool TryGroundDash(Player body, int direction, int dash, float goalX, out float requiredGap)
         {
+            requiredGap = 0f;
             float impulse = DashImpulse(dash);
             if (direction == 0 || impulse <= 0 || body.mount.Active || body.wet || body.velocity.Y != 0 ||
                 !TryStopDistance(body, impulse, dash, out float braking)) return false;
-            float span = impulse + braking + 6f;
-            return (goalX - body.Center.X) * direction >= span && TryFlatLane(body, direction * span, true, trailingSupport: true);
+            requiredGap = impulse + braking + 6f;
+            return (goalX - body.Center.X) * direction >= requiredGap &&
+                TryFlatLane(body, direction * requiredGap, true, trailingSupport: true);
         }
 
         private static float DashImpulse(int dash)
@@ -154,19 +159,38 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool DashDecaying(float speed, int dash, float runSpeed) =>
             speed > DashThreshold(dash) || speed > runSpeed;
 
-        internal static bool HasBrakingRoom(Player body, int heading, float speed, int dash, bool coastOnly = false) =>
-            HasBrakingRoom(body, heading, speed, dash, out _, coastOnly);
+        internal static bool HasBrakingRoom(Player body, int heading, float speed, int dash) =>
+            HasBrakingRoom(body, heading, speed, dash, out _);
 
-        internal static bool HasBrakingRoom(Player body, int heading, float speed, int dash, out bool unsupported, bool coastOnly = false)
+        internal static bool HasBrakingRoom(Player body, int heading, float speed, int dash, out bool unsupported,
+            bool includeForwardStride = false)
         {
             unsupported = false;
             if (!TryStopDistance(body, speed, dash, out float distance)) return false;
+            float span = distance + speed + 2f;
             if (distance < 16f)
-                return CompanionMotionAction.ClearAhead(body, heading, coastOnly ? distance : Math.Max(3f, distance),
-                    true, out unsupported);
-            float span = coastOnly ? distance : distance + speed + 2f;
+            {
+                if (includeForwardStride)
+                {
+                    // A held key advances before neutral friction can act.
+                    // Preserve the full stride at a ledge even below 16px;
+                    // a wall still uses the ordinary short-step behavior.
+                    bool room = CompanionMotionAction.ClearAhead(body, heading, span, true, out unsupported);
+                    if (room || unsupported) return room;
+                }
+                return CompanionMotionAction.ClearAhead(body, heading, Math.Max(3f, distance), true, out unsupported);
+            }
             return TryFlatLane(body, heading * span, true, trailingSupport: true) ||
                 dash == 0 && span <= 48f && TryStepLane(body, heading * span, 18f, out unsupported);
+        }
+
+        internal static bool CanCoastToStop(Player body, int heading, float speed)
+        {
+            // ResetEffects restores 0.2 before the floor flags are applied.
+            // Do not spend faster friction from a surface just left behind.
+            if (!TryStopDistance(body, speed, 0, out float distance, neutralStop: true)) return false;
+            float span = distance + Math.Max(3f, speed);
+            return TryFlatLane(body, heading * span, true, trailingSupport: true, neutralStop: true);
         }
 
         internal static bool TryStepLane(Player body, float delta, float heightTolerance) =>
@@ -220,7 +244,8 @@ namespace JueMingR.TerrariaHost.Companions
             return false;
         }
 
-        internal static bool TryFlatLane(Player body, float delta, bool proveBrakingSurface, bool trailingSupport = false)
+        internal static bool TryFlatLane(Player body, float delta, bool proveBrakingSurface, bool trailingSupport = false,
+            bool neutralStop = false)
         {
             bool upright = body.gravDir > 0;
             float supportY = body.position.Y + (upright ? body.height : 0);
@@ -245,6 +270,21 @@ namespace JueMingR.TerrariaHost.Companions
             // Final pre-input revalidation is one bounded runway scan. An
             // unusually fast body beyond this range may brake, never launch.
             if (right - left + 1 > 32 || bottom - top + 2 > 8) return false;
+            if (neutralStop)
+            {
+                // FloorVisuals may select either neighbor of the foot
+                // center. Check those and the whole swept foot interval,
+                // including support that may apply conveyor motion.
+                float center = body.position.X + body.width / 2;
+                int firstContact = Math.Min(left, (int)Math.Floor((center + Math.Min(0, delta)) / 16f) - 1);
+                int lastContact = Math.Max(right, (int)Math.Floor((center + Math.Max(0, delta)) / 16f) + 1);
+                for (int x = firstContact; x <= lastContact; x++)
+                {
+                    if (!CompanionNativeContact.Loaded(x, floor)) return false;
+                    Tile tile = Main.tile[x, floor];
+                    if (tile.liquid != 0 || tile.nactive() && ChangesGroundSpeed(body, tile.type)) return false;
+                }
+            }
             // On an aligned, unbroken slab the swept box and its support can
             // be proved from one tile rectangle. Slopes, ledges and moving
             // surfaces stay on the native per-step geometry path below.
@@ -254,8 +294,10 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     if (!CompanionNativeContact.Loaded(x, floor)) return false;
                     Tile support = Main.tile[x, floor];
+                    bool solid = Main.tileSolid[support.type] && !Main.tileSolidTop[support.type];
                     if (!support.active() || support.inActive() || support.slope() != 0 || support.halfBrick() ||
-                        !Main.tileSolid[support.type] || Main.tileSolidTop[support.type] || ChangesGroundSpeed(body, support.type) && proveBrakingSurface)
+                        !(solid || neutralStop && TileID.Sets.Platforms[support.type]) ||
+                        ChangesGroundSpeed(body, support.type) && proveBrakingSurface)
                         return false;
                 }
                 for (int y = top; y <= bottom; y++)
@@ -276,10 +318,10 @@ namespace JueMingR.TerrariaHost.Companions
                     TileID.Sets.Conversion.HardenedSand[type]);
         }
 
-        private static bool TryStopDistance(Player body, float speed, int dash, out float distance)
+        private static bool TryStopDistance(Player body, float speed, int dash, out float distance, bool neutralStop = false)
         {
             distance = 0;
-            float slowdown = body.runSlowdown;
+            float slowdown = neutralStop ? Math.Min(.2f, body.runSlowdown) : body.runSlowdown;
             if (!(slowdown > 0) || body.windPushed || body.trackBoost != 0 || float.IsInfinity(speed) || float.IsNaN(speed)) return false;
             float runSpeed = Math.Max(body.accRunSpeed, body.maxRunSpeed);
             // HorizontalMovement applies the neutral ground friction before

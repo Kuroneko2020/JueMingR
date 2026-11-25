@@ -51,6 +51,8 @@ namespace JueMingR.TerrariaHost.Companions
         private SmartFallGrapple rescueHook;
         private Vector2 progressBoundary, dashOrigin, actionOwnerTarget;
         private int noUsefulProgress, nextStallCheck = StallUpdates, dashDirection;
+        private float minimumGroundDashGap, dashGapSlowdown, dashGapRunSpeed;
+        private int dashGapType;
         private bool dashPreparedInAir;
 
         internal long ActionId => action.Id;
@@ -99,6 +101,7 @@ namespace JueMingR.TerrariaHost.Companions
             hasOffer = hasTarget = supported = targetChanged = retireIntent = rescuing = rescuePending = false;
             Array.Clear(directFailures, 0, directFailures.Length);
             nextFacilities = pendingSince = nextDashCheck = nextCruiseCheck = nextMountCheck = dashPreparedUntil = lastRescue = 0;
+            minimumGroundDashGap = 0f;
             previousGravity = 0;
             pylonCount = -1;
             observedTrail = null;
@@ -539,6 +542,7 @@ namespace JueMingR.TerrariaHost.Companions
             route?.Reset();
             Array.Clear(directFailures, 0, directFailures.Length);
             nextFacilities = dashPreparedUntil = retrySuspendedAt = 0;
+            minimumGroundDashGap = 0f;
             retireIntent = rescuing = rescuePending = false;
             hasBlockedRoof = false;
             targetChanged = true;
@@ -582,14 +586,34 @@ namespace JueMingR.TerrariaHost.Companions
             ObserveOwnerTrail(trail);
             if (retireIntent) return;
             bool airDash = !supported && CompanionMotionProfile.Wings(state);
+            float dashGap = Math.Abs(target.X - feet.X);
+            float groundRunSpeed = Math.Max(body.accRunSpeed, body.maxRunSpeed);
+            bool waitingForDashGap = supported && dashGap < minimumGroundDashGap && state.DashType == dashGapType &&
+                body.runSlowdown == dashGapSlowdown && groundRunSpeed == dashGapRunSpeed;
             if (state.DashReady && (airDash || supported) && !native.AwaitingEquipmentObservation &&
-                Math.Abs(feet.X - target.X) > 140f && unchecked((int)(Main.GameUpdateCount - nextDashCheck)) >= 0 &&
+                dashGap > 140f && !waitingForDashGap && unchecked((int)(Main.GameUpdateCount - nextDashCheck)) >= 0 &&
                 budget.TryTiles(160) && budget.TryPredict(airDash ? 20 : 1))
             {
-                nextDashCheck = Main.GameUpdateCount + 10;
                 int direction = Math.Sign(target.X - feet.X);
-                if (airDash ? CompanionGroundRun.CanAirDash(body, state, direction, target)
-                    : CompanionGroundRun.CanDash(body, direction, state.DashType, target.X))
+                float requiredGap = 0f;
+                bool ready = airDash ? CompanionGroundRun.CanAirDash(body, state, direction, target) :
+                    CompanionGroundRun.TryGroundDash(body, direction, state.DashType, target.X, out requiredGap);
+                if (requiredGap > dashGap)
+                {
+                    // No terrain was rejected. Retry on a growing owner gap
+                    // or a change to the actual braking conditions, without
+                    // running the same stop simulation while still too close.
+                    minimumGroundDashGap = requiredGap;
+                    dashGapType = state.DashType;
+                    dashGapSlowdown = body.runSlowdown;
+                    dashGapRunSpeed = groundRunSpeed;
+                }
+                else
+                {
+                    if (!airDash) minimumGroundDashGap = 0f;
+                    nextDashCheck = Main.GameUpdateCount + 10;
+                }
+                if (ready)
                 {
                     dashPreparedUntil = Main.GameUpdateCount + 3;
                     dashOrigin = feet;

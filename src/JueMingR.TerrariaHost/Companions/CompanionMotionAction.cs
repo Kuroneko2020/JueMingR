@@ -27,7 +27,7 @@ namespace JueMingR.TerrariaHost.Companions
         private enum Phase { Approach, Release, Travel }
         private Phase phase;
         private float best, walkBand;
-        private int noProgress, waiting, elapsed, sequence, roofEscape, roofEscapeAge, roofEscapeRow;
+        private int noProgress, waiting, elapsed, sequence, roofEscape, roofEscapeAge, roofEscapeRow, ledgeBrakeDirection;
         private Vector2 target, entry, roofEscapeStart;
         private CompanionMovementDelivery delivered;
         private bool hasDelivery, startedMovement, airborne, hookReleasing, dashIssued, unsafeRelease;
@@ -63,7 +63,7 @@ namespace JueMingR.TerrariaHost.Companions
             Committed = false;
             best = float.NegativeInfinity;
             noProgress = waiting = elapsed = sequence = 0;
-            roofEscape = roofEscapeAge = 0;
+            roofEscape = roofEscapeAge = ledgeBrakeDirection = 0;
             roofDropping = false;
             hasDelivery = startedMovement = airborne = hookReleasing = dashIssued = unsafeRelease = false;
             cancellingDrop = crossedJumpHeight = false;
@@ -180,9 +180,17 @@ namespace JueMingR.TerrariaHost.Companions
                         break;
                     }
                     frame.Move = GroundInput(body, state, target.X, 0f, 2f, supported);
-                    if (!dashIssued && supported && state.DashReady && frame.Move != 0 &&
-                        CompanionGroundRun.CanDash(body, frame.Move, state.DashType, target.X))
-                        frame.Dash = frame.Move;
+                    int launch = Math.Sign(target.X - feet.X);
+                    if (!dashIssued && supported && state.DashReady && launch != 0 && frame.Move != -launch &&
+                        launch == Math.Sign(Edge.To.X - Edge.From.X) &&
+                        CompanionGroundRun.CanDash(body, launch, state.DashType, target.X))
+                    {
+                        // A steady run can release its ordinary throttle at
+                        // the speed cap. The proved dash still needs the
+                        // directional key on its native hotkey frame.
+                        frame.Move = launch;
+                        frame.Dash = launch;
+                    }
                     break;
                 case NavigationAction.Hoik:
                     // Native horizontal input keeps the body on the proved
@@ -965,26 +973,34 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal static Vector2 TileCenter(Point tile) => new Vector2(tile.X * 16f + 8f, tile.Y * 16f + 8f);
 
-        internal static int GroundInput(Player body, CompanionMobilitySnapshot state, float x, float vx, float spacing, bool supported,
+        private int GroundInput(Player body, CompanionMobilitySnapshot state, float x, float vx, float spacing, bool supported,
             bool coastAtEdge = false)
         {
             int move = CompanionMotionProfile.Steer(body, state, x, vx, spacing, !supported);
             int momentum = Math.Sign(body.velocity.X);
             float speed = Math.Abs(body.velocity.X);
             bool stepOff = false;
-            if (supported && speed > .5f && !CompanionGroundRun.HasBrakingRoom(body, momentum,
-                move == momentum && !state.DashActive ? speed + Math.Max(0, body.runAcceleration) : speed,
-                state.DashActive ? state.DashKind : 0, out bool unsupported))
+            bool canCoast = coastAtEdge && body.velocity.Y == 0f && !state.DashActive && !state.MountCart &&
+                !state.Wet && !state.Pulley && !state.GrappleAttached && !state.GrappleInFlight;
+            bool pushing = move == momentum && !state.DashActive;
+            bool continuingStop = supported && canCoast && speed > 0f && ledgeBrakeDirection == momentum && move != -momentum;
+            if (!continuingStop) ledgeBrakeDirection = 0;
+            bool unsupported = false;
+            if (continuingStop || supported && speed > .5f && !CompanionGroundRun.HasBrakingRoom(body, momentum,
+                pushing ? speed + Math.Max(0, body.runAcceleration) : speed,
+                state.DashActive ? state.DashKind : 0, out unsupported, includeForwardStride: canCoast && pushing))
             {
-                stepOff = move == momentum && !state.DashActive && CompanionGroundRun.HasShallowStepOff(body, move);
+                stepOff = !continuingStop && pushing && CompanionGroundRun.HasShallowStepOff(body, move);
                 if (!stepOff)
                 {
-                    // Holding forward can require more support than the
-                    // actual neutral stop. Use native coast before an
-                    // opposite key would turn a body still moving forward.
-                    if (coastAtEdge && unsupported && move != -momentum && body.velocity.Y == 0f &&
-                        !state.DashActive && !state.MountCart && !state.Wet && !state.Pulley && !state.GrappleAttached && !state.GrappleInFlight &&
-                        CompanionGroundRun.HasBrakingRoom(body, momentum, speed, 0, coastOnly: true)) return 0;
+                    if (canCoast && (unsupported || continuingStop) && move != -momentum)
+                    {
+                        // Finish this physical stop before driving forward
+                        // again. One braking step can make the next stride
+                        // appear safe without removing the edge ahead.
+                        ledgeBrakeDirection = momentum;
+                        if (CompanionGroundRun.CanCoastToStop(body, momentum, speed)) return 0;
+                    }
                     return ClearAhead(body, -momentum, 3f, true) ? -momentum : 0;
                 }
             }

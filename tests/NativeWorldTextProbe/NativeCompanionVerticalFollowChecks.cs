@@ -61,7 +61,8 @@ namespace NativeWorldTextProbe
                     (h, p, owner) => NativeFollowAtEdge(context, h, p, owner, platform: true, stoneNeighbor: true, centered: true),
                     (h, p, owner) => NativeFollowAtEdge(context, h, p, owner, platform: false),
                     (h, p, owner) => NativeSteadyPursuitAtLip(context, h, p, owner),
-                    (h, p, owner) => NativeSteadyGroundPursuit(context, h, p, owner)
+                    (h, p, owner) => NativeSteadyGroundPursuit(context, h, p, owner),
+                    (h, p, owner) => NativeSteadyDashPursuit(context, h, p, owner)
                 };
                 var hoik = new Action<object, object, Player>[] { (h, p, owner) => NativeHoikBaseline(context, owner) };
                 var structure = new Action<object, object, Player>[] { (h, p, owner) => HoikFollow(context, h, p, owner),

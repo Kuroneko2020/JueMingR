@@ -108,6 +108,90 @@ namespace NativeWorldTextProbe
             }
         }
 
+        private static void NativeSteadyDashPursuit(object context, object host, object profiles, Player human)
+        {
+            const int floor = 85, runwayEnd = 151;
+            Item savedAccessory = human.armor[3];
+            int longestWait = 0;
+            try
+            {
+                human.armor[3] = new Item(ItemID.HermesBoots);
+                using (var run = new NativeFollowWorld(context, host, profiles, human, "steady-dash-pursuit",
+                    new Vector2(RoomX(37), floor * 16), new Vector2(RoomX(68), floor * 16),
+                    () => PlaceFixtureStrip(34, runwayEnd, floor, TileID.Stone)))
+                {
+                    Player body = run.Body;
+                    body.armor[3] = new Item(ItemID.EoCShield);
+                    var launches = new List<int>();
+                    int pulses = 0, wait = 0, readyAfterCooldown = 0, cooldowns = 0;
+                    bool usedDash = false;
+                    for (int tick = 0; tick < 200; tick++)
+                    {
+                        float speed = body.velocity.X;
+                        int delay = body.dashDelay;
+                        float gap = human.Bottom.X - body.Bottom.X;
+                        // The owner is still pulling away. This part of the unbroken stone
+                        // runway provides more than the shield's tested safe stopping lane.
+                        bool worthwhile = body.dashType == 2 && delay == 0 && body.releaseDash && !body.CCed &&
+                            speed >= 0f && speed < 4f && human.velocity.X > 1f && gap >= 225f &&
+                            (runwayEnd + 1) * 16f - body.Right.X >= 260f && OnFloor(body, floor) && OnFloor(human, floor);
+                        run.Step(1);
+                        bool launched = delay == 0 && body.dashDelay < 0 && body.eocDash > 0 && body.velocity.X > speed + 8f;
+                        if (delay > 0 && body.dashDelay == 0) cooldowns++;
+                        if (body.controlDash) pulses++;
+                        if (worthwhile && usedDash) readyAfterCooldown++;
+                        if (launched)
+                        {
+                            launches.Add(tick);
+                            usedDash = true;
+                            Console.WriteLine($"FOLLOW STEADY DASH launch={tick} missed={wait} gap={gap:F2} speed={speed:F2}->{body.velocity.X:F2}");
+                        }
+                        wait = worthwhile && !launched ? wait + 1 : 0;
+                        longestWait = Math.Max(longestWait, wait);
+                    }
+                    Console.WriteLine($"FOLLOW STEADY DASH launches=[{string.Join(",", launches)}] hotkeyPulses={pulses} " +
+                        $"cooldowns={cooldowns} readyAfterCooldown={readyAfterCooldown} longestEligibleWait={longestWait} " +
+                        $"body={body.Bottom}/{body.velocity} owner={human.Bottom}/{human.velocity}");
+                    Require(launches.Count >= 3 && cooldowns >= 2 && pulses == launches.Count && readyAfterCooldown >= 1 &&
+                        OnFloor(body, floor) && OnFloor(human, floor) && human.velocity.X > 4f && run.NativeRelocations == 0,
+                        "a continuously running original owner sees distinct, rearmed shield pulses on the same clear ground");
+                }
+
+                using (var run = new NativeFollowWorld(context, host, profiles, human, "close-dash-pursuit",
+                    new Vector2(RoomX(47), floor * 16), new Vector2(RoomX(50), floor * 16),
+                    () => PlaceFixtureStrip(43, runwayEnd, floor, TileID.Stone)))
+                {
+                    Player body = run.Body;
+                    body.armor[3] = new Item(ItemID.EoCShield);
+                    float maxGap = 0f, start = body.Bottom.X;
+                    bool dashed = false;
+                    for (int tick = 0; tick < 45; tick++)
+                    {
+                        run.Step(1);
+                        maxGap = Math.Max(maxGap, human.Bottom.X - body.Bottom.X);
+                        dashed |= body.controlDash || body.dashDelay < 0;
+                    }
+                    Require(body.dashType == 2 && maxGap < 140f && body.Bottom.X > start + 25f && !dashed,
+                        "real shield gear stays in ordinary walking follow when the moving owner is already close");
+
+                    body.armor[3] = new Item();
+                    bool farWithoutGear = false;
+                    for (int tick = 0; tick < 140; tick++)
+                    {
+                        run.Step(1);
+                        farWithoutGear |= body.dashType == 0 && human.Bottom.X - body.Bottom.X > 225f;
+                        dashed |= body.controlDash || body.dashDelay < 0;
+                    }
+                    Console.WriteLine($"FOLLOW STEADY DASH controls closeMaxGap={maxGap:F2} farWithoutGear={farWithoutGear} unexpectedDash={dashed}");
+                    Require(farWithoutGear && !dashed && OnFloor(body, floor) && OnFloor(human, floor),
+                        "removing the actual shield leaves only ordinary inputs even after the owner pulls far ahead");
+                }
+                Require(longestWait <= 4,
+                    "a native-ready shield with useful lead and proven stopping room does not wait through several otherwise usable updates");
+            }
+            finally { human.armor[3] = savedAccessory; }
+        }
+
         private static void NativeOffsetColdStart(object context, object host, object profiles, Player human)
         {
             const int upper = 72, lower = 86, samples = 10;
