@@ -142,7 +142,7 @@ namespace JueMingR.TerrariaHost.Companions
                     return frame;
                 }
                 float arrivalSpeed = IsRunningJump ? Math.Sign(Edge.To.X - Edge.From.X) * body.maxRunSpeed : 0f;
-                frame.Move = GroundInput(body, state, entry.X, arrivalSpeed, 0f, supported);
+                frame.Move = GroundInput(body, state, entry.X, arrivalSpeed, 0f, supported, coastAtEdge: IsDrop);
                 return frame;
             }
 
@@ -164,7 +164,7 @@ namespace JueMingR.TerrariaHost.Companions
                         CompanionGroundRun.HasShallowStepOff(body, Math.Sign(target.X - feet.X)))
                     {
                         float arrivalSpeed = rollingWalk ? Math.Sign(Edge.To.X - Edge.From.X) * body.maxRunSpeed : velocity.X;
-                        frame.Move = GroundInput(body, state, target.X, arrivalSpeed, spacing, supported);
+                        frame.Move = GroundInput(body, state, target.X, arrivalSpeed, spacing, supported, coastAtEdge: true);
                     }
                     if (state.Pulley && frame.Move != 0) frame.Jump = state.ReleaseJump;
                     break;
@@ -349,8 +349,20 @@ namespace JueMingR.TerrariaHost.Companions
             float xTolerance = Edge.Kind == NavigationAction.Hook || Edge.Kind == NavigationAction.Facility ? 22f : 10f;
             if (IsRunningJump) xTolerance = 4f;
             if (Edge.Kind == NavigationAction.PlatformDrop)
-                return Near(feet, entry, entry.X == Edge.From.X ? 7f : 2f, 16f) ||
-                    body.gravDir * (feet.Y - entry.Y) > 4f && Math.Abs(feet.X - entry.X) < 16f;
+            {
+                if (body.gravDir * (feet.Y - entry.Y) > 4f && Math.Abs(feet.X - entry.X) < 16f) return true;
+                bool shifted = entry.X != Edge.From.X;
+                if (!Near(feet, entry, shifted ? 2f : 7f, 16f)) return false;
+                // The shifted approach may be within its position tolerance
+                // while one foot still rests on solid ground. A native Down
+                // sweep must use the first gravity step: a faster forecast
+                // can collide with the same platform despite holding Down.
+                if (!shifted) return true;
+                float fallSpeed = Math.Min(Math.Max(4f, body.maxFallSpeed), body.velocity.Y * body.gravDir + Math.Max(.05f, body.gravity));
+                return fallSpeed > 0f && CompanionNativeContact.TryMove(body, body.position, new Vector2(0f, fallSpeed * body.gravDir),
+                    CompanionNativeContact.PlatformContact.Native(body, true, true), false, out var release) &&
+                    !release.Ground && (release.Position.Y - body.position.Y) * body.gravDir > 0f;
+            }
             return Near(feet, entry, xTolerance, 14f);
         }
 
@@ -419,6 +431,12 @@ namespace JueMingR.TerrariaHost.Companions
                 // support arrives, even if the bank is one pixel away.
                 frame.Move = releasingLedge ? Math.Sign(FallOutletX - entry.X) :
                     CompanionMotionProfile.Steer(body, state, target.X, 0f, supported ? 1.5f : .25f, !supported);
+                // A shifted release beside solid support must not steer
+                // back into that support while the body is still crossing
+                // its height. Keep safe air steering and the normal Down tail.
+                if (platform && (entry.X - Edge.From.X) * frame.Move < 0f &&
+                    (feet.Y - Edge.From.Y) * gravity < body.height + 16f &&
+                    !ClearAhead(body, frame.Move, Math.Max(3f, Math.Abs(body.velocity.X) + 1f), false)) frame.Move = 0;
             }
             if (state.MountHover) frame.Vertical = gravity;
             frame.Status = "下降中";
@@ -947,7 +965,8 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal static Vector2 TileCenter(Point tile) => new Vector2(tile.X * 16f + 8f, tile.Y * 16f + 8f);
 
-        internal static int GroundInput(Player body, CompanionMobilitySnapshot state, float x, float vx, float spacing, bool supported)
+        internal static int GroundInput(Player body, CompanionMobilitySnapshot state, float x, float vx, float spacing, bool supported,
+            bool coastAtEdge = false)
         {
             int move = CompanionMotionProfile.Steer(body, state, x, vx, spacing, !supported);
             int momentum = Math.Sign(body.velocity.X);
@@ -955,21 +974,36 @@ namespace JueMingR.TerrariaHost.Companions
             bool stepOff = false;
             if (supported && speed > .5f && !CompanionGroundRun.HasBrakingRoom(body, momentum,
                 move == momentum && !state.DashActive ? speed + Math.Max(0, body.runAcceleration) : speed,
-                state.DashActive ? state.DashKind : 0))
+                state.DashActive ? state.DashKind : 0, out bool unsupported))
             {
                 stepOff = move == momentum && !state.DashActive && CompanionGroundRun.HasShallowStepOff(body, move);
-                if (!stepOff) return ClearAhead(body, -momentum, 3f, true) ? -momentum : 0;
+                if (!stepOff)
+                {
+                    // Holding forward can require more support than the
+                    // actual neutral stop. Use native coast before an
+                    // opposite key would turn a body still moving forward.
+                    if (coastAtEdge && unsupported && move != -momentum && body.velocity.Y == 0f &&
+                        !state.DashActive && !state.MountCart && !state.Wet && !state.Pulley && !state.GrappleAttached && !state.GrappleInFlight &&
+                        CompanionGroundRun.HasBrakingRoom(body, momentum, speed, 0, coastOnly: true)) return 0;
+                    return ClearAhead(body, -momentum, 3f, true) ? -momentum : 0;
+                }
             }
             if (move != 0 && !ClearAhead(body, move, Math.Max(4f, Math.Abs(body.velocity.X) + 1f), supported && !stepOff,
                 allowSteps: supported)) return 0;
             return move;
         }
 
-        internal static bool ClearAhead(Player body, int direction, float pixels, bool keepSupport, bool allowSteps = false)
+        internal static bool ClearAhead(Player body, int direction, float pixels, bool keepSupport, bool allowSteps = false) =>
+            ClearAhead(body, direction, pixels, keepSupport, out _, allowSteps);
+
+        internal static bool ClearAhead(Player body, int direction, float pixels, bool keepSupport, out bool unsupported,
+            bool allowSteps = false)
         {
+            unsupported = false;
             var move = new Vector2(direction * pixels, Math.Max(.05f, body.gravity) * body.gravDir);
-            return Predict(body, move, keepSupport || allowSteps, out var contact) && !contact.Wall &&
-                (!keepSupport || contact.Ground || CompanionNativeContact.Supported(body, contact.Position));
+            if (!Predict(body, move, keepSupport || allowSteps, out var contact) || contact.Wall) return false;
+            unsupported = keepSupport && !contact.Ground && !CompanionNativeContact.Supported(body, contact.Position);
+            return !unsupported;
         }
 
         internal static bool ClearVertical(Player body, int direction) =>

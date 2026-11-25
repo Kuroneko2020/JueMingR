@@ -366,6 +366,7 @@ namespace JueMingR.TerrariaHost.Companions
             // bounded set and leave short isolated steps to the real route.
             float horizontal = target.X - feet.X;
             int preferred = Math.Abs(horizontal) < 24f ? 0 : horizontal < 0f ? 1 : 2;
+            Vector2? inlet = LocalPlatformInlet(from, feet);
             for (int attempt = 0; attempt < 5; attempt++)
             {
                 int offset = attempt == 0 ? preferred : attempt <= preferred ? attempt - 1 : attempt;
@@ -373,13 +374,49 @@ namespace JueMingR.TerrariaHost.Companions
                 // fallback when all of the forward exits are obstructed.
                 if (preferred != 0 && DropOffsets[offset] * horizontal < 0f) continue;
                 budget.RecordCandidate();
-                if (Offer(from, 4 + offset, out _, out var drop, out _) &&
+                if (PlatformDropOffer(from, feet, offset, inlet, out var drop) &&
                     (drop.To.Y - feet.Y >= 24f || Math.Abs(target.Y - drop.To.Y) <= 8f) &&
                     Math.Abs(target.Y - drop.To.Y) < Math.Abs(target.Y - feet.Y) &&
                     !rejected(drop) && ClearsLocalOutlet(from, drop.To, target.X) && CanAttach(feet, drop, out edge)) return true;
                 if (Pending || budget.ExpansionsRemaining < 2 || !budget.TryExpand()) break;
             }
             return false;
+        }
+
+        private Vector2? LocalPlatformInlet(NavigationNode from, Vector2 feet)
+        {
+            Vector2 nominal = Feet(from);
+            bool toe = CellAt(feet).X != from.Cell.X;
+            if (!toe && PlatformInlet(from, nominal)) return null;
+            // Native support can persist beyond the platform's column. If
+            // an adjacent solid still holds a foot, there may instead be a
+            // short supported approach into the platform-only inlet.
+            if (PlatformInlet(from, feet)) return feet;
+            if (Pending || Unknown) return null;
+            float supportReach = BodyWidth(from.MountMode, from.MountChoice) * .5f + 8f - .125f;
+            for (int distance = 2; distance <= 8; distance += 2)
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    Vector2 candidate = feet + new Vector2(side * distance, 0f);
+                    if (Math.Abs(candidate.X - (from.Cell.X * 16f + 8f)) >= supportReach) continue;
+                    if (PlatformInlet(from, candidate) && KnownClear(feet, candidate, from.Gravity, from.MountMode, 2,
+                        from.MountChoice)) return candidate;
+                    if (Pending || Unknown) return null;
+                }
+            return null;
+        }
+
+        private bool PlatformDropOffer(NavigationNode from, Vector2 feet, int option, Vector2? inlet, out NavigationTransition edge)
+        {
+            if (!inlet.HasValue) return Offer(from, 4 + option, out _, out edge, out _);
+            edge = default;
+            if (!Drop(from, DropOffsets[option], out var to, out var kind, inlet) || Pending) return false;
+            Vector2 landing = Feet(to);
+            // Refinement starts from the measured body. Its own live release
+            // check records the shifted inlet and the actual landing proof.
+            edge = new NavigationTransition(kind, feet, landing, from.MountChoice, from.Cell, to.Cell,
+                world.Revision, (landing.Y - feet.Y) * from.Gravity > Math.Max(80f, caps.JumpHeight));
+            return true;
         }
 
         private bool ClearsLocalOutlet(NavigationNode from, Vector2 landing, float targetX)
@@ -848,7 +885,7 @@ namespace JueMingR.TerrariaHost.Companions
             return false;
         }
 
-        private bool Drop(NavigationNode from, int dx, out NavigationNode to, out NavigationAction kind)
+        private bool Drop(NavigationNode from, int dx, out NavigationNode to, out NavigationAction kind, Vector2? inlet = null)
         {
             to = default;
             kind = NavigationAction.Drop;
@@ -856,14 +893,14 @@ namespace JueMingR.TerrariaHost.Companions
             var source = Read(from.Cell);
             bool platform = from.Grounded && source.Kind == NavigationCellKind.Platform;
             if (platform && Math.Abs(dx) > 2) return false;
-            if (platform && !PlatformInlet(from)) return false;
+            if (platform && !PlatformInlet(from, inlet ?? Feet(from))) return false;
             if (from.Grounded && !platform)
             {
                 if (dx == 0) return false;
                 if (ConnectGround(from, from.Cell.X + Math.Sign(dx), out _)) return false;
             }
             if (platform) kind = NavigationAction.PlatformDrop;
-            int x = from.Cell.X + dx;
+            int x = (inlet.HasValue ? CellAt(inlet.Value).X : from.Cell.X) + dx;
             // Choose the first usable support in the receiving column. If
             // its upper face is buried in a side wall, the body's descent
             // must stay outside that wall until there is full clearance.
@@ -877,6 +914,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if (!Supports(below, from.Gravity)) continue;
                 var landing = SupportFeet(point, below, from.Gravity, BodyWidth(from.MountMode, from.MountChoice));
                 int offsetX = dx == 0 ? from.OffsetX : 0;
+                if (dx == 0 && inlet.HasValue) offsetX = (int)Math.Round(inlet.Value.X - landing.X);
                 if (underWall) offsetX = -Math.Sign(dx) * (BodyWidth(from.MountMode, from.MountChoice) / 2 + 7);
                 // A vertical release stays in the checked body lane. Moving
                 // back to the nominal center would overlap the wall again.
@@ -888,8 +926,7 @@ namespace JueMingR.TerrariaHost.Companions
                     underWall = true;
                     continue;
                 }
-                var start = Feet(from);
-                if (!DescentLane(from, start, landing, dx, platform)) return false;
+                if (!DescentLane(from, inlet ?? Feet(from), landing, dx, platform)) return false;
                 to = Ground(point, from, offsetX);
                 return true;
             }
@@ -931,9 +968,8 @@ namespace JueMingR.TerrariaHost.Companions
             return false;
         }
 
-        private bool PlatformInlet(NavigationNode from)
+        private bool PlatformInlet(NavigationNode from, Vector2 feet)
         {
-            var feet = Feet(from);
             float halfWidth = BodyWidth(from.MountMode, from.MountChoice) * .5f;
             int left = CellAt(feet - new Vector2(halfWidth - .125f, 0)).X;
             int right = CellAt(feet + new Vector2(halfWidth - .125f, 0)).X;

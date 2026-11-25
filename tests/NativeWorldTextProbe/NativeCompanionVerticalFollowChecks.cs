@@ -54,6 +54,15 @@ namespace NativeWorldTextProbe
                     { AdjacentPlatforms, ControlledDrop, TolerableFalls, TrailFollow };
                 var longerFollow = new Action<object, object, Player>[] { (h, p, owner) => LongAutonomousDetour(context, h, p, owner), RouteGraphContracts };
                 var contact = new Action<object, object, Player>[] { NativeContactAndDescent, RunUpJumpAndHighExit };
+                var edgeTrials = new Action<object, object, Player>[]
+                {
+                    (h, p, owner) => NativeFollowAtEdge(context, h, p, owner, platform: true),
+                    (h, p, owner) => NativeFollowAtEdge(context, h, p, owner, platform: true, stoneNeighbor: true),
+                    (h, p, owner) => NativeFollowAtEdge(context, h, p, owner, platform: true, stoneNeighbor: true, centered: true),
+                    (h, p, owner) => NativeFollowAtEdge(context, h, p, owner, platform: false),
+                    (h, p, owner) => NativeSteadyPursuitAtLip(context, h, p, owner),
+                    (h, p, owner) => NativeSteadyGroundPursuit(context, h, p, owner)
+                };
                 var hoik = new Action<object, object, Player>[] { (h, p, owner) => NativeHoikBaseline(context, owner) };
                 var structure = new Action<object, object, Player>[] { (h, p, owner) => HoikFollow(context, h, p, owner),
                     (h, p, owner) => MixedNativeFollow(context, h, p, owner) };
@@ -101,6 +110,7 @@ namespace NativeWorldTextProbe
                     System.Linq.Enumerable.Concat(moving, System.Linq.Enumerable.Concat(existing, terrain)),
                     System.Linq.Enumerable.Concat(practicalFollow, System.Linq.Enumerable.Concat(contact,
                         System.Linq.Enumerable.Concat(longerFollow, System.Linq.Enumerable.Concat(hoik, structure)))));
+                if (!historical) full = System.Linq.Enumerable.Concat(full, edgeTrials);
                 var scenarios = comparisonFocus == "terrain" ? terrain : comparisonFocus == "vertical" ? existing :
                     comparisonFocus == "wormhole-follow" ? practicalFollow :
                     comparisonFocus == "detour-descent" ? longerFollow : comparisonFocus == "contact-descent" ? contact :

@@ -154,18 +154,27 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool DashDecaying(float speed, int dash, float runSpeed) =>
             speed > DashThreshold(dash) || speed > runSpeed;
 
-        internal static bool HasBrakingRoom(Player body, int heading, float speed, int dash)
+        internal static bool HasBrakingRoom(Player body, int heading, float speed, int dash, bool coastOnly = false) =>
+            HasBrakingRoom(body, heading, speed, dash, out _, coastOnly);
+
+        internal static bool HasBrakingRoom(Player body, int heading, float speed, int dash, out bool unsupported, bool coastOnly = false)
         {
+            unsupported = false;
             if (!TryStopDistance(body, speed, dash, out float distance)) return false;
             if (distance < 16f)
-                return CompanionMotionAction.ClearAhead(body, heading, Math.Max(3f, distance), true);
-            float span = distance + speed + 2f;
+                return CompanionMotionAction.ClearAhead(body, heading, coastOnly ? distance : Math.Max(3f, distance),
+                    true, out unsupported);
+            float span = coastOnly ? distance : distance + speed + 2f;
             return TryFlatLane(body, heading * span, true, trailingSupport: true) ||
-                dash == 0 && span <= 48f && TryStepLane(body, heading * span, 18f);
+                dash == 0 && span <= 48f && TryStepLane(body, heading * span, 18f, out unsupported);
         }
 
-        internal static bool TryStepLane(Player body, float delta, float heightTolerance)
+        internal static bool TryStepLane(Player body, float delta, float heightTolerance) =>
+            TryStepLane(body, delta, heightTolerance, out _);
+
+        private static bool TryStepLane(Player body, float delta, float heightTolerance, out bool unsupported)
         {
+            unsupported = false;
             if (Math.Abs(delta) > 48f) return false;
             Vector2 position = body.position;
             float remaining = Math.Abs(delta);
@@ -175,9 +184,9 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 float step = Math.Min(remaining, 8f);
                 var move = new Vector2(heading * step, Math.Max(.05f, body.gravity) * body.gravDir);
-                if (!CompanionNativeContact.TryMove(body, position, move, contact, true, out var result) || result.Wall ||
-                    !result.Ground && !CompanionNativeContact.Supported(body, result.Position) ||
-                    CompanionFallRisk.OutsideModeledLiquid(body, result.Position, body.width, body.height)) return false;
+                if (!CompanionNativeContact.TryMove(body, position, move, contact, true, out var result) || result.Wall) return false;
+                unsupported = !result.Ground && !CompanionNativeContact.Supported(body, result.Position);
+                if (unsupported || CompanionFallRisk.OutsideModeledLiquid(body, result.Position, body.width, body.height)) return false;
                 position = result.Position;
                 remaining -= step;
             }

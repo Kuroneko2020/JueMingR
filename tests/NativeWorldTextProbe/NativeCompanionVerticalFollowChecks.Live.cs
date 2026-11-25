@@ -10,6 +10,104 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeCompanionVerticalFollowChecks
     {
+        private static void NativeSteadyPursuitAtLip(object context, object host, object profiles, Player human)
+        {
+            const int upper = 74, unreachableBottom = 123, endColumn = 64, ticks = 170;
+            float start = RoomX(58), lip = (endColumn + 1) * 16f;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "steady-pursuit-lip",
+                new Vector2(start, upper * 16), new Vector2(RoomX(86), upper * 16), () =>
+                {
+                    PlaceFixtureStrip(44, endColumn, upper, TileID.Stone);
+                    PlaceFixtureStrip(84, 123, upper, TileID.Stone);
+                    PlaceFixtureStrip(44, 123, unreachableBottom, TileID.Stone);
+                }))
+            {
+                Player body = run.Body;
+                var nav = Navigator(run.Actor);
+                int previousInput = 0, previousReversal = -10, facing = body.direction;
+                int consecutive = 0, longest = 0, reversals = 0, facingChanges = 0;
+                float peak = 0f, left = 0f, right = 0f;
+                for (int tick = 0; tick < ticks; tick++)
+                {
+                    float before = body.Bottom.X;
+                    run.Step(tick < 70 ? 1 : 0);
+                    int input = (body.controlRight ? 1 : 0) - (body.controlLeft ? 1 : 0);
+                    bool newDirection = input != 0 && input != previousInput;
+                    bool changed = newDirection && previousInput != 0 && body.velocity.X > .5f && human.velocity.X > .5f;
+                    if (newDirection)
+                    {
+                        if (changed)
+                        {
+                            reversals++;
+                            consecutive = tick - previousReversal <= 3 ? consecutive + 1 : 1;
+                            previousReversal = tick;
+                        }
+                        else consecutive = 0;
+                        longest = Math.Max(longest, consecutive);
+                        previousInput = input;
+                    }
+                    if (facing != body.direction) facingChanges++;
+                    float delta = body.Bottom.X - before;
+                    left += Math.Max(0f, -delta);
+                    right += Math.Max(0f, delta);
+                    peak = Math.Max(peak, Math.Abs(body.velocity.X));
+                    if (changed && reversals <= 16 || tick % 40 == 0)
+                        Console.WriteLine($"FOLLOW STEADY LIP step={tick} owner={human.Bottom}/{human.velocity} body={body.Bottom}/{body.velocity} " +
+                            $"keys={body.controlLeft}/{body.controlRight} facing={body.direction} consecutive={consecutive} {PlanStatus(nav)} {RouteTrace(nav)}");
+                    facing = body.direction;
+                }
+                Console.WriteLine($"FOLLOW STEADY LIP reversals={reversals} longest={longest} facingChanges={facingChanges} peak={peak:F2} " +
+                    $"leftDistance={left:F2} rightDistance={right:F2} dx={body.Bottom.X - start:F2} end={body.Bottom}");
+                Require(right > 30f && body.Right.X <= lip + body.width && OnFloor(body, upper) && !body.dead,
+                    "the companion approaches the unsafe solid lip without walking into the long fall");
+                Require(longest < 4, "a steady owner and unsafe edge do not cause consecutive alternation of native left and right controls");
+            }
+        }
+
+        private static void NativeSteadyGroundPursuit(object context, object host, object profiles, Player human)
+        {
+            const int row = 85, ticks = 245;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "steady-fast-pursuit",
+                new Vector2(RoomX(47), row * 16), new Vector2(RoomX(61), row * 16),
+                () => PlaceFixtureStrip(43, 132, row, TileID.Stone)))
+            {
+                Player body = run.Body;
+                body.armor[3] = new Item(ItemID.HermesBoots);
+                var nav = Navigator(run.Actor);
+                int previousInput = 0, previousTick = -10, previousFacing = body.direction, streak = 0, longest = 0, reversals = 0;
+                int near = 0, faces = 0;
+                float left = 0f, right = 0f, peakBody = 0f, peakOwner = 0f;
+                for (int tick = 0; tick < ticks; tick++)
+                {
+                    float bodyStart = body.Bottom.X;
+                    run.Step(1);
+                    float displacement = body.Bottom.X - bodyStart;
+                    int input = (body.controlRight ? 1 : 0) - (body.controlLeft ? 1 : 0);
+                    left += Math.Max(0f, -displacement);
+                    right += Math.Max(0f, displacement);
+                    peakBody = Math.Max(peakBody, body.velocity.X);
+                    peakOwner = Math.Max(peakOwner, human.velocity.X);
+                    if (human.Bottom.X - body.Bottom.X < 66f) near++;
+                    if (body.direction != previousFacing) faces++;
+                    previousFacing = body.direction;
+                    if (input == 0) continue;
+                    bool alternates = input == -previousInput && tick - previousTick <= 3;
+                    streak = alternates ? streak + 1 : 0;
+                    if (alternates && ++reversals <= 18)
+                        Console.WriteLine($"FOLLOW STEADY GROUND step={tick} input={input} facing={body.direction} " +
+                            $"owner={human.Bottom}/{human.velocity} body={body.Bottom}/{body.velocity} streak={streak} {RouteTrace(nav)}");
+                    longest = Math.Max(longest, streak);
+                    previousInput = input;
+                    previousTick = tick;
+                }
+                Console.WriteLine($"FOLLOW STEADY GROUND reversals={reversals} streak={longest} facingChanges={faces} near={near} " +
+                    $"left={left:F2} right={right:F2} speeds={peakBody:F2}/{peakOwner:F2} body={body.Bottom}/{body.velocity} owner={human.Bottom}/{human.velocity}");
+                Require(near >= 20 && right > 430f && peakBody > peakOwner && run.NativeRelocations == 0,
+                    "the faster original body catches a continuously right-moving owner on clear ground");
+                Require(longest < 4, "a steady open-ground pursuit does not repeatedly alternate final left and right inputs");
+            }
+        }
+
         private static void NativeOffsetColdStart(object context, object host, object profiles, Player human)
         {
             const int upper = 72, lower = 86, samples = 10;

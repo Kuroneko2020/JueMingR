@@ -10,6 +10,80 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeCompanionVerticalFollowChecks
     {
+        private static void NativeFollowAtEdge(object context, object host, object profiles, Player human, bool platform,
+            bool stoneNeighbor = false, bool centered = false)
+        {
+            const int upper = 80, lower = 86, endColumn = 63, ticks = 180, startOwnerMove = 36;
+            float lip = (endColumn + 1) * 16f;
+            float start = centered ? lip - 8f : lip + 6f;
+            using (var run = new NativeFollowWorld(context, host, profiles, human,
+                centered ? "platform-footprint" : stoneNeighbor ? "stone-platform-toe" : platform ? "platform-toe" : "stone-toe",
+                new Vector2(start, upper * 16), new Vector2(centered ? start : RoomX(72), lower * 16), () =>
+                {
+                    PlaceFixtureStrip(44, endColumn, upper, platform ? TileID.Platforms : TileID.Stone);
+                    if (stoneNeighbor) PlaceFixtureStrip(44, endColumn - 1, upper, TileID.Stone);
+                    PlaceFixtureStrip(44, 125, lower, TileID.Stone);
+                }))
+            {
+                Player body = run.Body;
+                var nav = Navigator(run.Actor);
+                var contact = ContactProbe(body, body.position);
+                NativeContactStep(contact, false, false);
+                Require(contact.velocity.Y == 0f && Math.Abs(contact.Bottom.Y - upper * 16) < .05f &&
+                    body.Left.X < lip && OnFloor(human, lower) && (centered ? body.Left.X < lip - 16f : body.Center.X > lip),
+                    "the original contact confirms support by the last tile and the specified initial footprint");
+                if (platform)
+                {
+                    if (centered)
+                    {
+                        NativeContactStep(contact, true, false);
+                        Require(Math.Abs(contact.Bottom.Y - upper * 16) < .05f && contact.velocity.Y == 0f,
+                            "the neighboring solid physically retains part of the centered body when Down is pressed");
+                        contact = ContactProbe(body, body.position + new Vector2(3f, 0));
+                        NativeContactStep(contact, false, false);
+                        Require(OnFloor(contact, upper), "three pixels outward remain supported by the original platform alone");
+                    }
+                    NativeContactStep(contact, true, false);
+                    Require(contact.Bottom.Y > upper * 16 && contact.velocity.Y > 0f,
+                        "one original Down at the independently confirmed inlet actually leaves support");
+                    for (int tick = 0; tick < 45 && !OnFloor(contact, lower); tick++) NativeContactStep(contact, false, false);
+                    Require(OnFloor(contact, lower), "the original collision steps reach the lower stone directly below the real platform overlap");
+                }
+                int eligible = platform && !centered ? 0 : -1, down = -1, released = -1, recaught = -1;
+                int landing = -1, resumed = -1, switches = 0;
+                float landedX = 0f, retreatBeforeRelease = 0f;
+                int lastFacing = body.direction;
+                for (int tick = 0; tick < ticks && resumed < 0; tick++)
+                {
+                    run.Step(centered && tick < startOwnerMove ? 0 : 1);
+                    if (centered && eligible < 0 && body.Left.X >= lip - 16f && body.Bottom.Y <= upper * 16 + .5f)
+                        eligible = tick;
+                    if (down < 0 && released < 0) retreatBeforeRelease = Math.Max(retreatBeforeRelease, start - body.Bottom.X);
+                    if (down < 0 && body.controlDown) down = tick;
+                    if (released < 0 && body.Bottom.Y > upper * 16 + 2f && body.velocity.Y > .1f) released = tick;
+                    if (released >= 0 && recaught < 0 && landing < 0 && OnFloor(body, upper)) recaught = tick;
+                    if (released >= 0 && landing < 0 && OnFloor(body, lower)) { landing = tick; landedX = body.Bottom.X; }
+                    if (landing >= 0 && OnFloor(body, lower) && body.controlRight && body.Bottom.X > landedX + 12f) resumed = tick;
+                    if (body.direction != lastFacing) switches++;
+                    lastFacing = body.direction;
+                    if (tick < 8 || tick == down || tick == released || tick == landing || tick == resumed || tick % 45 == 0)
+                        Console.WriteLine($"FOLLOW EDGE step={tick} platform={platform} solidNeighbor={stoneNeighbor} centered={centered} owner={human.Bottom}/{human.velocity} " +
+                            $"body={body.Bottom}/{body.velocity} keys={body.controlLeft}/{body.controlRight}/{body.controlDown} face={body.direction} {PlanStatus(nav)} {RouteTrace(nav)}");
+                }
+                Console.WriteLine($"FOLLOW EDGE platform={platform} solidNeighbor={stoneNeighbor} centered={centered} originalSupport=0 nativeDownReady={eligible} down={down} " +
+                    $"release={released} recaught={recaught} land={landing} resume={resumed} firstRetreat={retreatBeforeRelease:F2} faceChanges={switches} start={start:F2} final={body.Bottom}");
+                Require(released >= 0 && (!platform || down >= 0 && down <= released) && landing > released && resumed > landing &&
+                    recaught < 0 && run.NativeRelocations == 0 && !body.dead,
+                    "the original body leaves the safe overlapping edge, reaches the actual lower support and continues after the already-landed owner");
+                if (platform)
+                    Require(retreatBeforeRelease < 2f,
+                        "a body already at a legal outward platform inlet does not first retreat toward the tile center before pressing Down");
+                if (centered)
+                    Require(eligible >= 0 && down >= eligible && down < startOwnerMove,
+                        "with the owner still horizontally aligned below, the body steps out of the solid footprint and presses Down from actual platform support");
+            }
+        }
+
         private static void NativeContactAndDescent(object host, object profiles, Player human)
         {
             const int high = 80, lower = 81, tileX = 100;
