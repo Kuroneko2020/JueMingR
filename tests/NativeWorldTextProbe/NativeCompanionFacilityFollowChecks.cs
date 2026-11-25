@@ -376,7 +376,7 @@ namespace NativeWorldTextProbe
                 int initialKey = (int)Get(mobility, "HookKey");
                 var navigation = Get(Get(actor, "Behavior"), "Navigator");
                 Projectile hook = null;
-                bool shot = false, attached = false, verticalRelease = false, detached = false;
+                bool shot = false, attached = false, verticalRelease = false, sidewaysRelease = false, detached = false;
                 float hangingY = body.position.Y;
                 for (int i = 0; i < 290 && !detached; i++)
                 {
@@ -393,13 +393,12 @@ namespace NativeWorldTextProbe
                         hangingY = body.position.Y;
                         human.Bottom = new Vector2(body.Center.X, floor * 16);
                     }
-                    if (attached && Get(mobility, "Action").ToString() == "ReleaseHook")
+                    if (attached && NativeCompanionMobilityChecks.HookReleaseStartedThisUpdate(mobility))
                     {
-                        var delivery = GetOptional(navigation, "LastMovementDelivery");
-                        verticalRelease |= delivery == null ? !body.controlLeft && !body.controlRight :
-                            Get(delivery, "Activation").ToString() == "ReleaseHook" && (int)Get(delivery, "Move") == 0;
-                        detached |= hook?.active == false && body.position.Y > hangingY + 8;
+                        verticalRelease |= body.controlJump;
+                        sidewaysRelease |= body.controlLeft || body.controlRight;
                     }
+                    detached |= verticalRelease && hook?.active == false && body.position.Y > hangingY + 8;
                     if (i % 60 == 0) TraceFollow(actor, body, attacking ? "hook-hand" : "hook", i);
                 }
                 if (attacking)
@@ -409,8 +408,8 @@ namespace NativeWorldTextProbe
                     Require(releasedHand >= 0 && shotAt > releasedHand && attached,
                         "a ready native hook first gets the actual combat-hand release input and then pulls the original body upward");
                 }
-                Require(shot && attached && verticalRelease && detached && !(bool)Get(actor, "Faulted"),
-                    $"Follow chooses its own hook, pulls upward, then releases to the lower target: birth={shot} attached={attached} release={verticalRelease} down={detached} body={body.position} action={Get(mobility, "Action")}/{Get(mobility, "Result")} status={Get(actor, "Status")}");
+                Require(shot && attached && verticalRelease && !sidewaysRelease && detached && !(bool)Get(actor, "Faulted"),
+                    $"Follow chooses its own hook, pulls upward, then releases to the lower target: birth={shot} attached={attached} release={verticalRelease} sideways={sidewaysRelease} down={detached} body={body.position} action={Get(mobility, "Action")}/{Get(mobility, "Result")} status={Get(actor, "Status")}");
                 Console.WriteLine("PASS native companion Follow grapple: autonomous own shot, attachment, vertical release after moving the owner and real descent.");
             }
             finally

@@ -360,10 +360,9 @@ namespace NativeWorldTextProbe
                 human.Center = new Vector2(body.Center.X, 73 * 16 - human.height * .5f);
                 float startY = body.position.Y;
                 float startX = body.position.X;
-                bool sidewaysInput = false, detached = false, keptShaft = true;
+                bool releaseJump = false, sidewaysInput = false, detached = false, keptShaft = true;
                 int deliveredReleases = 0;
                 float farthestSideways = 0;
-                var navigator = Get(Get(Call(host, "Owned", body), "Behavior"), "Navigator");
                 intent = null;
                 for (int tick = 0; tick < 60 && (hook.active || Math.Abs(body.Bottom.Y - 73 * 16) > 1); tick++)
                 {
@@ -373,24 +372,23 @@ namespace NativeWorldTextProbe
                     Step(host, body);
                     farthestSideways = Math.Max(farthestSideways, Math.Abs(body.position.X - startX));
                     keptShaft &= body.Left.X >= (leftWall + 1) * 16 - .25f && body.Right.X <= rightWall * 16 + .25f;
-                    var delivery = GetOptional(navigator, "LastMovementDelivery");
-                    object controlSource = delivery ?? state;
-                    string activationName = delivery == null ? "Action" : "Activation";
-                    if (Get(controlSource, activationName).ToString() == "ReleaseHook" && (int)Get(controlSource, "Sequence") != 2031)
+                    if (HookReleaseStartedThisUpdate(state) && (int)Get(state, "Sequence") != 2031)
                     {
                         deliveredReleases++;
-                        sidewaysInput |= delivery == null ? body.controlLeft || body.controlRight : (int)Get(delivery, "Move") != 0;
+                        releaseJump |= body.controlJump;
+                        sidewaysInput |= body.controlLeft || body.controlRight;
                     }
                     if (Get(state, "Action").ToString() != "ReleaseHook" || (int)Get(state, "Sequence") == 2031) continue;
                     detached |= !(bool)Get(Get(state, "Observed"), "GrappleAttached") && Get(state, "Result").ToString() == "Completed";
                 }
-                Require(deliveredReleases > 0 && !sidewaysInput && detached && !hook.active && body.position.Y > startY + 8 &&
+                Require(deliveredReleases > 0 && releaseJump && !sidewaysInput && detached && !hook.active && body.position.Y > startY + 8 &&
                     Math.Abs(body.Bottom.Y - 73 * 16) <= 1 && keptShaft,
                     "the production route leaves the real overhead hook along the safe vertical shaft: " + body.position + " from " + startY +
-                    ", arrivals=" + deliveredReleases + ", sidewaysInput=" + sidewaysInput + ", sidewaysTravel=" + farthestSideways +
+                    ", arrivals=" + deliveredReleases + ", jump=" + releaseJump + ", sidewaysInput=" + sidewaysInput + ", sidewaysTravel=" + farthestSideways +
                     ", detached=" + detached + ", hook=" + hook.active +
                     ", action=" + Get(state, "Action") + "/" + Get(state, "Result"));
-                Console.WriteLine("PASS companion vertical shaft: actual attachment, route-selected vertical release and real descent.");
+                Console.WriteLine($"PASS companion vertical shaft: actual attachment, route-selected vertical release and real descent. " +
+                    $"releaseUpdates={deliveredReleases} jump={releaseJump} sidewaysInput={sidewaysInput} travel={farthestSideways:F3} feet={body.Bottom}");
             }
             finally
             {
@@ -400,6 +398,14 @@ namespace NativeWorldTextProbe
                 human.position = humanPosition;
                 RestoreTiles(tiles);
             }
+        }
+
+        internal static bool HookReleaseStartedThisUpdate(object mobility)
+        {
+            // Action and Sequence identify the most recent tool after it has
+            // completed. Started identifies the update that sent the native key.
+            return Get(mobility, "Action").ToString() == "ReleaseHook" &&
+                (uint)Get(mobility, "Started") == Main.GameUpdateCount;
         }
 
         private static void AdvanceHook(Projectile hook)
