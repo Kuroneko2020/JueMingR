@@ -299,9 +299,12 @@ namespace NativeWorldTextProbe
                 object navigation = Navigator(run.Actor);
                 long lastAction = -1;
                 long blockedAction = 0, recoveredAction = 0;
+                long lastCheckedLaunch = 0;
                 float blockedEntry = 0;
                 int roofRow = 0;
-                int blockedAt = -1, actualContact = -1, failed = -1, differentJump = -1, released = -1;
+                int blockedAt = -1, actualContact = -1, failed = -1, walkedAfterFailure = -1, differentJump = -1, released = -1;
+                int repeatedLaunches = 0;
+                bool blockedDirect = false;
                 int direction = -1, turns = 0, over = -1, arrived = -1, close = 0, longestClose = 0, moving = 0;
                 for (int tick = 0; tick < 680; tick++)
                 {
@@ -313,6 +316,7 @@ namespace NativeWorldTextProbe
                         turns++;
                     }
                     Vector2 before = human.Bottom;
+                    Vector2 beforeBody = body.Bottom;
                     float priorVy = body.velocity.Y;
                     run.Step(direction);
                     bool moved = Vector2.DistanceSquared(before, human.Bottom) > .25f;
@@ -332,6 +336,7 @@ namespace NativeWorldTextProbe
                         roofRow = (int)Math.Floor((body.Top.Y - 2) / 16) - 1;
                         blockedAt = tick;
                         blockedAction = action;
+                        blockedDirect = (bool)Get(Get(navigation, "action"), "Direct");
                         blockedEntry = ((Vector2)Get(Get(navigation, "ActionTransition"), "From")).X;
                         PlaceFixtureStrip(RoomPartition - 2, RoomPartition - 1, roofRow, TileID.Stone);
                         Console.WriteLine($"MOVING PARTITION edited roof row={roofRow} tick={tick} action={blockedAction} before={body.Top}");
@@ -347,9 +352,17 @@ namespace NativeWorldTextProbe
                             Console.WriteLine($"MOVING PARTITION actual {outcome} tick={tick} action={action} body={body.Bottom}");
                         }
                     }
+                    if (failed >= 0 && differentJump < 0 && walkedAfterFailure < 0 && action != blockedAction && kind == "Walk" &&
+                        OnFloor(body, RoomLower) && body.controlLeft && beforeBody.X - body.Bottom.X > .05f)
+                        walkedAfterFailure = tick;
                     if (failed >= 0 && kind == "Jump" && body.controlJump && body.velocity.Y < -2 && action != blockedAction &&
-                        differentJump < 0 && Math.Abs(((Vector2)Get(Get(navigation, "ActionTransition"), "From")).X - blockedEntry) >= 14)
-                    { differentJump = tick; recoveredAction = action; }
+                        action != lastCheckedLaunch && differentJump < 0)
+                    {
+                        lastCheckedLaunch = action;
+                        if (Math.Abs(((Vector2)Get(Get(navigation, "ActionTransition"), "From")).X - blockedEntry) >= 14)
+                        { differentJump = tick; recoveredAction = action; }
+                        else repeatedLaunches++;
+                    }
                     if (differentJump >= 0 && released < 0 && kind == "PlatformDrop" && body.Bottom.Y > RoomUpper * 16 + 10 && body.velocity.Y > 0)
                         released = tick;
                     if (tick % 60 == 0 || action != lastAction || tick == over || tick == arrived || tick >= 50 && tick <= 130 && tick % 8 == 0)
@@ -361,17 +374,19 @@ namespace NativeWorldTextProbe
                 Console.WriteLine($"MOVING PARTITION startDistance={ownerStart - bodyStart:F1} ownerTurns={turns} moving={moving} over={over} " +
                     $"lowerArrival={arrived} nearMoving={longestClose} {RoomTrace(run, human, navigation, 680, turns)}");
                 if (interruptJump)
-                    Console.WriteLine($"FOLLOW LIVE RECOVERY issued={blockedAt}/{blockedAction} roofContact={actualContact} rejected={failed} " +
+                    Console.WriteLine($"FOLLOW LIVE RECOVERY issued={blockedAt}/{blockedAction} direct={blockedDirect} roofContact={actualContact} rejected={failed} " +
+                        $"walkedAfterFailure={walkedAfterFailure} repeatedLaunches={repeatedLaunches} " +
                         $"alternateAscent={differentJump}/{recoveredAction} nativeRelease={released} land={arrived} nearbyMoving={longestClose}");
                 Require(turns >= 5 && moving > 450 && over >= 0 && arrived > over && longestClose >= 20 &&
                     run.NativeRelocations == 0 && !body.dead,
                     "close distance across a solid partition cannot replace a real route into the moving owner's room");
                 if (interruptJump)
                 {
-                    Require(blockedAt >= 0 && actualContact > blockedAt && failed >= actualContact && differentJump > failed &&
+                    Require(blockedAt >= 0 && actualContact > blockedAt && failed >= actualContact && walkedAfterFailure > failed &&
+                        repeatedLaunches == 0 && differentJump > walkedAfterFailure &&
                         released > differentJump && arrived > released && ReferenceEquals(navigation, Navigator(run.Actor)) &&
                         ReferenceEquals(body, Get(run.Actor, "Body")) && Main.tile[RoomPartition - 1, roofRow].nactive(),
-                        "the same body rejects a real interrupted jump, ascends from a different entry and drops with the obstruction still present");
+                        "the same body rejects a real interrupted jump, walks away without relaunching at the blocked entry, ascends elsewhere and drops with the roof still present");
                 }
                 Console.WriteLine("PASS native moving owner near an interior partition.");
             }

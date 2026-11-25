@@ -283,7 +283,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             edge = default;
             float horizontal = target.X - feet.X;
-            if (!start.Grounded || Math.Abs(target.Y - feet.Y) > Math.Max(48f, caps.JumpHeight) ||
+            if (!start.Grounded ||
                 Math.Abs(horizontal) < 28 || budget.ExpansionsRemaining < 2 || !budget.TryExpand()) return false;
             int direction = Math.Sign(horizontal);
             if (!Offer(start, direction < 0 ? 2 : 3, out _, out var candidate, out _) ||
@@ -358,21 +358,38 @@ namespace JueMingR.TerrariaHost.Companions
             Predicate<NavigationTransition> rejected, out NavigationTransition edge)
         {
             edge = default;
-            if (!from.Grounded || from.Gravity < 0 || Read(from.Cell).Kind != NavigationCellKind.Platform ||
-                (target.Y - feet.Y) * from.Gravity < 16f || Math.Abs(target.X - feet.X) > 144f ||
+            if (!from.Grounded || from.Gravity < 0 || (target.Y - feet.Y) * from.Gravity < 16f ||
+                Read(from.Cell).Kind != NavigationCellKind.Platform ||
                 budget.ExpansionsRemaining < 2 || !budget.TryExpand()) return false;
-            // A real lower support within the current shaft is useful
-            // before the landing region of the laterally moving owner is
-            // known. Keep the shortest aligned release first; each landing
-            // still needs its own native sweep, remaining life and receipt.
-            for (int offset = 0; offset < 5; offset++)
+            // Prefer one column toward a distant owner when the release can
+            // feed that landing. Keep the aligned fallback in the same
+            // bounded set and leave short isolated steps to the real route.
+            float horizontal = target.X - feet.X;
+            int preferred = Math.Abs(horizontal) < 24f ? 0 : horizontal < 0f ? 1 : 2;
+            for (int attempt = 0; attempt < 5; attempt++)
             {
+                int offset = attempt == 0 ? preferred : attempt <= preferred ? attempt - 1 : attempt;
+                // An opposite-side release is a detour, not an emergency
+                // fallback when all of the forward exits are obstructed.
+                if (preferred != 0 && DropOffsets[offset] * horizontal < 0f) continue;
                 budget.RecordCandidate();
                 if (Offer(from, 4 + offset, out _, out var drop, out _) &&
-                    !rejected(drop) && CanAttach(feet, drop, out edge)) return true;
+                    (drop.To.Y - feet.Y >= 24f || Math.Abs(target.Y - drop.To.Y) <= 8f) &&
+                    Math.Abs(target.Y - drop.To.Y) < Math.Abs(target.Y - feet.Y) &&
+                    !rejected(drop) && ClearsLocalOutlet(from, drop.To, target.X) && CanAttach(feet, drop, out edge)) return true;
                 if (Pending || budget.ExpansionsRemaining < 2 || !budget.TryExpand()) break;
             }
             return false;
+        }
+
+        private bool ClearsLocalOutlet(NavigationNode from, Vector2 landing, float targetX)
+        {
+            // Don't take the quick release into the near side of a known
+            // wall while the upper floor can still feed its actual exit.
+            // Only the short onward volume is needed here, even at a ledge.
+            float offset = MathHelper.Clamp(targetX - landing.X, -32f, 32f);
+            return Math.Abs(offset) < 16f || KnownClear(landing, landing + new Vector2(offset, 0f), from.Gravity,
+                from.MountMode, 2, from.MountChoice);
         }
 
         internal bool LocalTrack(Vector2 feet, Vector2 target, NavigationNode from, out NavigationTransition edge)

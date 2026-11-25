@@ -26,7 +26,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal CompanionActionOutcome Outcome;
         private enum Phase { Approach, Release, Travel }
         private Phase phase;
-        private float best;
+        private float best, walkBand;
         private int noProgress, waiting, elapsed, sequence, roofEscape, roofEscapeAge, roofEscapeRow;
         private Vector2 target, entry, roofEscapeStart;
         private CompanionMovementDelivery delivered;
@@ -35,6 +35,8 @@ namespace JueMingR.TerrariaHost.Companions
         private bool observedInlet, groundedInlet, maintainingAirContact, clearedFlightBank, levelCruise, roofDropping;
         internal CompanionMovementDeferral Deferral { get; private set; }
         internal bool LosingProgress => noProgress >= 4;
+        internal bool Braking { get; private set; }
+        internal Vector2 ProgressTarget => phase == Phase.Approach ? entry : target;
         internal bool InNativeMotion { get; private set; }
         internal bool HasRoofContact { get; private set; }
         internal Vector2 RoofContact { get; private set; }
@@ -68,6 +70,7 @@ namespace JueMingR.TerrariaHost.Companions
             observedInlet = groundedInlet = maintainingAirContact = levelCruise = false;
             clearedFlightBank = FlightLanding = false;
             InNativeMotion = false;
+            Braking = false;
             HasRoofContact = false;
             Deferral = CompanionMovementDeferral.None;
             target = edge.To;
@@ -109,6 +112,7 @@ namespace JueMingR.TerrariaHost.Companions
                     Math.Abs(liveTarget.Y - feet.Y) <= 8f && Math.Abs(liveTarget.X - feet.X) > spacing + 64f;
             }
             target = Direct ? liveTarget : Edge.To;
+            walkBand = spacing;
             var frame = new CompanionMobilityFrame { ActionId = Id, ItemSlot = -1, Status = "跟随中" };
             if (IsDrop && FallReleased(body, feet, supported)) phase = Phase.Travel;
             if (IsDrop && phase != Phase.Travel && native.AwaitingEquipmentObservation)
@@ -737,6 +741,8 @@ namespace JueMingR.TerrariaHost.Companions
             elapsed++;
             var feet = CompanionNativeContact.Feet(body);
             var state = native.Observed;
+            Braking = delivered.Move != 0 && delivered.Velocity.X * delivered.Move < -.04f &&
+                (body.velocity.X - delivered.Velocity.X) * delivered.Move > .015f;
             if (delivered.Dash) dashIssued |= state.DashActive;
             if (Edge.Detail == NavigationTraversalDetail.FlightDash && !state.DashActive && (dashIssued || delivered.Dash))
                 RetireAirDash();
@@ -784,10 +790,15 @@ namespace JueMingR.TerrariaHost.Companions
 
             if (Direct)
             {
-                target = latestTarget;
                 if (Edge.Kind == NavigationAction.Dash && dashIssued && !state.DashActive && supported)
                     return Outcome = CompanionActionOutcome.Complete;
                 if (atGoal && !Committed)
+                    return Outcome = CompanionActionOutcome.Complete;
+                // Completion of the horizontal prefix leaves the owner's Y
+                // outstanding. A settled body can now wait for its inlet
+                // without recording a blocked walk or ending the follow.
+                if (Edge.Kind == NavigationAction.Walk && supported && delivered.Move == 0 &&
+                    Math.Abs(body.velocity.X) < .4f && Math.Abs(feet.X - target.X) <= walkBand + .2f)
                     return Outcome = CompanionActionOutcome.Complete;
             }
             else if (phase != Phase.Approach && Reached(body, state, supported, feet, horizontal, vertical))
@@ -813,13 +824,14 @@ namespace JueMingR.TerrariaHost.Companions
             float progress = Direct ? 0f : Measure(feet, horizontal, vertical);
             if (Direct)
             {
-                // Compare both physical samples to the same current target.
+                // Compare both physical samples to the steering target used
+                // for this native update, including an inlet on another side.
                 // Owner motion alone cannot make a stalled body progress.
                 var oldFeet = delivered.Position + new Vector2(body.width * .5f, body.gravDir > 0 ? body.height : 0);
-                progress = Vector2.Distance(oldFeet, target) - Vector2.Distance(feet, target);
-                bool braking = delivered.Move != 0 && delivered.Velocity.X * delivered.Move < -.04f &&
-                    (body.velocity.X - delivered.Velocity.X) * delivered.Move > .015f;
-                if (progress > .08f || braking) noProgress = 0;
+                float lateral = Math.Abs(oldFeet.X - target.X) - Math.Abs(feet.X - target.X);
+                progress = Edge.Kind == NavigationAction.Walk || Edge.Kind == NavigationAction.Dash ? lateral :
+                    Math.Max(lateral, Math.Abs(oldFeet.Y - target.Y) - Math.Abs(feet.Y - target.Y));
+                if (progress > .08f || Braking) noProgress = 0;
                 else noProgress++;
             }
             if (!Direct && Edge.Kind == NavigationAction.Walk && horizontal != 0f &&
@@ -854,7 +866,12 @@ namespace JueMingR.TerrariaHost.Companions
                 limit += 24;
             }
             bool settlingJump = Edge.Kind == NavigationAction.Jump && Committed && crossedJumpHeight && elapsed < 240;
-            if (noProgress >= limit && !settlingJump || elapsed >= 480 && !Direct) return Outcome = CompanionActionOutcome.Blocked;
+            // Native wedge contact can keep vx at zero while advancing in
+            // small real strides between teeth. Keep its already-committed
+            // controls while progress is observed, including past the
+            // generic action lifetime. A stationary wedge still times out.
+            bool expired = elapsed >= 480 && !Direct && (Edge.Kind != NavigationAction.Hoik || !Committed);
+            if (noProgress >= limit && !settlingJump || expired) return Outcome = CompanionActionOutcome.Blocked;
             return Outcome = CompanionActionOutcome.Running;
         }
 
@@ -943,14 +960,15 @@ namespace JueMingR.TerrariaHost.Companions
                 stepOff = move == momentum && !state.DashActive && CompanionGroundRun.HasShallowStepOff(body, move);
                 if (!stepOff) return ClearAhead(body, -momentum, 3f, true) ? -momentum : 0;
             }
-            if (move != 0 && !ClearAhead(body, move, Math.Max(4f, Math.Abs(body.velocity.X) + 1f), supported && !stepOff)) return 0;
+            if (move != 0 && !ClearAhead(body, move, Math.Max(4f, Math.Abs(body.velocity.X) + 1f), supported && !stepOff,
+                allowSteps: supported)) return 0;
             return move;
         }
 
-        internal static bool ClearAhead(Player body, int direction, float pixels, bool keepSupport)
+        internal static bool ClearAhead(Player body, int direction, float pixels, bool keepSupport, bool allowSteps = false)
         {
             var move = new Vector2(direction * pixels, Math.Max(.05f, body.gravity) * body.gravDir);
-            return Predict(body, move, keepSupport, out var contact) && !contact.Wall &&
+            return Predict(body, move, keepSupport || allowSteps, out var contact) && !contact.Wall &&
                 (!keepSupport || contact.Ground || CompanionNativeContact.Supported(body, contact.Position));
         }
 

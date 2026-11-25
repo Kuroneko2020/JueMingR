@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using HarmonyLib;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
@@ -83,11 +84,21 @@ namespace NativeWorldTextProbe
             Require(Behavior.ExcludedHealingTypes.Contains(ItemID.HealingPotion), "an absent healing potion can be unchecked in its icon grid");
             PointAt(Card(ItemID.HealingPotion)); capture("companion-config-heal-modes");
 
-            var icons = Get(window, "supplyIcons");
-            object layoutBuilds = Get(icons, "VisibleSetBuilds"), loads = Get(icons, "IconLoads");
-            for (int i = 0; i < 100; i++) prepare();
-            Require(Get(icons, "VisibleSetBuilds").Equals(layoutBuilds) && Get(icons, "IconLoads").Equals(loads),
-                "an unchanged supply window keeps its visible projection and borrowed icons");
+            var assembly = host.GetType().Assembly;
+            string configuration = assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration;
+            Require(configuration == "Debug" || configuration == "Release",
+                "the actual supply-menu Host declares a supported build configuration");
+            if (configuration == "Debug")
+            {
+                var icons = Get(window, "supplyIcons");
+                object layoutBuilds = Get(icons, "VisibleSetBuilds"), loads = Get(icons, "IconLoads");
+                for (int i = 0; i < 100; i++) prepare();
+                Require(Get(icons, "VisibleSetBuilds").Equals(layoutBuilds) && Get(icons, "IconLoads").Equals(loads),
+                    "an unchanged supply window keeps its visible projection and borrowed icons");
+                Console.WriteLine($"SUPPLY-MENU workload counters passed on Debug Host MVID={assembly.ManifestModule.ModuleVersionId}");
+            }
+            else
+                Console.WriteLine($"SUPPLY-MENU Debug workload counters not executed on Release Host MVID={assembly.ManifestModule.ModuleVersionId}");
             frame(Vector2.Zero, false, new[] { Keys.Escape }, 0); frame(Vector2.Zero, false, Neutral, 0);
             Require(!(bool)Get(window, "SupplyPopupVisible") && (bool)Get(window, "Visible"), "Escape closes only the supply popup");
 

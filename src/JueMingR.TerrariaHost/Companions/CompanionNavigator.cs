@@ -15,6 +15,18 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly CompanionMotionAction action = new CompanionMotionAction();
         private readonly CompanionActionRefinement refine = new CompanionActionRefinement();
         private readonly List<NavigationTransition> facilities = new List<NavigationTransition>();
+        private enum DirectKind { Swim, Walk, Dash, Flight, FlightDash, Count }
+        private readonly DirectFailure[] directFailures = new DirectFailure[(int)DirectKind.Count];
+
+        private struct DirectFailure
+        {
+            internal uint Until;
+            internal Vector2 Position;
+            internal Point Contact;
+            internal int Direction, Elevation, Width, Height, Source, FootVersion, ContactVersion;
+            internal bool Supported;
+        }
+
         private NavigationWorld world;
         private NavigationRoute route;
         private NavigationTransition offered;
@@ -25,8 +37,8 @@ namespace JueMingR.TerrariaHost.Companions
         private bool offeredLandingRisk, activeLandingRisk;
         private bool actionEmergency, knowsPositionRevision, keepAirContact, hasBlockedRoof, targetAirborne;
         private CompanionOwnerTrail observedTrail;
-        private uint nextFacilities, directRetry, pendingSince, nextDashCheck, nextCruiseCheck, nextMountCheck, dashPreparedUntil, lastRescue;
-        private Vector2 blockedAt, blockedTarget, target, targetVelocity;
+        private uint nextFacilities, pendingSince, nextDashCheck, nextCruiseCheck, nextMountCheck, dashPreparedUntil, lastRescue;
+        private Vector2 target, targetVelocity;
         private Vector2 blockedRoof, blockedRoofGoal;
         private Vector2? offeredFlightTouchdown, activeFlightTouchdown;
         private long actionGeneration, nextAction, bodyGeneration;
@@ -85,7 +97,8 @@ namespace JueMingR.TerrariaHost.Companions
             action.Reset();
             refine.Reset();
             hasOffer = hasTarget = supported = targetChanged = retireIntent = rescuing = rescuePending = false;
-            directRetry = nextFacilities = pendingSince = nextDashCheck = nextCruiseCheck = nextMountCheck = dashPreparedUntil = lastRescue = 0;
+            Array.Clear(directFailures, 0, directFailures.Length);
+            nextFacilities = pendingSince = nextDashCheck = nextCruiseCheck = nextMountCheck = dashPreparedUntil = lastRescue = 0;
             previousGravity = 0;
             pylonCount = -1;
             observedTrail = null;
@@ -200,9 +213,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if (action.Direct && (action.Outcome == CompanionActionOutcome.Rejected ||
                     action.Outcome == CompanionActionOutcome.Blocked))
                 {
-                    blockedAt = feet;
-                    blockedTarget = target;
-                    directRetry = Main.GameUpdateCount + 36;
+                    RememberDirectFailure(body, native.Observed, feet);
                     if (action.Edge.Kind == NavigationAction.Flight && action.HasRoofContact)
                     {
                         blockedRoof = action.RoofContact;
@@ -233,30 +244,44 @@ namespace JueMingR.TerrariaHost.Companions
             if (hasOffer && (!route.TrySelect(feet, out var current) || !current.SameEdge(offered))) ClearPrefix();
             if (hasOffer && offeredLandingRisk &&
                 (body.statLife <= offeredLifeCost || CompanionFallRisk.ProtectionKey(body) != offeredProtection)) ClearPrefix();
-            bool selectedApproach = hasOffer && route.IsTraversalApproach(offered, feetGoal);
-            bool plannedHandoff = !emergency && !hasOffer && route?.HasTraversalApproach(feet, feetGoal) == true;
-            if (plannedHandoff && action.Id != 0 && action.Direct && action.CanRetarget && action.Edge.Kind == NavigationAction.Walk)
-                action.Reset();
-            if (action.Id != 0 && action.Direct && action.CanRetarget && hasOffer && ReachableEntry(feet, offered) &&
-                (action.LosingProgress || action.Edge.Kind == NavigationAction.Walk && offered.Kind != NavigationAction.Walk &&
-                    (Math.Abs(feetGoal.Y - feet.Y) > 18f || offered.Kind == NavigationAction.Facility ||
-                        offered.Detail == NavigationTraversalDetail.TrackBoard) || selectedApproach))
-                action.Reset();
-            if (action.Id != 0 && action.Direct && action.CanRetarget && action.Edge.Kind == NavigationAction.Flight && hasOffer &&
-                offered.Detail == NavigationTraversalDetail.MountFlight && ReachableEntry(feet, offered) &&
-                !native.AwaitingEquipmentObservation && CanResume(native, offered) && NeedsFlightMount(body, native.Observed, feet))
-                action.Reset();
+            bool offerReady = ReadyOffer(body, native, feet);
+            bool selectedApproach = hasOffer && route.IsTraversalApproach(offered);
+            Vector2 approach = default;
+            bool approaching = !emergency && route?.TryTraversalApproach(feet, out approach) == true;
+            if (approaching && supported)
+            {
+                // Steering toward an unissued entrance still needs a real
+                // stride on this floor. A stale blocked corridor must not
+                // displace a different usable local move.
+                float offset = approach.X - feet.X;
+                approaching = Math.Abs(approach.Y - feet.Y) <= 24f && (Math.Abs(offset) <= 3f ||
+                    WalkStride(body, Math.Sign(offset), Math.Min(Math.Abs(offset), Math.Max(4f, Math.Abs(body.velocity.X) + 1f))));
+            }
+            if (action.Id != 0 && action.Direct && action.CanRetarget && offerReady &&
+                (action.LosingProgress || action.Edge.Kind == NavigationAction.Walk &&
+                    (selectedApproach || offered.Kind != NavigationAction.Walk && (Math.Abs(feetGoal.Y - feet.Y) > 18f ||
+                        offered.Kind == NavigationAction.Facility || offered.Detail == NavigationTraversalDetail.TrackBoard)) ||
+                    action.Edge.Kind == NavigationAction.Flight && offered.Detail == NavigationTraversalDetail.MountFlight &&
+                        NeedsFlightMount(body, native.Observed, feet) ||
+                    supported && (offered.Kind == NavigationAction.Drop || offered.Kind == NavigationAction.PlatformDrop) &&
+                        (feetGoal.Y - feet.Y) * body.gravDir >= 16f))
+            {
+                // Eligibility is checked with the current body before the
+                // prepared traversal replaces any useful steering input.
+                Begin(offered, false, emergency);
+                hasOffer = false;
+            }
             bool replaceablePlan = action.Id != 0 && !action.Direct && action.CanRetarget;
-            bool reversedPlan = replaceablePlan && !route.IsTraversalApproach(action.Edge, target) &&
+            bool reversedPlan = replaceablePlan && !approaching && !route.IsTraversalApproach(action.Edge) &&
                 (target.X - actionOwnerTarget.X) * Math.Sign(action.Edge.To.X - action.Edge.From.X) < -4f &&
                 (action.Edge.To.X - feet.X) * (feetGoal.X - feet.X) < -48f;
-            if (replaceablePlan && hasOffer && !offered.SameEdge(action.Edge) && ReachableEntry(feet, offered) &&
-                CanResume(native, offered) && (!native.AwaitingEquipmentObservation || offered.Kind == NavigationAction.Walk))
+            if (replaceablePlan && hasOffer && offerReady && !offered.SameEdge(action.Edge))
             {
                 Begin(offered, false, emergency);
                 hasOffer = false;
             }
             else if (reversedPlan && action.Edge.Kind == NavigationAction.Flight && !supported &&
+                !native.AwaitingEquipmentObservation && DirectReady(body, native.Observed, feet, feetGoal, DirectKind.Flight, emergency) &&
                 Vector2.DistanceSquared(feet, feetGoal) <= 48f * 48f && CanLiftDirectly(body, native.Observed, feet) &&
                 NearLine(body, feet, feetGoal, wholeLane: true))
             {
@@ -264,26 +289,26 @@ namespace JueMingR.TerrariaHost.Companions
                 ClearPrefix();
                 Begin(new NavigationTransition(NavigationAction.Flight, feet, feetGoal), true, emergency);
             }
-            else if (reversedPlan && DirectWalk(body, feet, native.Observed) &&
+            else if (reversedPlan && DirectWalk(body, feet, native.Observed, target.X, LocalSpacing(body), this.targetVelocity.X, emergency) &&
                 CompanionGroundRun.TryFlatLane(body, feetGoal.X - feet.X, false))
             {
                 // A proved lane now points back along the body's own floor.
                 // An obsolete command retires without a geometric rejection.
                 route.Supersede(action.Edge);
                 ClearPrefix();
-                Begin(new NavigationTransition(NavigationAction.Walk, feet, feetGoal), true, emergency);
+                Begin(new NavigationTransition(NavigationAction.Walk, feet, new Vector2(feetGoal.X, feet.Y)), true, emergency);
             }
             bool cruiseCheck = action.Id != 0 && action.Edge.Kind == NavigationAction.Walk &&
                 Math.Abs(feetGoal.X - feet.X) > 104f && CompanionMotionProfile.CanFly(native.Observed) &&
                 unchecked((int)(Main.GameUpdateCount - nextCruiseCheck)) >= 0;
-            if (action.Id != 0 && action.Direct && action.CanRetarget && !hasOffer && !plannedHandoff &&
+            if (action.Id != 0 && action.Direct && action.CanRetarget && !hasOffer && !approaching &&
                 (action.Edge.Kind == NavigationAction.Walk || action.Edge.Kind == NavigationAction.Flight) &&
                 (cruiseCheck || CanTakeDash(native.Observed, feet) || action.Edge.Kind == NavigationAction.Walk &&
                     (feetGoal.Y - feet.Y) * body.gravDir < -26f ||
                     action.Edge.Kind == NavigationAction.Flight && supported && !ownerInAir))
             {
                 if (cruiseCheck) nextCruiseCheck = Main.GameUpdateCount + 10;
-                if (TryDirect(body, native.Observed, feet, out var faster) &&
+                if (TryDirect(body, native, feet, emergency, out var faster) &&
                     (faster.Kind != action.Edge.Kind || faster.Detail != action.Edge.Detail))
                 {
                     if (!action.TryRetarget(faster)) Begin(faster, true, emergency);
@@ -293,18 +318,14 @@ namespace JueMingR.TerrariaHost.Companions
             bool atGoal = action.Id == 0 && CloseTarget(body, feet);
             if (action.Id == 0 && !atGoal)
             {
-                bool offerReady = hasOffer && ReachableEntry(feet, offered) && CanResume(native, offered) &&
-                    (!native.AwaitingEquipmentObservation || offered.Kind == NavigationAction.Walk);
-                bool allowDirect = !plannedHandoff && (emergency || directRetry == 0 || unchecked((int)(Main.GameUpdateCount - directRetry)) >= 0 ||
-                    Vector2.DistanceSquared(feet, blockedAt) > 24f * 24f ||
-                    Math.Sign(blockedTarget.X - blockedAt.X) != Math.Sign(feetGoal.X - feet.X));
-                if (offerReady &&
-                    (!allowDirect || selectedApproach || offered.Kind != NavigationAction.Walk || !DirectWalk(body, feet, native.Observed)))
+                if (offerReady && (selectedApproach || offered.Kind != NavigationAction.Walk))
                 {
                     Begin(offered, false, emergency);
                     hasOffer = false;
                 }
-                else if (allowDirect && TryDirect(body, native.Observed, feet, out var edge))
+                else if (approaching && DirectWalk(body, feet, native.Observed, approach.X, 1f, 0f, emergency))
+                    Begin(new NavigationTransition(NavigationAction.Walk, feet, approach), true, emergency);
+                else if ((!approaching || !supported) && TryDirect(body, native, feet, emergency, out var edge))
                     Begin(edge, true, emergency);
                 else if (offerReady)
                 {
@@ -317,8 +338,10 @@ namespace JueMingR.TerrariaHost.Companions
                 if (activeLandingRisk && action.Edge.Kind == NavigationAction.Flight && supported && !action.Committed &&
                     native.AwaitingEquipmentObservation) return new CompanionMobilityFrame { Status = "停留" };
                 bool rollingWalk = !action.Direct && route?.ContinuesWithForwardSpeed(action.Edge) == true;
-                Vector2 live = action.Direct ? LiveTarget(body, feet) : target;
-                var frame = action.Input(body, native, supported, live, this.targetVelocity, action.Direct ? LocalSpacing(body) : 0f,
+                bool followingEntry = action.Direct && action.Edge.Kind == NavigationAction.Walk && approaching;
+                Vector2 live = followingEntry ? approach : action.Direct ? LiveTarget(body, feet) : target;
+                Vector2 liveVelocity = followingEntry ? Vector2.Zero : this.targetVelocity;
+                var frame = action.Input(body, native, supported, live, liveVelocity, followingEntry ? 1f : action.Direct ? LocalSpacing(body) : 0f,
                     threatDirection, emergency || rescuing, keepAirContact, ownerInAir, rollingWalk);
                 // Check the particular proved landing when a grounded
                 // flight is actually about to hand over its native jump.
@@ -336,6 +359,24 @@ namespace JueMingR.TerrariaHost.Companions
             }
             return new CompanionMobilityFrame { Status = atGoal || desiredSpacing == 0f ? "停留" :
                 QueryStatus == NavigationQueryStatus.AwaitingWorldData ? "等待地形" : "正在找路" };
+        }
+
+        private bool ReadyOffer(Player body, CompanionMobilityState native, Vector2 feet)
+        {
+            if (!hasOffer || !ReachableEntry(feet, offered) || !CanResume(native, offered) ||
+                native.AwaitingEquipmentObservation && offered.Kind != NavigationAction.Walk) return false;
+            if (offered.Kind == NavigationAction.Mount && offered.MountChoice.Valid && !offered.MountChoice.SourceCurrent(body) ||
+                offeredFlightTouchdown.HasValue && !CompanionNativeContact.Supported(body, offeredFlightTouchdown.Value))
+            {
+                route.Abandon(offered);
+                ClearPrefix();
+                return false;
+            }
+            // These tools may legitimately wait for the live hand. A walk
+            // already steering to this inlet remains available meanwhile.
+            return !native.Observed.HandBusy || offered.Kind != NavigationAction.Mount && offered.Kind != NavigationAction.Dismount &&
+                offered.Kind != NavigationAction.Hook && offered.Detail != NavigationTraversalDetail.TrackBoard &&
+                offered.Detail != NavigationTraversalDetail.Rod;
         }
 
         private void Begin(NavigationTransition edge, bool direct, bool emergency)
@@ -416,7 +457,7 @@ namespace JueMingR.TerrariaHost.Companions
                 // Measure passage across the actual floor/air envelope,
                 // including intentional detours. Reissuing a local command
                 // does not erase the age of progress at the same contact.
-                Vector2 destination = action.Direct ? target : action.Edge.To;
+                Vector2 destination = action.ProgressTarget;
                 bool horizontallyCloser = Math.Abs(destination.X - progressBoundary.X) -
                     Math.Abs(destination.X - feet.X) >= 10f;
                 if (action.RoofEscapeDirection != 0)
@@ -433,7 +474,7 @@ namespace JueMingR.TerrariaHost.Companions
                     noUsefulProgress = 0;
                     nextStallCheck = StallUpdates;
                 }
-                else if (!holding && ++noUsefulProgress >= nextStallCheck && !action.Committed &&
+                else if (!holding && !action.Braking && ++noUsefulProgress >= nextStallCheck && !action.Committed &&
                     action.Edge.Kind != NavigationAction.Hoik)
                     result = action.Outcome = CompanionActionOutcome.Blocked;
             }
@@ -498,7 +539,8 @@ namespace JueMingR.TerrariaHost.Companions
             action.Reset();
             ClearPrefix();
             route?.Reset();
-            directRetry = nextFacilities = dashPreparedUntil = retrySuspendedAt = 0;
+            Array.Clear(directFailures, 0, directFailures.Length);
+            nextFacilities = dashPreparedUntil = retrySuspendedAt = 0;
             retireIntent = rescuing = rescuePending = false;
             hasBlockedRoof = false;
             targetChanged = true;
@@ -542,7 +584,7 @@ namespace JueMingR.TerrariaHost.Companions
             ObserveOwnerTrail(trail);
             if (retireIntent) return;
             bool airDash = !supported && CompanionMotionProfile.Wings(state);
-            if (state.DashReady && (airDash || supported && Math.Abs(feet.Y - target.Y) <= 8f) &&
+            if (state.DashReady && (airDash || supported) && !native.AwaitingEquipmentObservation &&
                 Math.Abs(feet.X - target.X) > 140f && unchecked((int)(Main.GameUpdateCount - nextDashCheck)) >= 0 &&
                 budget.TryTiles(160) && budget.TryPredict(airDash ? 20 : 1))
             {
@@ -561,9 +603,9 @@ namespace JueMingR.TerrariaHost.Companions
             route.SetCommitted(active && action.Committed);
             if (active && action.Committed) return;
             bool directPrefix = active && action.Direct && !action.LosingProgress && !targetChanged;
-            bool selectedApproach = route.HasTraversalApproach(feet, target);
+            bool selectedApproach = route.TryTraversalApproach(feet, out _);
             bool needFlightMount = NeedsFlightMount(body, state, feet) && !native.AwaitingEquipmentObservation;
-            bool needsDifferentFloor = action.Edge.Kind == NavigationAction.Walk && Math.Abs(target.Y - feet.Y) > 24f;
+            bool needsDifferentFloor = action.Edge.Kind == NavigationAction.Walk && Math.Abs(target.Y - feet.Y) > 17f;
             var groundMount = GroundMountFixture(body, state, feet, budget);
             if (directPrefix && !groundMount.HasValue && !selectedApproach && !needFlightMount && !needsDifferentFloor &&
                 (action.Edge.Kind != NavigationAction.Walk ||
@@ -595,7 +637,7 @@ namespace JueMingR.TerrariaHost.Companions
             Vector2 hint = default;
             bool hasHint = trail != null && trail.TryOutletHint(feet, target, Main.GameUpdateCount, out hint);
             route.SetTrailHint(hint, hasHint);
-            route.SetLocalFixture(LocalFixture(body, feet, capabilities, budget) ?? groundMount);
+            route.SetLocalFixture(LocalFixture(body, feet, budget) ?? groundMount ?? LocalRiseFixture(body, native, feet, budget));
             route.SetTargetMotion(targetVelocity);
             route.SetTargetAirborne(targetAirborne);
             route.SetNeedFlightMount(needFlightMount);
@@ -660,7 +702,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (!supported || body.mount.Active || body.gravDir < 0 || state.HandBusy || body.noItems || body.cursed ||
                 state.Wet || state.GrappleAttached || state.GrappleInFlight || state.Pulley ||
                 state.MountChoices == null || state.MountChoices.Length == 0 || hasOffer || route.CorridorLength != 0 ||
-                Math.Abs(offset) < 144f || Math.Abs(target.Y - feet.Y) > 8f ||
+                Math.Abs(offset) < 144f ||
                 unchecked((int)(Main.GameUpdateCount - nextMountCheck)) < 0 || !budget.TryTiles(160)) return null;
             nextMountCheck = Main.GameUpdateCount + 12;
             int heading = Math.Sign(offset);
@@ -693,16 +735,35 @@ namespace JueMingR.TerrariaHost.Companions
             return selected;
         }
 
-        private NavigationTransition? LocalFixture(Player body, Vector2 feet, NavigationCapabilities caps, NavigationBudget budget)
+        private NavigationTransition? LocalFixture(Player body, Vector2 feet, NavigationBudget budget)
         {
             int direction = Math.Sign(target.X - feet.X);
-            if (!supported || Math.Abs(target.X - feet.X) < 18f || Math.Abs(target.Y - feet.Y) > caps.JumpHeight + 32f ||
+            if (!supported || route.CorridorLength != 0 || Math.Abs(target.X - feet.X) < 18f ||
                 !budget.TryTiles(40) || !CompanionDoor.AtHorizontalInlet(body, direction, out var door)) return null;
             var aperture = door.Aperture;
             float farSide = direction > 0 ? aperture.Right : aperture.Left;
             if ((target.X - farSide) * direction < 10f) return null;
             var exit = new Vector2(farSide + direction * (body.width * .5f + 6f), feet.Y);
             return new NavigationTransition(NavigationAction.Door, feet, exit, entryTile: door.Target.ToTileCoordinates());
+        }
+
+        private NavigationTransition? LocalRiseFixture(Player body, CompanionMobilityState native, Vector2 feet, NavigationBudget budget)
+        {
+            var state = native.Observed;
+            float rise = (feet.Y - target.Y) * body.gravDir;
+            if (rise < -6f || route.CorridorLength != 0 || hasOffer || native.AwaitingEquipmentObservation ||
+                state.Pulley || state.GrappleAttached || state.GrappleInFlight || state.Track || state.Wet || body.stoned ||
+                !(CompanionMotionProfile.Wings(state) || state.RocketAvailable || CompanionMotionProfile.MountFlight(state)) ||
+                Math.Abs(target.X - feet.X) <= 8f || StillBlockedByRoof(body, feet) || !budget.TryPredict() ||
+                NearLine(body, feet, target) || !budget.TryTiles(40) || !budget.TryPredict(3)) return null;
+            // A wall can block the diagonal while the body has a usable
+            // vertical inlet. The shared refiner still requires enough real
+            // lift, clearance and reserve for this bounded air endpoint.
+            float clearance = MathHelper.Clamp(rise + 12f, 20f, 48f);
+            Vector2 outlet = feet - new Vector2(0f, clearance * body.gravDir);
+            if (!NearLine(body, feet, outlet, wholeLane: true)) return null;
+            return new NavigationTransition(NavigationAction.Flight, feet, outlet,
+                NavigationTraversal.CellAt(feet), NavigationTraversal.CellAt(outlet));
         }
 
         private bool TryPrepareRescue(Player body, CompanionMobilityState native, Vector2 feet, NavigationBudget budget)
@@ -739,15 +800,17 @@ namespace JueMingR.TerrariaHost.Companions
             return true;
         }
 
-        private bool TryDirect(Player body, CompanionMobilitySnapshot state, Vector2 feet, out NavigationTransition edge)
+        private bool TryDirect(Player body, CompanionMobilityState native, Vector2 feet, bool emergency, out NavigationTransition edge)
         {
             edge = default;
-            if (state.Wet && !state.Shimmer && NearLine(body, feet, target))
+            var state = native.Observed;
+            if (state.Wet && !state.Shimmer && DirectReady(body, state, feet, target, DirectKind.Swim, emergency) && NearLine(body, feet, target))
             {
                 edge = new NavigationTransition(NavigationAction.Swim, feet, target);
                 return true;
             }
-            bool walk = DirectWalk(body, feet, state);
+            var groundTarget = new Vector2(target.X, feet.Y);
+            bool walk = DirectWalk(body, feet, state, target.X, LocalSpacing(body), targetVelocity.X, emergency);
             // Going back toward the same divider after a rejected launch
             // can undo the approach before an alternate launch is refined.
             // A complete nearby lane still permits an immediate reversal.
@@ -765,19 +828,31 @@ namespace JueMingR.TerrariaHost.Companions
                 float span = Math.Min(192f, horizontal + lookAhead);
                 runway = CompanionGroundRun.TryFlatLane(body, Math.Sign(target.X - feet.X) * span, false);
             }
-            bool flight = (!walk || rise > 24f || runway) && rise > -18f &&
+            bool flight = !native.AwaitingEquipmentObservation && (!walk || rise > 24f || runway) && rise > -18f &&
+                DirectReady(body, state, feet, target, DirectKind.Flight, emergency) &&
                 CanLiftDirectly(body, state, feet);
-            bool dash = CanTakeDash(state, feet);
-            if (!(walk || flight || dash && !supported)) return false;
-            // Compare whole useful progress to the same local target with
-            // startup and current inertia included. Native dash qualification
-            // is a separate finite trajectory check in the shared slice.
+            bool dash = !native.AwaitingEquipmentObservation && CanTakeDash(state, feet) &&
+                DirectReady(body, state, feet, supported ? groundTarget : target, supported ? DirectKind.Dash : DirectKind.FlightDash, emergency);
+            if (!(walk || flight || dash)) return false;
+            if (flight && rise > 24f)
+            {
+                // This candidate advances the unresolved rise. Don't rank
+                // its climb against the time for a ground-only prefix.
+                var airDetail = !supported && dash && CompanionGroundRun.DashTravelTicks(body, state, feet, target, true) + 2f <
+                    CompanionGroundRun.DirectTravelTicks(body, state, NavigationAction.Flight, feet, target)
+                    ? NavigationTraversalDetail.FlightDash : NavigationTraversalDetail.None;
+                edge = new NavigationTransition(NavigationAction.Flight, feet, target, detail: airDetail);
+                return true;
+            }
+            // Compare travel tools over the same local ground run while the
+            // real two-dimensional owner location remains a planner input.
+            Vector2 comparison = supported && (walk || dash) ? groundTarget : target;
             var kind = walk ? NavigationAction.Walk : NavigationAction.Flight;
-            float best = walk ? CompanionGroundRun.DirectTravelTicks(body, state, kind, feet, target) : float.PositiveInfinity;
+            float best = walk ? CompanionGroundRun.DirectTravelTicks(body, state, kind, feet, comparison) : float.PositiveInfinity;
             float hold = action.Id != 0 && action.Direct && !action.LosingProgress ? 2f : 0f;
             if (flight)
             {
-                float time = CompanionGroundRun.DirectTravelTicks(body, state, NavigationAction.Flight, feet, target);
+                float time = CompanionGroundRun.DirectTravelTicks(body, state, NavigationAction.Flight, feet, comparison);
                 if (time + hold < best)
                 {
                     kind = NavigationAction.Flight;
@@ -785,21 +860,20 @@ namespace JueMingR.TerrariaHost.Companions
                 }
             }
             var detail = NavigationTraversalDetail.None;
-            if (dash && (!supported || walk) &&
-                CompanionGroundRun.DashTravelTicks(body, state, feet, target, !supported) + hold < best)
+            if (dash && CompanionGroundRun.DashTravelTicks(body, state, feet, comparison, !supported) + hold < best)
             {
                 if (supported) kind = NavigationAction.Dash;
                 else { kind = NavigationAction.Flight; detail = NavigationTraversalDetail.FlightDash; }
             }
-            edge = new NavigationTransition(kind, feet, target, detail: detail);
+            if (kind == NavigationAction.Flight && !flight && detail != NavigationTraversalDetail.FlightDash) return false;
+            edge = new NavigationTransition(kind, feet, kind == NavigationAction.Flight ? target : groundTarget, detail: detail);
             return true;
         }
 
         private bool CanTakeDash(CompanionMobilitySnapshot state, Vector2 feet) =>
             state.DashReady && dashPreparedUntil != 0 && unchecked((int)(dashPreparedUntil - Main.GameUpdateCount)) >= 0 &&
             dashPreparedInAir == !supported && Vector2.DistanceSquared(feet, dashOrigin) <= 22f * 22f &&
-            Math.Sign(target.X - feet.X) == dashDirection &&
-            (dashPreparedInAir || Math.Abs(feet.Y - target.Y) <= 8f) && Math.Abs(feet.X - target.X) > 140f;
+            Math.Sign(target.X - feet.X) == dashDirection && Math.Abs(feet.X - target.X) > 140f;
 
         private bool CanLiftDirectly(Player body, CompanionMobilitySnapshot state, Vector2 feet)
         {
@@ -853,13 +927,64 @@ namespace JueMingR.TerrariaHost.Companions
             return false;
         }
 
-        private bool DirectWalk(Player body, Vector2 feet, CompanionMobilitySnapshot state)
+        private bool DirectWalk(Player body, Vector2 feet, CompanionMobilitySnapshot state, float x, float band, float speed, bool emergency)
         {
-            float heightTolerance = !targetAirborne && CompanionMotionProfile.CanFly(state) ? 17f : 12f;
-            if (!supported || state.GrappleAttached || state.Pulley || state.Track || Math.Abs(feet.Y - target.Y) > heightTolerance) return false;
-            int direction = Math.Sign(target.X - feet.X);
-            return direction != 0 && CompanionMotionAction.ClearAhead(body, direction,
-                Math.Max(7f, Math.Abs(body.velocity.X) + 2f), true);
+            if (!supported || state.GrappleAttached || state.Pulley || state.Track ||
+                !DirectReady(body, state, feet, new Vector2(x, feet.Y), DirectKind.Walk, emergency)) return false;
+            int direction = CompanionMotionProfile.Steer(body, state, x, speed, band, false);
+            if (direction == 0) return false;
+            return WalkStride(body, direction, Math.Max(7f, Math.Abs(body.velocity.X) + 2f));
+        }
+
+        private static bool WalkStride(Player body, int direction, float stride) =>
+            CompanionMotionAction.ClearAhead(body, direction, stride, true) ||
+                CompanionGroundRun.HasShallowStepOff(body, direction) &&
+                CompanionMotionAction.ClearAhead(body, direction, stride, false, allowSteps: true);
+
+        private void RememberDirectFailure(Player body, CompanionMobilitySnapshot state, Vector2 feet)
+        {
+            var kind = action.Edge.Kind == NavigationAction.Walk ? DirectKind.Walk : action.Edge.Kind == NavigationAction.Dash ? DirectKind.Dash :
+                action.Edge.Kind == NavigationAction.Swim ? DirectKind.Swim :
+                action.Edge.Detail == NavigationTraversalDetail.FlightDash ? DirectKind.FlightDash : DirectKind.Flight;
+            Vector2 goal = action.ProgressTarget;
+            int direction = Math.Sign(goal.X - feet.X);
+            int elevation = Elevation(goal, feet);
+            float contactY = elevation == 0 ? -body.height * .5f * body.gravDir :
+                elevation * (elevation * body.gravDir < 0f ? body.height + 5f : 8f);
+            Point contact = NavigationTraversal.CellAt(feet + new Vector2(direction * (body.width * .5f + 6f), contactY));
+            directFailures[(int)kind] = new DirectFailure
+            {
+                Until = Main.GameUpdateCount + 36, Position = feet, Supported = supported,
+                Contact = contact, Direction = direction, Elevation = elevation, Width = body.width, Height = body.height,
+                Source = DirectSource(state, kind), FootVersion = TerrainVersion(NavigationTraversal.CellAt(feet)),
+                ContactVersion = TerrainVersion(contact)
+            };
+        }
+
+        private bool DirectReady(Player body, CompanionMobilitySnapshot state, Vector2 feet, Vector2 goal, DirectKind kind, bool emergency)
+        {
+            // Retry only the failed input at this local contact. A stalled
+            // launch must never occupy the next known horizontal stride.
+            var failure = directFailures[(int)kind];
+            return emergency || failure.Until == 0 || unchecked((int)(Main.GameUpdateCount - failure.Until)) >= 0 ||
+                failure.Supported != supported || failure.Width != body.width || failure.Height != body.height ||
+                Vector2.DistanceSquared(feet, failure.Position) > 24f * 24f || failure.Direction != Math.Sign(goal.X - feet.X) ||
+                failure.Elevation != Elevation(goal, feet) || failure.Source != DirectSource(state, kind) ||
+                failure.FootVersion != TerrainVersion(NavigationTraversal.CellAt(failure.Position)) ||
+                failure.ContactVersion != TerrainVersion(failure.Contact);
+        }
+
+        private static int Elevation(Vector2 goal, Vector2 feet) => Math.Abs(goal.Y - feet.Y) > 16f ? Math.Sign(goal.Y - feet.Y) : 0;
+
+        private int TerrainVersion(Point cell) => world != null && world.TryVersion(cell, out _, out int version) ? version : 0;
+
+        private static int DirectSource(CompanionMobilitySnapshot state, DirectKind kind)
+        {
+            if (kind == DirectKind.Dash) return state.DashType;
+            if (kind == DirectKind.Walk) return state.MountType;
+            if (kind == DirectKind.Swim) return state.MountType * 2 + (state.CanSwim ? 1 : 0);
+            return unchecked((((state.MountType * 397 + state.Wings) * 397 + state.RocketBoots) * 397 + state.DashType) * 4 +
+                (state.RocketAvailable ? 1 : 0) + (state.CarpetReady ? 2 : 0));
         }
 
         private bool CloseTarget(Player body, Vector2 feet)
@@ -886,19 +1011,21 @@ namespace JueMingR.TerrariaHost.Companions
 
         private Vector2 LiveTarget(Player body, Vector2 feet)
         {
-            if (action.Edge.Kind != NavigationAction.Walk && action.Edge.Kind != NavigationAction.Flight) return target;
+            bool walk = action.Edge.Kind == NavigationAction.Walk;
+            var destination = walk || action.Edge.Kind == NavigationAction.Dash ? new Vector2(target.X, feet.Y) : target;
+            if (!walk && action.Edge.Kind != NavigationAction.Flight) return destination;
             float dx = target.X - feet.X;
-            if (Math.Abs(dx) <= spacing + 12f || Math.Abs(targetVelocity.X) < 1f) return target;
+            if (Math.Abs(dx) <= spacing + 12f || Math.Abs(targetVelocity.X) < 1f) return destination;
             float lead = MathHelper.Clamp(targetVelocity.X * 2f, -12f, 12f);
             // Follow only the short observed lane. GroundInput still owns
             // braking and support, and planned detours never lead the owner.
-            if (dx * lead <= 0f || Math.Abs(dx) > 56f) return target;
-            if (action.Edge.Kind == NavigationAction.Walk)
+            if (dx * lead <= 0f || Math.Abs(dx) > 56f) return destination;
+            if (walk)
             {
-                if (!CompanionGroundRun.TryFlatLane(body, dx + lead, false)) return target;
+                if (!CompanionGroundRun.TryFlatLane(body, dx + lead, false)) return destination;
             }
-            else if (!NearLine(body, feet, target + new Vector2(lead, 0f), wholeLane: true)) return target;
-            return target + new Vector2(lead, 0f);
+            else if (!NearLine(body, feet, target + new Vector2(lead, 0f), wholeLane: true)) return destination;
+            return destination + new Vector2(lead, 0f);
         }
 
         private static bool NearLine(Player body, Vector2 from, Vector2 to, bool wholeLane = false)

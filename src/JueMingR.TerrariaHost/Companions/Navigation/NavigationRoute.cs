@@ -47,6 +47,7 @@ namespace JueMingR.TerrariaHost.Companions
         private NavigationTransition offer, checking;
         private int worldEpoch, corridorIndex, cursor, nextRetry, clock;
         private int offerIndex, offerEnd, checkIndex, checkEnd, verificationIndex;
+        private int lastTraversal = -1;
         private bool known, offered, issued, committed, verifying, connector;
         private bool facilitiesChanged, skipFlightMerge;
         private Vector2 trailHint;
@@ -161,10 +162,14 @@ namespace JueMingR.TerrariaHost.Companions
             bool sameCorridorGoal = corridor.Count != 0 && SameGoal(corridorGoal, goal);
             if (!issued && needFlightMount && traversal.LocalFlightMount(feet, start, rejectFilter, out var mount))
                 localCandidate = mount;
-            if (!issued && !localCandidate.HasValue && !sameCorridorGoal && targetAirborne &&
-                targetMotion.Y * current.Gravity >= 1f &&
-                traversal.LocalPlatformExit(feet, target, start, rejectFilter, out var descent))
-                localCandidate = descent;
+            // A local release can feed the next layer even after the owner has
+            // landed far to the side. Keep a usable corridor to the same goal.
+            if (!issued && !localCandidate.HasValue && corridorIndex >= corridor.Count && start.Grounded)
+            {
+                Vector2 descentTarget = targetAirborne && goal.Grounded ? traversal.Feet(goal) : target;
+                if (traversal.LocalPlatformExit(feet, descentTarget, start, rejectFilter, out var descent))
+                    localCandidate = descent;
+            }
             if (facilitiesChanged) query = null;
             if (facilitiesChanged) waitingReads = null;
             facilitiesChanged = false;
@@ -192,7 +197,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if (!alreadyHead)
                 {
                     ClearCorridor();
-                    corridor.Add(fixture);
+                    AddCorridorEdge(fixture);
                     corridorGoal = goal;
                     sameCorridorGoal = true;
                 }
@@ -204,7 +209,7 @@ namespace JueMingR.TerrariaHost.Companions
                     traversal.LocalTrack(feet, target, start, out local) && !IsRejected(local))
                 {
                     ClearCorridor();
-                    corridor.Add(local);
+                    AddCorridorEdge(local);
                     corridorGoal = goal;
                     sameCorridorGoal = true;
                 }
@@ -284,7 +289,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if (issued && !HasNearbyEntry(feet, candidate)) return;
             ClearCorridor();
-            corridor.AddRange(candidate);
+            foreach (var edge in candidate) AddCorridorEdge(edge);
             candidate.Clear();
             corridorGoal = goal;
             corridorIndex = cursor = 0;
@@ -340,50 +345,33 @@ namespace JueMingR.TerrariaHost.Companions
                 (next.Kind == NavigationAction.Walk || next.Detail == NavigationTraversalDetail.RunningJump);
         }
 
-        internal bool IsTraversalApproach(NavigationTransition transition, Vector2 target)
+        internal bool IsTraversalApproach(NavigationTransition transition)
         {
             if (!offered || !offer.SameEdge(transition)) return false;
-            return HasTraversalAfter(connector ? offerIndex : offerIndex + (offer.Kind == NavigationAction.Walk ? 1 : 0), target);
+            return (connector ? offerIndex : offerIndex + (offer.Kind == NavigationAction.Walk ? 1 : 0)) <= lastTraversal;
         }
 
-        internal bool HasTraversalApproach(Vector2 feet, Vector2 target)
+        internal bool TryTraversalApproach(Vector2 feet, out Vector2 approach)
         {
+            approach = default;
             if (issued || corridorIndex >= corridor.Count) return false;
             var first = corridor[corridorIndex];
-            return Vector2.DistanceSquared(feet, first.From) <= 42f * 42f && HasTraversalAfter(corridorIndex, target);
+            if (Vector2.DistanceSquared(feet, first.From) > 42f * 42f || corridorIndex > lastTraversal)
+                return false;
+            // This is a steering waypoint while proof is pending. The live
+            // Walk still sweeps and brakes on its own support. Only a refined
+            // offer can release that support or start the next traversal.
+            approach = first.Kind == NavigationAction.Walk ? first.To : first.From;
+            return true;
         }
 
-        private bool HasTraversalAfter(int first, Vector2 target)
+        private void AddCorridorEdge(NavigationTransition edge)
         {
-            // A surface can now contain several genuine one-tile inlets.
-            // Bound lookahead by physical distance so their presence does
-            // not hide the same utility or launch behind more graph edges.
-            int limit = Math.Min(corridor.Count, first + 28);
-            float approach = 0f;
-            for (int i = first; i < limit; i++)
-            {
-                var edge = corridor[i];
-                if (edge.Kind == NavigationAction.Facility || edge.Kind == NavigationAction.Mount ||
-                    edge.Detail == NavigationTraversalDetail.TrackBoard ||
-                    edge.Kind == NavigationAction.Hoik) return true;
-                // Don't walk off a useful underpass approach while its
-                // native release and first landing proof are sliced.
-                if (edge.Kind == NavigationAction.PlatformDrop && edge.Irreversible &&
-                    (edge.To.Y - target.Y) * capabilities.Gravity >= 48f) return true;
-                if (edge.Kind == NavigationAction.Drop && (target.Y - edge.From.Y) * capabilities.Gravity >= 24f &&
-                    Math.Abs(target.Y - edge.To.Y) < Math.Abs(target.Y - edge.From.Y)) return true;
-                // The existing corridor has chosen to rise above something
-                // between the body and the same-level goal. Walking straight
-                // toward the owner here can undo the approach to that launch.
-                if (edge.Kind == NavigationAction.Jump &&
-                    (Math.Abs(target.Y - edge.To.Y) + 12f < Math.Abs(target.Y - edge.From.Y) ||
-                    Math.Abs(target.Y - edge.From.Y) <= 16f && (edge.From.Y - edge.To.Y) * capabilities.Gravity >= 32f &&
-                    (target.X - edge.From.X) * Math.Sign(edge.To.X - edge.From.X) >= 24f)) return true;
-                if (edge.Kind != NavigationAction.Walk) return false;
-                approach += Vector2.Distance(edge.From, edge.To);
-                if (approach > 384f) return false;
-            }
-            return false;
+            // Keep the chosen exit visible even beyond a long floor run.
+            // The per-update handoff check never scans the published path.
+            if (edge.Kind != NavigationAction.Walk && edge.Kind != NavigationAction.Dash)
+                lastTraversal = corridor.Count;
+            corridor.Add(edge);
         }
 
         internal void Complete(NavigationTransition transition, Vector2 actualFeet)
@@ -608,6 +596,7 @@ namespace JueMingR.TerrariaHost.Companions
         private void ClearCorridor()
         {
             corridor.Clear();
+            lastTraversal = -1;
             corridorIndex = cursor = 0;
             offered = issued = committed = verifying = false;
             skipFlightMerge = false;

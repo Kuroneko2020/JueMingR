@@ -69,6 +69,11 @@ namespace NativeWorldTextProbe
                 {
                     var partition = new Action<object, object, Player>[]
                     {
+                        (h, p, owner) => NativeOffsetColdStart(context, h, p, owner),
+                        (h, p, owner) => NativeOwnerJumpFollow(context, h, p, owner),
+                        (h, p, owner) => NativeLandedOwnerPlatform(context, h, p, owner),
+                        (h, p, owner) => NativeWallFirstLift(context, h, p, owner),
+                        (h, p, owner) => NativeDirectLiftRecovery(context, h, p, owner),
                         (h, p, owner) => NativeOwnerReverses(context, h, p, owner),
                         (h, p, owner) => NativeMovingFall(context, h, p, owner),
                         (h, p, owner) => NativeAirDashSelection(context, h, p, owner),

@@ -54,6 +54,8 @@ namespace NativeWorldTextProbe
                 int ropeJump = -1, upperStand = -1, hoik = -1, impulses = 0, hoikExit = -1, obstructionCleared = -1, lowerExit = -1, stable = 0;
                 int ownerPhase = 0, startWait = -1, held = 0, maxRouteWork = 0, resumed = -1, departed = -1;
                 long firstAction = 0, lastAction = 0;
+                long hoikTraceAction = -1;
+                int hoikTraceRows = 0, hoikTraceImpulses = -1;
                 float ropeEntryY = 0, pulleyTravel = 0;
                 bool gate = false;
                 object navigation = Navigator(run.Actor);
@@ -123,6 +125,16 @@ namespace NativeWorldTextProbe
                     if (upperStand < 0 && ropeJump >= 0 && body.Center.X > 94 * 16 && OnFloor(body, upper)) upperStand = tick;
                     if (hoik < 0 && upperStand >= 0 && kind == "Hoik") hoik = tick;
                     if (upperStand >= 0 && body.position.X - before.X > 7 && body.velocity.X < 1) impulses++;
+                    if (hoik >= 0 && hoikExit < 0 && hoikTraceRows < 20 &&
+                        (currentAction != hoikTraceAction || impulses != hoikTraceImpulses))
+                    {
+                        hoikTraceAction = currentAction;
+                        hoikTraceImpulses = impulses;
+                        hoikTraceRows++;
+                        Console.WriteLine($"MIXED hoik trace step={tick} impulses={impulses} owner={human.Bottom}/{human.velocity} " +
+                            $"body={body.Bottom}/{body.velocity} inputs={body.controlLeft}/{body.controlRight}/{body.controlJump}/{body.controlDown} " +
+                            $"{PlanStatus(navigation)} {RouteTrace(navigation)} {RefinementTrace(navigation)}");
+                    }
                     if (hoikExit < 0 && impulses >= 2 && body.Left.X > (teeth + HoikModuleWidth) * 16 && OnFloor(body, upper)) hoikExit = tick;
                     if (resumed < 0 && obstructionCleared >= 0 && body.position.X - before.X > .05f && body.controlRight) resumed = tick;
                     if (departed < 0 && resumed >= 0 && body.Center.X >= lip * 16 - 12 && body.Bottom.Y > upper * 16 + .125f && body.velocity.Y > 0)
