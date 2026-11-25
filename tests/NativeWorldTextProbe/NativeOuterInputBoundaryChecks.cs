@@ -21,7 +21,8 @@ internal static class NativeOuterInputBoundaryChecks
     const BindingFlags F=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
     static readonly MethodInfo ResetControls = typeof(Player).GetMethod("ResetControls", F);
     static string root,hostPath; static object input,context,shell;
-    static KeyboardState keyboard; static MouseState mouse; static bool foreground=true,skip,throwBody;
+    static KeyboardState keyboard; static MouseState mouse; static bool foreground=true,nativeSelected=true,skip,throwBody;
+    static readonly Keys[] StateKeys = new[] { Keys.Kanji, Keys.None }.Concat(Enumerable.Range(240, 14).Select(key => (Keys)key)).ToArray();
     static Main main; static UserInterface ui; static int clicks,frames,keyboardSamples,px=150,py=150;
     static bool expectTextLease,observedTextWriting,foreignWritingAtOuter;static object foreignFixture;
     static object Get(object o,string n){var t=o.GetType();var p=t.GetProperty(n,F);return p!=null?p.GetValue(o,null):t.GetField(n,F).GetValue(o);}
@@ -95,12 +96,15 @@ internal static class NativeOuterInputBoundaryChecks
             foreground=true;UILinkPointNavigator.ChangePoint(2000);Frame(true,Keys.Down);Frame(false);Require(clicks==before+1 && UILinkPointNavigator.CurrentPoint==2000,"reactivation held/neutral actions do not travel or click");
             Frame(false,Keys.Down);Frame(false,Keys.Down);Require(UILinkPointNavigator.CurrentPoint==2001,"menu new navigation after release");Frame(false);Frame(false);
             Console.WriteLine("PASS outer menu Session absent / native UI click / original UILinkPointNavigator travel / background and activation tails");
+            MenuStateKeyRecovery();
             Terraria.Main.gameMenu=false;Call(context,"UpdateRuntime");Frame(false);Frame(false);before=clicks;Frame(false,Keys.W);Frame(false,Keys.W);Require(Terraria.Main.LocalPlayer.controlUp,"world original Triggers.CopyInto fresh key");Frame(false);
             foreground=false;Frame(true,Keys.W);Require(!Terraria.Main.LocalPlayer.controlUp,"world loss blocks consumer");foreground=true;Frame(true,Keys.W);Frame(false);Require(clicks==before && !Terraria.Main.LocalPlayer.controlUp,"world activation consumed");Frame(false,Keys.W);Frame(false,Keys.W);Require(Terraria.Main.LocalPlayer.controlUp,"world release allows fresh key");Frame(false);
             skip=true;Frame(false,Keys.W);Require(!(bool)Get(input,"CanUseInput") && (bool)Get(input,"CanRetainIntent"),"outer skip revokes epoch permission without retiring intent");skip=false;Frame(false);Frame(false,Keys.W);Frame(false,Keys.W);Require(Terraria.Main.LocalPlayer.controlUp,"next sampled frame recovers after skip");Frame(false);
             throwBody=true;try{Frame(false,Keys.W);throw new Exception("expected isolated exception");}catch(TargetInvocationException){Require(!(bool)Get(input,"CanUseInput"),"exception before mapping leaves no epoch permission");}finally{throwBody=false;}
             Frame(false);Frame(false,Keys.W);Frame(false,Keys.W);Require(Terraria.Main.LocalPlayer.controlUp && !(bool)Get(shell,"Failed"),"fresh input after outer exception; shell stays valid");
             Console.WriteLine("PASS outer world focus/reactivation / skipped and exceptional input epoch; real Shell consumers remain available");
+            WorldStateKeyRecovery();
+            StateKeysDoNotSuppressOrRecord();
             InventoryMenuClose();
             RejectedCompanionOpen();
             CaptureAndText(patch,host);
@@ -111,10 +115,124 @@ internal static class NativeOuterInputBoundaryChecks
     static void Frame(bool down,params Keys[] keys) => MouseFrame(down, false, keys);
 
     static void MouseFrame(bool down, bool side, params Keys[] keys)
+        => ButtonFrame((down ? 1 : 0) | (side ? 8 : 0), keys);
+
+    static void ButtonFrame(int buttons, params Keys[] keys)
     {
-        keyboard=new KeyboardState(keys);mouse=new MouseState(px+(frames++%2),py,0,down?ButtonState.Pressed:ButtonState.Released,ButtonState.Released,ButtonState.Released,side?ButtonState.Pressed:ButtonState.Released,ButtonState.Released);FocusHelper.IsSelectedApplication=foreground;
+        keyboard = RawKeyboardSample(keys);
+        mouse = new MouseState(px + frames++ % 2, py, 0, Button(buttons, 1), Button(buttons, 4),
+            Button(buttons, 2), Button(buttons, 8), Button(buttons, 16));
+        FocusHelper.IsSelectedApplication = foreground && nativeSelected;
         Call(main,"Update",new GameTime(TimeSpan.FromSeconds(1),TimeSpan.FromMilliseconds(250)));
-        if(!skip){ResetControls.Invoke(Main.LocalPlayer,null);PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);ui.Update(new GameTime(TimeSpan.FromSeconds(1),TimeSpan.FromMilliseconds(250)));}
+        if (!skip)
+        {
+            ResetControls.Invoke(Main.LocalPlayer, null);
+            // Match the native Player.Update text gate before consuming the
+            // original mappings. Bypassing it would conceal a leaked blockInput.
+            if (!Main.drawingPlayerChat && !Main.editSign && !Main.editChest && !Main.blockInput)
+                PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);
+            ui.Update(new GameTime(TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(250)));
+        }
+    }
+
+    static ButtonState Button(int buttons, int mask) => (buttons & mask) != 0 ? ButtonState.Pressed : ButtonState.Released;
+
+    static KeyboardState RawKeyboardSample(Keys[] keys)
+    {
+        var sample = new KeyboardState(keys);
+        uint missingStateBits = 0;
+        foreach (Keys key in keys)
+            if ((int)key >= 240 && (int)key <= 253 && sample.IsKeyUp(key))
+                missingStateBits |= 1u << ((int)key % 32);
+        if (missingStateBits == 0) return sample;
+
+        // XNA's public test constructor drops undefined enum values within
+        // this range. Inject those four bits in the emulated device result,
+        // before the real native refresh, to exercise the full numeric range.
+        object boxed = sample;
+        var highWord = typeof(KeyboardState).GetField("currentState7", F);
+        highWord.SetValue(boxed, (uint)highWord.GetValue(boxed) | missingStateBits);
+        return (KeyboardState)boxed;
+    }
+
+    static void MenuStateKeyRecovery()
+    {
+        foreach (var stateKey in StateKeys)
+        {
+            int before = clicks;
+            foreground = false; Frame(true, stateKey);
+            foreground = true; Frame(true, stateKey);
+            Require(!Main.mouseLeft && clicks == before, "menu activation click remains consumed");
+            int readsBeforeNeutral = keyboardSamples;
+            Frame(false, stateKey);
+            Require(keyboardSamples == readsBeforeNeutral + 1, "neutral recovery uses the original final keyboard read without polling again");
+            Require(!Main.mouseLeft && !PlayerInput.Triggers.Current.MouseLeft && !(bool)Get(input, "CanUseInput"),
+                "menu neutral frame itself remains consumed");
+            Require(((KeyboardState)Get(input, "KeyboardSample")).IsKeyDown(stateKey),
+                "menu retains raw keyboard state " + (int)stateKey + " before consumption");
+            Frame(true, stateKey); Frame(false, stateKey);
+            Require(clicks == before + 1, "menu original UI must receive an independent click with persistent state key " + (int)stateKey);
+        }
+        Frame(false);
+        Console.WriteLine("PASS no-Session menu refocus with persistent state keys 0,25,240..253; activation consumed, next original UI click delivered");
+    }
+
+    static void WorldStateKeyRecovery()
+    {
+        Keys stateKey = Keys.Kanji;
+        int before = clicks;
+        foreground = false; Frame(true, stateKey, Keys.W);
+        foreground = true; nativeSelected = false; Frame(false);
+        Require(!(bool)Get(input, "SampleFocused"), "foreground HWND without native selection cannot prove neutrality");
+        nativeSelected = true;
+        skip = true; Frame(false); skip = false;
+        Frame(true, stateKey, Keys.W);
+        Require(!Main.LocalPlayer.controlUp && !Main.LocalPlayer.controlUseItem,
+            "native denial and skipped Update must not clear rearm before focused held input");
+        foreach (var key in new[] { Keys.W, Keys.LeftAlt, Keys.RightShift, Keys.LeftWindows, Keys.OemClear })
+        {
+            Frame(false, stateKey, key); Frame(false, stateKey, key);
+            Require(!(bool)Get(input, "CanUseInput") && !Main.LocalPlayer.controlUp, "operation key must release: " + key);
+        }
+        for (int button = 0; button < 5; button++)
+        {
+            ButtonFrame(1 << button, stateKey);
+            Require(!(bool)Get(input, "CanUseInput") && !Main.LocalPlayer.controlUseItem,
+                "Mouse" + (button + 1) + " must release before recovery");
+        }
+        Frame(false, stateKey);
+        Require(!(bool)Get(input, "CanUseInput") && clicks == before, "world neutral sample is still consumed");
+        Frame(true, stateKey, Keys.W);
+        Require(Main.LocalPlayer.controlUseItem, "fresh click reaches native world action after neutral");
+        Frame(false, stateKey, Keys.W);
+        Require(Main.LocalPlayer.controlUp && clicks == before + 1, "new W and click reach original world consumers with state key still present");
+        var state = Get(shell, "State");
+        Frame(false, stateKey, Keys.F5);
+        Require((bool)Get(state, "Visible"), "fresh F5 works after recovery with state key still present");
+        Frame(false, stateKey); Frame(false, stateKey, Keys.F5); Frame(false, stateKey);
+        Require(!(bool)Get(state, "Visible"), "fresh F5 can close again");
+        Frame(false);
+        Console.WriteLine("PASS world refocus with state-key noise: native selection and skipped-sample guards, modifiers/OemClear/five mouse buttons, fresh movement/attack/F5");
+    }
+
+    static void StateKeysDoNotSuppressOrRecord()
+    {
+        var hotkeys = Get(input, "Hotkeys");
+        Frame(false, StateKeys.Concat(new[] { Keys.Q }).ToArray());
+        object[] primary = { 0 };
+        Require((int)Call(hotkeys, "NewPrimary", primary) == 1 && (int)primary[0] == (int)Keys.Q,
+            "status keys cannot become extra recording primaries");
+        Call(hotkeys, "SuppressHeld");
+        Require((bool)Call(hotkeys, "IsSuppressed", (int)Keys.Q), "true key is suppressed");
+        foreach (var key in StateKeys)
+            Require(!(bool)Call(hotkeys, "IsSuppressed", (int)key), "state key cannot enter suppression: " + (int)key);
+        Frame(false, StateKeys);
+        Require(!(bool)Get(hotkeys, "HasSuppressedKeys"), "state keys cannot outlive released suppressed key");
+        Frame(false, StateKeys.Concat(new[] { Keys.W }).ToArray());
+        Frame(false, StateKeys.Concat(new[] { Keys.W }).ToArray());
+        Require(Main.LocalPlayer.controlUp, "direct suppression release restores mapped movement");
+        Frame(false);
+        Console.WriteLine("PASS state keys 0,25,240..253 excluded from public recording and held suppression; native movement resumes");
     }
     static bool IsolatedUpdate(){if(throwBody)throw new InvalidOperationException("isolated before-input exception");if(foreignFixture!=null && !foreground)foreignWritingAtOuter=Object.ReferenceEquals(Terraria.Main.CurrentInputTextTakerOverride,foreignFixture) && !Terraria.Main.blockInput && PlayerInput.WritingText;if(!skip)Call(main,"DoUpdate_HandleInput");return false;}
     static bool KeyboardPrefix(ref KeyboardState __result){keyboardSamples++;__result=keyboard;return false;}
@@ -254,18 +372,20 @@ internal static class NativeOuterInputBoundaryChecks
         prepare.Invoke(popup,new object[]{960f,640f,Get(renderer,"FontIdentity"),measure,Get(renderer,"SkinGeneration")});
         var layout=Get(popup,"Layout");var commands=(IList)Get(layout,"Commands");int record=Enumerable.Range(0,commands.Count).First(i=>commands[i].ToString()=="Record");
         var button=Get(((IList)Get(layout,"Buttons"))[record],"Rect");var panel=Get(layout,"Panel");px=(int)((float)Get(panel,"X")+(float)Get(button,"X")+4);py=(int)((float)Get(panel,"Y")+(float)Get(button,"Y")+4);
-        Frame(false);Frame(true);Frame(false);Require((bool)Get(popup,"Capturing") && (bool)Get(input,"HotkeyCapture"),"actual popup Record click reaches capture owner");
+        Frame(false,Keys.Kanji);Frame(true,Keys.Kanji);Frame(false,Keys.Kanji);
+        Require((bool)Get(popup,"Capturing") && (bool)Get(input,"HotkeyCapture"),"actual popup Record click reaches capture owner with state key present");
         var inventoryBindings = PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus;
         var normalInventory = inventoryBindings["Inventory"];
         try
         {
             inventoryBindings["Inventory"] = new List<string> {nameof(Keys.Escape)};
-            Frame(false, Keys.Escape); Frame(false, Keys.Escape); Frame(false);
+            Frame(false, Keys.Kanji, Keys.Escape); Frame(false, Keys.Kanji, Keys.Escape); Frame(false, Keys.Kanji);
             Require(!(bool)Get(popup,"Capturing") && (bool)Get(state,"Visible") && !Main.LocalPlayer.controlInv,
                 "recording owns the same Escape edge without closing F5 or opening native Inventory");
         }
         finally { inventoryBindings["Inventory"] = normalInventory; }
-        Frame(false);Frame(true);Frame(false);Require((bool)Get(popup,"Capturing"),"recording can rearm after Escape");
+        Frame(false,Keys.Kanji);Frame(true,Keys.Kanji);Frame(false,Keys.Kanji);
+        Require((bool)Get(popup,"Capturing"),"recording can rearm after Escape with state key still present");
         int before=clicks;foreground=false;Frame(true,Keys.W);Require(!(bool)Get(popup,"Capturing") && !(bool)Get(input,"HotkeyCapture") && !(bool)Get(popup,"Visible"),"production UpdatePrefix focus cancellation retires actual capture");
         foreground=true;px=py=150;Frame(true,Keys.W);Frame(false);Require(clicks==before,"capture activation tail cannot click");Frame(false);Call(state,"Close");Frame(false);Frame(true);Frame(false);Require(clicks==before+1,"capture retired; new native UI click arrives after release");Frame(false);
         Console.WriteLine("PASS real F5 / HotkeyPopup Record consumer / UpdatePrefix focus cancel / fresh native click after capture tail");
@@ -286,6 +406,19 @@ internal static class NativeOuterInputBoundaryChecks
         // Native PlayerInput.UpdateInput clears WritingText at line903 after
         // consuming it. Assert the lease at the actual prefix boundary instead.
         Require((bool)Get(text,"OwnsTextToken") && Terraria.Main.blockInput && observedTextWriting,"actual InputPrefix/BeforeInput acquires popup text token and native writing gate");
+        // The raw state bit survives the editor and Escape release. The real
+        // text owner must retire only its keyboard tail before native movement.
+        Frame(false, Keys.Kanji);
+        Main.keyInt[0] = 27; Main.keyString[0] = "\u001b"; Main.keyCount = 1;
+        Frame(false, Keys.Kanji, Keys.Escape);
+        Require(!(bool)Get(text, "OwnsTextToken") && !Main.blockInput, "Escape retires only the real editor lease");
+        Frame(false, Keys.Kanji, Keys.Escape, Keys.W);
+        Require(!Main.LocalPlayer.controlUp, "held edit Escape keeps the keyboard tail");
+        Frame(false, Keys.Kanji); Frame(false, Keys.Kanji, Keys.W); Frame(false, Keys.Kanji, Keys.W);
+        Require(Main.LocalPlayer.controlUp, "native movement after editor release while state key persists");
+        Frame(false);
+        Require((bool)Call(text, "Begin", Get(style, "Editor")), "same popup can start a new real text edit");
+        Frame(false);
         var foreign=new object();foreignFixture=foreign;Terraria.Main.CurrentInputTextTakerOverride=foreign;PlayerInput.WritingText=true;foreground=false;Frame(false);
         Require(!(bool)Get(text,"Editing") && Object.ReferenceEquals(Terraria.Main.CurrentInputTextTakerOverride,foreign) && !Terraria.Main.blockInput && foreignWritingAtOuter,"focus cleanup restores own block but preserves replacement foreign text owner before native refresh");foreignFixture=null;
         // Retire only the fixture's foreign owner, as that owner's own action.

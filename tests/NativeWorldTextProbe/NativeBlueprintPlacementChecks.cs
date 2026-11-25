@@ -51,7 +51,14 @@ namespace NativeWorldTextProbe
                 Require(current()==null && GetOptional(host,"pendingProjection")==null && scene().Length==0,"Back then late Opened cannot revive candidate or scene");
                 Call(shell,"CloseAndSubmitPosition"); place(entry); pointer(true,true,false,100,100);
                 Require(mode()=="Following" && (int)Get(current(),"OriginX")==56 && (int)Get(current(),"OriginY")==85,"center-air89x32 anchor and held startup cannot confirm");
-                pointer(false,false,false,0,0); pointer(true,true,false,100,100); Require(mode()=="Following","unfocused pseudo-release cannot rearm"); fix(60,60);
+                pointer(false,false,false,0,0); pointer(true,true,false,100,100); Require(mode()=="Following","unfocused pseudo-release cannot rearm");
+                NativeQuickItemChecks.Sample(input, new[] { Keys.Kanji, Keys.W });
+                pointer(true, false, false, 100, 100); pointer(true, true, false, 100, 100);
+                Require(mode() == "Following", "held W cannot confirm after focus recovery");
+                NativeQuickItemChecks.Sample(input, new[] { Keys.Kanji });
+                pointer(true, false, false, 60, 60); pointer(true, true, false, 60, 60);
+                Require(mode() == "Committing", "independent confirm is admitted while the ignored state key persists");
+                NativeQuickItemChecks.Until(() => { poll(); return mode() == "Fixed"; });
                 var first=scene().Single(); long firstId=((BlueprintProjectionIdentity)Get(first,"Identity")).ProjectionGeneration;
                 Require((int)Get(first,"OriginX")==16 && (int)Get(first,"OriginY")==45,"complete center bounds fixed inside isolated world");
                 NativeQuickItemChecks.Sample(input,Array.Empty<Keys>()); NativeQuickItemChecks.Sample(input,Array.Empty<Keys>());
@@ -69,7 +76,10 @@ namespace NativeWorldTextProbe
                 Require(mode()=="Moving" && (int)Get(current(),"OriginX")==16 && (int)Get(current(),"OriginY")==45,"new target click preserves exact grab offset");
                 pointer(true,true,false,19,47); Require(mode()=="Moving" && (int)Get(current(),"OriginX")==19 && (int)Get(current(),"OriginY")==47,"target click cannot also confirm; grab follows delta");
                 pointer(false,false,false,0,0); pointer(true,true,false,1,1); Require((int)Get(current(),"OriginX")==19,"takeover freezes movement");
-                pointer(true,false,false,70,70); Require((int)Get(current(),"OriginX")==19,"trusted neutral rebases without catchup"); pointer(true,false,true,71,71);
+                NativeQuickItemChecks.Sample(input, new[] { Keys.Kanji });
+                pointer(true,false,false,70,70); Require((int)Get(current(),"OriginX")==19,"trusted neutral rebases without catchup");
+                pointer(true,false,false,71,70); Require((int)Get(current(),"OriginX")==20,"movement resumes from the new neutral baseline");
+                pointer(true,false,true,71,71);
                 Require(mode()=="Fixed" && (int)Get(first,"OriginX")==16 && (int)Get(first,"OriginY")==45,"cancel leaves committed origin and all masks untouched");
                 NativeQuickItemChecks.Sample(input,Array.Empty<Keys>()); Call(host,"MoveProjection"); pointer(true,false,false,16,45); pointer(true,true,false,16,45);
                 pointer(true,false,false,17,45); pointer(true,true,false,17,45); NativeQuickItemChecks.Until(()=>{poll();return mode()=="Fixed";});

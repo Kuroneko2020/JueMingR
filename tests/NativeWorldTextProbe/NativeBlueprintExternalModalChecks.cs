@@ -46,13 +46,13 @@ namespace NativeWorldTextProbe
             Call(input, "ReturnExternalModal", request); sample(Array.Empty<Keys>(), 0);
             Require(Get(input, "ExternalModalState").ToString() == "AwaitFocusedNeutral", "background synthetic neutral is not release proof");
             focused = true;
-            sample(new[] { Keys.Enter }, 0);
+            sample(new[] { Keys.Kanji, Keys.Enter }, 0);
             Require((bool)Get(input, "ExternalModalBusy"), "native Save Enter remains consumed after refocus");
             for (int button = 0; button < 5; button++)
-            { sample(Array.Empty<Keys>(), 1 << button); Require((bool)Get(input, "ExternalModalBusy"), "Mouse" + (button + 1) + " must physically release"); }
-            sample(Array.Empty<Keys>(), 0);
+            { sample(new[] { Keys.Kanji }, 1 << button); Require((bool)Get(input, "ExternalModalBusy"), "Mouse" + (button + 1) + " must physically release"); }
+            sample(new[] { Keys.Kanji }, 0);
             Require(!(bool)Get(input, "ExternalModalBusy") && !(bool)Get(input, "CanStartActions") && !PlayerInput.Triggers.Current.Up, "trusted neutral retires lease but consumes this sample");
-            sample(new[] { Keys.W }, 0);
+            sample(new[] { Keys.Kanji, Keys.W }, 0);
             Require((bool)Get(input, "CanStartActions") && (bool)Get(input, "CanRunAutomaticActions"), "next independent gesture restores actions while exchange IO may remain busy");
             // The no-observed-focus-loss path must use the same real neutral.
             Guid immediate = Guid.NewGuid(); Call(input, "TryAcquireExternalModal", immediate); Call(input, "ReturnExternalModal", immediate);

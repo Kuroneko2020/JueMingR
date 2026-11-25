@@ -1,7 +1,6 @@
 using JueMingR.Features.Notes;
 using JueMingR.Features.Text;
 using JueMingR.TerrariaHost.Input;
-using Terraria;
 
 namespace JueMingR.TerrariaHost.Notes
 {
@@ -15,8 +14,6 @@ namespace JueMingR.TerrariaHost.Notes
     {
         internal NotesInput(NotesWorkspace workspace, INotesClipboard clipboard, INotesIme ime = null)
             : base(new NotesEditSession(workspace), clipboard, ime) { }
-        internal void AfterSample(bool active, NotesTextLayout layout)
-        { AfterSample(active, layout, Main.keyState, true); }
         private sealed class NotesEditSession : ITextEditSession
         {
             private readonly NotesWorkspace workspace;

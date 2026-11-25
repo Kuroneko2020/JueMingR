@@ -140,8 +140,13 @@ namespace NativeWorldTextProbe
                 inventoryBindings.Clear();inventoryBindings.Add(Microsoft.Xna.Framework.Input.Keys.Tab.ToString());
                 NativeFrame(context,Vector2.Zero,false,new[]{Microsoft.Xna.Framework.Input.Keys.Tab});Require(ReferenceEquals(Main.InGameUI.CurrentState,creator),"actual remapped Inventory reaches owner.ToggleInv/Close and returns keyboard to creator");
                 NativeFrame(context,Vector2.Zero,false,new[]{Microsoft.Xna.Framework.Input.Keys.Tab});Require(ReferenceEquals(Main.InGameUI.CurrentState,creator),"same held Inventory action is accepted only once across native page return");
-                NativeFrame(context,Vector2.Zero,false,new Microsoft.Xna.Framework.Input.Keys[0]);NativeFrame(context,Vector2.Zero,false,new[]{Microsoft.Xna.Framework.Input.Keys.Tab});Require(Session(host)==null&&(bool)Get(window,"Visible"),"fresh Inventory press exits creator to same manager");
-                NativeFrame(context,Vector2.Zero,false,new[]{Microsoft.Xna.Framework.Input.Keys.Tab});Require(!PlayerInput.Triggers.Current.Inventory&&!Main.playerInventory,"closing Inventory key tail cannot reopen human inventory");NativeFrame(context,Vector2.Zero,false,new Microsoft.Xna.Framework.Input.Keys[0]);
+                NativeFrame(context, Vector2.Zero, false, new[] { Keys.Kanji });
+                NativeFrame(context, Vector2.Zero, false, new[] { Keys.Kanji, Keys.Tab });
+                Require(Session(host)==null&&(bool)Get(window,"Visible"),"fresh Inventory press exits creator to same manager");
+                NativeFrame(context, Vector2.Zero, false, new[] { Keys.Kanji, Keys.Tab });
+                Require(!PlayerInput.Triggers.Current.Inventory && !Main.playerInventory, "closing Inventory key tail cannot reopen human inventory");
+                NativeFrame(context, Vector2.Zero, false, new[] { Keys.Kanji });
+                Require(!(bool)Get(Get(input, "Hotkeys"), "HasSuppressedKeys"), "native creation exit retires its physical tail with a persistent state key");
                 managerClick("create");creator=(UICharacterCreation)Main.InGameUI.CurrentState;
                 Click(Snap(creator,"Create",0),graphics);Require(Main.InGameUI.CurrentState is UIVirtualKeyboard,"actual empty-name Create enters native keyboard");
                 Step(Vector2.Zero,false,graphics);const string name="输入样本";Main.keyCount=name.Length;for(int i=0;i<name.Length;i++){Main.keyInt[i]=name[i];Main.keyString[i]=name[i].ToString();}
