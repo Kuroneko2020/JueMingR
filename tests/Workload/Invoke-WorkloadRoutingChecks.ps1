@@ -141,8 +141,8 @@ Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeCompan
 foreach($leaf in @('DynamicFollow','DoorFollow','FacilityFollow')){
     Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanion'+$leaf+'Checks.cs')) -join '|') -ceq 'native-CompanionNavigationCpu') ('native Follow scenario uses the actual navigation consumer '+$leaf)
 }
-foreach($leaf in @('Hoik','Mixed','Live')){
-    Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.'+$leaf+'.cs')) -join '|') -ceq 'native-CompanionNavigationCpu') ('continuous terrain fixture uses the actual navigation consumer '+$leaf)
+foreach($leaf in @('Hoik','Mixed','Live','Dash')){
+    Assert-Route ((@(Get-WorkloadPathChecks ('tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.'+$leaf+'.cs')) -join '|') -ceq 'native-CompanionNavigationCpu') ('continuous movement fixture uses the actual navigation consumer '+$leaf)
 }
 Assert-Route (@((Get-WorkloadRoute @('tests/NativeWorldTextProbe/ProbeGraphics.cs')).groups) -ccontains 'shared-host') 'common graphics fixture keeps all existing consumers as well as the new exit scope'
 foreach($pair in @(@('Team','Network'),@('Navigation','Navigation'),@('Session','Session'))){

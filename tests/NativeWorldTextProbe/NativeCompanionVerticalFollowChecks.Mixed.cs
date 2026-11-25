@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ID;
@@ -56,6 +57,7 @@ namespace NativeWorldTextProbe
                 long firstAction = 0, lastAction = 0;
                 long hoikTraceAction = -1;
                 int hoikTraceRows = 0, hoikTraceImpulses = -1;
+                var ropeTrace = new Queue<string>(12);
                 float ropeEntryY = 0, pulleyTravel = 0;
                 bool gate = false;
                 object navigation = Navigator(run.Actor);
@@ -123,6 +125,12 @@ namespace NativeWorldTextProbe
                     if (ropeJump < 0 && ropeRise >= 0 && wasOnRope && !body.pulley && body.controlJump && body.velocity.Y < 0 && body.position.Y < before.Y)
                         ropeJump = tick;
                     if (upperStand < 0 && ropeJump >= 0 && body.Center.X > 94 * 16 && OnFloor(body, upper)) upperStand = tick;
+                    if (ropeRise >= 0 && upperStand < 0 && tick % 12 == 0)
+                    {
+                        if (ropeTrace.Count == 12) ropeTrace.Dequeue();
+                        ropeTrace.Enqueue($"tick={tick} rope={body.pulley} up={body.controlUp} jump={body.controlJump} " +
+                            $"body={body.Bottom}/{body.velocity} {PlanStatus(navigation)} {RouteTrace(navigation)} {RefinementTrace(navigation)}");
+                    }
                     if (hoik < 0 && upperStand >= 0 && kind == "Hoik") hoik = tick;
                     if (upperStand >= 0 && body.position.X - before.X > 7 && body.velocity.X < 1) impulses++;
                     if (hoik >= 0 && hoikExit < 0 && hoikTraceRows < 20 &&
@@ -146,6 +154,8 @@ namespace NativeWorldTextProbe
                 }
                 settledSamples = stable;
                 Console.WriteLine($"MIXED down={down}/{dropped} door={doorOpen}/{doorCross}/{half} rope={ropeOn}/{ropeRise}/{ropeJump}/{upperStand} pulleyTravel={pulleyTravel:F1} hoik={hoik}/{impulses}/{hoikExit} wait={startWait}/{obstructionCleared} resumed={resumed} departed={departed} exit={lowerExit} stable={stable} actions={firstAction}/{lastAction} maxRouteWork={maxRouteWork} phase={ownerPhase} body={body.Bottom}/{body.velocity} owner={human.Bottom} status={Get(run.Actor, "Status")}");
+                if (upperStand < 0)
+                    foreach (string sample in ropeTrace) Console.WriteLine("MIXED rope " + sample);
                 Require(down >= 0 && dropped > down && doorOpen > dropped && doorCross > doorOpen && half >= doorCross &&
                     ropeOn > half && ropeRise > ropeOn && ropeJump > ropeRise && upperStand > ropeJump && hoik > upperStand &&
                     impulses >= 2 && hoikExit > hoik && startWait >= hoikExit && obstructionCleared > startWait && resumed >= obstructionCleared &&
@@ -208,6 +218,191 @@ namespace NativeWorldTextProbe
             float stop = speed * Math.Max(0, speed - drag) / (2 * drag);
             return Math.Abs(delta) <= 2 || Math.Sign(player.velocity.X) == Math.Sign(delta) && Math.Abs(delta) <= stop + 1
                 ? 0 : Math.Sign(delta);
+        }
+
+        private static void NearHalfBrickOutlet(object context, object host, object profiles, Player human)
+        {
+            const int wall = 50, floor = 80, roof = 76;
+            var bodyStart = new Vector2(789, floor * 16);
+            var ownerStart = new Vector2(827, floor * 16);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "near-half-outlet", bodyStart, ownerStart, () =>
+            {
+                PlaceFixtureStrip(35, 77, floor, TileID.Stone);
+                PlaceFixtureStrip(46, wall, roof, TileID.Stone);
+                PlaceFixtureStrip(38, 44, 78, TileID.Platforms);
+                PlaceFixtureStrip(39, 43, roof, TileID.Platforms);
+                for (int y = roof + 1; y < floor; y++)
+                {
+                    PlaceFixtureTile(wall, y, TileID.Stone);
+                    Main.tile[wall, y].halfBrick(true);
+                }
+            }))
+            {
+                var body = run.Body;
+                object navigator = Navigator(run.Actor);
+                var assembly = navigator.GetType().Assembly;
+                var budgetType = NavigationType(assembly, "NavigationBudget");
+                var transitionType = NavigationType(assembly, "NavigationTransition");
+                var capabilities = Make(NavigationType(assembly, "NavigationCapabilities"), 20, 42, 1, 80f, 112f,
+                    0, 0, 0f, 0f, Enum.ToObject(NavigationType(assembly, "NavigationModes"), 0), true, false);
+                var route = Make(NavigationType(assembly, "NavigationRoute"), Make(NavigationType(assembly, "NavigationWorld")));
+                Require(!Collision.SolidCollision(body.position, body.width, body.height) &&
+                    !Collision.SolidCollision(human.position, human.width, human.height), "both near-half placements are native-clear");
+                var blocked = Collision.TileCollision(body.position, new Vector2(6f, 0f), body.width, body.height);
+                Require(blocked.X < 5f, "native collision clips rightward motion at the half-brick stack");
+                int emptyReady = 0;
+                string firstGraph = "none";
+                for (int i = 0; i < 140; i++)
+                {
+                    Call(route, "Advance", bodyStart, ownerStart, capabilities, Make(budgetType, 256, 24, 24));
+                    var selection = new[] { (object)bodyStart, Activator.CreateInstance(transitionType) };
+                    if (Get(route, "Status").ToString() != "ReadyPrefix") continue;
+                    if (!(bool)Call(route, "TrySelect", selection)) emptyReady++;
+                    else
+                    {
+                        firstGraph = $"{Get(selection[1], "Kind")}:{Get(selection[1], "From")}→{Get(selection[1], "To")}";
+                        break;
+                    }
+                }
+
+                int retreat = -1, above = -1, crossed = -1, near = 0, longestNear = 0, moved = 0;
+                int direction = 1;
+                var recent = new Queue<string>(16);
+                for (int tick = 0; tick < 900; tick++)
+                {
+                    // Hold the concrete near-neighbor input long enough to
+                    // observe the first disposition; then drive the owner independently.
+                    if (direction > 0 && human.Bottom.X >= RoomX(59) || direction < 0 && human.Bottom.X <= ownerStart.X + 3f)
+                        direction = -direction;
+                    var before = human.Bottom;
+                    run.Step(tick < 12 ? 0 : direction);
+                    if (Vector2.DistanceSquared(before, human.Bottom) > .25f) moved++;
+                    if (retreat < 0 && body.Bottom.X <= bodyStart.X - 14f) retreat = tick;
+                    if (above < 0 && body.Bottom.Y <= (roof + 1) * 16 - 2 && retreat >= 0) above = tick;
+                    if (crossed < 0 && body.Left.X > (wall + 1) * 16 && above >= 0) crossed = tick;
+                    near = crossed >= 0 && body.Left.X > (wall + 1) * 16 && Math.Abs(body.Bottom.Y - human.Bottom.Y) <= 14 &&
+                        Math.Abs(body.Center.X - human.Center.X) <= 65 && Vector2.DistanceSquared(before, human.Bottom) > .25f ? near + 1 : 0;
+                    longestNear = Math.Max(longestNear, near);
+                    if (tick % 12 == 0)
+                    {
+                        if (recent.Count == 16) recent.Dequeue();
+                        recent.Enqueue(RoomTrace(run, human, navigator, tick, direction));
+                    }
+                }
+                Console.WriteLine($"NEAR HALF emptyReady={emptyReady} firstGraph={firstGraph} retreat={retreat} above={above} crossed={crossed} " +
+                    $"nearMoving={longestNear} ownerMoving={moved} relocations={run.NativeRelocations} body={body.Bottom} owner={human.Bottom}");
+                if (crossed < 0 || longestNear < 20)
+                    foreach (string trace in recent) Console.WriteLine("NEAR HALF " + trace);
+                Require(emptyReady == 0 && firstGraph != "none", "a half-brick near neighbor cannot publish an empty Ready prefix or lose its outlet");
+                Require(retreat >= 0 && above > retreat && crossed > above && longestNear >= 20 && moved >= 500 &&
+                    run.NativeRelocations == 0 && !body.dead, "the body backs away, passes over the real half-brick partition and follows a moving owner");
+            }
+        }
+
+        private static void ShapedEavesFollow(object context, object host, object profiles, Player human)
+        {
+            const int floor = 83, roof = 75, partition = 68;
+            var bodyStart = new Vector2(RoomX(64), floor * 16);
+            var ownerStart = new Vector2(RoomX(72), floor * 16);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "shaped-eaves", bodyStart, ownerStart, () =>
+            {
+                PlaceFixtureStrip(43, 88, floor, TileID.Stone);
+                PlaceFixtureStrip(50, partition, roof, TileID.Platforms);
+                PlaceFixtureStrip(49, 57, 80, TileID.Platforms);
+                PlaceFixtureStrip(49, 54, 77, TileID.Platforms);
+                for (int row = roof + 1; row < floor; row++)
+                {
+                    if (row % 3 != 0) PlaceFixtureSlope(partition, row, 1 + ((row - roof - 1) % 4));
+                    else
+                    {
+                        PlaceFixtureTile(partition, row, TileID.Stone);
+                        Main.tile[partition, row].halfBrick(true);
+                    }
+                }
+            }))
+            {
+                var body = run.Body;
+                var nav = Navigator(run.Actor);
+                var work = new RoomWork(nav);
+                int direction = 1, turns = 0, retreat = -1, top = -1, exit = -1, near = 0, longest = 0, moved = 0;
+                var samples = new List<long>(1050);
+                var recent = new Queue<string>(20);
+                for (int tick = 0; tick < 1050; tick++)
+                {
+                    if ((direction > 0 && human.Center.X >= RoomX(81)) || (direction < 0 && human.Center.X <= RoomX(71)))
+                    {
+                        direction = -direction;
+                        turns++;
+                    }
+                    Vector2 before = human.Bottom;
+                    samples.Add(run.Step(direction));
+                    work.Read(turns);
+                    bool walkingOwner = Math.Abs(human.Bottom.X - before.X) > .5f;
+                    if (walkingOwner) moved++;
+                    if (retreat < 0 && body.Center.X < bodyStart.X - 48f) retreat = tick;
+                    if (top < 0 && retreat >= 0 && body.Bottom.Y <= roof * 16f + 1f) top = tick;
+                    if (exit < 0 && top >= 0 && body.Left.X > (partition + 1) * 16f) exit = tick;
+                    near = exit >= 0 && walkingOwner && Math.Abs(body.Bottom.Y - human.Bottom.Y) <= 16f &&
+                        Math.Abs(body.Center.X - human.Center.X) <= 72f ? near + 1 : 0;
+                    longest = Math.Max(longest, near);
+                    if (tick % 12 != 0) continue;
+                    if (recent.Count == 20) recent.Dequeue();
+                    recent.Enqueue(RoomTrace(run, human, nav, tick, turns));
+                }
+                Console.WriteLine($"SHAPED EAVES retreat={retreat} top={top} exit={exit} ownerTurns={turns} moved={moved} " +
+                    $"nearMoving={longest} relocations={run.NativeRelocations} body={body.Bottom} owner={human.Bottom} work[{work}] {NativeStepTiming(samples)}");
+                if (exit < 0 || longest < 20)
+                    foreach (string trace in recent) Console.WriteLine("SHAPED EAVES " + trace);
+                Require(turns >= 4 && moved >= 680 && retreat >= 0 && top > retreat && exit > top && longest >= 20 &&
+                    run.NativeRelocations == 0 && !body.dead,
+                    "the body retreats and changes levels to cross the slope and half-brick eaves, then follows the moving owner outside");
+                ShapeContactContracts(nav.GetType().Assembly);
+                if (work.Available) work.AssertComplete(1050);
+            }
+        }
+
+        private static void ShapeContactContracts(Assembly assembly)
+        {
+            const int first = 91, row = 71, platform = 107;
+            var samples = new[]
+            {
+                (Clear: new Vector2(13, 5), Filled: new Vector2(3, 14)),
+                (Clear: new Vector2(3, 5), Filled: new Vector2(13, 14)),
+                (Clear: new Vector2(13, 15), Filled: new Vector2(3, 7)),
+                (Clear: new Vector2(3, 15), Filled: new Vector2(13, 7))
+            };
+            for (int i = 0; i < samples.Length; i++) PlaceFixtureSlope(first + i * 3, row, i + 1);
+            PlaceFixtureTile(platform, row, TileID.Platforms);
+            var caps = Make(NavigationType(assembly, "NavigationCapabilities"), 4, 4, 1, 80f, 112f,
+                0, 0, 0f, 0f, Enum.ToObject(NavigationType(assembly, "NavigationModes"), 0), true, false);
+            var traversal = Make(NavigationType(assembly, "NavigationTraversal"), Make(NavigationType(assembly, "NavigationWorld")));
+            var budget = Make(NavigationType(assembly, "NavigationBudget"), 1024, 96, 96);
+            var mount = Enum.ToObject(NavigationType(assembly, "NavigationTraversalDetail"), 0);
+            var choice = Activator.CreateInstance(NavigationType(assembly, "CompanionMountChoice"));
+            Call(traversal, "Begin", caps, budget, null);
+            bool Clear(Vector2 from, Vector2 to, bool release = false) =>
+                (bool)Call(traversal, "KnownClear", from, to, 1, mount, 0, choice, release);
+            for (int i = 0; i < samples.Length; i++)
+            {
+                int x = first + i * 3;
+                Vector2 corner = new Vector2(x * 16, row * 16);
+                var open = corner + samples[i].Clear;
+                var blocked = corner + samples[i].Filled;
+                bool NativeSlopeAdjusts(Vector2 feet)
+                {
+                    Vector2 position = feet - new Vector2(2, 4);
+                    Vector4 result = Collision.SlopeCollision(position, Vector2.Zero, 4, 4);
+                    return Math.Abs(result.Y - position.Y) > .125f;
+                }
+                Require(!NativeSlopeAdjusts(open) && NativeSlopeAdjusts(blocked) && Clear(open, open) && !Clear(blocked, blocked),
+                    $"slope {i + 1} preserves its original empty and occupied half inside one coarse cell");
+            }
+
+            var top = new Vector2(RoomX(platform), row * 16 - 5);
+            var below = top + new Vector2(0, 10);
+            Require(Clear(below, top) && !Clear(top, below) && Clear(top, below, release: true),
+                "one-way support permits ascent and qualified release while blocking an ordinary downward sweep");
+            Console.WriteLine("PASS native slope occupancy and directional platform clearance.");
         }
 
         private static void TriangleProxyFollow(object context, object host, object profiles, Player human)

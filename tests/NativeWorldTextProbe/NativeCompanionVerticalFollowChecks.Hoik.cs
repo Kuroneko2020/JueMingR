@@ -237,11 +237,11 @@ namespace NativeWorldTextProbe
                 PeerActor = Call(host, "Owned", body);
             }
 
-            internal long Step(int direction = 0, bool jump = false, bool down = false, bool up = false)
+            internal long Step(int direction = 0, bool jump = false, bool down = false, bool up = false, bool dash = false)
             {
                 NativeToolExecutionChecks.Sample(context, input, human.Center, false, direction);
                 var controls = PlayerInput.Triggers.Current;
-                controls.Jump = jump; controls.Down = down; controls.Up = up;
+                controls.Jump = jump; controls.Down = down; controls.Up = up; controls.Dash = dash;
                 NativeQuickItemChecks.BeginWorldStep();
                 long started = Stopwatch.GetTimestamp();
                 updating = this;

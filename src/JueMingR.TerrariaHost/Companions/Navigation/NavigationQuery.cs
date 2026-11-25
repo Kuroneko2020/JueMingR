@@ -113,13 +113,16 @@ namespace JueMingR.TerrariaHost.Companions
         private float closestDistance;
         internal readonly NavigationNode Start, Goal;
         private readonly NavigationNode observedGoal;
+        private readonly Vector2? actualStart, actualGoal;
+        internal Vector2? GoalPose => Goal.EqualsRegion(observedGoal) ? actualGoal : null;
         internal bool Valid => readSet.Current();
         internal NavigationReadSet Dependencies => readSet;
         internal NavigationQueryStatus Status { get; private set; }
 
         internal NavigationQuery(NavigationTraversal traversal, NavigationCapabilities capabilities,
             NavigationNode start, NavigationNode goal, IReadOnlyList<NavigationTransition> facilities,
-            NavigationWorld world, Vector2 trailHint, bool hasTrail, NavigationNode? observedGoal = null)
+            NavigationWorld world, Vector2 trailHint, bool hasTrail, NavigationNode? observedGoal = null,
+            Vector2? actualStart = null, Vector2? actualGoal = null)
         {
             this.traversal = traversal;
             this.capabilities = capabilities;
@@ -130,6 +133,8 @@ namespace JueMingR.TerrariaHost.Companions
             Start = start;
             Goal = goal;
             this.observedGoal = observedGoal ?? goal;
+            this.actualStart = actualStart;
+            this.actualGoal = actualGoal;
             readSet.Record(start.Cell);
             readSet.Record(goal.Cell);
             readSet.Record(this.observedGoal.Cell);
@@ -158,14 +163,18 @@ namespace JueMingR.TerrariaHost.Companions
                     option = -1;
                     branch = NavigationTraversal.FirstBranch;
                     expanded++;
+                    budget.RecordExpansion();
                 }
                 traversal.Begin(capabilities, budget, readSet);
                 if (option < 0)
                 {
                     budget.TryExpand();
-                    budget.RecordExpansion();
-                    bool accepted = traversal.IsGoal(current.Node, Goal) ||
-                        !Goal.EqualsRegion(observedGoal) && traversal.IsGoal(current.Node, observedGoal);
+                    bool projected = !Goal.EqualsRegion(observedGoal);
+                    var goalFeet = projected ? traversal.Feet(Goal) : actualGoal ?? traversal.Feet(Goal);
+                    // Only the navigator knows whether its live body is
+                    // already in follow range. The root has no action to offer.
+                    bool accepted = current.Parent != null && (traversal.GoalEndpoint(current.Node, Goal, goalFeet) ||
+                        projected && traversal.GoalEndpoint(current.Node, observedGoal, actualGoal ?? traversal.Feet(observedGoal)));
                     if (traversal.Pending) return;
                     unknown |= traversal.Unknown;
                     if (accepted)
@@ -178,20 +187,16 @@ namespace JueMingR.TerrariaHost.Companions
                     // an ordinary graph edge. Publishing its label avoids
                     // expanding every interior point on a traversable run.
                     bool linked = traversal.GroundGoalLink(current.Node, Goal, out var goalNode,
-                        out var groundEdge, out float groundCost);
+                        out var groundEdge, out float groundCost, current.Parent == null ? actualStart : null, goalFeet);
                     if (traversal.Pending) return;
                     if (linked && !rejected(groundEdge))
                     {
-                        var groundGoal = Add(goalNode, current, groundEdge, current.Cost + TravelCost(groundEdge, groundCost));
-                        // The root and goal already share a checked support
-                        // lane. Other action families cannot be prerequisites
-                        // for that walk; publish it in this search slice.
-                        if (current.Parent == null)
-                        {
-                            result = groundGoal;
-                            Status = NavigationQueryStatus.ReadyPrefix;
-                            return;
-                        }
+                        // The precise last step can share a coarse label
+                        // with its parent. Do not let label dominance erase it.
+                        result = new Label { Node = goalNode, Parent = current, Edge = groundEdge,
+                            Cost = current.Cost + TravelCost(groundEdge, groundCost) };
+                        Status = NavigationQueryStatus.ReadyPrefix;
+                        return;
                     }
                     if (current.Parent == null && TryLocalFacility(current, budget, rejected))
                     {

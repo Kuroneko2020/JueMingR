@@ -377,12 +377,19 @@ namespace NativeWorldTextProbe
                 human.position=body.position+new Vector2(130,0);
                 NativeStep(host,body);
                 Require(!body.controlJump && body.releaseJump,"real obstacle demand allows the initializing jump release");
+                object navigation = Get(Get(actor, "Behavior"), "Navigator");
                 int takeoff=-1, cleared=-1;
                 for(int tick=0;tick<120 && body.position.X<107*16;tick++)
                 {
                     NativeStep(host,body);
                     if(takeoff<0 && body.controlJump && body.velocity.Y<0 && body.Bottom.Y<73*16-4)takeoff=tick;
                     if(body.position.X>=107*16)cleared=tick;
+                    if (tick <= 25 || tick % 10 == 0 || tick == takeoff || tick == cleared)
+                        Console.WriteLine($"NAV WALL TRACE tick={tick} body={body.Bottom}/{body.velocity} " +
+                            $"keys={body.controlLeft}/{body.controlRight}/{body.controlJump} released={body.releaseJump} " +
+                            $"action={Get(navigation, "ActionKind")}/{Get(navigation, "ActionId")}/{Get(navigation, "ActionOutcome")} " +
+                            $"direct={Get(Get(navigation, "action"), "Direct")} support={Get(navigation, "Supported")} " +
+                            $"goal={Get(navigation, "Target")} {NativeCompanionVerticalFollowChecks.RefinementTrace(navigation)} {NativeCompanionVerticalFollowChecks.RouteTrace(navigation)}");
                 }
                 Console.WriteLine($"NAV WALL takeoff={takeoff} cleared={cleared} body={body.position}/{body.velocity}");
                 Require(takeoff>=0 && cleared>takeoff && !(bool)Get(actor,"Faulted"),
@@ -788,7 +795,7 @@ namespace NativeWorldTextProbe
             Console.WriteLine("PASS native shield aura and damage transfer in both directions, including lethal human recipient ownership.");
         }
 
-        private static void InitializeTarget(NPC target,int slot,Vector2 center)
+        internal static void InitializeTarget(NPC target,int slot,Vector2 center)
         {
             target.SetDefaults(NPCID.Zombie);target.whoAmI=slot;target.active=true;target.Center=center;
             target.velocity=Vector2.Zero;target.noGravity=target.noTileCollide=true;target.life=target.lifeMax=100000;
@@ -799,6 +806,10 @@ namespace NativeWorldTextProbe
         {
             NativeStep(host,body);
             for(int i=7;i<=8;i++)if(Main.npc[i].active)Main.npc[i].UpdateNPC(i);
+            UpdateOwnedShots(body);
+        }
+        internal static void UpdateOwnedShots(Player body)
+        {
             int previous=Main.ProjectileUpdateLoopIndex;
             try
             {

@@ -256,9 +256,9 @@ namespace JueMingR.TerrariaHost.Companions
             Observed.WallSide = body.slideDir;
             Observed.WallGrip = body.spikedBoots;
             Observed.Sliding = body.sliding;
-            Observed.DashType = type >= 0 && MountID.Sets.CanDash[type] ? 6 : body.dashType;
+            Observed.DashType = CompanionDashMotion.Source(body);
             Observed.DashDelay = body.dashDelay;
-            Observed.DashReady = Observed.DashType > 0 && body.dashDelay == 0 && !body.controlDash;
+            Observed.DashReady = Observed.DashType > 0 && body.dashDelay == 0 && !body.controlDash && !body.CCed;
             Observed.DashKind = body.dash;
             Observed.DashActive = body.dashDelay < 0 || body.dash == 2 && body.eocDash > 0;
             ObserveWingModes(body);

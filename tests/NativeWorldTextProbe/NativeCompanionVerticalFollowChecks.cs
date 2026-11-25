@@ -62,7 +62,27 @@ namespace NativeWorldTextProbe
                     (h, p, owner) => NativeFollowAtEdge(context, h, p, owner, platform: false),
                     (h, p, owner) => NativeSteadyPursuitAtLip(context, h, p, owner),
                     (h, p, owner) => NativeSteadyGroundPursuit(context, h, p, owner),
+                    (h, p, owner) => NativeFixedPlatformBraking(context, h, p, owner),
+                    (h, p, owner) => NativePlatformPursuit(context, h, p, owner),
+                    (h, p, owner) => NativeOppositeAimPursuit(context, h, p, owner),
                     (h, p, owner) => NativeSteadyDashPursuit(context, h, p, owner)
+                };
+                var shaped = new Action<object, object, Player>[]
+                {
+                    (h, p, owner) => NearHalfBrickOutlet(context, h, p, owner),
+                    (h, p, owner) => ShapedEavesFollow(context, h, p, owner)
+                };
+                var dashSources = new Action<object, object, Player>[]
+                {
+                    (h, p, owner) => NativeDashSourcePursuit(context, h, p, owner, 3),
+                    (h, p, owner) => NativeSolarFlareContact(context, h, p, owner),
+                    (h, p, owner) => NativeDashSourcePursuit(context, h, p, owner, 5),
+                    (h, p, owner) => NativeDashSourcePursuit(context, h, p, owner, 6),
+                    (h, p, owner) => NativeSkatesUseEquippedDash(context, h, p, owner),
+                    (h, p, owner) => NativeWinglessDashPursuit(context, h, p, owner),
+                    (h, p, owner) => NativeRamDescent(context, h, p, owner),
+                    (h, p, owner) => NativeDashBrakingAgainstRearWall(context, h, p, owner),
+                    (h, p, owner) => NativeDashRangesByInput(context, h, p, owner)
                 };
                 var hoik = new Action<object, object, Player>[] { (h, p, owner) => NativeHoikBaseline(context, owner) };
                 var structure = new Action<object, object, Player>[] { (h, p, owner) => HoikFollow(context, h, p, owner),
@@ -88,7 +108,7 @@ namespace NativeWorldTextProbe
                         (h, p, owner) => NativeMovingFall(context, h, p, owner),
                         (h, p, owner) => NativeAirDashSelection(context, h, p, owner),
                         (h, p, owner) => NativeGroundMountSelection(context, h, p, owner),
-                        (h, p, owner) => NativePendingDashRun(context, h, p, owner),
+                        (h, p, owner) => NativePendingRunway(context, h, p, owner),
                         (h, p, owner) => MovingNearPartition(context, h, p, owner),
                         (h, p, owner) => MovingNearPartition(context, h, p, owner, interruptJump: true),
                         (h, p, owner) => MovingStarboardCeiling(context, h, p, owner),
@@ -104,14 +124,19 @@ namespace NativeWorldTextProbe
                     (fixedBudgetAvailable ? "including fixed Debug budget and counters" : "ordinary Host with no Debug budget override"));
                 if (fixedBudgetAvailable)
                 {
-                    var pressure = new Action<object, object, Player>[] { (h, p, owner) => MovingRoom(context, h, p, owner, stress: true) };
+                    var pressure = new Action<object, object, Player>[]
+                    {
+                        (h, p, owner) => MovingRoom(context, h, p, owner, stress: true),
+                        (h, p, owner) => NativeSlicedDashPursuit(context, h, p, owner)
+                    };
                     moving = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Concat(moving, pressure));
                 }
                 var full = System.Linq.Enumerable.Concat(
                     System.Linq.Enumerable.Concat(moving, System.Linq.Enumerable.Concat(existing, terrain)),
                     System.Linq.Enumerable.Concat(practicalFollow, System.Linq.Enumerable.Concat(contact,
                         System.Linq.Enumerable.Concat(longerFollow, System.Linq.Enumerable.Concat(hoik, structure)))));
-                if (!historical) full = System.Linq.Enumerable.Concat(full, edgeTrials);
+                if (!historical) full = System.Linq.Enumerable.Concat(full,
+                    System.Linq.Enumerable.Concat(edgeTrials, System.Linq.Enumerable.Concat(shaped, dashSources)));
                 var scenarios = comparisonFocus == "terrain" ? terrain : comparisonFocus == "vertical" ? existing :
                     comparisonFocus == "wormhole-follow" ? practicalFollow :
                     comparisonFocus == "detour-descent" ? longerFollow : comparisonFocus == "contact-descent" ? contact :
@@ -550,6 +575,7 @@ namespace NativeWorldTextProbe
                 () => Fill(44, 119, ground, TileID.Stone), Starboard))
             {
                 var body = run.Body;
+                object navigation = Navigator(run.Actor);
                 float full = body.wingTime;
                 Require(body.wingsLogic == 45 && full == 180 && !body.empressBrooch && !body.mount.Active,
                     "C uses real 4954 wings with the native 180-tick finite resource and no substitutes");
@@ -590,7 +616,7 @@ namespace NativeWorldTextProbe
                     if (descent < 0 && tick >= 180 && body.velocity.Y > 1.5f && !body.controlJump) descent = tick;
                     if (landing < 0 && tick >= 180 && OnFloor(body, ground)) landing = tick;
                     if (tick % 15 == 0 || tick == 244)
-                        Console.WriteLine(FormattableString.Invariant($"FOLLOW C TRACE t={tick} owner={human.Bottom}/{human.velocity} actor={body.Bottom}/{body.velocity} up={body.controlUp} down={body.controlDown} jump={body.controlJump} wing={body.wingTime:F1} status={Get(run.Actor, "Status")}"));
+                        Console.WriteLine(FormattableString.Invariant($"FOLLOW C TRACE t={tick} owner={human.Bottom}/{human.velocity} actor={body.Bottom}/{body.velocity} up={body.controlUp} down={body.controlDown} jump={body.controlJump} wing={body.wingTime:F1} status={Get(run.Actor, "Status")} {PlanStatus(navigation)} {RouteTrace(navigation)}"));
                 }
                 Console.WriteLine(FormattableString.Invariant($"FOLLOW C starboard level={air} hold={hold} resume={resume} reverse={reverse} descend={down} reverseLatency={(reversed < 0 ? -1 : reversed-145)} fuelMin={lowestFuel:F1}/{full:F1} airborneRefill={airborneRefill} descent={descent} landing={landing}"));
                 Console.WriteLine(FormattableString.Invariant($"FOLLOW C nativeCost updates=245 totalMs={updateTicks*1000d/Stopwatch.Frequency:F3} maxUpdateMs={peakUpdateTicks*1000d/Stopwatch.Frequency:F3}"));

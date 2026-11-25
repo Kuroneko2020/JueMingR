@@ -49,11 +49,10 @@ namespace JueMingR.TerrariaHost.Companions
         private CompanionMovementDeferral suspendedReason;
         private uint retrySuspendedAt;
         private SmartFallGrapple rescueHook;
-        private Vector2 progressBoundary, dashOrigin, actionOwnerTarget;
-        private int noUsefulProgress, nextStallCheck = StallUpdates, dashDirection;
-        private float minimumGroundDashGap, dashGapSlowdown, dashGapRunSpeed;
-        private int dashGapType;
-        private bool dashPreparedInAir;
+        private Vector2 progressBoundary, actionOwnerTarget;
+        private int noUsefulProgress, nextStallCheck = StallUpdates;
+        private readonly CompanionDashMotion.Preparation dashPreparation = new CompanionDashMotion.Preparation();
+        private CompanionDashMotion.Plan dashPlan;
 
         internal long ActionId => action.Id;
         internal NavigationAction ActionKind => action.Edge.Kind;
@@ -101,7 +100,8 @@ namespace JueMingR.TerrariaHost.Companions
             hasOffer = hasTarget = supported = targetChanged = retireIntent = rescuing = rescuePending = false;
             Array.Clear(directFailures, 0, directFailures.Length);
             nextFacilities = pendingSince = nextDashCheck = nextCruiseCheck = nextMountCheck = dashPreparedUntil = lastRescue = 0;
-            minimumGroundDashGap = 0f;
+            dashPreparation.Reset();
+            dashPlan = default;
             previousGravity = 0;
             pylonCount = -1;
             observedTrail = null;
@@ -304,24 +304,65 @@ namespace JueMingR.TerrariaHost.Companions
             bool cruiseCheck = action.Id != 0 && action.Edge.Kind == NavigationAction.Walk &&
                 Math.Abs(feetGoal.X - feet.X) > 104f && CompanionMotionProfile.CanFly(native.Observed) &&
                 unchecked((int)(Main.GameUpdateCount - nextCruiseCheck)) >= 0;
-            if (action.Id != 0 && action.Direct && action.CanRetarget && !hasOffer && !approaching &&
+            bool ordinaryOffer = hasOffer && offered.Kind == NavigationAction.Walk && !selectedApproach &&
+                Math.Abs(offered.To.Y - feet.Y) <= 10f && Math.Abs(feetGoal.Y - feet.Y) <= 10f &&
+                (offered.To.X - offered.From.X) * (feetGoal.X - feet.X) >= 0f;
+            bool preparedDash = CanTakeDash(body, native.Observed);
+            bool forwardFloorPlan = replaceablePlan && preparedDash && supported && !approaching &&
+                action.Edge.Kind == NavigationAction.Walk && !route.IsTraversalApproach(action.Edge) &&
+                Math.Abs(action.Edge.From.Y - feet.Y) <= 3f && Math.Abs(action.Edge.To.Y - feet.Y) <= 3f &&
+                Math.Abs(feetGoal.Y - feet.Y) <= 3f &&
+                (action.Edge.To.X - action.Edge.From.X) * (feetGoal.X - feet.X) > 0f &&
+                (!hasOffer || ordinaryOffer);
+            if (forwardFloorPlan && TryDirect(body, native, feet, emergency, out var pulse) &&
+                pulse.Kind == NavigationAction.Dash)
+            {
+                // The graph only owns an ordinary forward floor prefix.
+                // Keep its ongoing search and never bypass a traversal inlet.
+                route.Supersede(action.Edge);
+                ClearPrefix();
+                Begin(pulse, true, emergency);
+            }
+            // A queued ordinary floor walk should not suppress a pulse
+            // that has already proved a longer stopping lane. Keep actual
+            // traversal approaches, facilities and handoffs in control.
+            if (action.Id != 0 && action.Direct && action.CanRetarget && !approaching &&
+                (!hasOffer || ordinaryOffer && preparedDash) &&
                 (action.Edge.Kind == NavigationAction.Walk || action.Edge.Kind == NavigationAction.Flight) &&
-                (cruiseCheck || CanTakeDash(native.Observed, feet) || action.Edge.Kind == NavigationAction.Walk &&
+                (cruiseCheck || preparedDash || action.Edge.Kind == NavigationAction.Walk &&
                     (feetGoal.Y - feet.Y) * body.gravDir < -26f ||
                     action.Edge.Kind == NavigationAction.Flight && supported && !ownerInAir))
             {
                 if (cruiseCheck) nextCruiseCheck = Main.GameUpdateCount + 10;
                 if (TryDirect(body, native, feet, emergency, out var faster) &&
-                    (faster.Kind != action.Edge.Kind || faster.Detail != action.Edge.Detail))
+                    (faster.Kind != action.Edge.Kind || faster.Detail != action.Edge.Detail) &&
+                    (!hasOffer || faster.Kind == NavigationAction.Dash))
                 {
                     if (!action.TryRetarget(faster)) Begin(faster, true, emergency);
-                    else if (faster.Detail == NavigationTraversalDetail.FlightDash) dashPreparedUntil = 0;
+                    else if (faster.Detail == NavigationTraversalDetail.FlightDash)
+                    {
+                        action.DashPlan = dashPlan;
+                        dashPreparedUntil = 0;
+                    }
                 }
             }
             bool atGoal = action.Id == 0 && CloseTarget(body, feet);
             if (action.Id == 0 && !atGoal)
             {
-                if (offerReady && (selectedApproach || offered.Kind != NavigationAction.Walk))
+                if (offerReady && !supported && preparedDash && offered.Kind == NavigationAction.Drop &&
+                    !ownerInAir && body.velocity.Y * body.gravDir > 0f &&
+                    dashPlan.LandsOn(offered.To.Y) && dashPlan.LandsOn(feetGoal.Y) &&
+                    TryDirect(body, native, feet, emergency, out var airbornePulse) &&
+                    airbornePulse.Detail == NavigationTraversalDetail.FlightDash)
+                {
+                    // The original fall is already in motion and its
+                    // unreleased graph offer lands on the same verified
+                    // floor. Keep the corridor for reattachment from the
+                    // actual end of this horizontal pulse.
+                    ClearPrefix();
+                    Begin(airbornePulse, true, emergency);
+                }
+                else if (offerReady && (selectedApproach || offered.Kind != NavigationAction.Walk))
                 {
                     Begin(offered, false, emergency);
                     hasOffer = false;
@@ -346,6 +387,11 @@ namespace JueMingR.TerrariaHost.Companions
                 Vector2 liveVelocity = followingEntry ? Vector2.Zero : this.targetVelocity;
                 var frame = action.Input(body, native, supported, live, liveVelocity, followingEntry ? 1f : action.Direct ? LocalSpacing(body) : 0f,
                     threatDirection, emergency || rescuing, keepAirContact, ownerInAir, rollingWalk);
+                if (action.DashPlanRejected)
+                {
+                    dashPreparation.Reset();
+                    dashPreparedUntil = 0;
+                }
                 // Check the particular proved landing when a grounded
                 // flight is actually about to hand over its native jump.
                 // Once released, the airborne body keeps its controls.
@@ -398,7 +444,11 @@ namespace JueMingR.TerrariaHost.Companions
             actionOwnerTarget = target;
             actionGeneration = bodyGeneration;
             if (noUsefulProgress == 0) progressBoundary = edge.From;
-            if (edge.Kind == NavigationAction.Dash || edge.Detail == NavigationTraversalDetail.FlightDash) dashPreparedUntil = 0;
+            if (edge.Kind == NavigationAction.Dash || edge.Detail == NavigationTraversalDetail.FlightDash)
+            {
+                action.DashPlan = dashPlan;
+                dashPreparedUntil = 0;
+            }
         }
 
         private bool CanResume(CompanionMobilityState native, NavigationTransition edge)
@@ -542,7 +592,8 @@ namespace JueMingR.TerrariaHost.Companions
             route?.Reset();
             Array.Clear(directFailures, 0, directFailures.Length);
             nextFacilities = dashPreparedUntil = retrySuspendedAt = 0;
-            minimumGroundDashGap = 0f;
+            dashPreparation.Reset();
+            dashPlan = default;
             retireIntent = rescuing = rescuePending = false;
             hasBlockedRoof = false;
             targetChanged = true;
@@ -585,41 +636,19 @@ namespace JueMingR.TerrariaHost.Companions
             if (TryPrepareRescue(body, native, feet, budget)) return;
             ObserveOwnerTrail(trail);
             if (retireIntent) return;
-            bool airDash = !supported && CompanionMotionProfile.Wings(state);
-            float dashGap = Math.Abs(target.X - feet.X);
-            float groundRunSpeed = Math.Max(body.accRunSpeed, body.maxRunSpeed);
-            bool waitingForDashGap = supported && dashGap < minimumGroundDashGap && state.DashType == dashGapType &&
-                body.runSlowdown == dashGapSlowdown && groundRunSpeed == dashGapRunSpeed;
-            if (state.DashReady && (airDash || supported) && !native.AwaitingEquipmentObservation &&
-                dashGap > 140f && !waitingForDashGap && unchecked((int)(Main.GameUpdateCount - nextDashCheck)) >= 0 &&
-                budget.TryTiles(160) && budget.TryPredict(airDash ? 20 : 1))
+            if (state.DashReady && !native.AwaitingEquipmentObservation &&
+                Math.Abs(target.X - feet.X) > 48f && unchecked((int)(Main.GameUpdateCount - nextDashCheck)) >= 0)
             {
                 int direction = Math.Sign(target.X - feet.X);
-                float requiredGap = 0f;
-                bool ready = airDash ? CompanionGroundRun.CanAirDash(body, state, direction, target) :
-                    CompanionGroundRun.TryGroundDash(body, direction, state.DashType, target.X, out requiredGap);
-                if (requiredGap > dashGap)
-                {
-                    // No terrain was rejected. Retry on a growing owner gap
-                    // or a change to the actual braking conditions, without
-                    // running the same stop simulation while still too close.
-                    minimumGroundDashGap = requiredGap;
-                    dashGapType = state.DashType;
-                    dashGapSlowdown = body.runSlowdown;
-                    dashGapRunSpeed = groundRunSpeed;
-                }
-                else
-                {
-                    if (!airDash) minimumGroundDashGap = 0f;
-                    nextDashCheck = Main.GameUpdateCount + 10;
-                }
-                if (ready)
+                if (dashPreparation.Advance(body, state, supported, direction, target, budget, out var plan, out bool rejected))
                 {
                     dashPreparedUntil = Main.GameUpdateCount + 3;
-                    dashOrigin = feet;
-                    dashDirection = direction;
-                    dashPreparedInAir = airDash;
+                    dashPlan = plan;
                 }
+                // Pending budget and insufficient owner gap leave the
+                // cursor ready for the next allocation. Back off only after
+                // reading a real obstacle or unavailable contact band.
+                else if (rejected) nextDashCheck = Main.GameUpdateCount + 10;
             }
             bool active = action.Id != 0 && !Terminal(action.Outcome);
             route.SetCommitted(active && action.Committed);
@@ -735,8 +764,8 @@ namespace JueMingR.TerrariaHost.Companions
             float best = CompanionGroundRun.DirectTravelTicks(body, state, NavigationAction.Walk, feet, objective);
             if (CanLiftDirectly(body, state, feet))
                 best = Math.Min(best, CompanionGroundRun.DirectTravelTicks(body, state, NavigationAction.Flight, feet, objective));
-            if (CanTakeDash(state, feet))
-                best = Math.Min(best, CompanionGroundRun.DashTravelTicks(body, state, feet, objective, false));
+            if (CanTakeDash(body, state))
+                best = Math.Min(best, dashPlan.TravelTicks(body, state, feet, objective, false));
             var cell = NavigationTraversal.CellAt(feet);
             NavigationTransition? selected = null;
             foreach (var choice in state.MountChoices)
@@ -853,14 +882,14 @@ namespace JueMingR.TerrariaHost.Companions
             bool flight = !native.AwaitingEquipmentObservation && (!walk || rise > 24f || runway) && rise > -18f &&
                 DirectReady(body, state, feet, target, DirectKind.Flight, emergency) &&
                 CanLiftDirectly(body, state, feet);
-            bool dash = !native.AwaitingEquipmentObservation && CanTakeDash(state, feet) &&
+            bool dash = !native.AwaitingEquipmentObservation && CanTakeDash(body, state) &&
                 DirectReady(body, state, feet, supported ? groundTarget : target, supported ? DirectKind.Dash : DirectKind.FlightDash, emergency);
             if (!(walk || flight || dash)) return false;
             if (flight && rise > 24f)
             {
                 // This candidate advances the unresolved rise. Don't rank
                 // its climb against the time for a ground-only prefix.
-                var airDetail = !supported && dash && CompanionGroundRun.DashTravelTicks(body, state, feet, target, true) + 2f <
+                var airDetail = !supported && dash && dashPlan.TravelTicks(body, state, feet, target, true) + 2f <
                     CompanionGroundRun.DirectTravelTicks(body, state, NavigationAction.Flight, feet, target)
                     ? NavigationTraversalDetail.FlightDash : NavigationTraversalDetail.None;
                 edge = new NavigationTransition(NavigationAction.Flight, feet, target, detail: airDetail);
@@ -882,7 +911,7 @@ namespace JueMingR.TerrariaHost.Companions
                 }
             }
             var detail = NavigationTraversalDetail.None;
-            if (dash && CompanionGroundRun.DashTravelTicks(body, state, feet, comparison, !supported) + hold < best)
+            if (dash && dashPlan.TravelTicks(body, state, feet, comparison, !supported) + hold < best)
             {
                 if (supported) kind = NavigationAction.Dash;
                 else { kind = NavigationAction.Flight; detail = NavigationTraversalDetail.FlightDash; }
@@ -892,10 +921,9 @@ namespace JueMingR.TerrariaHost.Companions
             return true;
         }
 
-        private bool CanTakeDash(CompanionMobilitySnapshot state, Vector2 feet) =>
-            state.DashReady && dashPreparedUntil != 0 && unchecked((int)(dashPreparedUntil - Main.GameUpdateCount)) >= 0 &&
-            dashPreparedInAir == !supported && Vector2.DistanceSquared(feet, dashOrigin) <= 22f * 22f &&
-            Math.Sign(target.X - feet.X) == dashDirection && Math.Abs(feet.X - target.X) > 140f;
+        private bool CanTakeDash(Player body, CompanionMobilitySnapshot state) =>
+            dashPreparedUntil != 0 && unchecked((int)(dashPreparedUntil - Main.GameUpdateCount)) >= 0 &&
+            dashPlan.CanLaunch(body, state, supported, Math.Sign(target.X - body.Center.X), target.X, false);
 
         private bool CanLiftDirectly(Player body, CompanionMobilitySnapshot state, Vector2 feet)
         {
@@ -1014,11 +1042,9 @@ namespace JueMingR.TerrariaHost.Companions
             // A nearby airborne owner still needs the original hover input
             // on the next update. Idle would spend that frame falling.
             if (keepAirContact || !CompanionMotionAction.Near(feet, target, LocalSpacing(body), 10f)) return false;
-            float dx = target.X - feet.X;
             // A short same-floor distance can still cross a divider. A flat
             // lane or native stair sweep must connect the two contact points.
-            if (supported) return Math.Abs(dx) < 1f || CompanionGroundRun.TryFlatLane(body, dx, false) ||
-                CompanionGroundRun.TryStepLane(body, dx, 10f);
+            if (supported) return CompanionGroundRun.ConnectGroundTarget(body, target);
             return NearLine(body, feet, target);
         }
 

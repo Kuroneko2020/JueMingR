@@ -141,7 +141,24 @@ namespace NativeWorldTextProbe
             var goal = (Vector2)Get(low, "To");
             // Bind the same body capabilities the ordinary rejection key records.
             Call(route, "Advance", start, goal, caps, Make(budget, 1, 0, 0));
-            Call(route, "Reject", high, start);
+            Call(route, "Defer", high, false);
+            Require(!(bool)Call(route, "HasRejectedLaunchNearby", start), "temporary unavailability is not a geometric launch failure");
+            var highFeet = (Vector2)Get(high, "To");
+            var contact = new Player { width = 20, height = 42, gravDir = 1, Bottom = highFeet };
+            var obstruction = new Point(exitColumn, highExit.Y - 2);
+            var priorCell = new[] { (object)obstruction, Make(budget, 512, 0, 0), null };
+            Require((bool)Call(world, "Read", priorCell) && Get(priorCell[2], "Kind").ToString() == "Empty",
+                "the original landing is backed by a known empty headroom cell");
+            Require(!Collision.SolidCollision(contact.position, contact.width, contact.height),
+                "the first graph landing initially fits the original body");
+            PlaceFixtureTile(obstruction.X, obstruction.Y, TileID.Stone);
+            Main.tile[obstruction.X, obstruction.Y].halfBrick(true);
+            Require(Collision.SolidCollision(contact.position, contact.width, contact.height),
+                "the original landing body is clipped by the new half-brick above it");
+            var verifyObstruction = new[] { (object)obstruction, Make(budget, 16, 0, 0), (object)false };
+            Require((bool)Call(world, "TryVerify", verifyObstruction) && (bool)verifyObstruction[2],
+                "the consulted landing envelope observes its actual shape edit");
+            Call(route, "Reject", high, highFeet);
             Require(highExit == new Point(exitColumn, row - 5) && lowExit == new Point(exitColumn, row - 2) &&
                 (bool)Call(route, "IsRejected", high) && !(bool)Call(route, "IsRejected", low),
                 "rejection of the higher jump landing leaves the lower genuine platform available from the same entry");
@@ -162,7 +179,12 @@ namespace NativeWorldTextProbe
                     (Point)Get(selected[1], "EntryTile") == (Point)Get(low, "EntryTile")) published = slice;
             }
             Require(published >= 0, $"the same ordinary route publishes the lower landing with the high outlet rejected (last={last}, status={Get(route, "Status")})");
-            Console.WriteLine($"NAV GRAPH jump branch from={start} high={highExit} lower={lowExit} publishedSlice={published}");
+            WorldGen.KillTile(obstruction.X, obstruction.Y, fail: false, effectOnly: false, noItem: true);
+            verifyObstruction[1] = Make(budget, 16, 0, 0);
+            Require((bool)Call(world, "TryVerify", verifyObstruction) && (bool)verifyObstruction[2] &&
+                !Collision.SolidCollision(contact.position, contact.width, contact.height) && !(bool)Call(route, "IsRejected", high),
+                "removing the native obstruction restores the original landing on the same route before its retry expires");
+            Console.WriteLine($"NAV GRAPH jump branch from={start} high={highExit} lower={lowExit} publishedSlice={published} obstruction={obstruction} reopened=True");
         }
 
         private static void VerifyCommittedDrop(Assembly assembly, object world, object caps, Type transitionType, object drop)
@@ -388,11 +410,11 @@ namespace NativeWorldTextProbe
             }
         }
 
-        private static void NativePendingDashRun(object context, object host, object profiles, Player human)
+        private static void NativePendingRunway(object context, object host, object profiles, Player human)
         {
             const int startColumn = 52, exitColumn = 60, upper = 84, lower = 93;
             var start = new Vector2(RoomX(startColumn), upper * 16);
-            using (var run = new NativeFollowWorld(context, host, profiles, human, "pending-dash-run", start, start, () =>
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "pending-runway", start, start, () =>
                 {
                     PlaceFixtureStrip(43, exitColumn - 2, upper, TileID.Stone);
                     PlaceFixtureStrip(exitColumn - 1, 100, upper, TileID.Platforms);
@@ -416,18 +438,18 @@ namespace NativeWorldTextProbe
                 var traversal = Make(NavigationType(assembly, "NavigationTraversal"), world);
                 Call(traversal, "Begin", caps, Make(budgetType, 512, 96, 96), null);
                 var from = Call(traversal, "Anchor", body.Bottom, true, true);
-                var dash = new[] { from, (object)32, Activator.CreateInstance(from.GetType()), Activator.CreateInstance(transitionType), 0f };
-                Require((bool)Call(traversal, "IsApplicable", from, 32) && (bool)Call(traversal, "Offer", dash) &&
-                    Get(dash[3], "Kind").ToString() == "Dash", "the live graph finds the shield's right runway edge using the original supports");
-                var outlet = new[] { dash[2], (object)4, Activator.CreateInstance(from.GetType()), Activator.CreateInstance(transitionType), 0f };
+                var runway = new[] { from, (object)32, Activator.CreateInstance(from.GetType()), Activator.CreateInstance(transitionType), 0f };
+                Require((bool)Call(traversal, "IsApplicable", from, 32) && (bool)Call(traversal, "Offer", runway) &&
+                    Get(runway[3], "Kind").ToString() == "Walk", "the live graph keeps the original support runway available as a walking edge");
+                var outlet = new[] { runway[2], (object)4, Activator.CreateInstance(from.GetType()), Activator.CreateInstance(transitionType), 0f };
                 Require((bool)Call(traversal, "Offer", outlet) && Get(outlet[3], "Kind").ToString() == "PlatformDrop",
-                    $"the whole native body can pass through the runway's platform to a real lower contact from {Get(dash[3], "To")}");
+                    $"the whole native body can pass through the runway's platform to a real lower contact from {Get(runway[3], "To")}");
                 var route = Get(nav, "route");
                 Call(route, "Advance", body.Bottom, human.Bottom, caps, Make(budgetType, 256, 24, 24));
                 Call(route, "ClearCorridor");
                 // Supply the graph's own two edges to the consumer at the
                 // publication boundary, before the remaining verification slice.
-                Call(route, "AddCorridorEdge", dash[3]);
+                Call(route, "AddCorridorEdge", runway[3]);
                 Call(route, "AddCorridorEdge", outlet[3]);
                 var slice = Make(budgetType, 2, 1, 1);
                 Call(route, "Prepare", body.Bottom, slice);
@@ -438,11 +460,34 @@ namespace NativeWorldTextProbe
                 human.Bottom = new Vector2(RoomX(exitColumn + 5), lower * 16);
                 float before = body.Bottom.X;
                 run.Step(1);
-                Console.WriteLine($"NAV PENDING DASH from={Get(dash[3], "From")} to={Get(dash[3], "To")} " +
+                Console.WriteLine($"NAV PENDING RUNWAY from={Get(runway[3], "From")} to={Get(runway[3], "To")} " +
                     $"approach={approach[1]} nativeRight={body.controlRight} dx={body.Bottom.X - before:F2} nativeDash={body.dashDelay} {RouteTrace(nav)}");
-                Require((Vector2)approach[1] == (Vector2)Get(dash[3], "To") && body.controlRight && !body.controlLeft &&
+                Require((Vector2)approach[1] == (Vector2)Get(runway[3], "To") && body.controlRight && !body.controlLeft &&
                     body.Bottom.X > before + .05f && body.dashDelay >= 0 && OnFloor(body, upper),
-                    "a pending dash prefix keeps native walking toward the runway exit until its own action is ready");
+                    "a pending runway prefix keeps native walking toward its exit until the actual outlet is ready");
+                int down = -1, land = -1;
+                float lastGroundX = body.Bottom.X;
+                bool borrowedDash = false;
+                int directPulses = 0;
+                for (int tick = 1; tick < 135 && land < 0; tick++)
+                {
+                    if (OnFloor(body, upper)) lastGroundX = body.Bottom.X;
+                    run.Step(1);
+                    if (body.controlDash)
+                    {
+                        // A later independently prepared direct dash is legal.
+                        // The graph Walk itself cannot supply an impulse.
+                        bool direct = (bool)Get(Get(nav, "action"), "Direct") && Get(nav, "ActionKind").ToString() == "Dash";
+                        if (direct && body.dashDelay < 0) directPulses++;
+                        else borrowedDash = true;
+                    }
+                    if (down < 0 && body.controlDown) down = tick;
+                    if (down >= 0 && OnFloor(body, lower)) land = tick;
+                }
+                Console.WriteLine($"NAV RUNWAY OUTLET down={down} land={land} upperTravel={lastGroundX - before:F2} " +
+                    $"directPulses={directPulses} borrowedDash={borrowedDash} body={body.Bottom}/{body.velocity} {RouteTrace(nav)}");
+                Require(down >= 0 && land > down && lastGroundX > before + 32f && !borrowedDash && run.NativeRelocations == 0,
+                    "a real walking runway leads to ordinary original down and lower contact without any borrowed dash");
             }
         }
 

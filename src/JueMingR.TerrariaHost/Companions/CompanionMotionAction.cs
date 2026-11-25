@@ -14,6 +14,8 @@ namespace JueMingR.TerrariaHost.Companions
         internal NavigationTransition Edge;
         internal CompanionFallRisk.ReleaseCorridor FallRelease;
         internal float FallOutletX;
+        internal CompanionDashMotion.Plan DashPlan;
+        internal bool DashPlanRejected { get; private set; }
         internal const float FlightBankClearance = 4f;
         internal const float FlightClimbTolerance = 4f;
         internal bool FlightLanding;
@@ -30,7 +32,7 @@ namespace JueMingR.TerrariaHost.Companions
         private int noProgress, waiting, elapsed, sequence, roofEscape, roofEscapeAge, roofEscapeRow, ledgeBrakeDirection;
         private Vector2 target, entry, roofEscapeStart;
         private CompanionMovementDelivery delivered;
-        private bool hasDelivery, startedMovement, airborne, hookReleasing, dashIssued, unsafeRelease;
+        private bool hasDelivery, startedMovement, airborne, hookReleasing, dashIssued, dashBraking, unsafeRelease;
         private bool cancellingDrop, crossedJumpHeight;
         private bool observedInlet, groundedInlet, maintainingAirContact, clearedFlightBank, levelCruise, roofDropping;
         internal CompanionMovementDeferral Deferral { get; private set; }
@@ -45,7 +47,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool TryRetarget(NavigationTransition edge)
         {
             if (!Direct || !CanRetarget || Edge.Kind != edge.Kind) return false;
-            if (Edge.Detail != edge.Detail) dashIssued = false;
+            if (Edge.Detail != edge.Detail) dashIssued = dashBraking = DashPlanRejected = false;
             Edge = edge;
             target = edge.To;
             return true;
@@ -56,6 +58,8 @@ namespace JueMingR.TerrariaHost.Companions
             Edge = edge;
             Id = id;
             FallRelease = default;
+            DashPlan = default;
+            DashPlanRejected = false;
             FallOutletX = edge.To.X;
             Direct = direct;
             Outcome = CompanionActionOutcome.Running;
@@ -65,7 +69,7 @@ namespace JueMingR.TerrariaHost.Companions
             noProgress = waiting = elapsed = sequence = 0;
             roofEscape = roofEscapeAge = ledgeBrakeDirection = 0;
             roofDropping = false;
-            hasDelivery = startedMovement = airborne = hookReleasing = dashIssued = unsafeRelease = false;
+            hasDelivery = startedMovement = airborne = hookReleasing = dashIssued = dashBraking = unsafeRelease = false;
             cancellingDrop = crossedJumpHeight = false;
             observedInlet = groundedInlet = maintainingAirContact = levelCruise = false;
             clearedFlightBank = FlightLanding = false;
@@ -100,6 +104,7 @@ namespace JueMingR.TerrariaHost.Companions
             Vector2 liveTarget, Vector2 liveVelocity, float spacing, int threatDirection, bool emergency,
             bool keepAirContact, bool ownerInAir, bool rollingWalk)
         {
+            DashPlanRejected = false;
             var state = native.Observed;
             Vector2 feet = CompanionNativeContact.Feet(body);
             maintainingAirContact = Direct && Edge.Kind == NavigationAction.Flight && keepAirContact &&
@@ -171,25 +176,21 @@ namespace JueMingR.TerrariaHost.Companions
                 case NavigationAction.Dash:
                     if (state.DashActive)
                     {
-                        int heading = Math.Sign(body.velocity.X);
-                        float speed = Math.Abs(body.velocity.X);
-                        bool canHold = heading != 0 && (target.X - feet.X) * heading > spacing + speed &&
-                            CompanionGroundRun.HasBrakingRoom(body, heading, speed, state.DashKind);
-                        frame.Move = canHold ? heading : heading != 0 && ClearAhead(body, -heading, 3f, supported) ? -heading : 0;
-                        frame.Status = canHold ? "冲刺中" : "减速中";
+                        SteerDash(body, state, supported, target.X, spacing, false, ref frame);
                         break;
                     }
                     frame.Move = GroundInput(body, state, target.X, 0f, 2f, supported);
                     int launch = Math.Sign(target.X - feet.X);
-                    if (!dashIssued && supported && state.DashReady && launch != 0 && frame.Move != -launch &&
-                        launch == Math.Sign(Edge.To.X - Edge.From.X) &&
-                        CompanionGroundRun.CanDash(body, launch, state.DashType, target.X))
+                    if (!dashIssued && supported && launch != 0 && frame.Move != -launch &&
+                        launch == Math.Sign(Edge.To.X - Edge.From.X))
                     {
-                        // A steady run can release its ordinary throttle at
-                        // the speed cap. The proved dash still needs the
-                        // directional key on its native hotkey frame.
-                        frame.Move = launch;
-                        frame.Dash = launch;
+                        DashPlanRejected = !DashPlan.CanLaunch(body, state, true, launch, target.X, true);
+                        if (!DashPlanRejected)
+                        {
+                            // A steady run can release its ordinary throttle
+                            // at speed cap. The pulse still needs direction.
+                            frame.Move = frame.Dash = launch;
+                        }
                     }
                     break;
                 case NavigationAction.Hoik:
@@ -219,32 +220,29 @@ namespace JueMingR.TerrariaHost.Companions
                         bool cruise = levelCruise && Math.Abs(target.Y - entry.Y) <= 16f &&
                             Math.Abs(target.X - feet.X) > spacing + 34f;
                         var destination = cruise ? target - new Vector2(0, 32f * body.gravDir) : target;
-                        Fly(body, state, feet, destination, velocity, spacing, supported, ref frame,
-                            levelHold: cruise || Direct && keepAirContact && Math.Abs(liveVelocity.Y) < .4f,
-                            preferDescent: Direct ? !cruise && !ownerInAir : (Edge.To.Y - Edge.From.Y) * body.gravDir > 6f);
+                        if (CompanionMotionProfile.CanFly(state) || Edge.Detail != NavigationTraversalDetail.FlightDash)
+                            Fly(body, state, feet, destination, velocity, spacing, supported, ref frame,
+                                levelHold: cruise || Direct && keepAirContact && Math.Abs(liveVelocity.Y) < .4f,
+                                preferDescent: Direct ? !cruise && !ownerInAir : (Edge.To.Y - Edge.From.Y) * body.gravDir > 6f);
+                        else frame.Move = CompanionMotionProfile.Steer(body, state, target.X, velocity.X, spacing, !supported);
                         if (Edge.Detail == NavigationTraversalDetail.FlightDash)
                         {
                             // DashMovement alters X before WingMovement in
                             // Player.Update. Keep native lift/hover control in
                             // the very same frame, including during the pulse.
                             int heading = Math.Sign(target.X - feet.X);
-                            if (state.DashActive && supported)
-                                frame.Move = 0;
-                            else if (state.DashActive && frame.Move == 0)
-                            {
-                                int momentum = Math.Sign(body.velocity.X);
-                                float speed = Math.Abs(body.velocity.X);
-                                if (momentum != 0 && (destination.X - feet.X) * momentum > spacing + speed * 2f &&
-                                    roofEscape == 0 && !roofDropping && ClearAhead(body, momentum, speed + 1f, false))
-                                    frame.Move = momentum;
-                                else if (momentum != 0 && ClearAhead(body, -momentum, 3f, false))
-                                    frame.Move = -momentum;
-                            }
+                            if (state.DashActive)
+                                SteerDash(body, state, supported, target.X, spacing, roofEscape != 0 || roofDropping, ref frame);
                             else if (!dashIssued && !supported)
                             {
-                                if (frame.Move == heading && CompanionGroundRun.CanAirDash(body, state, heading, destination))
+                                DashPlanRejected = !DashPlan.CanLaunch(body, state, false, heading, target.X, true, frame.Vertical > 0);
+                                if (frame.Move != -heading && roofEscape == 0 && !roofDropping && !DashPlanRejected)
+                                {
+                                    frame.Move = heading;
                                     frame.Dash = heading;
-                                else RetireAirDash();
+                                }
+                                else if (CompanionMotionProfile.CanFly(state)) RetireAirDash();
+                                else DashPlanRejected = true;
                             }
                         }
                     }
@@ -336,7 +334,23 @@ namespace JueMingR.TerrariaHost.Companions
                 if (frame.Move == 0 && threatDirection != 0 && (Edge.Kind == NavigationAction.Walk || Edge.Kind == NavigationAction.Swim) &&
                     ClearAhead(body, threatDirection, 5f, supported)) frame.Move = threatDirection;
             }
+            // The Ram Rune consumes Down+Jump on a fresh jump edge. Wing
+            // hover needs that same pair only after jump is already held.
+            if (!IsDrop && frame.Jump && frame.Vertical > 0 && CanStartRam(body, state, supported))
+                frame.Vertical = 0;
             return frame;
+        }
+
+        private void SteerDash(Player body, CompanionMobilitySnapshot state, bool supported, float destination, float spacing,
+            bool yield, ref CompanionMobilityFrame frame)
+        {
+            int heading = Math.Sign(body.velocity.X);
+            frame.Move = DashPlan.ActiveInput(body, state, supported, destination - heading * spacing, yield || dashBraking,
+                frame.Drop || frame.Vertical > 0);
+            // A stop already delivered belongs to this pulse. Shorter
+            // projected distance on its next step does not resume throttle.
+            dashBraking |= frame.Move != heading || heading == 0;
+            frame.Status = dashBraking ? "减速中" : "冲刺中";
         }
 
         private void RetireAirDash()
@@ -447,7 +461,41 @@ namespace JueMingR.TerrariaHost.Companions
                     !ClearAhead(body, frame.Move, Math.Max(3f, Math.Abs(body.velocity.X) + 1f), false)) frame.Move = 0;
             }
             if (state.MountHover) frame.Vertical = gravity;
+            if (phase == Phase.Travel && !frame.Drop && CanStartRam(body, state, supported) &&
+                (target.Y - feet.Y) * gravity > 40f && Math.Abs(target.X - feet.X) <= 12f &&
+                Math.Abs(body.velocity.X) < 1f && CanReleaseRam(body, feet, target))
+            {
+                frame.Jump = frame.Drop = true;
+            }
             frame.Status = "下降中";
+        }
+
+        private static bool CanStartRam(Player body, CompanionMobilitySnapshot state, bool supported) =>
+            body.hasDeadCellsDownDash && !body.isPerformingJump_DownDash && !supported && !body.mount.Active &&
+            body.velocity.Y != 0f && state.ReleaseJump && state.JumpTime == 0 && !state.Sliding &&
+            !state.Wet && !state.Controlled && !state.GrappleAttached && !state.Pulley &&
+            !body.canJumpAgain_Basilisk && !body.canJumpAgain_WallOfFleshGoat &&
+            !body.canJumpAgain_Santank && !body.canJumpAgain_Unicorn;
+
+        private static bool CanReleaseRam(Player body, Vector2 feet, Vector2 landing)
+        {
+            // JumpMovement gives the Ram Rune a downward impulse and the
+            // native dry path can move twice. Prove both Down segments on
+            // the already selected fall, then let go of Down before landing.
+            var pass = CompanionNativeContact.PlatformContact.Native(body, true, true);
+            var hold = CompanionNativeContact.PlatformContact.Native(body, false, false);
+            var position = body.position;
+            float stepY = (16f + body.gravity) * body.gravDir;
+            for (int i = 0; i < 2; i++)
+            {
+                var velocity = new Vector2(i == 0 ? body.velocity.X : 0f, stepY);
+                if (!CompanionNativeContact.TryMove(body, position, velocity, pass, false, out var step) ||
+                    !CompanionNativeContact.TryMove(body, position, velocity, hold, false, out var normal) ||
+                    step.Position != normal.Position || step.Ground || step.Wall ||
+                    CompanionFallRisk.OutsideModeledLiquid(body, step.Position, body.width, body.height)) return false;
+                position = step.Position;
+            }
+            return CompanionFallRisk.CanLand(body, feet, landing, false);
         }
 
         private bool Jump(Player body, CompanionMobilitySnapshot state, bool supported)
@@ -476,6 +524,15 @@ namespace JueMingR.TerrariaHost.Companions
             // hover band. Let native gravity reach them instead of spending
             // reserve holding a pose above the intended continuation.
             if (preferDescent && error > 4f && elevation == 0) elevation = 1;
+            if (Direct && levelHold && !supported && !FlightLanding && elevation > 0 &&
+                body.velocity.Y * gravity < -.5f && Math.Abs(error) <= 16f &&
+                state.WingHover && CompanionMotionProfile.Wings(state))
+            {
+                // A level owner calls for catching the remaining climb
+                // now. Native hover can brake that climb and spend the
+                // same frame on useful horizontal pursuit.
+                elevation = 0;
+            }
             if (FlightLanding)
             {
                 // Complete a supported endpoint with a native landing.
@@ -767,11 +824,17 @@ namespace JueMingR.TerrariaHost.Companions
             elapsed++;
             var feet = CompanionNativeContact.Feet(body);
             var state = native.Observed;
+            if (DashPlanRejected && !state.DashActive &&
+                (Edge.Kind == NavigationAction.Dash || Edge.Detail == NavigationTraversalDetail.FlightDash))
+                return Outcome = CompanionActionOutcome.Superseded;
             Braking = delivered.Move != 0 && delivered.Velocity.X * delivered.Move < -.04f &&
                 (body.velocity.X - delivered.Velocity.X) * delivered.Move > .015f;
             if (delivered.Dash) dashIssued |= state.DashActive;
             if (Edge.Detail == NavigationTraversalDetail.FlightDash && !state.DashActive && (dashIssued || delivered.Dash))
+            {
+                if (!CompanionMotionProfile.CanFly(state)) return Outcome = CompanionActionOutcome.Complete;
                 RetireAirDash();
+            }
             if (Edge.Kind == NavigationAction.Mount && Edge.MountChoice.Valid && body.mount.Active &&
                 body.mount.Type == Edge.MountChoice.Type) return Outcome = CompanionActionOutcome.Complete;
             InNativeMotion |= delivered.ToolAdmitted || delivered.Jump && !supported ||
@@ -857,8 +920,9 @@ namespace JueMingR.TerrariaHost.Companions
                 float lateral = Math.Abs(oldFeet.X - target.X) - Math.Abs(feet.X - target.X);
                 progress = Edge.Kind == NavigationAction.Walk || Edge.Kind == NavigationAction.Dash ? lateral :
                     Math.Max(lateral, Math.Abs(oldFeet.Y - target.Y) - Math.Abs(feet.Y - target.Y));
-                if (progress > .08f || Braking) noProgress = 0;
-                else noProgress++;
+                if (progress > .08f) noProgress = 0;
+                else if (!Braking || ledgeBrakeDirection == 0 && (target.X - oldFeet.X) * delivered.Move <= 0f)
+                    noProgress++;
             }
             if (!Direct && Edge.Kind == NavigationAction.Walk && horizontal != 0f &&
                 delivered.Velocity.X * horizontal < -.04f &&
@@ -985,15 +1049,15 @@ namespace JueMingR.TerrariaHost.Companions
             bool pushing = move == momentum && !state.DashActive;
             bool continuingStop = supported && canCoast && speed > 0f && ledgeBrakeDirection == momentum && move != -momentum;
             if (!continuingStop) ledgeBrakeDirection = 0;
-            bool unsupported = false;
-            if (continuingStop || supported && speed > .5f && !CompanionGroundRun.HasBrakingRoom(body, momentum,
+            var room = supported && speed > .5f ? CompanionGroundRun.BrakingRoom(body, momentum,
                 pushing ? speed + Math.Max(0, body.runAcceleration) : speed,
-                state.DashActive ? state.DashKind : 0, out unsupported, includeForwardStride: canCoast && pushing))
+                state.DashActive ? state.DashKind : 0, includeForwardStride: canCoast && pushing) : CompanionBrakingRoom.Clear;
+            if (continuingStop || room == CompanionBrakingRoom.Wall || room == CompanionBrakingRoom.Ledge)
             {
                 stepOff = !continuingStop && pushing && CompanionGroundRun.HasShallowStepOff(body, move);
                 if (!stepOff)
                 {
-                    if (canCoast && (unsupported || continuingStop) && move != -momentum)
+                    if (canCoast && (room == CompanionBrakingRoom.Ledge || continuingStop) && move != -momentum)
                     {
                         // Finish this physical stop before driving forward
                         // again. One braking step can make the next stride
@@ -1001,12 +1065,26 @@ namespace JueMingR.TerrariaHost.Companions
                         ledgeBrakeDirection = momentum;
                         if (CompanionGroundRun.CanCoastToStop(body, momentum, speed)) return 0;
                     }
-                    return ClearAhead(body, -momentum, 3f, true) ? -momentum : 0;
+                    return GroundBrakeInput(body, momentum, speed, supported);
                 }
             }
+            // Unproved shapes still admit a short observed stride. Release
+            // throttle when that stride would add speed beyond our known
+            // stopping prefix, without inventing a direction reversal.
+            if (room == CompanionBrakingRoom.Unproved && pushing && speed > 3f) return 0;
+            // The original horizontal update can still advance toward the
+            // obstacle while the opposite key reduces its forward momentum.
+            if (move != 0 && move == -momentum) return GroundBrakeInput(body, momentum, speed, supported);
             if (move != 0 && !ClearAhead(body, move, Math.Max(4f, Math.Abs(body.velocity.X) + 1f), supported && !stepOff,
                 allowSteps: supported)) return 0;
             return move;
+        }
+
+        private static int GroundBrakeInput(Player body, int momentum, float speed, bool supported)
+        {
+            float delta = speed - body.runAcceleration - (speed > body.runSlowdown ? body.runSlowdown : 0f);
+            if (delta >= 0f) return -momentum; // This key still reduces the approaching sweep.
+            return ClearAhead(body, -momentum, Math.Max(1f, -delta), supported, allowSteps: supported) ? -momentum : 0;
         }
 
         internal static bool ClearAhead(Player body, int direction, float pixels, bool keepSupport, bool allowSteps = false) =>

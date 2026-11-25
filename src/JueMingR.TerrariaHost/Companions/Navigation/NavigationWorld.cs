@@ -37,10 +37,30 @@ namespace JueMingR.TerrariaHost.Companions
             Kind == NavigationCellKind.Slope || Kind == NavigationCellKind.Platform ||
             Kind == NavigationCellKind.Trapdoor;
 
-        // Exact slope, half-brick and door shapes are determined by the
-        // native local checker. Only full blocks conclusively split an air run.
+        // Only full blocks split the coarse air span. Traversal checks the
+        // occupied part of a shaped tile against the actual body envelope.
         internal bool FullBarrier => Kind == NavigationCellKind.Solid || Kind == NavigationCellKind.Door;
         internal bool Hazard => Amount != 0 && (Liquid == LiquidID.Lava || Liquid == LiquidID.Shimmer);
+
+        // Extents of the occupied vertical band over the overlapped X span.
+        // Terraria slopes 1/2 fill below the diagonal and 3/4 fill above it.
+        internal void SolidBand(float left, float right, out float top, out float bottom)
+        {
+            top = 0f;
+            bottom = 16f;
+            if (Kind == NavigationCellKind.Half) top = 8f;
+            else if (Kind == NavigationCellKind.Slope || Kind == NavigationCellKind.Platform)
+            {
+                switch (Slope)
+                {
+                    case 1: top = left; break;
+                    case 2: top = 16f - right; break;
+                    case 3: bottom = 16f - left; break;
+                    case 4: bottom = right; break;
+                }
+            }
+        }
+
         public bool Equals(NavigationCell other) => Known == other.Known && Kind == other.Kind &&
             Slope == other.Slope && Liquid == other.Liquid && Amount == other.Amount && Type == other.Type &&
             FrameX == other.FrameX && FrameY == other.FrameY && RopeOverlap == other.RopeOverlap &&
@@ -74,7 +94,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal readonly List<NavigationSpan> AirSpans = new List<NavigationSpan>();
         private readonly int[] surfaceRows = new int[NavigationWorld.ChunkSize + 1];
         private readonly int[] airRows = new int[NavigationWorld.ChunkSize + 1];
-        internal int ReadCount, LastUse, Version, UnknownCells;
+        internal int ReadCount, LastUse, Version, EditVersion, UnknownCells;
         internal bool Complete => ReadCount == Cells.Length;
 
         internal NavigationChunk(Point origin, int version)
@@ -222,6 +242,7 @@ namespace JueMingR.TerrariaHost.Companions
             chunk.Cells[index] = current;
             chunk.UnknownCells += (current.Known ? 0 : 1) - (previous.Known ? 0 : 1);
             chunk.Version = ++Revision;
+            chunk.EditVersion = chunk.Version;
             chunk.Reindex();
             changed = true;
             return true;
@@ -238,6 +259,10 @@ namespace JueMingR.TerrariaHost.Companions
             version = chunk.Version;
             return true;
         }
+
+        // First discovery of neighboring terrain does not undo a physical
+        // rejection already observed against that terrain.
+        internal int EditVersion(Point point) => chunks.TryGetValue(OriginOf(point), out var chunk) ? chunk.EditVersion : 0;
 
         private NavigationChunk Ensure(Point point, NavigationBudget budget)
         {

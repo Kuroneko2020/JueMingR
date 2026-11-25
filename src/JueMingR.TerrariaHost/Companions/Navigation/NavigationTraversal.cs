@@ -126,20 +126,23 @@ namespace JueMingR.TerrariaHost.Companions
             var medium = MediumAt(point, caps.Gravity);
             if (supported)
             {
-                if (TryGroundAnchor(point, feet.Y, out Point floor))
-                    return SupportedAnchor(feet, floor, mount, energy, actual);
+                float distance = 18f;
+                Point floor = default;
+                bool found = FindGroundAnchor(point, feet, ref distance, ref floor);
                 // Native support can use any positive horizontal overlap.
                 // The shrink used for clearance would erase real contact
                 // on a lip. Exact edge contact alone still spans no tile.
                 float halfWidth = caps.Width * .5f;
                 int left = (int)Math.Floor((feet.X - halfWidth) / 16f);
                 int right = (int)Math.Ceiling((feet.X + halfWidth) / 16f) - 1;
-                for (int distance = 1; point.X - distance >= left || point.X + distance <= right; distance++)
+                for (int offset = 1; distance > 1f && (point.X - offset >= left || point.X + offset <= right); offset++)
                 {
-                    if (point.X - distance >= left && TryGroundAnchor(new Point(point.X - distance, point.Y), feet.Y, out floor) ||
-                        point.X + distance <= right && TryGroundAnchor(new Point(point.X + distance, point.Y), feet.Y, out floor))
-                        return SupportedAnchor(feet, floor, mount, energy, actual);
+                    if (point.X - offset >= left)
+                        found |= FindGroundAnchor(new Point(point.X - offset, point.Y), feet, ref distance, ref floor);
+                    if (point.X + offset <= right)
+                        found |= FindGroundAnchor(new Point(point.X + offset, point.Y), feet, ref distance, ref floor);
                 }
+                if (found) return SupportedAnchor(feet, floor, mount, energy, actual);
             }
             return new NavigationNode(point, medium == NavigationMedium.Track ? NavigationMedium.Air : medium,
                 caps.Gravity, caps.Mounted, energy, mount, mountChoice: CurrentMountChoice());
@@ -151,29 +154,43 @@ namespace JueMingR.TerrariaHost.Companions
             var anchor = new NavigationNode(floor, NavigationMedium.Ground, caps.Gravity, caps.Mounted, energy, mount,
                 mountChoice: choice);
             float delta = feet.X - (floor.X * 16f + 8);
-            // A legal body against the sidewall can still have positive
-            // support in this column. Keep that support and a clear inlet.
-            if (!actual || Math.Abs(delta) < 1f || Math.Abs(delta) > 8f || !DepartureShoulderBlocked(anchor, Math.Sign(delta)))
-                return anchor;
-            int offset = delta < 0 ? (int)Math.Floor(delta) : (int)Math.Ceiling(delta);
-            if (!Clear(new Vector2(floor.X * 16f + 8 + offset, feet.Y), caps.Gravity, mount, 2, default, false,
-                choice: choice)) return anchor;
+            if (!actual || Math.Abs(delta) < 1f) return anchor;
+            // A toe on a higher neighbor or a shoulder against a shaped
+            // wall may be legal where the tile's center is unusable.
+            var centered = Feet(anchor);
+            if (Math.Abs(delta) <= 8f && Math.Abs(centered.Y - feet.Y) <= 2f &&
+                Clear(centered, caps.Gravity, mount, 2, default, false, choice: choice)) return anchor;
+            int offset = (int)Math.Round(delta);
+            var surface = Read(floor);
+            var pose = SupportFeet(floor, surface, caps.Gravity, caps.Width, offset);
+            if (!Clear(pose, caps.Gravity, mount, 2, default, false, choice: choice))
+            {
+                offset = delta < 0 ? (int)Math.Floor(delta) : (int)Math.Ceiling(delta);
+                pose = SupportFeet(floor, surface, caps.Gravity, caps.Width, offset);
+                if (!Clear(pose, caps.Gravity, mount, 2, default, false, choice: choice)) return anchor;
+            }
             return new NavigationNode(floor, NavigationMedium.Ground, caps.Gravity, caps.Mounted, energy, mount, offsetX: offset,
                 mountChoice: choice);
         }
 
-        private bool TryGroundAnchor(Point center, float footY, out Point floor)
+        private bool FindGroundAnchor(Point center, Vector2 feet, ref float distance, ref Point floor)
         {
+            bool found = false;
             for (int i = 0; i < 4; i++)
             {
                 int offset = i == 0 ? 0 : i == 1 ? 1 : i == 2 ? -1 : 2;
-                floor = new Point(center.X, center.Y + offset * caps.Gravity);
-                var cell = Read(floor);
-                if (Supports(cell, caps.Gravity) &&
-                    Math.Abs(SupportFeet(floor, cell, caps.Gravity, caps.Width).Y - footY) <= 18f) return true;
+                var candidate = new Point(center.X, center.Y + offset * caps.Gravity);
+                var cell = Read(candidate);
+                if (!Supports(cell, caps.Gravity)) continue;
+                float difference = Math.Abs(SupportFeet(candidate, cell, caps.Gravity, caps.Width,
+                    feet.X - (candidate.X * 16f + 8f)).Y - feet.Y);
+                if (difference >= distance) continue;
+                distance = difference;
+                floor = candidate;
+                found = true;
+                if (distance <= 1f) break;
             }
-            floor = default;
-            return false;
+            return found;
         }
 
         internal NavigationNode FallingGoal(Vector2 target, Vector2 velocity, NavigationNode start, NavigationNode observed)
@@ -216,7 +233,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal Vector2 Feet(NavigationNode node)
         {
             if (node.Grounded)
-                return SupportFeet(node.Cell, Read(node.Cell), node.Gravity, BodyWidth(node.MountMode, node.MountChoice)) + new Vector2(node.OffsetX, 0);
+                return SupportFeet(node.Cell, Read(node.Cell), node.Gravity, BodyWidth(node.MountMode, node.MountChoice), node.OffsetX);
             if (node.Medium == NavigationMedium.Track && NavigationRail.TryHeight(node.RailFrame, 4, out int height))
                 return new Vector2(node.Cell.X * 16f + 8, node.Cell.Y * 16f + height) - caps.Geometry.CartMagnetFromFeet;
             return new Vector2(node.Cell.X * 16f + 8 + node.OffsetX, node.Cell.Y * 16f + 8);
@@ -225,58 +242,79 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool IsGoal(NavigationNode node, NavigationNode goal)
         {
             if (node.Gravity != goal.Gravity || node.Medium != goal.Medium) return false;
-            if (node.Cell == goal.Cell) return true;
-            if (!node.Grounded || Math.Abs(node.Cell.X - goal.Cell.X) > 2) return false;
-            return ConnectGround(node, goal.Cell.X, out var end) && end.Cell == goal.Cell;
+            if (node.Grounded) return Math.Abs(node.Cell.X - goal.Cell.X) <= 2 && SameGroundRegion(node, goal);
+            return node.Cell == goal.Cell && GoalEndpoint(node, goal, Feet(goal));
         }
 
-        internal bool SameGroundRegion(NavigationNode node, NavigationNode goal)
+        internal bool GoalEndpoint(NavigationNode node, NavigationNode goal, Vector2 target)
+        {
+            if (node.Gravity != goal.Gravity || node.Medium != goal.Medium || node.Cell != goal.Cell) return false;
+            var feet = Feet(node);
+            if (node.Grounded)
+                return Vector2.DistanceSquared(feet, target) <= 3f * 3f && GroundPoseLink(node, feet, target);
+            if (node.Medium == NavigationMedium.Air)
+                return SameAirLane(node, feet, target);
+            return KnownClear(feet, target, node.Gravity, node.MountMode, choice: node.MountChoice);
+        }
+
+        internal bool SameGroundRegion(NavigationNode node, NavigationNode goal, Vector2? from = null, Vector2? target = null)
         {
             if (!node.Grounded || !goal.Grounded || node.Gravity != goal.Gravity ||
                 Math.Abs(node.Cell.X - goal.Cell.X) > 18) return false;
-            return ConnectGround(node, goal.Cell.X, out var end) && end.Cell == goal.Cell;
+            if (!ConnectGround(node, goal.Cell.X, out var end) || end.Cell != goal.Cell) return false;
+            var inlet = from ?? Feet(node);
+            var outlet = target ?? Feet(goal);
+            if (node.Cell == end.Cell) return GroundPoseLink(end, inlet, outlet);
+            return (!from.HasValue || GroundPoseLink(node, inlet, Feet(node))) && GroundPoseLink(end, Feet(end), outlet);
         }
 
-        internal bool SameAirRegion(NavigationNode node, NavigationNode goal)
+        internal bool SameAirRegion(NavigationNode node, NavigationNode goal, Vector2? from = null, Vector2? target = null)
         {
             if (node.Medium != NavigationMedium.Air || goal.Medium != NavigationMedium.Air ||
                 node.Gravity != goal.Gravity || node.MountMode != goal.MountMode ||
                 Math.Abs(node.Cell.X - goal.Cell.X) > 4 || Math.Abs(node.Cell.Y - goal.Cell.Y) > 6) return false;
-            var from = Feet(node);
-            var to = Feet(goal);
+            return SameAirLane(node, from ?? Feet(node), target ?? Feet(goal));
+        }
+
+        private bool SameAirLane(NavigationNode node, Vector2 from, Vector2 to)
+        {
             if (!KnownClear(from, to, node.Gravity, node.MountMode, choice: node.MountChoice)) return false;
-            if (from.Y == to.Y) return true;
-            // Whole-body clearance treats platforms as one-way. Crossing
-            // their support plane changes the target region in either direction.
-            float halfWidth = BodyWidth(node.MountMode, node.MountChoice) * .5f;
-            var first = Vector2.Min(from, to);
-            var last = Vector2.Max(from, to);
-            for (int y = (int)Math.Ceiling(first.Y / 16f); y * 16f <= last.Y; y++)
-            {
-                float x = MathHelper.Lerp(from.X, to.X, (y * 16f - from.Y) / (to.Y - from.Y));
-                int right = (int)Math.Ceiling((x + halfWidth) / 16f) - 1;
-                for (int column = (int)Math.Floor((x - halfWidth) / 16f); column <= right; column++)
-                {
-                    var cell = Read(new Point(column, y));
-                    if (!cell.Known || cell.Support) return false;
-                }
-            }
-            return true;
+            // Upward input can legally pass the platform, but poses on
+            // opposite sides of its catch plane are distinct target regions.
+            return node.Gravity < 0 || from.Y <= to.Y ||
+                !CrossesPlatform(to, from, BodyWidth(node.MountMode, node.MountChoice));
         }
 
         internal bool GroundGoalLink(NavigationNode from, NavigationNode goal, out NavigationNode to,
-            out NavigationTransition edge, out float cost)
+            out NavigationTransition edge, out float cost, Vector2? actualStart = null, Vector2? actualGoal = null)
         {
             to = default;
             edge = default;
             cost = 0f;
             int distance = Math.Abs(from.Cell.X - goal.Cell.X);
-            if (distance < 3 || distance > 12 || from.Gravity != goal.Gravity || !from.Grounded || !goal.Grounded ||
+            if (distance > 12 || from.Gravity != goal.Gravity || !from.Grounded || !goal.Grounded ||
                 !ConnectGround(from, goal.Cell.X, out to) || to.Cell != goal.Cell) return false;
-            edge = new NavigationTransition(NavigationAction.Walk, Feet(from), Feet(to), from.MountChoice, from.Cell, to.Cell,
-                world.Revision);
+            var start = actualStart ?? Feet(from);
+            var destination = actualGoal ?? Feet(goal);
+            if (Vector2.DistanceSquared(start, destination) <= 3f * 3f ||
+                !GroundPoseLink(to, Feet(to), destination)) return false;
+            if (distance == 0 ? !GroundPoseLink(from, start, destination) :
+                actualStart.HasValue && !GroundPoseLink(from, start, Feet(from))) return false;
+            edge = new NavigationTransition(NavigationAction.Walk, start, destination, from.MountChoice, from.Cell, to.Cell, world.Revision);
             cost = Vector2.Distance(edge.From, edge.To) / 16f;
             return true;
+        }
+
+        private bool GroundPoseLink(NavigationNode support, Vector2 from, Vector2 to)
+        {
+            var cell = Read(support.Cell);
+            int width = BodyWidth(support.MountMode, support.MountChoice);
+            float center = support.Cell.X * 16f + 8f;
+            if (!Supports(cell, support.Gravity) || Math.Abs(from.X - center) >= 8f + width * .5f ||
+                Math.Abs(to.X - center) >= 8f + width * .5f) return false;
+            if (Math.Abs(SupportFeet(support.Cell, cell, support.Gravity, width, from.X - center).Y - from.Y) > 5f ||
+                Math.Abs(SupportFeet(support.Cell, cell, support.Gravity, width, to.X - center).Y - to.Y) > 5f) return false;
+            return KnownClear(from, to, support.Gravity, support.MountMode, 2, support.MountChoice);
         }
 
         internal bool LocalDoor(Vector2 feet, Vector2 target, NavigationNode start, out NavigationTransition edge)
@@ -290,6 +328,21 @@ namespace JueMingR.TerrariaHost.Companions
                 Math.Abs(candidate.To.X - feet.X) > Math.Abs(horizontal) + 16 ||
                 Math.Abs(candidate.EntryTile.X * 16 + 8 - feet.X) > 36) return false;
             return CanAttach(feet, candidate, out edge);
+        }
+
+        internal bool LocalHoik(Vector2 feet, Vector2 target, NavigationNode start, out NavigationTransition edge)
+        {
+            edge = default;
+            int direction = Math.Sign(target.X - feet.X);
+            if (Math.Abs(target.X - feet.X) < 32f || !start.Grounded || !HoikBody(start.Gravity, start.MountMode) ||
+                budget.ExpansionsRemaining < 2 || !budget.TryExpand() ||
+                !SpecialGround(start, out var exit, out _, out var tooth, direction, feet)) return false;
+            Vector2 finish = Feet(exit);
+            if ((target.X - (tooth.X * 16f + 8f)) * direction <= 0f) return false;
+            // The typed action alone asks the native wedge checker to
+            // qualify the approach from the exact observed foot position.
+            edge = new NavigationTransition(NavigationAction.Hoik, feet, finish, tooth, exit.Cell, world.Revision);
+            return true;
         }
 
         internal bool LocalLevel(Vector2 feet, NavigationNode start, NavigationNode goal, out NavigationTransition edge)
@@ -552,11 +605,20 @@ namespace JueMingR.TerrariaHost.Companions
                     action.ExitTile, action.TerrainVersion, action.Irreversible, action.Detail);
                 return true;
             }
+            if (action.Kind == NavigationAction.Hoik && caps.Supported && Math.Abs(feet.Y - action.From.Y) <= .125f &&
+                Math.Abs(feet.X - action.From.X) <= 16f &&
+                HoikTooth(action.EntryTile, Read(action.EntryTile), Math.Sign(action.To.X - action.From.X)))
+            {
+                attached = new NavigationTransition(action.Kind, feet, action.To, action.EntryTile,
+                    action.ExitTile, action.TerrainVersion);
+                return true;
+            }
             if (action.Kind == NavigationAction.Walk || action.Kind == NavigationAction.Dash)
             {
-                var start = Anchor(feet, caps.Supported);
-                if (!start.Grounded || !ConnectGround(start, CellAt(action.To).X, out var end) ||
-                    Math.Abs(Feet(end).Y - action.To.Y) > 9f) return false;
+                var start = Anchor(feet, caps.Supported, actual: true);
+                if (!start.Grounded || !ConnectGround(start, action.ExitTile.X, out var end) || end.Cell != action.ExitTile ||
+                    !GroundPoseLink(end, Feet(end), action.To) ||
+                    !GroundPoseLink(start, feet, start.Cell == end.Cell ? action.To : Feet(start))) return false;
                 attached = new NavigationTransition(action.Kind, feet, action.To, action.MountChoice, action.EntryTile,
                     action.ExitTile, action.TerrainVersion, action.Irreversible, action.Detail, action.InteractionPosition);
                 return true;
@@ -572,9 +634,9 @@ namespace JueMingR.TerrariaHost.Companions
                     action.ExitTile, action.TerrainVersion, action.Irreversible, action.Detail);
                 return true;
             }
-            // A nearby elevated jump inlet can still sit behind the body.
-            // Walk back before launching so proximity cannot bypass runway.
-            bool behindJumpInlet = action.Kind == NavigationAction.Jump &&
+            // A ground launch can need a real step back before takeoff.
+            // A rope holds the body off-center and supplies its own release.
+            bool behindJumpInlet = caps.Supported && action.Kind == NavigationAction.Jump &&
                 (action.From.Y - action.To.Y) * caps.Gravity >= 32f &&
                 (feet.X - action.From.X) * Math.Sign(action.To.X - action.From.X) > 4f;
             if (!behindJumpInlet && Vector2.DistanceSquared(feet, action.From) <= 16f * 16f &&
@@ -662,7 +724,9 @@ namespace JueMingR.TerrariaHost.Companions
             }
             else if (option < 33)
             {
-                kind = NavigationAction.Dash;
+                // A long floor connection alone proves ordinary walking.
+                // The live action can elect a pulse only with its own
+                // current speed, source and stopping lane.
                 if (!ConnectGround(from, from.Cell.X + (option == 31 ? -8 : 8), out to)) return false;
             }
             else if (option == 33)
@@ -742,13 +806,58 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         internal bool KnownClear(Vector2 from, Vector2 to, int gravity, NavigationTraversalDetail mount, int allowance = 0,
-            CompanionMountChoice choice = default)
+            CompanionMountChoice choice = default, bool platformRelease = false)
         {
             int steps = Math.Max(1, (int)Math.Ceiling(Vector2.Distance(from, to) / 12f));
             for (int i = 0; i <= steps; i++)
                 if (!Clear(Vector2.Lerp(from, to, i / (float)steps), gravity, mount, allowance, default, false,
                     choice: choice)) return false;
-            return true;
+            return platformRelease || gravity < 0 || to.Y <= from.Y || !CrossesPlatform(from, to, BodyWidth(mount, choice));
+        }
+
+        private bool CrossesPlatform(Vector2 from, Vector2 to, int width)
+        {
+            float halfWidth = width * .5f;
+            // Only surfaces reached by the descending feet can catch the
+            // body. Read the bounded horizontal interval for each foot row.
+            int lastRow = (int)Math.Floor((to.Y - .125f) / 16f);
+            for (int row = (int)Math.Floor(from.Y / 16f); row <= lastRow; row++)
+            {
+                float y = row * 16f;
+                float enter = Math.Max(0f, (y - from.Y) / (to.Y - from.Y));
+                float leave = Math.Min(1f, (y + 16f - from.Y) / (to.Y - from.Y));
+                float firstX = MathHelper.Lerp(from.X, to.X, enter), lastX = MathHelper.Lerp(from.X, to.X, leave);
+                int left = (int)Math.Floor((Math.Min(firstX, lastX) - halfWidth + .125f) / 16f);
+                int right = (int)Math.Floor((Math.Max(firstX, lastX) + halfWidth - .125f) / 16f);
+                for (int column = left; column <= right; column++)
+                {
+                    var point = new Point(column, row);
+                    var cell = Read(point);
+                    if (!cell.Known) return true;
+                    if (cell.Kind != NavigationCellKind.Platform) continue;
+                    float center = column * 16f + 8f;
+                    if (cell.Slope == 0)
+                    {
+                        if (from.Y <= y && Math.Abs(firstX - center) < 8f + halfWidth) return true;
+                        continue;
+                    }
+                    // Clip the sweep to actual foot overlap before testing
+                    // the slope's surface at the two ends of that contact.
+                    float first = enter, last = leave, dx = to.X - from.X;
+                    if (dx != 0f)
+                    {
+                        float a = (center - 8f - halfWidth - from.X) / dx;
+                        float b = (center + 8f + halfWidth - from.X) / dx;
+                        first = Math.Max(first, Math.Min(a, b));
+                        last = Math.Min(last, Math.Max(a, b));
+                    }
+                    if (first >= last) continue;
+                    Vector2 inlet = Vector2.Lerp(from, to, first), exit = Vector2.Lerp(from, to, last);
+                    if (inlet.Y <= SupportFeet(point, cell, 1, width, inlet.X - center).Y &&
+                        exit.Y > SupportFeet(point, cell, 1, width, exit.X - center).Y + .125f) return true;
+                }
+            }
+            return false;
         }
 
         private bool Walk(NavigationNode from, int dir, out NavigationNode to)
@@ -801,7 +910,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             to = from;
             int dir = Math.Sign(x - from.Cell.X);
-            if (dir == 0) return true;
+            if (dir == 0) return Clear(Feet(to), to.Gravity, to.MountMode, 2, default, false, choice: to.MountChoice);
             while (to.Cell.X != x)
             {
                 var start = Feet(to);
@@ -819,7 +928,7 @@ namespace JueMingR.TerrariaHost.Companions
                     Vector2 finish = SupportFeet(next, support, to.Gravity, BodyWidth(to.MountMode, to.MountChoice));
                     if (Math.Abs(finish.Y - start.Y) > 18f) continue;
                     int offsetX = 0;
-                    int allowance = dy != 0 ? 8 : 2;
+                    const int allowance = 2;
                     if (!Clear(finish, to.Gravity, to.MountMode, allowance, default, false, dir, to.MountChoice))
                     {
                         if (Pending || dy != 0 || support.Kind != NavigationCellKind.Solid) continue;
@@ -832,7 +941,7 @@ namespace JueMingR.TerrariaHost.Companions
                     }
                     Vector2 highMid = new Vector2((start.X + finish.X) * .5f,
                         to.Gravity > 0 ? Math.Min(start.Y, finish.Y) : Math.Max(start.Y, finish.Y));
-                    if (!Clear(highMid, to.Gravity, to.MountMode, 5, default, false, dir, to.MountChoice)) continue;
+                    if (!Clear(highMid, to.Gravity, to.MountMode, 2, default, false, dir, to.MountChoice)) continue;
                     to = Ground(next, to, offsetX);
                     found = true;
                     break;
@@ -918,7 +1027,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if (underWall) offsetX = -Math.Sign(dx) * (BodyWidth(from.MountMode, from.MountChoice) / 2 + 7);
                 // A vertical release stays in the checked body lane. Moving
                 // back to the nominal center would overlap the wall again.
-                landing.X += offsetX;
+                landing = SupportFeet(point, below, from.Gravity, BodyWidth(from.MountMode, from.MountChoice), offsetX);
                 if (!Clear(landing, from.Gravity, from.MountMode, 3, default, false, choice: from.MountChoice))
                 {
                     if (Pending || Unknown || !from.Grounded || platform || below.Kind != NavigationCellKind.Solid ||
@@ -936,8 +1045,8 @@ namespace JueMingR.TerrariaHost.Companions
         private bool DescentLane(NavigationNode from, Vector2 start, Vector2 landing, int dx, bool platform)
         {
             var lip = new Vector2(landing.X, start.Y + (from.Grounded ? from.Gravity : 0));
-            if ((dx == 0 || KnownClear(start, lip, from.Gravity, from.MountMode, 2, choice: from.MountChoice)) &&
-                KnownClear(lip, landing, from.Gravity, from.MountMode, 2, choice: from.MountChoice)) return true;
+            if ((dx == 0 || KnownClear(start, lip, from.Gravity, from.MountMode, 2, choice: from.MountChoice, platformRelease: platform)) &&
+                KnownClear(lip, landing, from.Gravity, from.MountMode, 2, choice: from.MountChoice, platformRelease: platform)) return true;
             if (Pending || dx == 0 || !from.Grounded) return false;
 
             Vector2 release = start;
@@ -955,10 +1064,10 @@ namespace JueMingR.TerrariaHost.Companions
             for (float drop = Math.Min(16f, depth); drop > 0; drop = Math.Min(drop + 16f, depth))
             {
                 var below = release + new Vector2(0, drop * from.Gravity);
-                if (!KnownClear(previous, below, from.Gravity, from.MountMode, 2, choice: from.MountChoice)) return false;
+                if (!KnownClear(previous, below, from.Gravity, from.MountMode, 2, choice: from.MountChoice, platformRelease: platform)) return false;
                 var across = new Vector2(landing.X, below.Y);
                 if (KnownClear(below, across, from.Gravity, from.MountMode, 2, choice: from.MountChoice) &&
-                    KnownClear(across, landing, from.Gravity, from.MountMode, 2, choice: from.MountChoice))
+                    KnownClear(across, landing, from.Gravity, from.MountMode, 2, choice: from.MountChoice, platformRelease: platform))
                     // The graph established only a clear bent envelope.
                     // The local native refinement must still meet its timing.
                     return true;
@@ -970,14 +1079,19 @@ namespace JueMingR.TerrariaHost.Companions
 
         private bool PlatformInlet(NavigationNode from, Vector2 feet)
         {
-            float halfWidth = BodyWidth(from.MountMode, from.MountChoice) * .5f;
+            int width = BodyWidth(from.MountMode, from.MountChoice);
+            float halfWidth = width * .5f;
             int left = CellAt(feet - new Vector2(halfWidth - .125f, 0)).X;
             int right = CellAt(feet + new Vector2(halfWidth - .125f, 0)).X;
             for (int x = left; x <= right; x++)
                 for (int dy = -1; dy <= 0; dy++)
                 {
-                    var cell = Read(new Point(x, from.Cell.Y + dy * from.Gravity));
-                    if (!cell.Known || cell.Support && cell.Kind != NavigationCellKind.Platform) return false;
+                    var point = new Point(x, from.Cell.Y + dy * from.Gravity);
+                    var cell = Read(point);
+                    if (!cell.Known) return false;
+                    if (!Supports(cell, from.Gravity) || cell.Kind == NavigationCellKind.Platform) continue;
+                    float face = SupportFeet(point, cell, from.Gravity, width, feet.X - (x * 16f + 8f)).Y;
+                    if (Math.Abs(face - feet.Y) <= 2f) return false;
                 }
             // A platform beside a solid slope can share its tile-center
             // column with the observed feet while the body is still held by
@@ -1428,17 +1542,19 @@ namespace JueMingR.TerrariaHost.Companions
             return false;
         }
 
-        private bool SpecialGround(NavigationNode from, out NavigationNode to, out NavigationAction kind, out Point entry)
+        private bool SpecialGround(NavigationNode from, out NavigationNode to, out NavigationAction kind, out Point entry,
+            int toward = 0, Vector2? actualStart = null)
         {
             to = default;
             kind = NavigationAction.Hoik;
             entry = default;
             if (!from.Grounded || !HoikBody(from.Gravity, from.MountMode) ||
                 Read(from.Cell).Kind != NavigationCellKind.Solid) return false;
-            Vector2 start = Feet(from);
+            Vector2 start = actualStart ?? Feet(from);
             int head = (int)Math.Floor((start.Y - caps.Height) / 16f);
             for (int dir = -1; dir <= 1; dir += 2)
             {
+                if (toward != 0 && dir != toward) continue;
                 var tooth = new Point(from.Cell.X + dir, head);
                 if (!HoikTooth(tooth, Read(tooth), dir))
                 {
@@ -1543,8 +1659,8 @@ namespace JueMingR.TerrariaHost.Companions
                 ? caps.Geometry.BaseHeight > 0 ? caps.Geometry.BaseHeight : !caps.Mounted ? caps.Height : 0
                 : mount == CurrentMount && caps.Mounted ? caps.Height : caps.Geometry.MountHeight(mount);
             if (width <= 0 || height <= 0) return false;
-            int left = CellAt(feet - new Vector2(width * .5f - .125f, 0)).X;
-            int right = CellAt(feet + new Vector2(width * .5f - .125f, 0)).X;
+            float bodyLeft = feet.X - width * .5f + .125f, bodyRight = feet.X + width * .5f - .125f;
+            int left = (int)Math.Floor(bodyLeft / 16f), right = (int)Math.Floor(bodyRight / 16f);
             var top = gravity > 0 ? feet.Y - height : feet.Y + allowance + .125f;
             var bottom = gravity > 0 ? feet.Y - allowance - .125f : feet.Y + height;
             int first = (int)Math.Floor(top / 16f), last = (int)Math.Floor(bottom / 16f);
@@ -1563,6 +1679,13 @@ namespace JueMingR.TerrariaHost.Companions
                     if (walkDirection != 0 && y == first && cell.Kind == NavigationCellKind.Slope &&
                         (first + 1) * 16f - top >= 4f && (first + 1) * 16f - top <= 12f &&
                         HoikBody(gravity, mount) && HoikTooth(point, cell, walkDirection)) return false;
+                    if (cell.Kind == NavigationCellKind.Half || cell.Kind == NavigationCellKind.Slope)
+                    {
+                        float tileX = x * 16f, tileY = y * 16f;
+                        cell.SolidBand(Math.Max(0f, bodyLeft - tileX), Math.Min(16f, bodyRight - tileX),
+                            out float occupiedTop, out float occupiedBottom);
+                        if (top < tileY + occupiedBottom && bottom > tileY + occupiedTop) return false;
+                    }
                     if (cell.Hazard && !(caps.Has(NavigationModes.LavaImmune) && cell.Liquid == LiquidID.Lava)) return false;
                 }
             return true;
@@ -1583,16 +1706,12 @@ namespace JueMingR.TerrariaHost.Companions
         internal static Point CellAt(Vector2 point) =>
             new Point((int)Math.Floor(point.X / 16f), (int)Math.Floor(point.Y / 16f));
 
-        private static Vector2 SupportFeet(Point point, NavigationCell cell, int gravity, int width)
+        private static Vector2 SupportFeet(Point point, NavigationCell cell, int gravity, int width, float offsetX = 0f)
         {
-            float height = point.Y * 16f + (gravity < 0 ? 16f : 0f);
-            if (cell.Kind == NavigationCellKind.Half && gravity > 0) height += 8;
-            if (gravity > 0 && (cell.Slope == 1 || cell.Slope == 2))
-                height += Math.Max(0f, 8 - width * .5f);
-            if (gravity < 0 && (cell.Slope == 3 || cell.Slope == 4))
-                height -= Math.Max(0f, 8 - width * .5f);
-            if (!cell.Support && cell.Amount > 0 && gravity > 0) height += 16f * (255 - cell.Amount) / 255f;
-            return new Vector2(point.X * 16f + 8, height);
+            cell.SolidBand(MathHelper.Clamp(8f + offsetX - width * .5f, 0f, 16f),
+                MathHelper.Clamp(8f + offsetX + width * .5f, 0f, 16f), out float top, out float bottom);
+            if (!cell.Support && cell.Amount > 0 && gravity > 0) top = 16f * (255 - cell.Amount) / 255f;
+            return new Vector2(point.X * 16f + 8f + offsetX, point.Y * 16f + (gravity > 0 ? top : bottom));
         }
 
         private static int Energy(int flightTicks) => Math.Min(byte.MaxValue, flightTicks / 8);

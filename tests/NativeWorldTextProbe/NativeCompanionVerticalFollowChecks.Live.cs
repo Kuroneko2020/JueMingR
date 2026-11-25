@@ -10,6 +10,8 @@ namespace NativeWorldTextProbe
 {
     internal static partial class NativeCompanionVerticalFollowChecks
     {
+        private const int AllowedOpposingPursuitKeys = 2;
+
         private static void NativeSteadyPursuitAtLip(object context, object host, object profiles, Player human)
         {
             const int upper = 74, unreachableBottom = 123, endColumn = 64, ticks = 170;
@@ -64,22 +66,25 @@ namespace NativeWorldTextProbe
             }
         }
 
-        private static void NativeSteadyGroundPursuit(object context, object host, object profiles, Player human)
+        private static void NativeSteadyGroundPursuit(object context, object host, object profiles, Player human, bool platform = false)
         {
             const int row = 85, ticks = 245;
-            using (var run = new NativeFollowWorld(context, host, profiles, human, "steady-fast-pursuit",
+            using (var run = new NativeFollowWorld(context, host, profiles, human, platform ? "steady-fast-platform" : "steady-fast-pursuit",
                 new Vector2(RoomX(47), row * 16), new Vector2(RoomX(61), row * 16),
-                () => PlaceFixtureStrip(43, 132, row, TileID.Stone)))
+                () => PlaceFixtureStrip(43, 132, row, platform ? TileID.Platforms : TileID.Stone)))
             {
                 Player body = run.Body;
                 body.armor[3] = new Item(ItemID.HermesBoots);
                 var nav = Navigator(run.Actor);
                 int previousInput = 0, previousTick = -10, previousFacing = body.direction, streak = 0, longest = 0, reversals = 0;
                 int near = 0, faces = 0;
+                int steadySteps = 0, wrongWayKeys = 0, steadyFaces = 0, sustained = 0, longestSteady = 0;
+                float steadyDistance = 0f;
                 float left = 0f, right = 0f, peakBody = 0f, peakOwner = 0f;
                 for (int tick = 0; tick < ticks; tick++)
                 {
                     float bodyStart = body.Bottom.X;
+                    float bodySpeed = body.velocity.X;
                     run.Step(1);
                     float displacement = body.Bottom.X - bodyStart;
                     int input = (body.controlRight ? 1 : 0) - (body.controlLeft ? 1 : 0);
@@ -89,6 +94,23 @@ namespace NativeWorldTextProbe
                     peakOwner = Math.Max(peakOwner, human.velocity.X);
                     if (human.Bottom.X - body.Bottom.X < 66f) near++;
                     if (body.direction != previousFacing) faces++;
+                    // The scripted owner is still going right and both bodies are on an
+                    // uninterrupted lane. The distance and remaining lane exclude braking
+                    // to arrive, reaching the edge, and turning to follow the owner's input.
+                    if (human.velocity.X > .8f && bodySpeed > .5f && human.Bottom.X - body.Bottom.X > 96f &&
+                        OnFloor(human, row) && OnFloor(body, row) && body.Right.X < 128 * 16f)
+                    {
+                        steadySteps++;
+                        steadyDistance += displacement;
+                        if (IsOpposingPursuitKey(input)) wrongWayKeys++;
+                        if (body.direction != previousFacing) steadyFaces++;
+                        sustained = input > 0 ? sustained + 1 : 0;
+                        longestSteady = Math.Max(longestSteady, sustained);
+                        if (input < 0 && wrongWayKeys <= 12)
+                            Console.WriteLine($"FOLLOW RUNWAY reverse={tick} platform={platform} owner={human.Bottom}/{human.velocity} " +
+                                $"body={body.Bottom}/{body.velocity} previousVX={bodySpeed:F3} dx={displacement:F3} " +
+                                $"keys={body.controlLeft}/{body.controlRight} face={body.direction} {PlanStatus(nav)}");
+                    }
                     previousFacing = body.direction;
                     if (input == 0) continue;
                     bool alternates = input == -previousInput && tick - previousTick <= 3;
@@ -100,11 +122,115 @@ namespace NativeWorldTextProbe
                     previousInput = input;
                     previousTick = tick;
                 }
-                Console.WriteLine($"FOLLOW STEADY GROUND reversals={reversals} streak={longest} facingChanges={faces} near={near} " +
-                    $"left={left:F2} right={right:F2} speeds={peakBody:F2}/{peakOwner:F2} body={body.Bottom}/{body.velocity} owner={human.Bottom}/{human.velocity}");
+                Console.WriteLine($"FOLLOW STEADY GROUND platform={platform} reversals={reversals} streak={longest} facingChanges={faces} near={near} " +
+                    $"steadySteps={steadySteps} wrongWayKeys={wrongWayKeys} steadyFaces={steadyFaces} steadyDistance={steadyDistance:F2} " +
+                    $"run={longestSteady} left={left:F2} right={right:F2} speeds={peakBody:F2}/{peakOwner:F2} " +
+                    $"body={body.Bottom}/{body.velocity} owner={human.Bottom}/{human.velocity}");
+                Require(steadySteps >= 50 && steadyDistance > 100f && peakBody > 4.1f && peakOwner > 2.5f && run.NativeRelocations == 0,
+                    "both real bodies cover an uninterrupted support lane while Hermes running crosses the old ground braking gate");
+                Require(wrongWayKeys <= AllowedOpposingPursuitKeys && steadyFaces <= 4 && longestSteady >= 30,
+                    "a continuous clear lane and distant same-direction owner do not repeatedly alternate acceleration with grounded reverse braking");
                 Require(near >= 20 && right > 430f && peakBody > peakOwner && run.NativeRelocations == 0,
                     "the faster original body catches a continuously right-moving owner on clear ground");
                 Require(longest < 4, "a steady open-ground pursuit does not repeatedly alternate final left and right inputs");
+            }
+        }
+
+        private static bool IsOpposingPursuitKey(int input) => input < 0;
+
+        private static void NativePlatformPursuit(object context, object host, object profiles, Player human)
+        {
+            int opposing = 0;
+            for (int tick = 0; tick < 120; tick++)
+                if (IsOpposingPursuitKey(tick % 4 == 3 ? -1 : 1)) opposing++;
+            Require(opposing == 30 && opposing > AllowedOpposingPursuitKeys,
+                "a repeating Right Right Right Left stream cannot pass the known-open pursuit predicate");
+            NativeSteadyGroundPursuit(context, host, profiles, human, platform: true);
+        }
+
+        private static void NativeFixedPlatformBraking(object context, object host, object profiles, Player human)
+        {
+            const int row = 85;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "fixed-platform-stop",
+                new Vector2(RoomX(51), row * 16), new Vector2(RoomX(78), row * 16),
+                () => PlaceFixtureStrip(43, 132, row, TileID.Platforms)))
+            {
+                Player body = run.Body;
+                body.armor[3] = new Item(ItemID.HermesBoots);
+                run.Step();
+                Require(OnFloor(body, row) && body.accRunSpeed > 4.2f,
+                    "the fixed control section starts on actual platform support with legal Hermes speed");
+                object observed = Get(Get(run.Actor, "Mobility"), "Observed");
+                Type actionType = Get(Navigator(run.Actor), "action").GetType();
+                bool allForward = true;
+                // Static control inputs isolate the old 48px gate. The paired live
+                // fixture separately earns these speeds through original updates.
+                foreach (float speed in new[] { 4.10f, 4.12f, 5.25f })
+                {
+                    var testAction = Activator.CreateInstance(actionType, nonPublic: true);
+                    body.velocity = new Vector2(speed, 0f);
+                    int move = (int)Call(testAction, "GroundInput", body, observed, human.Bottom.X, 3f, 34f, true, true);
+                    allForward &= move == 1;
+                    Console.WriteLine($"FOLLOW FIXED PLATFORM speed={speed:F2} move={move} left={body.Left.X:F2} " +
+                        $"acceleration={body.runAcceleration:F2} slowdown={body.runSlowdown:F2} owner={human.Bottom}");
+                }
+                Require(allForward, "an unobstructed continuous platform does not change steady pursuit to opposite input past the old 48px gate");
+            }
+        }
+
+        private static void NativeOppositeAimPursuit(object context, object host, object profiles, Player human)
+        {
+            const int floor = 85, slot = 17, weapon = 41, ammo = 54;
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "follow-aim-behind",
+                new Vector2(RoomX(49), floor * 16), new Vector2(RoomX(62), floor * 16),
+                () => PlaceFixtureStrip(43, 132, floor, TileID.Stone)))
+            {
+                Player body = run.Body;
+                NPC previous = Main.npc[slot];
+                var enemy = new NPC();
+                NativeCompanionNavigationChecks.InitializeTarget(enemy, slot, body.Center - new Vector2(75f, 0f));
+                enemy.damage = 0;
+                Main.npc[slot] = enemy;
+                var profile = (CompanionProfile)Get(run.Actor, "Profile");
+                try
+                {
+                    body.inventory[weapon] = new Item(ItemID.VenusMagnum);
+                    body.inventory[ammo] = new Item(ItemID.MusketBall) { stack = 40 };
+                    Require((bool)Call(host, "SetBehavior", profile.Id, new CompanionBehavior
+                    {
+                        Follow = true, AttackEnabled = true, HealthRecoveryEnabled = false,
+                        MainWeapons = new[] { new CompanionWeaponPreference(ItemID.VenusMagnum, 0, weapon) }
+                    }), "real Follow and the configured ranged attack are simultaneously active");
+                    int advancingShots = 0, forwardUse = 0, oppositeFacing = 0, reverseKeys = 0;
+                    float advance = 0f, backward = 0f;
+                    for (int tick = 0; tick < 130; tick++)
+                    {
+                        int loaded = body.inventory[ammo].stack;
+                        float before = body.Bottom.X;
+                        run.Step(1);
+                        if (enemy.active) enemy.UpdateNPC(slot);
+                        NativeCompanionNavigationChecks.UpdateOwnedShots(body);
+                        float moved = body.Bottom.X - before;
+                        advance += Math.Max(0f, moved);
+                        backward += Math.Max(0f, -moved);
+                        if (body.controlLeft) reverseKeys++;
+                        if (moved <= .4f || !body.controlUseItem || ((Vector2)Get(run.Actor, "Aim")).X >= body.Center.X) continue;
+                        forwardUse++;
+                        if (body.direction < 0) oppositeFacing++;
+                        if (body.inventory[ammo].stack < loaded) advancingShots++;
+                    }
+                    Console.WriteLine($"FOLLOW AIM BEHIND useAlongForward={forwardUse} paid={advancingShots} " +
+                        $"facesBehind={oppositeFacing} reverseKeys={reverseKeys} movement={advance:F2}/{backward:F2} health={enemy.life}/{enemy.lifeMax}");
+                    Require(forwardUse >= 12 && advancingShots >= 1 && enemy.life < enemy.lifeMax && advance > 150f &&
+                        backward < 6f && reverseKeys <= 4 && run.NativeRelocations == 0,
+                        "native shots aim and hit behind while the same body follows the moving owner to the right");
+                }
+                finally
+                {
+                    Main.npc[slot] = previous;
+                    foreach (Projectile shot in Main.projectile)
+                        if (shot.active && shot.owner == body.whoAmI) shot.Kill();
+                }
             }
         }
 
@@ -122,6 +248,7 @@ namespace NativeWorldTextProbe
                 {
                     Player body = run.Body;
                     body.armor[3] = new Item(ItemID.EoCShield);
+                    object navigation = Navigator(run.Actor);
                     var launches = new List<int>();
                     int pulses = 0, wait = 0, readyAfterCooldown = 0, cooldowns = 0;
                     bool usedDash = false;
@@ -148,6 +275,11 @@ namespace NativeWorldTextProbe
                         }
                         wait = worthwhile && !launched ? wait + 1 : 0;
                         longestWait = Math.Max(longestWait, wait);
+                        if (wait >= 3 && wait <= 19)
+                            Console.WriteLine($"FOLLOW STEADY DASH wait={tick}/{wait} gap={gap:F2} speed={speed:F2}->{body.velocity.X:F2} " +
+                                $"prepared={GetOptional(navigation, "dashPreparedUntil")} check={GetOptional(navigation, "nextDashCheck")} " +
+                                $"offer={GetOptional(navigation, "hasOffer")} direct={GetOptional(Get(navigation, "action"), "Direct")} " +
+                                $"keys={body.controlLeft}/{body.controlRight}/{body.controlDash} {PlanStatus(navigation)} {RouteTrace(navigation)}");
                     }
                     Console.WriteLine($"FOLLOW STEADY DASH launches=[{string.Join(",", launches)}] hotkeyPulses={pulses} " +
                         $"cooldowns={cooldowns} readyAfterCooldown={readyAfterCooldown} longestEligibleWait={longestWait} " +
