@@ -469,7 +469,11 @@ namespace NativeWorldTextProbe
         {
             NativeOwnerWarpDuringHook(context, host, profiles, human, removeAnchor: false);
             NativeOwnerWarpDuringHook(context, host, profiles, human, removeAnchor: true);
+            RetiringActionReplacement(context, host, profiles, human);
         }
+
+        private static bool RetiringIntent(object navigation) =>
+            (bool)(GetOptional(navigation, "RetiringIntent") ?? Get(navigation, "retireIntent"));
 
         private static void NativeOwnerWarpDuringHook(object context, object host, object profiles, Player human, bool removeAnchor)
         {
@@ -566,7 +570,7 @@ namespace NativeWorldTextProbe
                         if (removeAnchor && returned >= 0)
                         {
                             if (hookGone < 0 && projectile?.active == false) hookGone = tick;
-                            bool retiring = (bool)Get(navigation, "retireIntent");
+                            bool retiring = RetiringIntent(navigation);
                             retiringInFlight |= retiring && projectile?.active == true && projectile.ai[0] == 0f &&
                                 toolState == "Started" && toolSequence == sequence;
                             if (rejected < 0 && toolSequence == sequence && toolState == "Rejected")
@@ -603,7 +607,7 @@ namespace NativeWorldTextProbe
                             Console.WriteLine($"FOLLOW WARP hook removeAnchor={removeAnchor} frame={Main.GameUpdateCount} step={tick} " +
                                 $"owner={human.Bottom}/{human.velocity} body={body.Bottom}/{body.velocity} supported={Get(navigation, "Supported")} " +
                                 $"hook={projectile?.active}/{projectile?.ai[0]} command={Get(mobility, "Action")}/{Get(mobility, "Result")}/" +
-                                $"{toolSequence} committed={Get(navigation, "ActionCommitted")} retire={Get(navigation, "retireIntent")} " +
+                                $"{toolSequence} committed={Get(navigation, "ActionCommitted")} retire={RetiringIntent(navigation)} " +
                                 $"left={body.controlLeft} jump={body.controlJump} {PlanStatus(navigation)}");
                     }
                 }
@@ -631,6 +635,55 @@ namespace NativeWorldTextProbe
                 Require(oldAction > 0 && away > birth && returned > away && attached >= returned && received >= attached &&
                     released > received && landed > released && !lostReceipt && run.NativeRelocations == 0,
                     "the real in-flight hook settles under its original command and releases by native Jump after the owner's return");
+            }
+        }
+
+        private static void RetiringActionReplacement(object context, object host, object profiles, Player human)
+        {
+            float wall = RoomPartition * 16;
+            var left = new Vector2(wall - 10.5f, RoomLower * 16);
+            var right = new Vector2(wall + 26.5f, RoomLower * 16);
+            using (var run = new NativeFollowWorld(context, host, profiles, human, "retiring-action", left, right, BuildMovingRoom))
+            {
+                run.Step();
+                var navigation = Navigator(run.Actor);
+                var mobility = Get(run.Actor, "Mobility");
+                var action = Get(navigation, "action");
+                var assembly = navigation.GetType().Assembly;
+                var kind = NavigationType(assembly, "NavigationAction");
+                var edge = Make(NavigationType(assembly, "NavigationTransition"), Enum.Parse(kind, "Hook"), left,
+                    left - new Vector2(0, 80), default(Point), default(Point), 0, false,
+                    Enum.Parse(NavigationType(assembly, "NavigationTraversalDetail"), "None"), Vector2.Zero);
+
+                // The native scenes above exercise the actual hook and warp.
+                // Isolate ownership after that receipt lost its commitment:
+                // emergency steering can cancel it while no move is ready.
+                Call(action, "Begin", 900L, edge, false, left);
+                Set(action, "Committed", true);
+                Call(navigation, "IntentChanged", mobility);
+                Require(RetiringIntent(navigation), "the prior committed action owns the handoff");
+                Set(action, "Committed", false);
+                Set(navigation, "supported", false);
+                Call(navigation, "Decide", run.Body, mobility, right, Vector2.Zero, 34f, true, 0, false, true);
+                long cancelledId = (long)Get(navigation, "ActionId");
+                bool inheritedAfterCancel = RetiringIntent(navigation);
+                Require(OnFloor(run.Body, RoomLower), "the fixture retains the original floor for the next planner opportunity");
+                Set(navigation, "supported", true);
+                Call(navigation, "Advance", run.Body, mobility, Get(host, "ownerTrail"),
+                    Make(NavigationType(assembly, "NavigationBudget"), 2600, 96, 48));
+                string newPlan = Get(navigation, "QueryStatus").ToString();
+
+                // A verified rescue uses the same Begin entry to install a
+                // fresh ID before normal control. It owns its own lifetime.
+                Call(action, "Begin", 901L, edge, false, left);
+                Set(action, "Committed", true);
+                Call(navigation, "IntentChanged", mobility);
+                Call(action, "Begin", 902L, edge, false, left);
+                bool inheritedAfterBegin = RetiringIntent(navigation);
+                Console.WriteLine($"FOLLOW WARP retirement ownership emergencyAction={cancelledId} oldAfterCancel={inheritedAfterCancel} " +
+                    $"nextPlan={newPlan} replacementAction={Get(navigation, "ActionId")} oldAfterBegin={inheritedAfterBegin}");
+                Require(cancelledId == 0 && !inheritedAfterCancel && newPlan != "Idle" && (long)Get(navigation, "ActionId") == 902L &&
+                    !inheritedAfterBegin, "an abandoned or replaced action cannot keep the planner waiting on its old intent");
             }
         }
 
@@ -682,7 +735,7 @@ namespace NativeWorldTextProbe
                     if (tick < 18 || tick == contact || tick == resumed)
                         Console.WriteLine($"FOLLOW WARP jump frame={Main.GameUpdateCount} tick={tick} owner={human.Bottom}/{human.velocity} " +
                             $"body={body.Bottom}/{body.velocity} support={Get(navigation, "Supported")} action={currentAction}/{Get(navigation, "ActionOutcome")}/" +
-                            $"{Get(navigation, "ActionCommitted")} retire={Get(navigation, "retireIntent")} left={body.controlLeft} jump={body.controlJump} " +
+                            $"{Get(navigation, "ActionCommitted")} retire={RetiringIntent(navigation)} left={body.controlLeft} jump={body.controlJump} " +
                             $"deliver={(delivery == null ? body.controlJump.ToString() : GetOptional(delivery, "ActionId"))}/" +
                             $"{(delivery == null ? Get(navigation, "LastDeferral") : GetOptional(delivery, "Deferral"))} {RouteTrace(navigation)}");
                 }

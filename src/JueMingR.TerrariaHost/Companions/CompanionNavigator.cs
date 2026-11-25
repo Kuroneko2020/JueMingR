@@ -33,7 +33,7 @@ namespace JueMingR.TerrariaHost.Companions
         private Vector2 offeredEntry;
         private CompanionFallRisk.ReleaseCorridor offeredFallRelease;
         private int offeredLifeCost, offeredProtection, activeLifeCost, activeProtection;
-        private bool hasOffer, hasTarget, supported, targetChanged, retireIntent, rescuePending, rescuing, offeredFlightLanding;
+        private bool hasOffer, hasTarget, supported, targetChanged, rescuePending, rescuing, offeredFlightLanding;
         private bool offeredLandingRisk, activeLandingRisk;
         private bool actionEmergency, knowsPositionRevision, keepAirContact, hasBlockedRoof, targetAirborne, targetContactKnown;
         private CompanionOwnerTrail observedTrail;
@@ -41,7 +41,7 @@ namespace JueMingR.TerrariaHost.Companions
         private Vector2 target, targetVelocity;
         private Vector2 blockedRoof, blockedRoofGoal;
         private Vector2? offeredFlightTouchdown, activeFlightTouchdown;
-        private long actionGeneration, nextAction, bodyGeneration;
+        private long actionGeneration, nextAction, bodyGeneration, retiringAction;
         private float spacing, offeredFallOutletX;
         private int previousGravity, trailSegment, previousPositionRevision, pylonCount;
         private NavigationTransition rescue;
@@ -59,6 +59,9 @@ namespace JueMingR.TerrariaHost.Companions
         internal NavigationTransition ActionTransition => action.Edge;
         internal bool ActionCommitted => action.Committed;
         internal CompanionActionOutcome ActionOutcome => action.Outcome;
+        // Cancelled commands and new rescue actions cannot inherit the wait
+        // for a different action's native receipt or physical handoff.
+        internal bool RetiringIntent => retiringAction != 0 && action.Id == retiringAction;
         internal CompanionMovementDeferral LastDeferral => action.Deferral;
         internal NavigationQueryStatus QueryStatus => route?.Status ?? NavigationQueryStatus.Idle;
         internal int QueryGeneration => route?.Generation ?? 0;
@@ -97,7 +100,8 @@ namespace JueMingR.TerrariaHost.Companions
             route?.Reset();
             action.Reset();
             refine.Reset();
-            hasOffer = hasTarget = supported = targetChanged = retireIntent = rescuing = rescuePending = false;
+            hasOffer = hasTarget = supported = targetChanged = rescuing = rescuePending = false;
+            retiringAction = 0;
             Array.Clear(directFailures, 0, directFailures.Length);
             nextFacilities = pendingSince = nextDashCheck = nextCruiseCheck = nextMountCheck = dashPreparedUntil = lastRescue = 0;
             dashPreparation.Reset();
@@ -131,15 +135,15 @@ namespace JueMingR.TerrariaHost.Companions
             // against the newly published target using the actual hang.
             bool attachedHook = action.Edge.Kind == NavigationAction.Hook && native.Observed.GrappleAttached;
             if (action.Id != 0 && !Terminal(action.Outcome) &&
-                (action.Committed || attachedHook || action.AwaitingNativeTool(native)))
+                (RetiringIntent || action.Committed || attachedHook || action.AwaitingNativeTool(native)))
             {
-                retireIntent = true;
+                retiringAction = action.Id;
                 return;
             }
             // An owner warp invalidates the staged entry before the next
             // actual key. A body already airborne finishes its own action.
             action.Reset();
-            retireIntent = false;
+            retiringAction = 0;
         }
 
         internal bool ObserveOwnerTrail(CompanionOwnerTrail trail, CompanionMobilityState native)
@@ -516,7 +520,7 @@ namespace JueMingR.TerrariaHost.Companions
                 return;
             }
             var result = action.Observe(body, native, supported, target, action.Direct && CloseTarget(body, CompanionNativeContact.Feet(body)));
-            if (retireIntent)
+            if (RetiringIntent)
             {
                 // A matching native facility can complete during the old
                 // action. Otherwise changing intent earns no route failure.
@@ -532,7 +536,7 @@ namespace JueMingR.TerrariaHost.Companions
 #endif
                     }
                     else action.Outcome = CompanionActionOutcome.Superseded;
-                    retireIntent = false;
+                    retiringAction = 0;
                 }
                 else if (Terminal(result)) action.Outcome = CompanionActionOutcome.Running;
                 if (repositioned || gravityChanged) RetireBinding();
@@ -625,7 +629,8 @@ namespace JueMingR.TerrariaHost.Companions
             nextFacilities = dashPreparedUntil = retrySuspendedAt = 0;
             dashPreparation.Reset();
             dashPlan = default;
-            retireIntent = rescuing = rescuePending = false;
+            retiringAction = 0;
+            rescuing = rescuePending = false;
             hasBlockedRoof = false;
             targetChanged = true;
             noUsefulProgress = 0;
@@ -666,7 +671,7 @@ namespace JueMingR.TerrariaHost.Companions
             Vector2 feet = CompanionNativeContact.Feet(body);
             var state = native.Observed;
             if (TryPrepareRescue(body, native, feet, budget)) return;
-            if (retireIntent || !targetContactKnown) return;
+            if (RetiringIntent || !targetContactKnown) return;
             if (state.DashReady && !native.AwaitingEquipmentObservation &&
                 Math.Abs(target.X - feet.X) > 48f && unchecked((int)(Main.GameUpdateCount - nextDashCheck)) >= 0)
             {
