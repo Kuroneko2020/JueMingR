@@ -89,6 +89,7 @@ namespace JueMingR.TerrariaHost.Companions
             InstallFurnitureHooks();
             InstallMobilityHooks();
             CompanionSupplyHooks.Install(value);
+            InstallFishing();
             installed=true;
         }
         private static void Patch(Type t,string method,string prefix=null,string postfix=null,string finalizer=null,string transpiler=null,Type[] args=null)
@@ -97,7 +98,7 @@ namespace JueMingR.TerrariaHost.Companions
             Harmony.Patch(m,Hook(prefix),Hook(postfix),Hook(transpiler),Hook(finalizer));
         }
         private static HarmonyMethod Hook(string name){return name==null?null:new HarmonyMethod(typeof(CompanionHooks),name);}
-        internal static void Uninstall(){CompanionSupplyHooks.Uninstall();Harmony.UnpatchAll(Harmony.Id);installed=false;host=null;}
+        internal static void Uninstall(){UninstallFishing();CompanionSupplyHooks.Uninstall();Harmony.UnpatchAll(Harmony.Id);installed=false;host=null;}
         internal static void ProjectileBorn(Player player,Projectile projectile){host?.ProjectileBorn(player,projectile);}
         internal static Scope Enter(HostCompanions.Actor actor,Vector2 point,bool inventory=false){return new Scope(actor,point,inventory,false);}
         // NewNPCInstanceInSlot must still allocate the decoded instance and
@@ -283,6 +284,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var a=host?.Owned(__instance);
             if(a==null || !a.Ready || a.Closing || __instance.creativeGodMode || __instance.dead)return;
+            host.BeforeFishingDeath(a);
             __state=Enter(a,a.Aim);
             host.PublishSlotsBeforeDeath(a);
         }

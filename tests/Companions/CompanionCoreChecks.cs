@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using JueMingR.Features.Companions;
+using JueMingR.Features.Fishing;
 using JueMingR.Infrastructure.Companions;
 using JueMingR.Platform.Companions;
 
@@ -267,7 +268,7 @@ namespace JueMingR.ArchitectureTests
         }
         private static void LegacyArchive(string root)
         {
-            foreach(var fixture in new[]{new[]{1,1},new[]{2,1},new[]{3,1},new[]{4,0},new[]{4,1},new[]{5,0},new[]{5,1}})
+            foreach(var fixture in new[]{new[]{1,1},new[]{2,1},new[]{3,1},new[]{4,0},new[]{4,1},new[]{5,0},new[]{5,1},new[]{6,0},new[]{6,1}})
             {
             int version=fixture[0];bool enabled=fixture[1]!=0, terminal=version==2||version>=4;
             string game=Path.Combine(root,"v"+version+"-"+enabled);Guid owner,id=Guid.NewGuid();
@@ -290,8 +291,9 @@ namespace JueMingR.ArchitectureTests
                 {
                     writer.Write(false);writer.Write(terminal);writer.Write((byte)1);
                     writer.Write(39);writer.Write((byte)60);writer.Write((byte)48);
-                    writer.Write(version==5 && enabled);writer.Write((byte)1);writer.Write(true);writer.Write(version==5);writer.Write(enabled);
-                    if(version==5)writer.Write(!enabled);
+                    writer.Write(version>=5 && enabled);writer.Write((byte)1);writer.Write(true);writer.Write(version>=5);writer.Write(enabled);
+                    if(version>=5)writer.Write(!enabled);
+                    if(version>=6)writer.Write(true);
                     foreach (int type in new[]{28,110,29,292}) {writer.Write((ushort)1);writer.Write(type);}
                 }
                 writer.Write(2);writer.Write(new byte[]{44,55});writer.Flush();
@@ -305,15 +307,19 @@ namespace JueMingR.ArchitectureTests
                 Require(old.Id==id && old.OwnerId==owner && old.Revision==7 && old.DataEpoch==3 && old.PermanentlyDead==terminal &&
                     old.NativeData.SequenceEqual(new byte[]{44,55}) && !behavior.Follow && behavior.AttackEnabled && behavior.AutoRespawn==(version<3),
                     "legacy archive preserves native bytes, ownership, terminal identity, and retained behavior fields");
-                Require(behavior.BuffEnabled==enabled && behavior.GrowthEnabled==(version==5?!enabled:enabled) && behavior.ManaRecoveryEnabled && !behavior.FurnitureEnabled,
+                Require(behavior.BuffEnabled==enabled && behavior.GrowthEnabled==(version>=5?!enabled:enabled) && behavior.ManaRecoveryEnabled && behavior.FurnitureEnabled==(version>=6),
                     "v1–v3 defaults, v4 common permission and v5 separate permissions retain their actual meanings");
-                Require(behavior.HealthRecoveryEnabled==(version<4 || version==5&&enabled) && behavior.AllowNurse==(version<4 || version==5&&enabled) &&
+                Require(behavior.HealthRecoveryEnabled==(version<4 || version>=5&&enabled) && behavior.AllowNurse==(version<4 || version==5&&enabled || version>=6) &&
                     behavior.HealthRecoveryMode==(version<4?CompanionHealthRecoveryMode.Smart:CompanionHealthRecoveryMode.Fast) &&
                     behavior.ExcludedHealingTypes.SequenceEqual(version<4?Array.Empty<int>():new[]{28}) &&
                     behavior.ExcludedManaTypes.SequenceEqual(version<4?Array.Empty<int>():new[]{110}) &&
                     behavior.AllowedGrowthTypes.SequenceEqual(version<4?Array.Empty<int>():new[]{29}) &&
                     behavior.AllowedBuffTypes.SequenceEqual(version<4?Array.Empty<int>():new[]{292}),
                     "older recovery defaults and v4's four source lists retain their real fields");
+                Require(behavior.TeleportStopsFishing && behavior.FishingDepositUnconfirmedSlots == 0 &&
+                    !behavior.Fishing.Equipment && !behavior.Fishing.Loadout &&
+                    !behavior.Fishing.Cut && behavior.Fishing.StoreMode == 0 && behavior.Fishing.FilterMode == 0,
+                    "every pre-fishing archive gets safe per-character defaults on read");
                 Require(behavior.MainWeapons.Length==(version>=3?1:0),"v3 and v4 preserve a manual selection");
                 if(version>=3) Require(behavior.MainWeapons[0].SlotHint==48&&behavior.MainWeapons[0].Type==39&&behavior.MainWeapons[0].Prefix==60,
                     "the historical actual-slot preference is retained");
@@ -323,13 +329,13 @@ namespace JueMingR.ArchitectureTests
                 archive.Save(old.Revise(old.NativeData,behavior));
             }
             using(var stream=File.OpenRead(path))using(var reader=new BinaryReader(stream))
-            { Require(reader.ReadString()=="JueMingR.Companion"&&reader.ReadInt32()==6,"the next complete revision writes one v6 record"); }
+            { Require(reader.ReadString()=="JueMingR.Companion"&&reader.ReadInt32()==7,"the next complete revision writes one v7 record"); }
             using(var archive=new FileCompanionArchive(game))
             {
                 var saved=archive.LoadOwner("legacy").Profiles.Single();
                 Require(saved.PermanentlyDead==terminal && saved.Behavior.BuffEnabled==enabled && saved.Behavior.GrowthEnabled!=enabled && saved.Behavior.FurnitureEnabled && saved.Behavior.AllowNurse && !saved.Behavior.HealthRecoveryEnabled &&
                     saved.NativeData.SequenceEqual(new byte[]{44,55}) && saved.Revision==8 && saved.DataEpoch==3,
-                    "new independent nurse and furniture controls save v6 with the same terminal identity and native bytes");
+                    "nurse and furniture controls survive v7 with the same terminal identity and native bytes");
             }
             }
         }
@@ -340,6 +346,10 @@ namespace JueMingR.ArchitectureTests
             {
                 AutoRespawn=false,HealthRecoveryEnabled=false,HealthRecoveryMode=CompanionHealthRecoveryMode.Fast,
                 ManaRecoveryEnabled=false,AllowNurse=false,BuffEnabled=false,GrowthEnabled=true,FurnitureEnabled=true,
+                TeleportStopsFishing=false,
+                FishingDepositUnconfirmedSlots=(1UL << 9) | (1UL << 49),
+                Fishing=new FishingOptions(equipment:true,cut:true,storeMode:2,filterMode:1,match:1)
+                    .WithList(1,1,new FishList(keywords:new[]{"鲈鱼"})).SavePreset(1,1).Change(3,0),
                 MainWeapons=new[]{new CompanionWeaponPreference(39,60,12),new CompanionWeaponPreference(3507,0,49)},
                 ExcludedHealingTypes=new[]{28},ExcludedManaTypes=new[]{110},AllowedGrowthTypes=new[]{29,109},AllowedBuffTypes=new[]{292}
             };
@@ -358,7 +368,16 @@ namespace JueMingR.ArchitectureTests
                     !saved.HealthRecoveryEnabled && saved.HealthRecoveryMode==CompanionHealthRecoveryMode.Fast && !saved.ManaRecoveryEnabled &&
                     !saved.AllowNurse && !saved.BuffEnabled && saved.GrowthEnabled && saved.FurnitureEnabled && saved.ExcludedHealingTypes.SequenceEqual(new[]{28}) && saved.ExcludedManaTypes.SequenceEqual(new[]{110}) &&
                     saved.AllowedGrowthTypes.SequenceEqual(new[]{29,109}) && saved.AllowedBuffTypes.SequenceEqual(new[]{292}),
-                    "one v6 record reopens the full settings with native, owner and terminal data intact");
+                    "one v7 record reopens the full settings with native, owner and terminal data intact");
+                Require(!saved.TeleportStopsFishing && profile.FishingDepositUnconfirmedSlots == ((1UL << 9) | (1UL << 49)) &&
+                    saved.Fishing.Equipment && !saved.Fishing.Loadout && saved.Fishing.Cut &&
+                    saved.Fishing.StoreMode == 0 && saved.Fishing.LastStoreMode == 2 && saved.Fishing.FilterMode == 1 && saved.Fishing.Match == 1 &&
+                    saved.Fishing.List(1,1).Keywords.SequenceEqual(new[]{"鲈鱼"}) &&
+                    saved.Fishing.Presets.Single().Content.Keywords.SequenceEqual(new[]{"鲈鱼"}),
+                    "fishing modes, last enabled storage mode, scoped list and matching preset migrate as one profile revision");
+                Require(profile.Revise(profile.NativeData,new CompanionBehavior()).FishingDepositUnconfirmedSlots == profile.FishingDepositUnconfirmedSlots &&
+                    profile.Revise(new byte[]{8},new CompanionBehavior(),reset:true).FishingDepositUnconfirmedSlots == 0,
+                    "ordinary changes preserve quarantined storage evidence; only the established full reset clears it");
                 saved.AutoRespawn=true;saved.MainWeapons[0]=default(CompanionWeaponPreference);saved.ExcludedHealingTypes[0]=1;
                 Require(!profile.Behavior.AutoRespawn&&profile.Behavior.MainWeapons[0].Type==39&&profile.Behavior.ExcludedHealingTypes[0]==28,
                     "caller's edits cannot mutate the stored profile or its arrays");

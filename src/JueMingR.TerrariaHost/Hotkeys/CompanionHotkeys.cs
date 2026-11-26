@@ -11,8 +11,10 @@ namespace JueMingR.TerrariaHost.Hotkeys
         private const string Prefix = "companions.profile.";
         private const string RecallKey = "wormhole";
         internal const string RecallName = "传送AI到玩家";
-        private static readonly string[] Keys = { "follow", "attack", "life", "mana", "buff", "growth", "respawn", "nurse", "furniture" };
-        private static readonly string[] Names = { "跟随主人", "允许攻击", "主动回血", "主动回蓝", "使用增益物品", "使用成长物品", "自动复活", "护士治疗", "家具增益" };
+        private static readonly string[] Keys = { "follow", "attack", "life", "mana", "buff", "growth", "respawn", "nurse", "furniture",
+            "fish-equipment", "fish-storage", "fish-cut", "fish-teleport", "fish-loadout", "fishing" };
+        private static readonly string[] Names = { "跟随主人", "允许攻击", "主动回血", "主动回蓝", "使用增益物品", "使用成长物品", "自动复活", "护士治疗", "家具增益",
+            "自动配装", "自动存放鱼", "切杆跳过", "传送后停止钓鱼", "自动换装", "钓鱼模式" };
         private readonly DynamicHotkeyOwner owner;
         private readonly HotkeyStateFeedback feedback;
         private IReadOnlyList<CompanionProfile> observedProfiles;
@@ -131,8 +133,16 @@ namespace JueMingR.TerrariaHost.Hotkeys
             CompanionSetting setting, string id, string name)
         {
             Func<CompanionProfile> current = () => host.SettingProfile(ownerId, profileId);
-            Func<bool> available = () => current()?.Name == profileName;
+            Func<bool> currentIdentity = () => current()?.Name == profileName;
+            Func<bool> available = () => currentIdentity() &&
+                (setting != CompanionSetting.Follow || !host.IsFishing(ownerId, profileId)) &&
+                (setting != CompanionSetting.FishingMode || host.CanStartFishing(ownerId, profileId) || host.IsFishing(ownerId, profileId));
             Action command = () => host.ToggleCompanionSetting(ownerId, profileId, setting);
+            if (setting == CompanionSetting.FishingMode)
+            {
+                command = feedback?.Immediate(id, name, command, () => host.IsFishing(ownerId, profileId) ? 1 : 0, currentIdentity) ?? command;
+                return new HotkeyAction(id, name, HotkeyContext.Gameplay, available, command);
+            }
             if (feedback != null)
             {
                 // The writer may coalesce this character's inventory and other
@@ -141,7 +151,8 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 command = feedback.Committed(id, name, command, () => current()?.SettingValue(setting) ?? 0, available,
                     () => host.SettingRevision(profileId, setting), () => host.CompletedSettingSave(profileId, setting, out _),
                     () => { host.CompletedSettingSave(profileId, setting, out bool succeeded); return succeeded; },
-                    setting == CompanionSetting.Life ? (Func<int, string>)(mode => mode == (int)CompanionHealthRecoveryMode.Smart ? "智能" : "快速") : null);
+                    setting == CompanionSetting.Life ? (Func<int, string>)(mode => mode == (int)CompanionHealthRecoveryMode.Smart ? "智能" : "快速") :
+                    setting == CompanionSetting.FishingStorage ? (Func<int, string>)(mode => mode == 2 ? "任务鱼" : "所有") : null);
             }
             return new HotkeyAction(id, name, HotkeyContext.Gameplay, available, command);
         }

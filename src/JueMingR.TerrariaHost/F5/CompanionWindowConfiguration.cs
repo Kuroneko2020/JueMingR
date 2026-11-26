@@ -10,6 +10,7 @@ namespace JueMingR.TerrariaHost.F5
     internal sealed partial class CompanionWindow
     {
         private static readonly string[] SwitchActions = { "开启", "关闭", "键" };
+        private static readonly string[] FishingStorageActions = { "所有", "任务鱼", "关闭", "键" };
         private static readonly string[] ConfigurableActions = { "开启", "关闭", "配置", "键" };
         private static readonly string[] LifeActions = { "智能", "快速", "关闭", "配置", "键" };
         private static readonly string[] RecallActions = { "传送", "键" };
@@ -26,6 +27,7 @@ namespace JueMingR.TerrariaHost.F5
 
         private void RetireConfigurationInput()
         {
+            RetireFishingPane();
             CloseSupplyPopup(); confirmingReset = false; deletionTarget = null; CancelEdit();
         }
 
@@ -43,8 +45,18 @@ namespace JueMingR.TerrariaHost.F5
             labels.Add(new F5Element(F5ElementKind.Text, new F5Rect(x, y + row, width, 22),
                 host.RespawnStatus(selected), default(F5Size), .65f, F5Command.None));
             y += row + 24;
+            Button("configuration-general", "常规", new F5Rect(x, y, 64, row), () => SelectFishingPage(false), true, !fishingPage);
+            Button("configuration-fishing", "钓鱼", new F5Rect(x + 70, y, 64, row), () => SelectFishingPage(true), true, fishingPage);
+            y += row + 6;
             configurationViewport = new F5Rect(x, y, width, Math.Max(0, bodyView.Bottom - y));
             contentY = y - bodyOffset;
+            if (profile.FishingDepositUnconfirmedSlots != 0)
+                ConfigurationText(HostCompanions.FishingDepositUnconfirmedMessage, row);
+            if (fishingPage)
+            {
+                BuildFishingRows(profile, row);
+                return;
+            }
             BuildDeletionReceipts(row);
             var behavior = profile.Behavior;
             ConfigurationPair(profile, behavior, CompanionSetting.Follow, CompanionSetting.Attack);
@@ -188,8 +200,13 @@ namespace JueMingR.TerrariaHost.F5
         private void ConfigurationRow(CompanionProfile profile, CompanionBehavior behavior, CompanionSetting setting,
             float x, float width, ref float y)
         {
-            int mode = behavior.SettingValue(setting);
-            string[] actions = setting == CompanionSetting.Life ? LifeActions :
+            bool occupied = setting == CompanionSetting.Follow && host.IsFishing(profile.OwnerId, profile.Id);
+            bool activity = setting == CompanionSetting.FishingMode;
+            int mode = activity ? (host.IsFishing(profile.OwnerId, profile.Id) ? 1 : 0) : behavior.SettingValue(setting);
+            bool available = !occupied && (activity ? mode != 0 || host.CanStartFishing(profile.OwnerId, profile.Id)
+                : setting < CompanionSetting.FishingEquipment || host.CanUseFishingPreferences(profile.Id));
+            string[] actions = setting == CompanionSetting.FishingStorage ? FishingStorageActions :
+                setting == CompanionSetting.Life ? LifeActions :
                 setting == CompanionSetting.Mana || setting == CompanionSetting.Buff || setting == CompanionSetting.Growth ?
                     ConfigurableActions : SwitchActions;
             if (HotkeyClicked == null) actions = actions.Take(actions.Length - 1).ToArray();
@@ -216,13 +233,16 @@ namespace JueMingR.TerrariaHost.F5
                     ConfigurationBinding(CompanionHotkeys.Id(profile, setting), r, F5HotkeyHints.Toggle);
                     continue;
                 }
-                int value = action == "关闭" ? 0 : action == "智能" ? 2 : 1;
+                int value = action == "关闭" ? 0 : action == "智能" || action == "任务鱼" ? 2 : 1;
                 bool configure = action == "配置";
                 bool current = !configure && value == mode;
                 var button = ConfigurationButton("config-" + setting + "/" + action, action, r,
                     configure ? null : (Action)(() => SetConfigurationSetting(setting, value)),
                     current, current && mode == 0);
                 button.Element = element;
+                button.Enabled = available;
+                if (occupied) button.Hint = "正在钓鱼";
+                else if (activity && !available) button.Hint = "人物加入世界并可以行动后，才能开启钓鱼模式。";
                 if (configure)
                 {
                     button.Execute = () => ToggleSupplyPopup(profile, setting, button);
@@ -233,8 +253,15 @@ namespace JueMingR.TerrariaHost.F5
 
         private void SetConfigurationSetting(CompanionSetting setting, int value)
         {
-            var behavior = CurrentProfile()?.Behavior;
-            if (behavior == null || behavior.SettingValue(setting) == value) return;
+            var profile = CurrentProfile();
+            if (profile == null || setting == CompanionSetting.Follow && host.IsFishing(profile.OwnerId, profile.Id)) return;
+            if (setting >= CompanionSetting.FishingEquipment)
+            {
+                Command(() => host.SetFishingControl(profile.OwnerId, profile.Id, setting, value));
+                return;
+            }
+            var behavior = profile.Behavior;
+            if (behavior.SettingValue(setting) == value) return;
             ApplySetting(behavior, setting, value);
             Command(() => host.SetBehavior(selected, behavior));
         }

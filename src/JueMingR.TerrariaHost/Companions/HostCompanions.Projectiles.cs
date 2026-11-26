@@ -16,9 +16,10 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var a=Owned(player);if(a==null || !a.Ready || a.Closing || player.dead || projectile.owner!=player.whoAmI || projectile.key.Spawner!=player.whoAmI)return;
             bool hook=projectile.aiStyle==7;
-            bool attached=player.HeldItem.channel || projectile.minion || projectile.sentry || Main.projPet[projectile.type] || projectile.ownerHitCheck || hook || projectile.aiStyle==3 || projectile.aiStyle==15 || projectile.aiStyle==19 || projectile.aiStyle==20;
+            bool attached=projectile.bobber || player.HeldItem.channel || projectile.minion || projectile.sentry || Main.projPet[projectile.type] || projectile.ownerHitCheck || hook || projectile.aiStyle==3 || projectile.aiStyle==15 || projectile.aiStyle==19 || projectile.aiStyle==20;
             projectiles[projectile.whoAmI]=new ProjectileLease{Body=projectile,Key=(int)projectile.key,Profile=a.Profile.Id,Generation=a.Generation,Attached=attached};
             if(hook)a.Mobility.SetHook(projectile);
+            if(projectile.bobber)CompanionBobberBorn(a,projectile);
             if(player.HeldItem.channel && projectile.type==player.HeldItem.shoot)a.Combat.ControlledShot=projectile;
         }
         internal Actor ProjectileActor(Projectile p)

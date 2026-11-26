@@ -977,6 +977,8 @@ namespace JueMingR.TerrariaHost
                     Combat.Handoff.Attach(Processing,QuickItems);
                     Afk=new AfkMode.HostAfkMode(gameDirectory,Tools);Afk.Attach(QuickItems,Processing);runtime.SharedRuntime.AddFeature(Afk);
                     Companions=new Companions.HostCompanions(gameDirectory){OwnerOperations=items.Ownership,OwnerItems=items};runtime.SharedRuntime.AddFeature(Companions);
+                    var humanFishingBackground = Tools.FishingBackgroundDemand;
+                    Tools.FishingBackgroundDemand = () => humanFishingBackground?.Invoke() == true || Companions.WantsFishingBackground;
                     CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory),PackageId,exactPredictionComparison,hiddenAccess){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
                     Combat.Attack=CombatObservation.Attack=new Combat.HostAttackAim(Combat,CombatObservation);
                     CombatExperiments=new Combat.HostCombatExperiments(gameDirectory,Combat,CombatObservation,hiddenAccess);

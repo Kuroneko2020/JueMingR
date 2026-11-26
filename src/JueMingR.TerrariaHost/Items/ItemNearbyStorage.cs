@@ -14,9 +14,7 @@ namespace JueMingR.TerrariaHost.Items
     {
         private readonly ItemHostObservation world;
         private readonly ItemOperationOwnership ownership;
-        private MethodInfo quickStack;
-        private Type sourceType;
-        private FieldInfo sourceItems, sourceCount, sourceSlots, sourceBlocked, sourcePosition;
+        private NativeChestStack nativeStack;
         private readonly object receiptGate = new object();
         private Pending pending;
         private readonly Dictionary<ItemIdentity, CapacityWait> capacityWaits = new Dictionary<ItemIdentity, CapacityWait>();
@@ -30,22 +28,44 @@ namespace JueMingR.TerrariaHost.Items
         {
             this.world = world; this.ownership = ownership;
         }
-        internal void BindNativeOperation()
+        internal void BindNativeOperation() { nativeStack = new NativeChestStack(); }
+
+        // Both the human and companion supply only their already admitted
+        // real slots. The original quick stack owns chest eligibility/range.
+        internal sealed class NativeChestStack
         {
-            sourceType = typeof(QuickStacking).GetNestedType("SourceInventory", BindingFlags.NonPublic);
-            if (sourceType == null || !sourceType.IsValueType) throw new MissingMemberException("selective-storage-source-abi");
-            sourceItems = Field("items", typeof(Item[])); sourceCount = Field("numItems", typeof(int));
-            sourceSlots = Field("slots", typeof(PlayerItemSlotID.SlotReference[])); sourceBlocked = Field("transferBlocked", typeof(bool[]));
-            sourcePosition = Field("position", typeof(Vector2));
-            quickStack = typeof(QuickStacking).GetMethod("QuickStackToNearbyChests", BindingFlags.NonPublic | BindingFlags.Static,
-                null, new[] { typeof(Player), sourceType, typeof(bool) }, null);
-            if (quickStack == null || quickStack.ReturnType != typeof(void)) throw new MissingMethodException("selective-storage-operation-abi");
-        }
-        private FieldInfo Field(string name, Type type)
-        {
-            FieldInfo field = sourceType.GetField(name, BindingFlags.Public | BindingFlags.Instance);
-            if (field == null || field.FieldType != type) throw new MissingFieldException("selective-storage-" + name);
-            return field;
+            private readonly MethodInfo quickStack;
+            private readonly Type sourceType;
+            private readonly FieldInfo sourceItems, sourceCount, sourceSlots, sourceBlocked, sourcePosition;
+
+            internal NativeChestStack()
+            {
+                sourceType = typeof(QuickStacking).GetNestedType("SourceInventory", BindingFlags.NonPublic);
+                if (sourceType == null || !sourceType.IsValueType) throw new MissingMemberException("selective-storage-source-abi");
+                sourceItems = Field("items", typeof(Item[])); sourceCount = Field("numItems", typeof(int));
+                sourceSlots = Field("slots", typeof(PlayerItemSlotID.SlotReference[])); sourceBlocked = Field("transferBlocked", typeof(bool[]));
+                sourcePosition = Field("position", typeof(Vector2));
+                quickStack = typeof(QuickStacking).GetMethod("QuickStackToNearbyChests", BindingFlags.NonPublic | BindingFlags.Static,
+                    null, new[] { typeof(Player), sourceType, typeof(bool) }, null);
+                if (quickStack == null || quickStack.ReturnType != typeof(void)) throw new MissingMethodException("selective-storage-operation-abi");
+            }
+
+            private FieldInfo Field(string name, Type type)
+            {
+                FieldInfo field = sourceType.GetField(name, BindingFlags.Public | BindingFlags.Instance);
+                if (field == null || field.FieldType != type) throw new MissingFieldException("selective-storage-" + name);
+                return field;
+            }
+
+            internal object Prepare(Player player, Item[] items, PlayerItemSlotID.SlotReference[] slots)
+            {
+                object native = Activator.CreateInstance(sourceType);
+                sourceItems.SetValue(native, items); sourceCount.SetValue(native, items.Length); sourceSlots.SetValue(native, slots);
+                sourceBlocked.SetValue(native, new bool[items.Length]); sourcePosition.SetValue(native, player.Center);
+                return native;
+            }
+
+            internal void Execute(Player player, object native) => quickStack.Invoke(null, new[] { (object)player, native, false });
         }
         internal ItemOperationResult Execute(StoreItemsRequest request)
         {
@@ -69,9 +89,7 @@ namespace JueMingR.TerrariaHost.Items
                 items[i] = item; slots[i] = new PlayerItemSlotID.SlotReference(player, PlayerItemSlotID.Inventory0 + source.Slot);
                 mask |= 1UL << source.Slot; originalQuantity = checked(originalQuantity + item.stack);
             }
-            object native = Activator.CreateInstance(sourceType);
-            sourceItems.SetValue(native, items); sourceCount.SetValue(native, count); sourceSlots.SetValue(native, slots);
-            sourceBlocked.SetValue(native, new bool[count]); sourcePosition.SetValue(native, player.Center);
+            object native = nativeStack.Prepare(player, items, slots);
             List<Chest> targets = null; long beforeTarget = 0;
             if (Main.netMode == 0)
             {
@@ -92,7 +110,7 @@ namespace JueMingR.TerrariaHost.Items
                 world.AutomaticOperation = true;
                 // Only this already selected group reaches the original overload.
                 // No real slot is masked, swapped, cleared, favorited or restored.
-                quickStack.Invoke(null, new[] { (object)player, native, false });
+                nativeStack.Execute(player, native);
                 if (Main.netMode == 1) return ownership.StoreResult;
                 int remaining = 0;
                 foreach (ItemSlotObservation source in request.Sources)

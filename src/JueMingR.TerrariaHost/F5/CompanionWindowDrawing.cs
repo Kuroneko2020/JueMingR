@@ -14,6 +14,13 @@ namespace JueMingR.TerrariaHost.F5
             { c.Joined=host.IsJoined(c.ProfileId);string state=host.Status(c.ProfileId);if(c.StateText!=state){c.StateText=state;c.Hint=c.Text+"\n"+state;} }
             var body=host.GetBody(selected);
             foreach(var c in controls) {
+                if (c.SwitchLoadout >= 0)
+                {
+                    var player = c.Owner ? Main.LocalPlayer : body;
+                    c.Selected = player != null && player.CurrentLoadoutIndex == c.SwitchLoadout;
+                    c.Enabled = player != null && !player.dead && (c.Owner || selectedTransfer) &&
+                        Main.mouseItem?.IsAir != false && !host.HasItemGesture;
+                }
                 if(c.ActorState)
                 {
                     bool recall = host.IsJoined(selected);

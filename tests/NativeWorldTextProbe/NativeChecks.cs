@@ -14,6 +14,28 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "CompanionFishingUiCpu" || scope == "CompanionFishingWorldCpu" || scope == "CompanionFishingLineCpu")
+            {
+                Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user");
+                Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                if (scope == "CompanionFishingUiCpu")
+                {
+                    NativeQuickItemChecks.Run(NativeCompanionFishingUiChecks.Run, processing: true, shortFeedback: true);
+                    NativeScopeDispatch.Enter("companions-fishing-ui");
+                }
+                else if (scope == "CompanionFishingWorldCpu")
+                {
+                    NativeQuickItemChecks.Run(_ => NativeCompanionFishingWorldChecks.Run(), processing: true, shortFeedback: true);
+                    NativeScopeDispatch.Enter("companions-fishing-world");
+                }
+                else
+                {
+                    NativeQuickItemChecks.Run(NativeCompanionFishingLineChecks.Run, processing: true, shortFeedback: true);
+                    NativeScopeDispatch.Enter("companions-fishing-line");
+                }
+                return 0;
+            }
             if(scope=="CompanionFontVisual")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);

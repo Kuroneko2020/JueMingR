@@ -4,7 +4,7 @@ namespace JueMingR.TerrariaHost.Companions
     {
         internal long ActionId;
         internal int Move, Vertical, Dash;
-        internal bool Jump, Drop, EmergencyHand;
+        internal bool Jump, Drop, EmergencyHand, TemporaryGoal;
         internal CompanionMovementActivation Activation;
         internal float WorldX, WorldY;
         internal int ItemSlot, Sequence, MountTypePlusOne, DoorPass;

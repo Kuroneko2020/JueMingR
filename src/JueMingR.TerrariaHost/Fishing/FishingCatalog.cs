@@ -84,7 +84,13 @@ namespace JueMingR.TerrariaHost.Fishing
             return results.ToArray();
         }
 
-        internal FishingCandidates Current(Player p,Projectile b,bool force)
+        internal FishingCandidates Current(Player p,Projectile b,bool force) =>
+            CurrentWithQuest(p,b,force,null);
+
+        internal FishingCandidates CurrentForActor(Player p,Projectile b,bool questFinished) =>
+            CurrentWithQuest(p,b,true,questFinished);
+
+        private FishingCandidates CurrentWithQuest(Player p,Projectile b,bool force,bool? questFinished)
         {
             if(p==null || b==null || !b.active || !b.bobber || b.owner!=p.whoAmI || (int)b.key==-1 || !b.wet || b.shimmerWet || b.ai[0]>=1 || p.HeldItem==null || p.HeldItem.fishingPole<=0)
             {Clear();return cached;}
@@ -94,14 +100,16 @@ namespace JueMingR.TerrariaHost.Fishing
             if(!force && ReferenceEquals(player,p) && ReferenceEquals(bobber,b) && key==(int)b.key && x==bx && y==by && unchecked(Main.GameUpdateCount-refreshed)<30)return cached;
             player=p;bobber=b;key=(int)b.key;x=bx;y=by;refreshed=Main.GameUpdateCount;
             FishingCandidates next;
-            try{next=Build(p,b);}catch(Exception){next=FishingCandidates.Unknown("当前鱼获暂不可读取。");}
+            try{next=questFinished.HasValue?BuildWithQuest(p,b,questFinished.Value):Build(p,b);}catch(Exception){next=FishingCandidates.Unknown("当前鱼获暂不可读取。");}
             if(!Same(cached,next))cached=next;
             return cached;
         }
         private static bool Same(FishingCandidates a,FishingCandidates b)
         {if(a.Known!=b.Known || a.Message!=b.Message || a.Keys.Length!=b.Keys.Length)return false;for(int i=0;i<a.Keys.Length;i++)if(!a.Keys[i].Equals(b.Keys[i]))return false;return true;}
 
-        private FishingCandidates Build(Player p,Projectile b)
+        private FishingCandidates Build(Player p,Projectile b)=>BuildWithQuest(p,b,Main.anglerQuestFinished);
+
+        private FishingCandidates BuildWithQuest(Player p,Projectile b,bool questFinished)
         {
             var rules=Rules();if(rules==null)return FishingCandidates.Unknown("当前鱼获规则暂不可读取。");
             if(p.wet && b.Center.Y<p.RotatedRelativePoint(p.MountedCenter).Y)return FishingCandidates.Unknown("当前钓点条件不适用。");
@@ -129,7 +137,7 @@ namespace JueMingR.TerrariaHost.Fishing
             if(quality<1)f.fishingLevel=(int)(f.fishingLevel*quality);
             f.waterQuality=1-quality;
             f.questFish=Main.anglerQuest>=0 && Main.anglerQuest<Main.anglerQuestItemNetIDs.Length?Main.anglerQuestItemNetIDs[Main.anglerQuest]:-1;
-            if(f.questFish<0 || Main.anglerQuestFinished || p.HasItem(f.questFish) || !NPC.AnyNPCs(369))f.questFish=-1;
+            if(f.questFish<0 || questFinished || p.HasItem(f.questFish) || !NPC.AnyNPCs(369))f.questFish=-1;
             int height=y<Main.worldSurface*.5?0:y<Main.worldSurface?1:y<Main.rockLayer?(Main.remixWorld?3:2):y<Main.maxTilesY-300?(Main.remixWorld?2:3):4;
             bool junk=f.waterTilesCount<f.waterNeededToFish && f.fishingLevel<=(p.luck<0?81:p.luck>=1?44:48);
             var signature=new InputSignature{Height=height,Quest=f.questFish,Rules=Version(rules),Flags=

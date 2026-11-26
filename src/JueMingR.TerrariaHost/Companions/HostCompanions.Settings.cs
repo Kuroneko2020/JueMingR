@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using JueMingR.Features.Fishing;
 using JueMingR.Platform.Companions;
 using JueMingR.TerrariaHost.Hotkeys;
 using Terraria;
@@ -8,6 +9,7 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal sealed partial class HostCompanions
     {
+        internal const string FishingDepositUnconfirmedMessage = "这名队友有尚未确认的存鱼结果，暂不能加入或转移物品。";
         internal long CreationSessionToken { get { return session; } }
         internal Guid LastCreatedId { get; private set; }
         internal CompanionProfile SettingProfile(Guid ownerId, Guid id)
@@ -34,7 +36,8 @@ namespace JueMingR.TerrariaHost.Companions
                     !recall || actor.Closing ? Status(id) : null;
                 return recall && !actor.Closing;
             }
-            reason = recall ? "人物已收回。" : profile.PermanentlyDead ? "永久死亡人物无法加入。" :
+            reason = recall ? "人物已收回。" : profile.FishingDepositUnconfirmedSlots != 0 ? FishingDepositUnconfirmedMessage :
+                profile.PermanentlyDead ? "永久死亡人物无法加入。" :
                 profiles.SaveFailed(id) ? Status(id) : null;
             return reason == null;
         }
@@ -43,6 +46,12 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var profile = Find(id);
             if (profile?.OwnerId != ownerId) return;
+            if (setting == CompanionSetting.Follow && IsFishing(ownerId, id)) return;
+            if (setting == CompanionSetting.FishingMode)
+            {
+                SetFishing(ownerId, id, !IsFishing(ownerId, id));
+                return;
+            }
             var behavior = profile.Behavior;
             switch (setting)
             {
@@ -56,11 +65,60 @@ namespace JueMingR.TerrariaHost.Companions
                 case CompanionSetting.Nurse: behavior.AllowNurse = !behavior.AllowNurse; break;
                 case CompanionSetting.Furniture: behavior.FurnitureEnabled = !behavior.FurnitureEnabled; break;
                 case CompanionSetting.Respawn: behavior.AutoRespawn = !behavior.AutoRespawn; break;
+                case CompanionSetting.FishingTeleport: behavior.TeleportStopsFishing = !behavior.TeleportStopsFishing; break;
+                case CompanionSetting.FishingEquipment:
+                case CompanionSetting.FishingStorage:
+                case CompanionSetting.FishingCut:
+                case CompanionSetting.FishingLoadout:
+                    behavior.Fishing = behavior.Fishing.Toggle(FishingFeature(setting));
+                    break;
                 default: return;
             }
             if (!SetBehavior(id, behavior) && !String.IsNullOrEmpty(Feedback))
                 Main.NewText(Feedback, Microsoft.Xna.Framework.Color.Salmon);
         }
+
+        internal bool SetFishingControl(Guid ownerId, Guid id, CompanionSetting setting, int value)
+        {
+            var profile = SettingProfile(ownerId, id);
+            if (profile == null) return false;
+            if (setting == CompanionSetting.FishingMode)
+                return SetFishing(ownerId, id, value != 0);
+            if (profile.SettingValue(setting) == value) return true;
+            var behavior = profile.Behavior;
+            if (setting == CompanionSetting.FishingTeleport) behavior.TeleportStopsFishing = value != 0;
+            else behavior.Fishing = behavior.Fishing.Change(FishingFeature(setting), value);
+            return SetBehavior(id, behavior);
+        }
+
+        private static int FishingFeature(CompanionSetting setting)
+        {
+            switch (setting)
+            {
+                case CompanionSetting.FishingEquipment: return 2;
+                case CompanionSetting.FishingStorage: return 3;
+                case CompanionSetting.FishingCut: return 4;
+                case CompanionSetting.FishingLoadout: return 1;
+                default: throw new ArgumentOutOfRangeException(nameof(setting));
+            }
+        }
+
+        internal bool SetFishingPreferences(Guid ownerId, Guid id, FishingOptions expected, FishingOptions options)
+        {
+            var profile = SettingProfile(ownerId, id);
+            // A retired pane or earlier scope cannot overwrite a subsequent
+            // fishing edit, even when the character is still present.
+            if (profile == null || !ReferenceEquals(profile.Fishing, expected)) return false;
+            var behavior = profile.Behavior;
+            behavior.Fishing = options;
+            return SetBehavior(id, behavior);
+        }
+
+        internal bool FishingPreferencesSaved(Guid id, FishingOptions expected) =>
+            ReferenceEquals(Find(id)?.Fishing, expected) && profiles.IsSaved(id);
+
+        internal bool CanUseFishingPreferences(Guid id) =>
+            Find(id) != null && !RecallPending(id);
         internal string RespawnStatus(Guid id)
         {
             var profile=Find(id);if(profile==null)return "";
@@ -186,7 +244,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         private readonly int[] captureWeaponSlots = new int[CompanionBehavior.MaxMainWeapons];
-        private void CaptureActorState(Actor actor, CompanionBehavior preferences = null)
+        private void CaptureActorState(Actor actor, CompanionBehavior preferences = null, ulong? fishingDepositUnconfirmedSlots = null)
         {
             var weapons = actor.Preferences.MainWeapons;
             if (preferences == null && weapons.Length != 0)
@@ -203,6 +261,11 @@ namespace JueMingR.TerrariaHost.Companions
                     preferences = actor.Profile.Behavior;
                     preferences.MainWeapons = current.ToArray();
                 }
+            }
+            if (fishingDepositUnconfirmedSlots.HasValue)
+            {
+                preferences = preferences ?? actor.Profile.Behavior;
+                preferences.FishingDepositUnconfirmedSlots |= fishingDepositUnconfirmedSlots.Value;
             }
             // Native inventory and moves/removals of weapon hints are captured
             // in one revision. A failed write retries that same latest body.

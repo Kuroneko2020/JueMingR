@@ -13,6 +13,9 @@ namespace JueMingR.TerrariaHost.F5
         private bool bodyOffsetClamped;
         private const float CellStep = 42;
         private const float ShowcaseHeight = 128;
+        private static readonly string[] GearTabs = { "饰品", "时装", "装备" };
+        private static readonly string[] LoadoutTabs = { "I", "II", "III" };
+        private const float LoadoutButtonWidth = 27;
         private CompanionProfile CurrentProfile()
         {
             var profiles = host.Profiles;
@@ -119,14 +122,28 @@ namespace JueMingR.TerrariaHost.F5
             float groupTop=y;y+=8;
             // Subtabs and their native equipment/dye cells are one module.
             // This same group origin drives background, clipping and hit tests.
-            var tabs = new[] { "饰品", "时装", "装备" }; int gear = owner ? ownerGearPage : companionGearPage;
-            float totalTabs=8;foreach(string text in tabs)totalTabs+=Math.Max(46,measure(text,.7f).Width+18);
+            int gear = owner ? ownerGearPage : companionGearPage;
+            float totalTabs=8;foreach(string text in GearTabs)totalTabs+=Math.Max(46,measure(text,.7f).Width+18);
             int columns=Math.Max(1,Math.Min(10,(int)(width/40)));float gridWidth=columns*Math.Min(CellStep,width/columns)-1;
             float tabX=x+Math.Max(0,gridWidth-totalTabs-8);
+            float loadoutY = y;
+            if (tabX-x < 3*(LoadoutButtonWidth+4))
+            {
+                y += 26+4;
+            }
+            for (int t=0;t<LoadoutTabs.Length;t++)
+            {
+                int target = t;
+                var r = new F5Rect(x + t*(LoadoutButtonWidth+4), loadoutY, LoadoutButtonWidth, 26);
+                if (!ActorVisible(r, view)) continue;
+                var control = Button("loadout:" + owner + ":" + t, LoadoutTabs[t], r,
+                    () => SwitchActorLoadout(owner, body, target));
+                control.Owner = owner; control.SwitchLoadout = t;
+            }
             for (int t=0;t<3;t++)
             {
-                int target=t;float tw=Math.Max(46,measure(tabs[t],.7f).Width+18);var r=new F5Rect(tabX,y,tw,26);tabX+=tw+4;
-                if (ActorVisible(r,view)) Button("gear:"+owner+":"+t,tabs[t],r,() => {
+                int target=t;float tw=Math.Max(46,measure(GearTabs[t],.7f).Width+18);var r=new F5Rect(tabX,y,tw,26);tabX+=tw+4;
+                if (ActorVisible(r,view)) Button("gear:"+owner+":"+t,GearTabs[t],r,() => {
                     host.CancelItemGesture(); CancelSelectionModes(); if(owner) ownerGearPage=target; else companionGearPage=target; Invalidate();
                 },true,gear==t);
             }
@@ -165,6 +182,17 @@ namespace JueMingR.TerrariaHost.F5
             int maximum=Math.Max(0,(int)Math.Ceiling(y + offset + 8 - view.Bottom));
             if (owner) { ownerMaximum=maximum; if(ownerOffset>maximum) { ownerOffset=maximum; bodyOffsetClamped=true; Invalidate(); } }
             else { bodyMaximum=maximum; if(bodyOffset>maximum) { bodyOffset=maximum; bodyOffsetClamped=true; Invalidate(); } }
+        }
+
+        private void SwitchActorLoadout(bool owner, Player body, int target)
+        {
+            if (body == null || body.dead || Main.mouseItem?.IsAir == false || host.HasItemGesture) return;
+            if (owner)
+            {
+                if (ReferenceEquals(body, Main.LocalPlayer)) body.TrySwitchingLoadout(target);
+            }
+            else if (ReferenceEquals(body, host.GetBody(selected)))
+                Command(() => host.TrySwitchCompanionLoadout(selected, target));
         }
         private void ActorSlots(Player body, bool owner, CompanionInventoryArea area, int start, int count, ref float y, F5Rect view)
         {

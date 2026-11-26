@@ -123,6 +123,13 @@ namespace JueMingR.TerrariaHost.Companions
                 using(var stream=new MemoryStream(packet,false))using(var r=new BinaryReader(stream))
                 {
                     byte id=r.ReadByte();
+                    if(id==74)
+                    {
+                        if(packet.Length!=3)throw new InvalidDataException("队友钓鱼任务帧不完整。");
+                        a.FishingLine.Quest=packet[1];a.FishingLine.QuestFinished=packet[2]!=0;
+                        continue;
+                    }
+                    if(id==5){DecodeFishStorageReply(a,packet);if(a.Closing)return;continue;}
                     if(id==90){DecodePersonalItem(a,packet);continue;}
                     // Server instance expiry/reuse is FIFO with this role's
                     // 90 births. Retire its sparse copy only; the primary
@@ -185,6 +192,7 @@ namespace JueMingR.TerrariaHost.Companions
                             using(CompanionHooks.Enter(a,a.Body.Center))
                             {
                                 NetMessage.SendData(4,-1,-1,null,a.Body.whoAmI);NetMessage.SendData(16,-1,-1,null,a.Body.whoAmI);NetMessage.SendData(42,-1,-1,null,a.Body.whoAmI);
+                                NetMessage.SendData(147,-1,-1,null,a.Body.whoAmI,a.Body.CurrentLoadoutIndex);
                                 PublishSlots(a, true);
                                 NetMessage.SendData(6);
                             }
@@ -222,7 +230,7 @@ namespace JueMingR.TerrariaHost.Companions
                         }
                         continue;
                     }
-                    if(id==5 || id==13 || id==16 || id==117 || id==4 || id==12 || id==14)continue;
+                    if(id==13 || id==16 || id==117 || id==4 || id==12 || id==14)continue;
                     if(id==23 || id==28){if(RouteNpc(a,packet,0,packet.Length))DecodeNpcObservation(a,packet,0,packet.Length);continue;}
                     if(id==54){WorldLease lease;int slot=packet.Length>=3?BitConverter.ToInt16(packet,1):-1;if(slot>=0 && npcSources.TryGetValue(slot,out lease) && lease.NpcBaseline && !lease.Waiting && !lease.AwaitBaseline && ReferenceEquals(lease.Source,a))DecodeNpcObservation(a,packet,0,packet.Length);continue;}
                     // World facts have one stream at a time. Source changes
@@ -283,7 +291,7 @@ namespace JueMingR.TerrariaHost.Companions
             // sender connection. They cannot overwrite a later local team intent.
             // Portal 96 is also a client-owned echo: the actual player's local
             // portal consumer already applied it and submitted its movement.
-            if(a!=null && (id==4 || id==5 || id==12 || id==13 || id==16 || id==42 || id==45 || id==96 || id==157 || id==50 || id==117 || id==118 || id==135))return false;
+            if(a!=null && (id==4 || id==5 || id==12 || id==13 || id==16 || id==42 || id==45 || id==96 || id==157 || id==50 || id==117 || id==118 || id==135 || id==147))return false;
             if((id==27 || id==29) && length>=5)
             {var key=(ProjectileKey)BitConverter.ToInt32(data,start+1);Projectile projectile;if(key.TryGetActive(out projectile) && ProjectileActor(projectile)!=null)return false;if(key.Spawner!=owner?.whoAmI && (HasActors || projectileSources.Count!=0))return RouteProjectile(null,data,start,length);}
             // Primary NPC 23/28/162 always retain their original native order.
@@ -439,6 +447,9 @@ namespace JueMingR.TerrariaHost.Companions
             for (int i = 0; i < a.NetworkSlotIds.Length; i++)
             {
                 int slot = a.NetworkSlotIds[i];
+                // Source-slot authority belongs to the native quick-stack
+                // server from request through its own ordered item reply.
+                if (!full && slot < a.Body.inventoryChestStack.Length && a.Body.inventoryChestStack[slot]) continue;
                 var item = new PlayerItemSlotID.SlotReference(a.Body, slot).Item;
                 if (!full && (item.IsAir
                     ? a.SyncType[i] == 0

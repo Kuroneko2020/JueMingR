@@ -70,16 +70,24 @@ namespace JueMingR.TerrariaHost.Companions
             var movementTarget=TargetCurrent(a,pursuit.Target,pursuit.TargetGeneration)?pursuit.Target:null;
             bool maintainMeleeApproach = valid && chosen.CloseCombat && ReferenceEquals(chosen.Target, movementTarget) &&
                 chosen.TargetGeneration == pursuit.TargetGeneration;
+            PrepareFishingLocation(a);
             a.Behavior.Navigator.BindWorld(navigationWorld);
-            a.Behavior.OwnerTrail=behavior.Follow?ObserveFollowOwner():null;
+            a.Behavior.OwnerTrail=FishingFollowsOwner(a)?ObserveFollowOwner():null;
             var frame=a.Behavior.DecideMobility(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening,pursuit.Weapon,
-                a.Mobility, maintainMeleeApproach);
+                a.Mobility, maintainMeleeApproach, a.Fishing);
+            ObserveFishingApproach(a, frame);
             // Urgent movement may use the next legal hand edge before queued
             // automatic buffs or growth. The manual command keeps its own turn,
             // and StageMobility still waits for any actual native hand tail.
             mobilityHand=StageMobility(a,frame,manualSupply || !frame.EmergencyHand && (heldSlot>=0 || buff),
                 handless && (manualCommand != null || attackAfterExit), valid && !manualSupply, out var delivery) || mobilityHand;
             a.Behavior.RecordMovementDelivery(delivery);
+
+            bool preemptFishing = mobilityHand || manualSupply || a.Supplies.LifeFrame == Main.GameUpdateCount ||
+                heldSlot >= 0 || buff || valid || attackAfterExit || frame.TemporaryGoal;
+            bool fishingReady = a.Fishing?.Hold == true && !a.Fishing.SeatPending && !handless;
+            if (planning && fishingReady && !preemptFishing) AdvanceFishingSearch(a);
+            bool fishingHand = TickFishingLine(a, fishingReady, FishingPagePauses(a), preemptFishing);
 
             // A pending exclusive maintenance action owns the release edge.
             // ItemCheck and live projectiles finish their normal animation and
@@ -100,6 +108,7 @@ namespace JueMingR.TerrariaHost.Companions
                     else TryCompanionBuff(a);
                 }
             }
+            else if(fishingHand)combat.ResetHand();
             else if(valid && !manualSupply)
             {
                 if(manaCost>p.statMana)
@@ -123,7 +132,7 @@ namespace JueMingR.TerrariaHost.Companions
             if(!behavior.AttackEnabled || !valid)
             {
                 SetAttackTarget(a,null);
-                if(FreeHand(p) && a.Supplies.HeldOnce == null)IdleAim(a);
+                if(!fishingHand && FreeHand(p) && a.Supplies.HeldOnce == null)IdleAim(a);
             }
             a.Status=frame.Status;
             if(frame.Status=="停留" && behavior.AttackEnabled && combat.NearbyCount>0)
@@ -133,6 +142,8 @@ namespace JueMingR.TerrariaHost.Companions
                 else if(waitingForMana)a.Status="等待魔力恢复";
                 else if(!valid)a.Status=clearOpening?"等待武器可用":movementTarget!=null?"等待可攻击位置":"等待可用武器或弹药";
             }
+            if(a.Fishing != null && !frame.TemporaryGoal && !preemptFishing && a.Fishing.Status != null)
+                a.Status = a.Fishing.Status;
         }
 
         private static bool FreeHand(Player p)
@@ -197,6 +208,7 @@ namespace JueMingR.TerrariaHost.Companions
             // The manual item's captured actor-local aim also owns delayed
             // native effects until the real hand returns its selected slot.
             if(a.Supplies.HeldOnce!=null || a.Supplies.RestoreSelection>=0)return;
+            if(PrepareFishingUse(a))return;
             var hand=a.Combat.Hand;
             if(p.controlUseItem && hand.Weapon!=null)
             {
@@ -282,6 +294,7 @@ namespace JueMingR.TerrariaHost.Companions
             // A completed live update has recomputed effective accessories.
             // Inventory changes must not use the previous accessory result.
             if(!a.Body.dead)a.TileReachPending=false;
+            AfterFishingBody(a);
             UpdateCompanionFurniture(a);
             var hand=a.Combat.Hand;
             if(hand.Weapon!=null && DoesStaySummoned(hand.Weapon) && a.Body.ItemAnimationJustStarted && Main.GameUpdateCount>=a.Combat.NextSummon)
@@ -310,9 +323,12 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if(!a.Body.dead || a.DeathObserved)return;a.DeathObserved=true;
             CancelItemGestureForActor(a);
+            var following = a.Fishing != null && !a.Preferences.Follow ? a.Profile.Behavior : null;
+            if (following != null) following.Follow = true;
+            EndFishingActivity(a, retire: true);
             SetAttackTarget(a,null);a.Combat.Reset();a.Behavior=new CompanionBehaviorHost();IdleAim(a);a.Body.controlUseItem=false;a.Status="等待复活";
             RetireProjectiles(a);
-            CaptureActorState(a);a.TeamSavePending=false;
+            CaptureActorState(a, following);a.TeamSavePending=false;
             long previous=a.Generation;profiles.Release(a.Profile,previous);long next;if(!profiles.TryReserve(a.Profile,out next))throw new InvalidOperationException("队友复活身份不可用。");a.Generation=next;
             a.Mobility.Reset(next);
             // A legal death renews this same body's activation. Only its own

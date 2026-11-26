@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using JueMingR.Features.Fishing;
 using JueMingR.Infrastructure.Storage;
 using JueMingR.Platform.Companions;
 using JueMingR.Platform.Settings;
@@ -14,6 +15,7 @@ namespace JueMingR.Infrastructure.Companions
         // Full native character data has its own bound; the preference-only
         // 64 KiB limit does not apply to banks, loadouts and Journey research.
         private const int MaximumBytes = 16 * 1024 * 1024;
+        private static readonly byte[] DefaultFishingBytes = new FishingCodec().Encode(CompanionBehavior.DefaultFishing);
         private readonly string root;
         private readonly Dictionary<string, Document> documents = new Dictionary<string, Document>(StringComparer.OrdinalIgnoreCase);
         private sealed class Document
@@ -180,7 +182,7 @@ namespace JueMingR.Infrastructure.Companions
             using (var stream = new MemoryStream())
             using (var writer = new BinaryWriter(stream, new UTF8Encoding(false, true)))
             {
-                writer.Write("JueMingR.Companion"); writer.Write(6);
+                writer.Write("JueMingR.Companion"); writer.Write(7);
                 writer.Write(profile.Id.ToByteArray()); writer.Write(profile.OwnerId.ToByteArray());
                 writer.Write(profile.Name); writer.Write(profile.Revision); writer.Write(profile.DataEpoch);
                 var behavior = profile.Behavior;
@@ -197,6 +199,13 @@ namespace JueMingR.Infrastructure.Companions
                 WriteTypes(writer, behavior.ExcludedManaTypes);
                 WriteTypes(writer, behavior.AllowedGrowthTypes);
                 WriteTypes(writer, behavior.AllowedBuffTypes);
+                // This embedded document uses the shared filter/list format.
+                // Its preferences and the real inventory commit in one revision.
+                writer.Write(behavior.TeleportStopsFishing);
+                writer.Write(behavior.FishingDepositUnconfirmedSlots);
+                byte[] fishing = ReferenceEquals(behavior.Fishing, CompanionBehavior.DefaultFishing) ?
+                    DefaultFishingBytes : new FishingCodec().Encode(behavior.Fishing);
+                writer.Write(fishing.Length); writer.Write(fishing);
                 byte[] data = profile.NativeData; writer.Write(data.Length); writer.Write(data); writer.Flush();
                 using (var sha = SHA256.Create()) writer.Write(sha.ComputeHash(stream.ToArray()));
                 writer.Flush();
@@ -218,11 +227,26 @@ namespace JueMingR.Infrastructure.Companions
             {
                 if (reader.ReadString() != "JueMingR.Companion") throw new InvalidDataException("不支持的队友档案格式。");
                 int version = reader.ReadInt32();
-                if (version < 1 || version > 6) throw new InvalidDataException("不支持的队友档案格式。");
+                if (version < 1 || version > 7) throw new InvalidDataException("不支持的队友档案格式。");
                 Guid id = new Guid(reader.ReadBytes(16)), owner = new Guid(reader.ReadBytes(16));
                 string name = reader.ReadString(); long revision = reader.ReadInt64(), epoch = reader.ReadInt64();
                 var behavior = new CompanionBehavior { Follow = ReadBoolean(reader), AttackEnabled = ReadBoolean(reader) };
                 bool permanentlyDead = version >= 4 ? ReadSupplyPreferences(reader, version, behavior) : ReadLegacy(reader, version, behavior);
+                if (version >= 7)
+                {
+                    behavior.TeleportStopsFishing = ReadBoolean(reader);
+                    behavior.FishingDepositUnconfirmedSlots = reader.ReadUInt64();
+                    int fishingLength = reader.ReadInt32();
+                    if (fishingLength <= 0 || fishingLength > FishingCodec.MaximumBytes ||
+                        fishingLength > stream.Length - stream.Position - sizeof(int))
+                        throw new InvalidDataException("队友钓鱼设置长度不符。");
+                    byte[] fishing = reader.ReadBytes(fishingLength);
+                    if (!EqualBytes(fishing, DefaultFishingBytes))
+                    {
+                        try { behavior.Fishing = new FishingCodec().Decode(fishing); }
+                        catch (PreferenceFormatException e) { throw new InvalidDataException("无法读取队友钓鱼设置。", e); }
+                    }
+                }
                 int length = reader.ReadInt32();
                 if (length <= 0 || length > MaximumBytes || length != stream.Length - stream.Position)
                     throw new InvalidDataException("队友人物数据长度不符。");
