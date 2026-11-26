@@ -50,6 +50,7 @@ namespace NativeWorldTextProbe
             void Click(Vector2 at)
             { Sample(at, false); Sample(at, true); Sample(at, false); }
             void ClickControl(string key) => Click(NativeToolsUiChecks.Point(Get(Control(key), "Rect")));
+            Vector2 ControlPosition(string key) => NativeToolsUiChecks.Point(Get(Control(key), "Rect"));
             void Prepare() => Call(window, "PrepareLayout", Matrix.Identity, screen);
 
             try
@@ -62,6 +63,16 @@ namespace NativeWorldTextProbe
                 ClickControl("configuration-fishing");
                 Require(Get(window,"panel").Equals(bounds) && (Guid)Get(host,"fishingPageId") == first.Id,
                     "the fishing subpage preserves the management rectangle and pauses only its selected profile");
+                var modeRow = ControlPosition("config-FishingMode/开启");
+                var storageRow = ControlPosition("config-FishingStorage/所有");
+                var teleportRow = ControlPosition("config-FishingTeleport/开启");
+                var equipment = ControlPosition("config-FishingEquipment/开启");
+                var loadout = ControlPosition("config-FishingLoadout/开启");
+                var cut = ControlPosition("config-FishingCut/开启");
+                Require(modeRow.Y == equipment.Y && storageRow.Y == loadout.Y && teleportRow.Y == cut.Y &&
+                    equipment.Y < loadout.Y && loadout.Y < cut.Y && equipment.X > modeRow.X &&
+                    loadout.X > storageRow.X && cut.X > teleportRow.X,
+                    "right column aligns equipment, loadout and cut with mode, storage and teleport, in that order");
                 Require(!(bool)Get(Control("config-FishingMode/开启"),"Enabled"), "offline profiles can edit preferences but cannot start the activity");
                 var hotkeys = Get(shell, "hotkeys");
                 Call(Get(hotkeys,"CompanionSettings"),"Refresh",host,Get(hotkeys,"Bindings"),first.Id);

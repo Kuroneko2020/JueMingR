@@ -24,8 +24,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             var behavior = profile.Behavior;
             ConfigurationPair(profile, behavior, CompanionSetting.FishingMode, CompanionSetting.FishingEquipment);
-            ConfigurationPair(profile, behavior, CompanionSetting.FishingStorage, CompanionSetting.FishingCut);
-            ConfigurationPair(profile, behavior, CompanionSetting.FishingTeleport, CompanionSetting.FishingLoadout);
+            ConfigurationPair(profile, behavior, CompanionSetting.FishingStorage, CompanionSetting.FishingLoadout);
+            ConfigurationPair(profile, behavior, CompanionSetting.FishingTeleport, CompanionSetting.FishingCut);
             if (host.SaveFailed(profile.Id))
                 ConfigurationAction("retry-fishing-save", "保存失败 · 重试保存", () => Command(() => host.RetrySave(profile.Id)), row);
             fishingFilterTop = contentY + bodyOffset - configurationViewport.Y;
