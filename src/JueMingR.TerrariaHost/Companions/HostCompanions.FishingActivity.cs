@@ -35,6 +35,9 @@ namespace JueMingR.TerrariaHost.Companions
             internal readonly List<CompanionFishingWater.Pond> Measured = new List<CompanionFishingWater.Pond>();
             internal CompanionFishingCast Cast;
             internal bool CastConfirmed;
+            internal readonly FishingThreats Threats = new FishingThreats();
+            internal bool Defending;
+            internal uint LastDefenseThreat;
             internal string Status;
             internal readonly Func<int, int, Tile> ReadWaterTile;
             internal FishingActivity(Player at)
@@ -211,7 +214,13 @@ namespace JueMingR.TerrariaHost.Companions
             activity.Seat = null;
             activity.Seated = activity.SeatPending = false;
             activity.FeetGoal = activity.RequestedFeet;
-            if (activity.Water != null) activity.ResetWater(activity.Water.Center);
+            if (activity.Water != null)
+            {
+                // This pose no longer owns a usable cast, even when no new
+                // pond is found. Retire the old line within the same activity.
+                StopFishingLine(actor);
+                activity.ResetWater(activity.Water.Center);
+            }
             actor.Behavior.Navigator.IntentChanged(actor.Mobility);
         }
 

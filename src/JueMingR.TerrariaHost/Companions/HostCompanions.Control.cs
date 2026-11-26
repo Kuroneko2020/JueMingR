@@ -34,6 +34,8 @@ namespace JueMingR.TerrariaHost.Companions
             if(p.dead || !p.active){CancelCompanionItemOnce(a);a.Combat.ResetHand();a.Status="等待复活";return;}
             var behavior=a.Preferences;
             var combat=a.Combat;
+            var fishing = a.Fishing;
+            if (fishing != null) a.Behavior.RefreshFishingThreats(p, fishing.Threats);
             bool planning=ReferenceEquals(a,planningActor) || planningActor==null && actors.Count<=1;
 
             // Native recovery can coexist with movement and an active hand.
@@ -83,11 +85,19 @@ namespace JueMingR.TerrariaHost.Companions
                 handless && (manualCommand != null || attackAfterExit), valid && !manualSupply, out var delivery) || mobilityHand;
             a.Behavior.RecordMovementDelivery(delivery);
 
-            bool preemptFishing = mobilityHand || manualSupply || a.Supplies.LifeFrame == Main.GameUpdateCount ||
-                heldSlot >= 0 || buff || valid || attackAfterExit || frame.TemporaryGoal;
+            bool occupiedHand = mobilityHand || manualSupply || a.Supplies.LifeFrame == Main.GameUpdateCount || heldSlot >= 0 || buff;
+            if (fishing != null)
+            {
+                if (!occupiedHand && valid && !fishing.Defending && manaCost > p.statMana &&
+                    CurrentAttack(a, combat.ReadyChoice, out int readyCost, out var readyPoint) && readyCost <= p.statMana)
+                { chosen = combat.ReadyChoice; point = readyPoint; manaCost = readyCost; }
+                UpdateFishingDefense(a, chosen, point, manaCost, valid && !occupiedHand);
+            }
+            bool preemptFishing = occupiedHand || fishing?.Defending == true || attackAfterExit || frame.TemporaryGoal;
             bool fishingReady = a.Fishing?.Hold == true && !a.Fishing.SeatPending && !handless;
             if (planning && fishingReady && !preemptFishing) AdvanceFishingSearch(a);
             bool fishingHand = TickFishingLine(a, fishingReady, FishingPagePauses(a), preemptFishing);
+            bool attackHand = valid && (fishing == null || fishing.Defending && !a.FishingLine.Gear.Active && !a.TileReachPending && !occupiedHand);
 
             // A pending exclusive maintenance action owns the release edge.
             // ItemCheck and live projectiles finish their normal animation and
@@ -109,7 +119,7 @@ namespace JueMingR.TerrariaHost.Companions
                 }
             }
             else if(fishingHand)combat.ResetHand();
-            else if(valid && !manualSupply)
+            else if(attackHand && !manualSupply)
             {
                 if(manaCost>p.statMana)
                 {
@@ -129,7 +139,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             else combat.ResetHand();
 
-            if(!behavior.AttackEnabled || !valid)
+            if(!behavior.AttackEnabled || !valid || fishing != null && !attackHand)
             {
                 SetAttackTarget(a,null);
                 if(!fishingHand && FreeHand(p) && a.Supplies.HeldOnce == null)IdleAim(a);
@@ -148,6 +158,31 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static bool FreeHand(Player p)
         { return !p.UsingOrReusingItem && p.itemTime<=0; }
+
+        private void UpdateFishingDefense(Actor actor, CompanionAttackChoice weapon, Vector2 point, int manaCost, bool canAttack)
+        {
+            var fishing = actor.Fishing;
+            var body = actor.Body;
+            uint now = Main.GameUpdateCount;
+            if (fishing.Defending)
+            {
+                if (actor.Preferences.AttackEnabled && fishing.Threats.Count > 0) fishing.LastDefenseThreat = now;
+                if (now - fishing.LastDefenseThreat >= 36 && FreeHand(body) && !body.channel && !body.selectedItemState.HasBufferedChange)
+                    fishing.Defending = false;
+                return;
+            }
+            // Evasion and a tentative path leave fishing gear and rod alone.
+            // The next real weapon edge owns gear only after admission and,
+            // for a mana item, payment or a currently usable native source.
+            if (!canAttack || !FishingHandFree(body) || body.channel || !NativeAttackAllowed(actor, weapon, point, manaCost)) return;
+            if (manaCost > body.statMana && !CanNativeMana(actor))
+            {
+                TryCompanionMana(actor, weapon.Weapon);
+                if (manaCost > body.statMana) return;
+            }
+            fishing.Defending = true;
+            fishing.LastDefenseThreat = now;
+        }
 
         private static bool NativeAttackAllowed(Actor a,CompanionAttackChoice choice,Vector2 point,int prospectiveMana=0)
         {
@@ -212,11 +247,13 @@ namespace JueMingR.TerrariaHost.Companions
             var hand=a.Combat.Hand;
             if(p.controlUseItem && hand.Weapon!=null)
             {
+                if (a.Fishing != null) a.Behavior.RefreshFishingThreats(p, a.Fishing.Threats);
                 Vector2 point;
                 // Player.Update may move the body and can change what the
                 // current weapon geometry reads before native ItemCheck.
                 a.Combat.ShotTerrainTick = UInt32.MaxValue;
-                if(p.selectedItem!=hand.Slot || !CurrentAttack(a,hand,out int fee,out point) || fee>p.statMana && !CanNativeMana(a))
+                if(p.selectedItem!=hand.Slot || a.Fishing != null && (!a.Fishing.Defending || a.FishingLine.Gear.Active || a.TileReachPending) ||
+                    !CurrentAttack(a,hand,out int fee,out point) || fee>p.statMana && !CanNativeMana(a))
                 {p.controlUseItem=false;a.WasUsing=false;}
                 else a.Aim=point;
             }

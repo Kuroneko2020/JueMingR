@@ -66,6 +66,11 @@ namespace NativeWorldTextProbe
             // Spawn, positions, equipment and subsequent body updates stay native.
             audit.Patch(AccessTools.Method(typeof(Main), nameof(Main.StartCameraTransitionForPlayerTeleport)),
                 prefix: new HarmonyMethod(typeof(NativeCompanionFishingLineChecks), nameof(SkipCosmetic)));
+            // The CPU fixture has no lighting renderer. Keep native hostile
+            // projectile motion, terrain collision, hits and retirement.
+            audit.Patch(AccessTools.Method(typeof(Lighting), nameof(Lighting.AddLight),
+                new[] { typeof(int), typeof(int), typeof(float), typeof(float), typeof(float) }),
+                prefix: new HarmonyMethod(typeof(NativeCompanionFishingLineChecks), nameof(SkipCosmetic)));
             audit.Patch(AccessTools.Method(typeof(Player), "ItemCheck_CheckFishingBobber_ConsumeBait"),
                 prefix: new HarmonyMethod(typeof(NativeCompanionFishingLineChecks), nameof(BaitRandomBefore)),
                 finalizer: new HarmonyMethod(typeof(NativeCompanionFishingLineChecks), nameof(BaitRandomAfter)));
@@ -335,8 +340,7 @@ namespace NativeWorldTextProbe
         private static void MeasureStableLines(object context, object input, Player first, Player second, bool active)
         {
             const int frames = 48;
-            var measure = typeof(GC).GetMethod("GetAllocatedBytesForCurrentThread", BindingFlags.Static | BindingFlags.Public);
-            var allocated = measure == null ? null : (Func<long>)Delegate.CreateDelegate(typeof(Func<long>), measure);
+            var allocated = GetAllocationSampler();
             long bytes = allocated?.Invoke() ?? 0;
             long total = 0, peak = 0;
             int a = active ? (int)WetBobber(first).key : -1;
@@ -360,6 +364,12 @@ namespace NativeWorldTextProbe
                 (1000.0 * total / Stopwatch.Frequency).ToString("F3") + " peakMS=" +
                 (1000.0 * peak / Stopwatch.Frequency).ToString("F3") + " allocatedBytes=" + memory +
                 " (fixture body/runtime/projectile step; no FPS claim)");
+        }
+
+        internal static Func<long> GetAllocationSampler()
+        {
+            var measure = typeof(GC).GetMethod("GetAllocatedBytesForCurrentThread", BindingFlags.Static | BindingFlags.Public);
+            return measure == null ? null : (Func<long>)Delegate.CreateDelegate(typeof(Func<long>), measure);
         }
 
         private static void VerifyStorageWire(object context, object input, object host, Player first, Player second, Projectile bobber)
@@ -508,8 +518,17 @@ namespace NativeWorldTextProbe
             Call(context, "UpdateRuntime");
             first.Update(first.whoAmI);
             second.Update(second.whoAmI);
-            for (int i = 0; i < Main.maxProjectiles; i++)
-                if (Main.projectile[i].active) Main.projectile[i].Update(i);
+            int previous = Main.ProjectileUpdateLoopIndex;
+            try
+            {
+                for (int i = 0; i < Main.maxProjectiles; i++)
+                    if (Main.projectile[i].active)
+                    {
+                        Main.ProjectileUpdateLoopIndex = i;
+                        Main.projectile[i].Update(i);
+                    }
+            }
+            finally { Main.ProjectileUpdateLoopIndex = previous; }
         }
     }
 }

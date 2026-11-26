@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using JueMingR.Features.Fishing;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -121,6 +125,15 @@ namespace NativeWorldTextProbe
                     "pure deep drainage retires the old line and reaches the next real pond from the same chair and circle: " + Get(role, "Status"));
                 Console.WriteLine("PASS deep drain outside the 20-tile circle forces native re-cast into the next qualified water body.");
 
+                int removedSeatKey = (int)movedPool.key;
+                top.ClearEverything();
+                bottom.ClearEverything();
+                for (int frame = 0; frame < 180 && movedPool.active && (int)movedPool.key == removedSeatKey; frame++) Step();
+                Require((!movedPool.active || (int)movedPool.key != removedSeatKey) && !actor.sitting.isSitting &&
+                    GetOptional(activity, "Seat") == null && ReferenceEquals(Get(role, "Fishing"), activity),
+                    "removing the occupied original chair retires its real bobber and keeps the same fishing activity: " + Get(role, "Status"));
+                Console.WriteLine("PASS actual chair removal retires the old native bobber without ending fishing.");
+
                 var settings = ((CompanionProfile)Get(role, "Profile")).Behavior;
                 settings.TeleportStopsFishing = false;
                 Require((bool)Call(host, "SetBehavior", profile.Id, settings), "retain-fishing recall preference saved through its normal entry");
@@ -143,6 +156,7 @@ namespace NativeWorldTextProbe
                     " supported=" + Get(Get(Get(role, "Behavior"), "Navigator"), "Supported") + " hold=" + Get(relocated, "Hold") +
                     " rightBoundary=" + Main.rightWorld + " wet=" + atLanding?.Center);
                 VerifyStandingReturn(Step, role, actor, relocated);
+                VerifyStandingDefense(Step, host, role, profile, actor, other, relocated);
 
                 settings = ((CompanionProfile)Get(role, "Profile")).Behavior;
                 settings.TeleportStopsFishing = true;
@@ -213,6 +227,213 @@ namespace NativeWorldTextProbe
                 (Vector2)Get(Get(activity, "Water"), "Center") == center && NativeCompanionFishingLineChecks.WetBobber(actor) != null,
                 "the standing body returns to its fixed area and resumes a real line once danger clears");
             Console.WriteLine("PASS standing fishing body's danger avoidance and return to the fixed circle.");
+        }
+
+        private static void VerifyStandingDefense(Action step, object host, object role, CompanionProfile profile,
+            Player actor, Player other, object activity)
+        {
+            const int wallX = 90, evadeWallX = 94, nearSlot = 115, distantSlot = 116, bowSlot = 41, arrowSlot = 56;
+            var settings = ((CompanionProfile)Get(role, "Profile")).Behavior;
+            var oldSettings = settings.Clone();
+            settings.AttackEnabled = false;
+            settings.Fishing = new FishingOptions(loadout: true);
+            settings.MainWeapons = new[] { new CompanionWeaponPreference(ItemID.WoodenBow, 0, bowSlot) };
+            int daily = actor.CurrentLoadoutIndex;
+            int fishing = (daily + 2) % actor.Loadouts.Length;
+            Item dailyArmor = new Item(ItemID.CopperHelmet);
+            Item fishingAccessory = new Item(ItemID.AnglerEarring);
+            actor.armor[0] = dailyArmor;
+            actor.Loadouts[fishing].Armor[0] = new Item(ItemID.AnglerHat);
+            actor.Loadouts[fishing].Armor[3] = fishingAccessory;
+            actor.inventory[bowSlot] = new Item(ItemID.WoodenBow);
+            actor.inventory[arrowSlot] = new Item(ItemID.WoodenArrow) { stack = 30 };
+            Require((bool)Call(host, "SetBehavior", profile.Id, settings), "start the ordinary main weapon and automatic fishing loadout options");
+            Projectile bobber = null;
+            for (int frame = 0; frame < 400; frame++)
+            {
+                step();
+                bobber = NativeCompanionFishingLineChecks.WetBobber(actor);
+                if (bobber != null && actor.CurrentLoadoutIndex == fishing) break;
+            }
+            var gear = Get(Get(role, "FishingLine"), "Gear");
+            Require(bobber != null && actor.CurrentLoadoutIndex == fishing && ReferenceEquals(actor.armor[3], fishingAccessory),
+                "the fishing group keeps its actual Angler Earring and native bobber before threats are introduced: " +
+                $"actual={actor.CurrentLoadoutIndex} desired={fishing} armor={actor.armor[3].type} staged={actor.Loadouts[fishing].Armor[3].type} " +
+                $"strategy={Get(gear, "Strategy")} next={Get(gear, "NextPlan")} tick={Main.GameUpdateCount} " +
+                $"hold={Get(activity, "Hold")} wet={bobber?.key} held={actor.selectedItem}/{actor.itemAnimation}/{actor.itemTime} " +
+                $"status={Get(role, "Status")} feet={actor.Bottom}");
+            settings.AttackEnabled = true;
+            Require((bool)Call(host, "SetBehavior", profile.Id, settings), "turn on the ordinary Attack setting after native fishing is established");
+            var center = (Vector2)Get(Get(activity, "Water"), "Center");
+            var feet = actor.Bottom;
+            int peerLoadout = other.CurrentLoadoutIndex;
+            for (int y = 38; y < 48; y++) NativeToolsChecks.Tile(wallX, y, TileID.Stone);
+            var priorNear = Main.npc[nearSlot];
+            var priorDistant = Main.npc[distantSlot];
+            var nearby = Main.npc[nearSlot] = new NPC();
+            var distant = Main.npc[distantSlot] = new NPC();
+            int ammo = actor.inventory[arrowSlot].stack;
+            int bobberKey = (int)bobber.key;
+            var groups = new List<int> { fishing };
+            void RecordGroup()
+            {
+                if (groups[groups.Count - 1] != actor.CurrentLoadoutIndex) groups.Add(actor.CurrentLoadoutIndex);
+            }
+            string Trace() => $"groups={String.Join("->", groups)} feet={actor.Bottom}/{feet} " +
+                $"ammo={actor.inventory[arrowSlot].stack}/{ammo} near={nearby.life} other={distant.life} " +
+                $"wet={NativeCompanionFishingLineChecks.WetBobber(actor)?.key} status={Get(role, "Status")}";
+            Projectile Incoming(IEntitySource source) => Main.projectile[Projectile.NewProjectile(source,
+                new Vector2((evadeWallX + 1) * 16 + 8, actor.Center.Y), new Vector2(-8, 0), ProjectileID.FlamingWood, 8, 0, Main.myPlayer)];
+            void CheckEvasion(IEntitySource source, string reason, Action afterBirth = null, bool keepBarrierOnReturn = false)
+            {
+                // The added wall is east so the body can evade left without
+                // leaving the bank. Holding it through the first return
+                // also exercises a real terrain-driven line change.
+                for (int y = 44; y < 48; y++) NativeToolsChecks.Tile(evadeWallX, y, TileID.Stone);
+                Projectile shot = null;
+                try
+                {
+                    bool displaced = false, crossed = false;
+                    shot = Incoming(source);
+                    Require(shot.active && shot.hostile && !shot.friendly && !shot.tileCollide &&
+                        !Collision.CanHitLine(actor.position, actor.width, actor.height, shot.position, shot.width, shot.height),
+                        "native projectile passes a real shot barrier: " + reason);
+                    afterBirth?.Invoke();
+                    for (int frame = 0; frame < 20 && (!displaced || !crossed); frame++)
+                    {
+                        step();
+                        RecordGroup();
+                        displaced |= Vector2.DistanceSquared(actor.Bottom, feet) > 8 * 8;
+                        crossed |= shot.Center.X < evadeWallX * 16;
+                    }
+                    if (shot.active) shot.Kill();
+                    if (!keepBarrierOnReturn) for (int y = 44; y < 48; y++) Main.tile[evadeWallX, y].ClearEverything();
+                    Require(crossed && displaced && groups.Count == 1 && actor.inventory[arrowSlot].stack == ammo &&
+                        nearby.life == nearby.lifeMax && distant.life == distant.lifeMax && other.CurrentLoadoutIndex == peerLoadout,
+                        reason + " causes real avoidance without blind attacks or switching armor: " + Trace());
+                    for (int frame = 0; frame < 300; frame++)
+                    {
+                        step();
+                        RecordGroup();
+                        if ((bool)Get(activity, "Hold") && NativeCompanionFishingLineChecks.WetBobber(actor) != null) break;
+                    }
+                    Require((bool)Get(activity, "Hold") && NativeCompanionFishingLineChecks.WetBobber(actor) != null && groups.Count == 1,
+                        "the fishing body returns to the same wet activity without switching gear after " + reason + ": " + Trace());
+                    Console.WriteLine("PASS AI fishing projectile avoidance only: " + reason + ". " + Trace());
+                }
+                finally
+                {
+                    if (shot?.active == true) shot.Kill();
+                    for (int y = 44; y < 48; y++) Main.tile[evadeWallX, y].ClearEverything();
+                }
+            }
+            try
+            {
+                NativeCompanionNavigationChecks.InitializeTarget(nearby, nearSlot, new Vector2(wallX * 16 - 14, actor.Center.Y));
+                nearby.noTileCollide = false;
+                // The native body is on the other side of the stone. Its projected contact is only a threat if it can cross.
+                nearby.velocity = new Vector2(8, 0);
+                NativeCompanionNavigationChecks.InitializeTarget(distant, distantSlot, actor.Center + new Vector2(176, 0));
+                Require(!Collision.CanHitLine(actor.position, actor.width, actor.height, nearby.position, nearby.width, nearby.height) &&
+                    Collision.CanHitLine(actor.position, actor.width, actor.height, distant.position, distant.width, distant.height),
+                    "fixture has a real full stone wall between the nearby NPC and the angler, and a separate open NPC");
+                var allocated = NativeCompanionFishingLineChecks.GetAllocationSampler();
+                long bytes = allocated?.Invoke() ?? 0;
+                long started = Stopwatch.GetTimestamp();
+                bool sameLine = true;
+                for (int frame = 0; frame < 48; frame++)
+                {
+                    step();
+                    RecordGroup();
+                    sameLine &= (int?)NativeCompanionFishingLineChecks.WetBobber(actor)?.key == bobberKey;
+                }
+                double milliseconds = (Stopwatch.GetTimestamp() - started) * 1000d / Stopwatch.Frequency;
+                Console.WriteLine($"WORKLOAD AI fishing defense wall: frames=48 elapsedMS={milliseconds:F3} " +
+                    $"allocatedBytes={(allocated == null ? "unavailable" : (allocated() - bytes).ToString())} {Trace()}");
+                Require(sameLine && groups.Count == 1 && actor.inventory[arrowSlot].stack == ammo &&
+                    nearby.life == nearby.lifeMax && distant.life == distant.lifeMax && other.CurrentLoadoutIndex == peerLoadout,
+                    "a blocked projected-contact NPC and an unrelated visible NPC leave the exact wet line and fishing group in place without firing: " + Trace());
+
+                nearby.velocity = Vector2.Zero;
+                var blocked = Main.projectile[Projectile.NewProjectile(new EntitySource_Parent(distant),
+                    new Vector2(wallX * 16 - 12, actor.Center.Y), new Vector2(7, 0), ProjectileID.DeathLaser, 8, 0, Main.myPlayer)];
+                Require(blocked.active && blocked.hostile && blocked.tileCollide, "known-parent hostile shot uses real tile collision");
+                for (int frame = 0; frame < 16 && blocked.active; frame++) { step(); RecordGroup(); }
+                Require(!blocked.active && (int?)NativeCompanionFishingLineChecks.WetBobber(actor)?.key == bobberKey &&
+                    groups.Count == 1 && actor.inventory[arrowSlot].stack == ammo && distant.life == distant.lifeMax,
+                    "the actual wall stops a known-parent projectile before it can justify switching or firing: " + Trace());
+                CheckEvasion(new EntitySource_WorldEvent(), "a through-wall hostile projectile with unknown source", keepBarrierOnReturn: true);
+                CheckEvasion(new EntitySource_Parent(distant), "a through-wall shot whose original source disappeared and its NPC slot was reused", () =>
+                {
+                    var emitterCenter = distant.Center;
+                    distant.active = false;
+                    distant = Main.npc[distantSlot] = new NPC();
+                    NativeCompanionNavigationChecks.InitializeTarget(distant, distantSlot, emitterCenter);
+                });
+
+                for (int y = 43; y < 48; y++) Main.tile[wallX, y].ClearEverything();
+                Require(Collision.CanHitLine(actor.position, actor.width, actor.height, nearby.position, nearby.width, nearby.height),
+                    "removing five actual wall tiles exposes the nearby NPC");
+                bool shotInDaily = false;
+                Func<Projectile, bool> actorArrow = p => p.active && p.owner == actor.whoAmI && p.type == ProjectileID.WoodenArrowFriendly;
+                nearby.velocity = new Vector2(8, 0);
+                bytes = allocated?.Invoke() ?? 0;
+                started = Stopwatch.GetTimestamp();
+                int attackFrames = 0;
+                for (; attackFrames < 160 && nearby.life == nearby.lifeMax; attackFrames++)
+                {
+                    step();
+                    RecordGroup();
+                    if (Main.projectile.Any(actorArrow))
+                        shotInDaily |= actor.CurrentLoadoutIndex == daily && ReferenceEquals(actor.armor[0], dailyArmor);
+                }
+                milliseconds = (Stopwatch.GetTimestamp() - started) * 1000d / Stopwatch.Frequency;
+                Console.WriteLine($"WORKLOAD AI fishing defense opening: frames={attackFrames} elapsedMS={milliseconds:F3} " +
+                    $"allocatedBytes={(allocated == null ? "unavailable" : (allocated() - bytes).ToString())} {Trace()}");
+                Require(shotInDaily && nearby.life < nearby.lifeMax && distant.life == distant.lifeMax &&
+                    actor.inventory[arrowSlot].stack < ammo && other.CurrentLoadoutIndex == peerLoadout,
+                    "opening commits the actor's real bow, daily native armor, arrow debit and nearby NPC hit only: " + Trace());
+
+                nearby.active = false;
+                for (int frame = 0; frame < 320; frame++)
+                {
+                    step();
+                    RecordGroup();
+                    if (actor.CurrentLoadoutIndex == fishing && NativeCompanionFishingLineChecks.WetBobber(actor) != null &&
+                        (bool)Get(activity, "Hold")) break;
+                }
+                Require(ReferenceEquals(Get(role, "Fishing"), activity) && (bool)Get(activity, "Hold") &&
+                    Vector2.DistanceSquared(actor.Bottom, feet) <= 12 * 12 &&
+                    (Vector2)Get(Get(activity, "Water"), "Center") == center && ReferenceEquals(actor.armor[3], fishingAccessory) &&
+                    NativeCompanionFishingLineChecks.WetBobber(actor) != null && distant.life == distant.lifeMax &&
+                    groups.SequenceEqual(new[] { fishing, daily, fishing }),
+                    "ending real danger returns once to the original fishing group and resumes a native line at the same anchor with a distant foe still present: " + Trace());
+                Console.WriteLine("PASS AI fishing self-defense: original weapon and damage only after an actual opening, then native armor and line resume. " + Trace());
+
+                ammo = actor.inventory[arrowSlot].stack;
+                int beforeSource = distant.life;
+                var emitter = Main.projectile[Projectile.NewProjectile(new EntitySource_Parent(distant), distant.Center,
+                    new Vector2(-18, 0), ProjectileID.FlamingWood, 8, 0, Main.myPlayer)];
+                Require(emitter.active && emitter.hostile, "native factory registers a live projectile with its actual parent NPC");
+                bool sourcedAttack = false;
+                for (int frame = 0; frame < 120 && distant.life == beforeSource; frame++)
+                {
+                    step();
+                    RecordGroup();
+                    if (actor.inventory[arrowSlot].stack < ammo)
+                        sourcedAttack |= actor.CurrentLoadoutIndex == daily && ReferenceEquals(actor.armor[0], dailyArmor);
+                }
+                if (emitter.active) emitter.Kill();
+                Require(sourcedAttack && distant.life < beforeSource && groups.SequenceEqual(new[] { fishing, daily, fishing, daily }),
+                    "the same otherwise harmless NPC becomes a valid target when its actual native projectile threatens this actor: " + Trace());
+                Console.WriteLine("PASS AI fishing actual parent projectile authorizes native retaliation exclusively against its source. " + Trace());
+            }
+            finally
+            {
+                Main.npc[nearSlot] = priorNear;
+                Main.npc[distantSlot] = priorDistant;
+                Require((bool)Call(host, "SetBehavior", profile.Id, oldSettings), "restore the neighboring stop and death scenarios' settings");
+            }
         }
     }
 }

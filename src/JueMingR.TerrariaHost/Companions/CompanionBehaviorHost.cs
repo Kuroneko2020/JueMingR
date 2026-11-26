@@ -40,6 +40,15 @@ namespace JueMingR.TerrariaHost.Companions
         internal void AdvanceMovement(Player body, CompanionMobilityState state, NavigationBudget budget) =>
             Navigator.Advance(body, state, OwnerTrail, budget);
 
+        private int NextThreatStamp()
+        {
+            if (++threatStamp == int.MaxValue) { Array.Clear(seenThreats, 0, seenThreats.Length); threatStamp = 1; }
+            return threatStamp;
+        }
+
+        internal void RefreshFishingThreats(Player body, FishingThreats threats) =>
+            CompanionThreatField.ObserveFishing(body, seenThreats, NextThreatStamp(), threats);
+
         internal CompanionMobilityFrame DecideMobility(Player body, Player owner, CompanionBehavior behavior, bool allowPlanning,
             NPC combatTarget, bool closeCombat, bool canAttack, Item pursuitWeapon, CompanionMobilityState mobility,
             bool maintainMeleeApproach = false, HostCompanions.FishingActivity fishing = null)
@@ -70,8 +79,17 @@ namespace JueMingR.TerrariaHost.Companions
             if (!body.wet) { lastAir = body.Center; hasAir = true; }
             bool lava = body.lavaWet && !body.lavaImmune && (!mobility.Observed.Ready || mobility.Observed.LavaTime <= 24);
 
-            if (++threatStamp == int.MaxValue) { Array.Clear(seenThreats, 0, seenThreats.Length); threatStamp = 1; }
-            bool threat = CompanionThreatField.Observe(body, seenThreats, threatStamp, out int escape, out bool jumpClear);
+            var fishingThreats = fishing?.Threats;
+            int escape;
+            bool jumpClear, threat;
+            if (fishingThreats == null)
+                threat = CompanionThreatField.Observe(body, seenThreats, NextThreatStamp(), out escape, out jumpClear);
+            else
+            {
+                threat = fishingThreats.Danger;
+                escape = fishingThreats.Escape;
+                jumpClear = fishingThreats.JumpClear;
+            }
             bool emergency = needsAir || lava || threat;
             bool temporaryGoal = emergency;
             if (emergency)

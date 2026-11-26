@@ -22,7 +22,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal int RodLiquid = -2;
             internal Vector2 Aim;
             internal uint IssuedAt, NextRodScan, RetryAt, NextPull, LastWet;
-            internal bool Confirmed, Cutting, Ending, PullReceived, SawWet;
+            internal bool Confirmed, Cutting, Ending, RestoreGear, PullReceived, SawWet;
             internal int DryCutSlot = -1;
             internal FishingCatalog Catalog;
             internal readonly CompanionFishingGear Gear = new CompanionFishingGear();
@@ -133,23 +133,28 @@ namespace JueMingR.TerrariaHost.Companions
                 line.Storage = new CompanionFishStorage();
             if (line.Storage != null) AdvanceFishStorage(a);
             if (!preempt && line.Gear.ManualLoadout >= 0 && TryManualFishingLoadout(a)) return true;
-            if (!active && !line.Ending && line.Bobbers.Count == 0 && !line.Gear.Active) return false;
+            if (!active && !line.Ending && !line.RestoreGear && line.Bobbers.Count == 0 && !line.Gear.Active) return false;
             if (a.Body.dead || a.Closing) return false;
             ObserveFishingLine(a);
             int liquid = FishingLiquid(a);
-            if (!active || preempt || line.Ending)
+            var options = a.Preferences.Fishing;
+            int strategy = options.Equipment ? 2 : options.Loadout ? 1 : 0;
+            bool returnGear = !active || a.Fishing.Defending || line.RestoreGear || line.Gear.Active && strategy != line.Gear.Strategy;
+            if (returnGear || line.Ending)
             {
-                UpdateFishingGear(a, false, liquid);
-                if (!preempt && line.Bobbers.Count != 0 && !line.PullReceived) return CutFishingLine(a);
+                // Losing a shot path in the same activity retires its bobber,
+                // but a terrain edit or temporary evasion does not claim armor.
+                if (returnGear && UpdateFishingGear(a, false, liquid)) line.RestoreGear = false;
+                if ((!active || line.Ending) && !preempt && line.Bobbers.Count != 0 && !line.PullReceived) return CutFishingLine(a);
                 if (line.Bobbers.Count == 0 && line.Issued == FishingHand.None) line.Ending = false;
                 return false;
             }
-            if (!ready || Main.GameUpdateCount < line.RetryAt) return false;
+            if (preempt || !ready || Main.GameUpdateCount < line.RetryAt) return false;
             if (line.Bobbers.Count != 0)
             {
                 if (line.PullReceived || line.Cutting || !FishingHandFree(p)) return false;
                 if (!RodCurrent(a)) return CutFishingLine(a);
-                if (!UpdateFishingGear(a, true, liquid)) return false;
+                if (liquid < 0 || !UpdateFishingGear(a, true, liquid)) return false;
                 if (!line.Confirmed && (line.SawWet && Main.GameUpdateCount - line.IssuedAt >= 90 ||
                     Main.GameUpdateCount - line.IssuedAt >= 240)) return CutFishingLine(a);
                 if (line.Confirmed && Main.GameUpdateCount - line.LastWet >= 60) return CutFishingLine(a);
@@ -176,10 +181,9 @@ namespace JueMingR.TerrariaHost.Companions
             bool hasRod = TryFishingRod(a, liquid, out var rod);
             FishingNativeBait(p, out int baitPower, out _);
             FishingNeedsGear(a, !hasRod && liquid != 1, baitPower <= 0);
-            if (!hasRod || baitPower <= 0 || !UpdateFishingGear(a, true, liquid) ||
+            if (!hasRod || baitPower <= 0 || !TryFishingAim(a, rod, out Vector2 aim) || !UpdateFishingGear(a, true, liquid) ||
                 !NativeActorCanFish(p, rod, liquid) || !FishingSceneReady(a) || !FishingHandFree(p))
                 return false;
-            if (!TryFishingAim(a, rod, out Vector2 aim)) return false;
             line.Aim = aim;
             return StageFishingHand(a, FishingHand.Cast);
         }
@@ -290,6 +294,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var line = a.FishingLine;
             line.Ending = true;
+            line.RestoreGear |= !FishingActive(a);
             line.Staged = FishingHand.None;
             line.Catalog?.Clear();
             line.SceneKnown = false;
@@ -297,6 +302,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (retire || !FishingActive(a)) line.Storage?.ManualSources?.Clear();
             if (!retire) return;
             RestoreFishingGear(a, retiring: true);
+            line.RestoreGear = false;
             line.Gear.ManualLoadout = -1;
             // Lifecycle retirement kills leased bobbers next. Do not qualify
             // any unfinished cast or pull from that native cleanup.

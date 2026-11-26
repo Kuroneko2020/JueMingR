@@ -8,10 +8,17 @@ namespace JueMingR.TerrariaHost.Companions
     // One native-entity snapshot and spatial index per world tick for the whole
     // team. Actor queries visit nearby bins; they do not rescan every projectile.
     // This is linear body/swept-box avoidance, not future Boss-specific geometry.
-    internal static class CompanionThreatField
+    internal static partial class CompanionThreatField
     {
         private const int Cell = 256;
-        private struct Threat { internal Rectangle Bounds; internal Vector2 Center; }
+        private struct Threat
+        {
+            internal Rectangle Bounds, Contact;
+            internal Vector2 Center;
+            internal NPC Enemy;
+            internal Projectile Shot;
+            internal int Identity;
+        }
         private static readonly Dictionary<long, List<int>> bins = new Dictionary<long, List<int>>();
         private static readonly Stack<List<int>> free = new Stack<List<int>>();
         private static readonly List<int> large = new List<int>();
@@ -22,29 +29,44 @@ namespace JueMingR.TerrariaHost.Companions
         internal static long SnapshotBuilds { get; private set; }
         internal static void Reset()
         {
+            ResetIndex();
+            Array.Clear(threats, 0, threats.Length);
+            if (shotSources != null) Array.Clear(shotSources, 0, shotSources.Length);
+        }
+
+        private static void ResetIndex()
+        {
             foreach (var list in bins.Values) { list.Clear(); free.Push(list); }
             bins.Clear(); large.Clear(); count = 0; world = null;
         }
         private static void Ensure()
         {
             if (ReferenceEquals(world, Main.ActiveWorldFileData) && tick == Main.GameUpdateCount) return;
-            Reset(); world = Main.ActiveWorldFileData; tick = Main.GameUpdateCount;
+            ResetIndex(); world = Main.ActiveWorldFileData; tick = Main.GameUpdateCount;
             SnapshotBuilds++;
             int capacity = Main.projectile.Length + Main.npc.Length;
             if (threats.Length < capacity) threats = new Threat[capacity];
             foreach (var projectile in Main.projectile)
                 if (projectile != null && projectile.active && projectile.hostile && projectile.damage > 0)
-                    Add(projectile.Damage_GetHitbox(), projectile.velocity * 10);
+                    Add(ObserveProjectileContact(projectile), projectile.velocity * 10, null, projectile, (int)projectile.key);
             foreach (var npc in Main.npc)
                 if (npc != null && npc.active && !npc.friendly && !npc.townNPC && npc.damage > 0)
-                    Add(npc.Hitbox, npc.velocity * 8);
+                    Add(npc.Hitbox, npc.velocity * 8, npc, null, npc.generation);
         }
-        private static void Add(Rectangle current, Vector2 future)
+        private static void Add(Rectangle current, Vector2 future, NPC enemy, Projectile shot, int identity)
         {
             var next = current; next.Offset((int)future.X, (int)future.Y);
             Rectangle swept = Rectangle.Union(current, next); swept.Inflate(8, 8);
-            int index = count++; threats[index] = new Threat { Bounds = swept, Center = current.Center.ToVector2() };
-            int left = swept.Left / Cell, right = swept.Right / Cell, top = swept.Top / Cell, bottom = swept.Bottom / Cell;
+            int index = count++; threats[index] = new Threat { Bounds = swept, Contact = current, Center = current.Center.ToVector2(), Enemy = enemy, Shot = shot, Identity = identity };
+            // Ordinary movement keeps its original bounds. Fishing contact
+            // can also use Terraria's interpolated NPC position in this index.
+            var coverage = swept;
+            if (enemy != null && enemy.netOffset != Vector2.Zero)
+            {
+                coverage.Offset((int)enemy.netOffset.X, (int)enemy.netOffset.Y);
+                coverage = Rectangle.Union(coverage, swept);
+            }
+            int left = coverage.Left / Cell, right = coverage.Right / Cell, top = coverage.Top / Cell, bottom = coverage.Bottom / Cell;
             if ((right - left + 1) * (bottom - top + 1) > 16) { large.Add(index); return; }
             for (int x = left; x <= right; x++) for (int y = top; y <= bottom; y++)
             {
@@ -52,6 +74,15 @@ namespace JueMingR.TerrariaHost.Companions
                 if (!bins.TryGetValue(key, out list)) { list = free.Count > 0 ? free.Pop() : new List<int>(); bins.Add(key, list); }
                 list.Add(index);
             }
+        }
+
+        private static Rectangle ObserveProjectileContact(Projectile projectile)
+        {
+            // The 1.4.6 damage read can consume an explosion's one-shot
+            // localAI size. Only the real damage consumer may retire it.
+            float pendingSize = projectile.localAI[0];
+            try { return projectile.Damage_GetHitbox(); }
+            finally { projectile.localAI[0] = pendingSize; }
         }
         private static long Key(int x, int y) { return ((long)x << 32) | (uint)y; }
         internal static bool Observe(Player body, int[] seen, int stamp, out int escape, out bool jumpClear)
