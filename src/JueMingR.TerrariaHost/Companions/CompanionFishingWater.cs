@@ -38,7 +38,14 @@ namespace JueMingR.TerrariaHost.Companions
             internal Pond(Point start)
             { left = right = start.X; x = start.X; Row = y = start.Y; }
 
-            internal Result Advance(ref int budget, Func<int, int, Tile> read)
+            internal Result Advance(ref int budget, Func<int, int, Tile> read) => Measure(ref budget, read, false);
+
+            // A stable cast only needs proof that the native minimum still
+            // holds. Counting can stop at that proof; a failed check must
+            // still exhaust the complete uncut pond, including its deep end.
+            internal Result ValidateMinimum(ref int budget, Func<int, int, Tile> read) => Measure(ref budget, read, true);
+
+            private Result Measure(ref int budget, Func<int, int, Tile> read, bool minimumOnly)
             {
                 while (budget > 0 && phase < 3)
                 {
@@ -64,6 +71,7 @@ namespace JueMingR.TerrariaHost.Companions
                         if (next.lava()) lava = true;
                         else if (next.honey()) honey = true;
                         y++;
+                        if (minimumOnly && Eligible) return Result.Ready;
                     }
                     else
                     {

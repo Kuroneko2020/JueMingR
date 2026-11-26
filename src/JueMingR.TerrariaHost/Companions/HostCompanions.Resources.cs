@@ -237,6 +237,8 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 companionChanged |= !change.Owner;
                 backpackChanged |= !change.Owner && change.Area == CompanionInventoryArea.Inventory;
+                if (!change.Owner && change.Area == CompanionInventoryArea.Inventory)
+                    FishingManualItemCommitted(actor, change.Slot, change.After);
                 if (!change.Owner && change.Area == CompanionInventoryArea.Armor)
                     InvalidateActorTileReach(actor.Body);
                 if (change.Owner && !change.OwnerTrash)

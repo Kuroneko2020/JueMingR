@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Linq;
 using JueMingR.Platform.Companions;
+using JueMingR.Platform.Hotkeys;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -62,14 +63,23 @@ namespace NativeWorldTextProbe
                 Require(Get(window,"panel").Equals(bounds) && (Guid)Get(host,"fishingPageId") == first.Id,
                     "the fishing subpage preserves the management rectangle and pauses only its selected profile");
                 Require(!(bool)Get(Control("config-FishingMode/开启"),"Enabled"), "offline profiles can edit preferences but cannot start the activity");
+                var hotkeys = Get(shell, "hotkeys");
+                Call(Get(hotkeys,"CompanionSettings"),"Refresh",host,Get(hotkeys,"Bindings"),first.Id);
+                var registry = (HotkeyRegistry)Get(hotkeys,"Registry");
+                string prefix = "companions.profile." + owner.ToString("N") + "." + first.Id.ToString("N") + ".";
+                var fishingActions = registry.Actions.Where(action => action.Id.StartsWith(prefix + "fish", StringComparison.Ordinal)).ToArray();
+                Require(fishingActions.Length == 6 && fishingActions.All(action => HotkeyAction.ValidId(action.Id)),
+                    "all six actual dynamic registrations honor the complete stored profile identity and ID limit");
+                var storageKey = fishingActions.Single(action => action.Id == prefix + "fish-store");
                 ClickControl("config-FishingEquipment/开启");
                 Require(Current(first.Id).Fishing.Equipment && !Current(second.Id).Fishing.Equipment, "the equipment choice belongs to the selected profile");
                 ClickControl("config-FishingLoadout/开启");
                 Require(Current(first.Id).Fishing.Loadout && !Current(first.Id).Fishing.Equipment, "the actual second strategy command retires the first");
                 ClickControl("config-FishingStorage/任务鱼");
-                Call(host,"ToggleCompanionSetting",owner,first.Id,CompanionSetting.FishingStorage);
+                Require(storageKey.Invoke(HotkeyContext.SinglePlayer), "the real registered storage action dispatches to the selected profile");
                 Require(Current(first.Id).Fishing.StoreMode == 0, "the binding command can close task-fish storage");
-                Call(host,"ToggleCompanionSetting",owner,first.Id,CompanionSetting.FishingStorage); Prepare();
+                Require(storageKey.Invoke(HotkeyContext.SinglePlayer), "the unchanged action survives profile revision and dispatches a second time");
+                Prepare();
                 Require(Current(first.Id).Fishing.StoreMode == 2 && Current(second.Id).Fishing.StoreMode == 0,
                     "the same binding command restores only that profile's previous storage mode");
 

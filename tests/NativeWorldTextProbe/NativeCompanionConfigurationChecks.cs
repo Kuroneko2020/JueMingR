@@ -220,6 +220,12 @@ namespace NativeWorldTextProbe
                     "nine toggle shortcut entries and the separate recall shortcut share the fixed backpack envelope");
                 Require(!Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith("actor-state/",StringComparison.Ordinal)||((string)Get(c,"Key")).StartsWith("team:",StringComparison.Ordinal)),"team and membership actions stay on the backpack page");
                 image("companion-config-behavior");
+                click("configuration-fishing/");
+                Require(Get(window,"panel").Equals(panel) &&
+                    Controls(window).Cast<object>().Count(c=>GetOptional(c,"HotkeyId")!=null)==6,
+                    "six actual fishing bindings render inside the same companion envelope");
+                image("companion-config-fishing");
+                click("configuration-general/");
                 int builds=(int)Get(window,"LayoutBuilds");for(int i=0;i<100;i++)prepare();Require((int)Get(window,"LayoutBuilds")==builds,"stable configuration prepares rebuild no controls");
                 CheckHotkeyOwnership(context, window, host, shell, id, other, click, rest,
                     () => graphics.Image(Path.Combine(output,"companion-independent-hotkey-popup.png"),
@@ -249,7 +255,7 @@ namespace NativeWorldTextProbe
                 Require(!(bool)Get(Control(window,materialSlot),"Enabled"),"a material is never selectable");
                 var done=NativeToolsUiChecks.Point(Get(Control(window,"weapon-done/"),"Rect"));
                 frame(done,false,neutral,0);frame(done,true,neutral,0);long beforeSave=Profile(host,id).Revision;
-                Call(host,"CaptureActorState",Call(host,"Owned",body),null);
+                Call(host,"CaptureActorState",Call(host,"Owned",body),null,null);
                 Require(Profile(host,id).Revision>beforeSave&&GetOptional(window,"weaponDraft")!=null,"ordinary background revision leaves the active draft intact");
                 frame(done,false,neutral,0);
                 Require(Profile(host,id).Behavior.MainWeapons.Select(w=>w.SlotHint).SequenceEqual(new[]{10,29}) &&

@@ -17,13 +17,14 @@ namespace JueMingR.TerrariaHost.Companions
             internal readonly List<FishSource> Queued = new List<FishSource>();
             internal FishSource[] Pending;
             internal FishSource[] TaskObserved;
+            internal Dictionary<int, FishSource> ManualSources;
             internal readonly Dictionary<int, uint> CapacityBackoff = new Dictionary<int, uint>();
             internal CompanionConnection Connection;
             internal int Mode, TaskFish = -1, Moved;
             internal uint NextTaskRead;
             internal Vector2 RequestPosition, CapacityPosition;
             internal uint RequestedAt;
-            internal bool UnknownReply, RecallAfterReceipt, ReportedWait;
+            internal bool UnknownReply, RecallAfterReceipt;
             internal void CancelQueued() { Queued.Clear(); }
         }
 
@@ -37,7 +38,6 @@ namespace JueMingR.TerrariaHost.Companions
         internal sealed class FishingGrant
         {
             internal Actor Actor;
-            internal Projectile Bobber;
             internal int Type, Prefix, Mode;
             internal long Generation;
             internal bool Produced;
@@ -55,6 +55,25 @@ namespace JueMingR.TerrariaHost.Companions
             state.RecallAfterReceipt = true;
             state.CancelQueued();
             EndFishingActivity(a);
+            return true;
+        }
+
+        internal static bool FishingSourceHeld(Actor a, int slot)
+        {
+            var state = a.FishingLine.Storage;
+            if (state?.Pending == null || !ReferenceEquals(state.Connection, a.Connection)) return false;
+            foreach (var entry in state.Pending) if (!entry.Replied && entry.Slot == slot) return true;
+            return false;
+        }
+
+        private bool CompleteUnconfirmedFishingRecall(Actor a)
+        {
+            var state = a.FishingLine.Storage;
+            if (state?.Pending == null || !state.RecallAfterReceipt ||
+                !state.UnknownReply && Main.GameUpdateCount - state.RequestedAt < 600) return false;
+            // Player Control must not detach its own body inside Player.Update.
+            // The connection pump runs outside it and has just drained replies.
+            CloseActor(a, "存鱼结果尚未确认，已保留待核对库存。");
             return true;
         }
 
@@ -98,7 +117,7 @@ namespace JueMingR.TerrariaHost.Companions
                 !FishingObservation.Live(tracked.Body, a.Body) || type <= 0 || type >= ItemID.Count ||
                 type >= ItemID.CopperCoin && type <= ItemID.PlatinumCoin)
                 return null;
-            return new FishingGrant { Actor = a, Bobber = bobber, Type = type, Mode = mode, Generation = a.Generation };
+            return new FishingGrant { Actor = a, Type = type, Mode = mode, Generation = a.Generation };
         }
 
         internal void FinishFishingGrant(FishingGrant grant)
@@ -127,10 +146,38 @@ namespace JueMingR.TerrariaHost.Companions
         private bool CanStoreFishSource(Actor a, int slot)
         {
             var p = a.Body;
-            if (slot == p.selectedItem || p.inventory[slot].favorited || !SupplyAdmitted(a, p.inventory, 0, slot)) return false;
+            var item = p.inventory[slot];
+            if (slot == p.selectedItem || item.favorited || !SupplyAdmitted(a, p.inventory, 0, slot)) return false;
+            var manual = a.FishingLine.Storage?.ManualSources;
+            if (manual != null && manual.TryGetValue(slot, out var touched))
+            {
+                if (ReferenceEquals(item, touched.Item) && item.type == touched.Type &&
+                    item.prefix == touched.Prefix && item.stack == touched.Stack) return false;
+                manual.Remove(slot);
+            }
             foreach (var loan in a.FishingLine.Gear.Loans)
                 if (ReferenceEquals(loan.Source, p.inventory) && loan.SourceSlot == slot) return false;
             return true;
+        }
+
+        private static void FishingManualItemCommitted(Actor a, int slot, Item actual)
+        {
+            if (slot < 0 || slot >= 50 || !FishingActive(a) || a.Preferences.Fishing.StoreMode == 0) return;
+            var line = a.FishingLine;
+            if (line.Storage == null) line.Storage = new CompanionFishStorage { Mode = a.Preferences.Fishing.StoreMode };
+            var state = line.Storage;
+            state.Queued.RemoveAll(entry => entry.Slot == slot);
+            if (actual == null || actual.IsAir)
+            {
+                state.ManualSources?.Remove(slot);
+                return;
+            }
+            if (state.ManualSources == null) state.ManualSources = new Dictionary<int, FishSource>();
+            // The native quest check may rediscover old stock. This actual
+            // player handoff owns its concrete stack until it changes, so a
+            // 30-step rescan cannot immediately undo the owner's interaction.
+            state.ManualSources[slot] = new FishSource
+            { Slot = slot, Item = actual, Type = actual.type, Prefix = actual.prefix, Stack = actual.stack };
         }
 
         private void AdvanceFishStorage(Actor a)
@@ -143,17 +190,9 @@ namespace JueMingR.TerrariaHost.Companions
                 state.Mode = a.Preferences.Fishing.StoreMode;
                 state.TaskObserved = null;
                 state.TaskFish = -1;
+                state.ManualSources?.Clear();
             }
-            if (state.Pending != null)
-            {
-                if (state.RecallAfterReceipt && !state.ReportedWait &&
-                    (state.UnknownReply || Main.GameUpdateCount - state.RequestedAt >= 600))
-                {
-                    Feedback = "存鱼结果尚未确认，仍在等待服务器结算。";
-                    state.ReportedWait = true;
-                }
-                return;
-            }
+            if (state.Pending != null) return;
             if (Main.ServerSideCharacter ||
                 Main.netMode == 1 && (a.Connection == null || a.Connection.Finished) || p.dead || a.Closing) return;
             if (state.Mode == 2) ObserveQuestStock(a);
@@ -208,7 +247,6 @@ namespace JueMingR.TerrariaHost.Companions
                 state.RequestPosition = p.position;
                 state.RequestedAt = Main.GameUpdateCount;
                 state.Moved = 0;
-                state.ReportedWait = false;
             }
             try
             {

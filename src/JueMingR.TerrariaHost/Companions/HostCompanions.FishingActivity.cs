@@ -26,29 +26,41 @@ namespace JueMingR.TerrariaHost.Companions
             internal short SeatFrameX, SeatFrameY;
             internal bool Hold, SeatPending, Seated, Reported, AnnouncedSeat, AnnouncedBlocked, AnnouncedWater;
             internal int GearNotice, Candidate, Approach;
-            internal uint NextSeat, NextTerrain, NextTerrainRequest, NextFreshSearch, BlockedAt;
+            internal uint NextSeat, NextTerrain, NextPondCheck, NextTerrainRequest, NextFreshSearch, BlockedAt, RetryOriginalAt;
             internal Vector2 BlockedFeet;
             internal Point? AwaitingTile;
             internal CompanionFishingWater Water;
             internal bool Scanned;
-            internal CompanionFishingWater.Pond Measuring, Pond;
+            internal CompanionFishingWater.Pond Measuring, Pond, RecheckingPond;
             internal readonly List<CompanionFishingWater.Pond> Measured = new List<CompanionFishingWater.Pond>();
             internal CompanionFishingCast Cast;
             internal bool CastConfirmed;
             internal string Status;
+            internal readonly Func<int, int, Tile> ReadWaterTile;
             internal FishingActivity(Player at)
-            { RequestedFeet = FeetGoal = CompanionNativeContact.Feet(at); Gravity = at.gravDir; }
+            {
+                RequestedFeet = FeetGoal = CompanionNativeContact.Feet(at);
+                Gravity = at.gravDir;
+                ReadWaterTile = ReadTile;
+            }
+
+            private Tile ReadTile(int x, int y)
+            {
+                var tile = ReadFishingTile(x, y);
+                if (tile == null) AwaitingTile = new Point(x, y);
+                return tile;
+            }
 
             internal void ResetWater(Vector2 center)
             {
                 Water = new CompanionFishingWater(center);
                 Scanned = false;
                 Candidate = 0;
-                Measuring = Pond = null;
+                Measuring = Pond = RecheckingPond = null;
                 Measured.Clear();
                 Cast = null;
                 CastConfirmed = false;
-                NextFreshSearch = NextTerrain = 0;
+                NextFreshSearch = NextTerrain = NextPondCheck = 0;
                 AwaitingTile = null;
             }
         }
@@ -187,6 +199,7 @@ namespace JueMingR.TerrariaHost.Companions
             else if (!activity.SeatPending)
             {
                 activity.AnnouncedBlocked = false;
+                activity.RetryOriginalAt = 0;
                 if (activity.Water == null) activity.ResetWater(feet);
             }
         }
@@ -207,13 +220,25 @@ namespace JueMingR.TerrariaHost.Companions
             var activity = actor.Fishing;
             if (activity == null || activity.Hold || frame.TemporaryGoal) return;
             var navigator = actor.Behavior.Navigator;
+            Vector2 feet = CompanionNativeContact.Feet(actor.Body);
+            uint now = Main.GameUpdateCount;
+            if (activity.RetryOriginalAt != 0 && (unchecked((int)(now - activity.RetryOriginalAt)) >= 0 ||
+                Vector2.DistanceSquared(feet, activity.BlockedFeet) > 12 * 12))
+            {
+                // The short alternatives are approaches to the frozen
+                // request. Clearing the obstruction or helping the body
+                // must give the original point another normal route search.
+                activity.Approach = 0;
+                activity.FeetGoal = activity.RequestedFeet;
+                activity.RetryOriginalAt = activity.BlockedAt = 0;
+                actor.Behavior.Navigator.IntentChanged(actor.Mobility);
+                return;
+            }
             if (navigator.QueryStatus != NavigationQueryStatus.NoRouteInKnownGraph || navigator.ActionCommitted)
             {
                 activity.BlockedAt = 0;
                 return;
             }
-            Vector2 feet = CompanionNativeContact.Feet(actor.Body);
-            uint now = Main.GameUpdateCount;
             if (activity.BlockedAt == 0 || Vector2.DistanceSquared(feet, activity.BlockedFeet) > 12 * 12)
             {
                 activity.BlockedAt = now;
@@ -239,6 +264,7 @@ namespace JueMingR.TerrariaHost.Companions
                 return;
             }
             activity.Status = "等待协助前往钓位";
+            if (!activity.Seat.HasValue && activity.RetryOriginalAt == 0) activity.RetryOriginalAt = now + 180;
             if (!activity.AnnouncedBlocked && SayFishing(actor, "我过不去，帮我一下")) activity.AnnouncedBlocked = true;
         }
 
@@ -300,28 +326,26 @@ namespace JueMingR.TerrariaHost.Companions
                 activity.AwaitingTile = null;
             }
 
+            int budget = CompanionFishingWater.ScanBudget;
             if (activity.Cast?.Found == true)
             {
-                if (unchecked((int)(now - activity.NextTerrain)) < 0) return;
-                activity.NextTerrain = now + 90;
-                if (activity.Cast.TerrainCurrent(ReadFishingTile)) return;
-                activity.ResetWater(water.Center);
-                water = activity.Water;
+                if (!RecheckFishingWater(activity, now, ref budget))
+                {
+                    // Finish the original native line normally before any
+                    // other pond earns a new cast within the original circle.
+                    StopFishingLine(actor);
+                    activity.ResetWater(water.Center);
+                    activity.Status = "正在重新寻找可钓水域";
+                }
+                return;
             }
             FishingNativeBait(actor.Body, out int baitPower, out _);
             if (baitPower <= 0) return;
-            Tile Read(int x, int y)
-            {
-                var tile = ReadFishingTile(x, y);
-                if (tile == null) activity.AwaitingTile = new Point(x, y);
-                return tile;
-            }
-            int budget = CompanionFishingWater.ScanBudget;
             activity.Status = "正在寻找可钓水域";
             if (!activity.Scanned)
             {
                 if (!TryFishingRod(actor, -1, out _)) return;
-                if (water.Advance(ref budget, Read) != CompanionFishingWater.Result.Ready) return;
+                if (water.Advance(ref budget, activity.ReadWaterTile) != CompanionFishingWater.Result.Ready) return;
                 activity.Scanned = true;
             }
             while (activity.Candidate < water.Entries.Count && budget > 0)
@@ -334,7 +358,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if (activity.Pond == null)
                     {
                         var measuring = activity.Measuring ?? (activity.Measuring = new CompanionFishingWater.Pond(entry.Cell));
-                        if (measuring.Advance(ref budget, Read) != CompanionFishingWater.Result.Ready) return;
+                        if (measuring.Advance(ref budget, activity.ReadWaterTile) != CompanionFishingWater.Result.Ready) return;
                         activity.Measured.Add(measuring);
                         activity.Pond = measuring;
                         activity.Measuring = null;
@@ -344,7 +368,7 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     if (activity.Cast == null || !activity.Cast.Matches(actor.Body, rod))
                         activity.Cast = new CompanionFishingCast(actor.Body, rod, entry);
-                    if (activity.Cast.Advance(Read) != CompanionFishingWater.Result.Ready) return;
+                    if (activity.Cast.Advance(activity.ReadWaterTile) != CompanionFishingWater.Result.Ready) return;
                     if (activity.Cast.Found)
                     {
                         if (activity.Seated && activity.SeatType != 89 && activity.SeatType != 102 && actor.Body.direction != activity.Cast.Facing)
@@ -354,6 +378,7 @@ namespace JueMingR.TerrariaHost.Companions
                             return;
                         }
                         activity.NextTerrain = now + 90;
+                        activity.NextPondCheck = now + 120;
                         activity.Status = "正在钓鱼";
                         return;
                     }
@@ -373,6 +398,26 @@ namespace JueMingR.TerrariaHost.Companions
             activity.Status = "附近没有可钓水域";
             activity.NextFreshSearch = now + 300;
             if (!activity.AnnouncedWater && SayFishing(actor, "附近20格没有可达的能钓鱼的水域")) activity.AnnouncedWater = true;
+        }
+
+        private static bool RecheckFishingWater(FishingActivity activity, uint now, ref int budget)
+        {
+            if (unchecked((int)(now - activity.NextTerrain)) >= 0)
+            {
+                activity.NextTerrain = now + 90;
+                if (!activity.Cast.TerrainCurrent(activity.ReadWaterTile))
+                {
+                    if (activity.AwaitingTile.HasValue) activity.NextTerrain = now;
+                    else return false;
+                    return true;
+                }
+            }
+            if (unchecked((int)(now - activity.NextPondCheck)) < 0) return true;
+            var measuring = activity.RecheckingPond ?? (activity.RecheckingPond = new CompanionFishingWater.Pond(activity.Cast.Entry.Cell));
+            if (measuring.ValidateMinimum(ref budget, activity.ReadWaterTile) != CompanionFishingWater.Result.Ready) return true;
+            activity.RecheckingPond = null;
+            activity.NextPondCheck = now + 120;
+            return measuring.Eligible;
         }
 
         private bool RequestFishingTerrain()
@@ -396,7 +441,8 @@ namespace JueMingR.TerrariaHost.Companions
             var activity = actor.Fishing;
             var cast = activity?.Cast;
             aim = default;
-            if (activity == null || !activity.Hold || activity.SeatPending || cast?.Found != true) return false;
+            if (activity == null || !activity.Hold || activity.SeatPending || activity.AwaitingTile.HasValue ||
+                activity.RecheckingPond != null || cast?.Found != true) return false;
             if (!cast.Matches(actor.Body, rod))
             {
                 activity.Cast = null;

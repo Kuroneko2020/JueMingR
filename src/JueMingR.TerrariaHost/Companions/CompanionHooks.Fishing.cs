@@ -28,9 +28,13 @@ namespace JueMingR.TerrariaHost.Companions
                 PatchFishing(typeof(Player), nameof(Player.UpdateBiomes), nameof(FishingBiomesBefore), finalizer: nameof(FishingBiomesAfter));
                 PatchFishing(typeof(Projectile), nameof(Projectile.FishingCheck), nameof(FishingCheckBefore));
                 PatchFishing(typeof(Projectile), "FishingCheck_ProbeForQuestFish", transpiler: nameof(FishingQuestRead));
-                PatchFishing(typeof(Player), nameof(Player.QuickSpawnItem), nameof(FishingProductBefore),
-                    arguments: new[] { typeof(IEntitySource), typeof(Item), typeof(GetItemSettings) });
+                PatchFishing(typeof(PopupText), nameof(PopupText.AssignAsSonarText), nameof(HumanSonarCursor));
+                PatchFishing(typeof(PopupText), nameof(PopupText.ClearSonarText), nameof(HumanSonarCursor));
+                PatchFishing(typeof(Player), nameof(Player.GetItem), nameof(FishingProductBefore),
+                    postfix: nameof(FishingProductAfter), arguments: new[] { typeof(Item), typeof(GetItemSettings) });
+                PatchFishing(typeof(Player), nameof(Player.ItemCheck), finalizer: nameof(FishingItemCheckFinal));
                 FishingHooks.InstallForCompanions();
+                ItemPendingGuards.FishingStorageHold = CompanionFishingStorageHold;
                 FishingUnavailable = null;
             }
             catch (Exception error)
@@ -44,19 +48,40 @@ namespace JueMingR.TerrariaHost.Companions
         {
             fishingHarmony.UnpatchAll(fishingHarmony.Id);
             FishingHooks.UninstallForCompanions();
+            ItemPendingGuards.FishingStorageHold = null;
             FishingChestStack = null;
         }
 
-        private static void PatchFishing(Type type, string name, string prefix = null, string finalizer = null, string transpiler = null,
+        private static void PatchFishing(Type type, string name, string prefix = null, string postfix = null, string finalizer = null, string transpiler = null,
             Type[] arguments = null)
         {
             var method = AccessTools.DeclaredMethod(type, name, arguments);
             if (method == null) throw new MissingMethodException(type.FullName, name);
-            fishingHarmony.Patch(method, prefix: Hook(prefix), finalizer: Hook(finalizer), transpiler: Hook(transpiler));
+            fishingHarmony.Patch(method, prefix: Hook(prefix), postfix: Hook(postfix), finalizer: Hook(finalizer), transpiler: Hook(transpiler));
         }
 
-        private static void FishingProductBefore(Player __instance, IEntitySource __0, Item __1) =>
-            FishingHooks.ObserveNativeProduct(__instance, __0, __1);
+        private static void FishingProductBefore(Player __instance, Item __0, out HostCompanions.FishingGrant __state) =>
+            __state = FishingHooks.BeforeNativeProduct(__instance, __0);
+
+        private static void FishingProductAfter(HostCompanions.FishingGrant __state, bool __runOriginal)
+        { if (__runOriginal && __state != null) __state.Produced = true; }
+
+        private static Exception FishingItemCheckFinal(Player __instance, Exception __exception)
+        {
+            if (__exception == null && host?.Owned(__instance) is HostCompanions.Actor a) host.FinishFishingItemCheck(a);
+            return __exception;
+        }
+
+        // Native SonarAlert popups still show at the AI bobber and expire.
+        // Vanilla has just one immediate-clear cursor shared by local casts.
+        private static bool HumanSonarCursor() => CurrentActor == null;
+
+        private static bool CompanionFishingStorageHold(Player p, int slot)
+        {
+            if (slot < 0 || slot >= 50 || !p.inventoryChestStack[slot]) return false;
+            var a = host?.Owned(p);
+            return a != null && HostCompanions.FishingSourceHeld(a, slot);
+        }
 
         internal static HostCompanions FishingHost => host;
 

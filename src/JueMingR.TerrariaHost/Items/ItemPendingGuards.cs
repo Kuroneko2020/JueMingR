@@ -17,6 +17,7 @@ namespace JueMingR.TerrariaHost.Items
         private static readonly Item unavailable = new Item();
         private static ulong materialTick = ulong.MaxValue;
         private static readonly HashSet<int> projectileMaterials = new HashSet<int>();
+        internal static Func<Player, int, bool> FishingStorageHold { get; set; }
         private struct SlotMutation
         {
             internal ItemHostObservation World;
@@ -204,7 +205,13 @@ namespace JueMingR.TerrariaHost.Items
             host.World.ManualSlot = slot; host.World.ManualItem = array[slot];
         }
         private static bool Fill(Player __instance, int __3, ref bool __result)
-        { if (!Protected(__instance.inventory, __3)) return true; __result = false; return false; }
+        {
+            // The original occupied-slot GetItem path does not honor native
+            // quick-stack locks. Refusing this fill lets it try another slot.
+            if (!Protected(__instance.inventory, __3) && !(FishingStorageHold?.Invoke(__instance, __3) ?? false)) return true;
+            __result = false;
+            return false;
+        }
         private static void Ammo(Item[] __1, ref int[] __2)
         { if (Active && host.Ownership.ProtectedSlots != 0 && ReferenceEquals(__1, host.World.SessionPlayer.inventory)) __2 = __2.Where(i => !host.Ownership.IsProtected(i)).ToArray(); }
         private static bool StartUse(Player __instance, Item __0, ref bool __result)

@@ -111,6 +111,25 @@ namespace NativeWorldTextProbe
             native.Invoke(null, query);
             Require((int)query[4] == 84 && FieldInt(measured, "Count") == (int)query[4] && (bool)Get(measured, "Eligible"),
                 "native count includes high narrow water continuing outside the starting circle");
+            var validate = pond.GetMethod("ValidateMinimum", Flags);
+            object healthy = Make(pond, near);
+            object[] healthyBudget = { 160, read };
+            Require(validate.Invoke(healthy, healthyBudget).ToString() == "Ready" && (bool)Get(healthy, "Eligible") &&
+                FieldInt(healthy, "Count") == 75, "steady recheck stops at a real sufficient amount");
+
+            for (int x = 86; x <= 87; x++) for (int y = 120; y <= 125; y++) Main.tile[x, y].liquid = 0;
+            var unknown = Main.tile[86, 113];
+            Main.tile[86, 113] = null;
+            object draining = Make(pond, near);
+            object[] beforeSection = { 160, read };
+            Require(validate.Invoke(draining, beforeSection).ToString() == "Unknown", "deep recheck waits for an unknown tile instead of changing pools");
+            Main.tile[86, 113] = unknown;
+            object[] afterSection = { 160, read };
+            Require(validate.Invoke(draining, afterSection).ToString() == "Ready" && !(bool)Get(draining, "Eligible"),
+                "known deep drainage invalidates the old amount while the casting row stays wet");
+            object[] reduced = { near.X, near.Y, false, false, 0, 0 };
+            native.Invoke(null, reduced);
+            Require((int)reduced[4] == 72 && FieldInt(draining, "Count") == (int)reduced[4], "rechecked volume agrees with the actual vanilla result after draining");
             Console.WriteLine("PASS AI fishing candidate circle, stable nearest entry, native deep-pool volume, resumable missing terrain ({0} scan turns).", scanTurns);
         }
 

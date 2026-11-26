@@ -21,7 +21,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal int RodSlot = -1;
             internal int RodLiquid = -2;
             internal Vector2 Aim;
-            internal uint IssuedAt, NextRodScan, RetryAt, LastWet;
+            internal uint IssuedAt, NextRodScan, RetryAt, NextPull, LastWet;
             internal bool Confirmed, Cutting, Ending, PullReceived, SawWet;
             internal int DryCutSlot = -1;
             internal FishingCatalog Catalog;
@@ -168,7 +168,8 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 if (bite && rejected && a.Preferences.Fishing.Cut)
                     return CutFishingLine(a);
-                if (!bite || rejected || !line.Confirmed || line.Issued == FishingHand.Pull) return false;
+                if (!bite || rejected || !line.Confirmed || line.Issued == FishingHand.Pull ||
+                    Main.GameUpdateCount < line.NextPull) return false;
                 return StageFishingHand(a, FishingHand.Pull);
             }
             if (line.Issued == FishingHand.Cast || line.Cutting) return false;
@@ -293,6 +294,7 @@ namespace JueMingR.TerrariaHost.Companions
             line.Catalog?.Clear();
             line.SceneKnown = false;
             line.NextScene = 0;
+            if (retire || !FishingActive(a)) line.Storage?.ManualSources?.Clear();
             if (!retire) return;
             RestoreFishingGear(a, retiring: true);
             line.Gear.ManualLoadout = -1;
@@ -307,6 +309,7 @@ namespace JueMingR.TerrariaHost.Companions
             line.RodSlot = -1;
             line.NextRodScan = 0;
             line.RetryAt = 0;
+            line.NextPull = 0;
             line.Storage?.CancelQueued();
             if (a.Body.dead && a.Body.difficulty != 0 && a.Body.difficulty != 3) RetireDroppedFishStorage(a);
         }
@@ -349,6 +352,20 @@ namespace JueMingR.TerrariaHost.Companions
                     a.Dirty = true;
                     return;
                 }
+        }
+
+        internal void FinishFishingItemCheck(Actor a)
+        {
+            var line = a.FishingLine;
+            if (line.Issued != FishingHand.Pull || line.IssuedAt != Main.GameUpdateCount || line.PullReceived) return;
+            foreach (var b in line.Bobbers)
+                if (!FishingObservation.Live(b.Body, a.Body) || b.Body.Projectile.ai[0] != 0)
+                    return; // An observed native transition is never replayed.
+            // ItemCheck finished normally and every original bobber is still
+            // waiting. Retry only on a later released input with live bite
+            // admission. An exception never reaches this definitive branch.
+            line.Issued = FishingHand.None;
+            line.NextPull = Main.GameUpdateCount + 8;
         }
     }
 }

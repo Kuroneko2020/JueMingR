@@ -265,7 +265,7 @@ namespace NativeWorldTextProbe
                 independent.ManaRecoveryEnabled = !independent.ManaRecoveryEnabled;
                 Require((bool)Call(host, "SetBehavior", id, independent), "a different setting shares this archive file");
                 body.inventory[45] = new Item(Terraria.ID.ItemID.Wood) { stack = 3 };
-                Call(host, "CaptureActorState", actor, null);
+                Call(host, "CaptureActorState", actor, null, null);
                 release();
                 Require((int)Get(feedback, "PendingCount") == 1 && (int)Get(display, "Count") == 0,
                     "unrelated same-character setting and native inventory capture keep the original switch pending");
@@ -273,7 +273,7 @@ namespace NativeWorldTextProbe
             saved(id);
             shown(action, profile.Name + " · 主动回血（智能） 已开启");
             body.inventory[45] = originalSlot;
-            Call(host, "CaptureActorState", actor, null);
+            Call(host, "CaptureActorState", actor, null, null);
             saved(id);
             shown(action, profile.Name + " · 主动回血（智能） 已开启");
             Call(feedback, "Clear");

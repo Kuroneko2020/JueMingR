@@ -249,7 +249,7 @@ namespace JueMingR.TerrariaHost.Companions
                     finally { Decoding = null; decodingWormhole = null; }
                 }
             }
-            PumpWormholes(a);
+            if(!CompleteUnconfirmedFishingRecall(a))PumpWormholes(a);
         }
         private Actor Observer(Vector2 position)
         {

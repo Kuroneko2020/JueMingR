@@ -11,8 +11,10 @@ namespace JueMingR.TerrariaHost.Hotkeys
         private const string Prefix = "companions.profile.";
         private const string RecallKey = "wormhole";
         internal const string RecallName = "传送AI到玩家";
+        // The two 32-character GUIDs leave at most eleven characters for
+        // the action in the shared 96-character hotkey document limit.
         private static readonly string[] Keys = { "follow", "attack", "life", "mana", "buff", "growth", "respawn", "nurse", "furniture",
-            "fish-equipment", "fish-storage", "fish-cut", "fish-teleport", "fish-loadout", "fishing" };
+            "fish-gear", "fish-store", "fish-cut", "fish-stop", "fish-group", "fishing" };
         private static readonly string[] Names = { "跟随主人", "允许攻击", "主动回血", "主动回蓝", "使用增益物品", "使用成长物品", "自动复活", "护士治疗", "家具增益",
             "自动配装", "自动存放鱼", "切杆跳过", "传送后停止钓鱼", "自动换装", "钓鱼模式" };
         private readonly DynamicHotkeyOwner owner;

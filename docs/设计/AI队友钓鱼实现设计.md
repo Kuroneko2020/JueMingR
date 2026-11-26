@@ -25,3 +25,5 @@ HostCompanions.FishingGear 通过原版 TrySwitchingLoadout 切组并读回实�
 ## 验证范围
 
 本次原生 CPU 专项 CompanionFishingUiCpu、CompanionFishingWorldCpu 和 CompanionFishingLineCpu 覆盖页面、钓位和原生钓鱼，另按实际影响检查档案、真人钓鱼、药水、多人及输入传播。CPU 证据、窗口实际像素、真实包启动、Steam 双机与 FPS 分别记录。
+
+CompanionFishingLineRelease 复用同一原生钓鱼夹具，加载普通 Release Host 后比较关闭及两名队友稳定钓鱼的实际更新。记录样本数、耗时和分配。采样包括输入、运行时推进、两名队友的原生人物更新、活跃投射物更新及夹具循环。

@@ -24,6 +24,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal Item Borrowed, Displaced;
             internal int SourceSlot, WearSlot, Loadout;
             internal int BorrowedType, BorrowedPrefix, DisplacedType, DisplacedPrefix, DisplacedStack;
+            internal bool BorrowedFavorite, DisplacedFavorite;
         }
 
         internal bool TrySwitchCompanionLoadout(Guid profile, int index)
@@ -48,12 +49,12 @@ namespace JueMingR.TerrariaHost.Companions
             return true;
         }
 
-        private bool SwitchFishingLoadout(Actor a, int target)
+        private bool SwitchFishingLoadout(Actor a, int target, bool retiring = false)
         {
             var p = a.Body;
             if (target == p.CurrentLoadoutIndex) return true;
             var scope = CompanionHooks.CurrentActor;
-            if (target < 0 || target >= p.Loadouts.Length) return false;
+            if (target < 0 || target >= p.Loadouts.Length || !retiring && (p.UsingOrReusingItem || p.CCed || p.dead)) return false;
             // Use native remote-body swapping to preserve the human's mouse,
             // recipe and client equipment snapshot. The actual native 147
             // serializes the actor's new index and accessory visibility.
@@ -171,7 +172,8 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 Source = move.Source, SourceSlot = move.Slot, WearSlot = move.Target, Loadout = p.CurrentLoadoutIndex,
                 Borrowed = move.Item, Displaced = original, BorrowedType = move.Item.type, BorrowedPrefix = move.Item.prefix,
-                DisplacedType = original.type, DisplacedPrefix = original.prefix, DisplacedStack = original.stack
+                DisplacedType = original.type, DisplacedPrefix = original.prefix, DisplacedStack = original.stack,
+                BorrowedFavorite = move.Item.favorited, DisplacedFavorite = original.favorited
             };
             // Physical references carry their original favorites. The player
             // profile and network both serialize these same real slot objects.
@@ -201,7 +203,15 @@ namespace JueMingR.TerrariaHost.Companions
                     }
                 }
                 int baseSlot = inventory ? PlayerItemSlotID.Inventory0 : PlayerItemSlotID.Bank4_0;
-                if (!move.Source[i].IsAir && a.Connection != null) QueueItemSync(p, a, baseSlot + move.Slot);
+                if (!move.Source[i].IsAir)
+                {
+                    a.Dirty = true;
+                    if (a.Connection != null)
+                    {
+                        QueueItemSync(p, a, baseSlot + move.Slot);
+                        QueueItemSync(p, a, baseSlot + i);
+                    }
+                }
                 if (move.Source[i].stack != 1 || move.Source[i].type != move.Item.type) return false;
                 move.Slot = i;
                 move.Item = move.Source[i];
@@ -221,9 +231,11 @@ namespace JueMingR.TerrariaHost.Companions
                 var displaced = source[loan.SourceSlot];
                 // A later concrete manual edit owns the affected item/slot.
                 // A matching item type alone cannot revive this obligation.
-                if (ReferenceEquals(item, loan.Borrowed) && item.type == loan.BorrowedType && item.prefix == loan.BorrowedPrefix && item.stack == 1 &&
+                if (ReferenceEquals(item, loan.Borrowed) && item.type == loan.BorrowedType && item.prefix == loan.BorrowedPrefix &&
+                    item.stack == 1 && item.favorited == loan.BorrowedFavorite &&
                     ReferenceEquals(displaced, loan.Displaced) && displaced.type == loan.DisplacedType &&
-                    displaced.prefix == loan.DisplacedPrefix && displaced.stack == loan.DisplacedStack) continue;
+                    displaced.prefix == loan.DisplacedPrefix && displaced.stack == loan.DisplacedStack &&
+                    displaced.favorited == loan.DisplacedFavorite) continue;
                 if (loan.Loadout == p.CurrentLoadoutIndex) gear.ProtectedSlots |= 1 << loan.WearSlot;
                 gear.Loans.RemoveAt(i);
             }
@@ -255,7 +267,7 @@ namespace JueMingR.TerrariaHost.Companions
                 }
             }
             if (switchBack && gear.OriginalLoadout >= 0 && gear.AppliedLoadout == p.CurrentLoadoutIndex &&
-                !SwitchFishingLoadout(a, gear.OriginalLoadout)) return false;
+                !SwitchFishingLoadout(a, gear.OriginalLoadout, retiring)) return false;
             gear.OriginalLoadout = gear.AppliedLoadout = -1;
             gear.Strategy = 0;
             gear.NextPlan = 0;

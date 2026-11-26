@@ -5,7 +5,6 @@ using HarmonyLib;
 using Terraria;
 using JueMingR.TerrariaHost.Items;
 using JueMingR.TerrariaHost.Companions;
-using Terraria.DataStructures;
 
 namespace JueMingR.TerrariaHost.Fishing
 {
@@ -71,13 +70,16 @@ namespace JueMingR.TerrariaHost.Fishing
             if(host==null || host.Settings.Value.StoreMode!=1 || !host.Session.OwnsProduct(__0,__instance))return;
             host.SyncStorage();__state.Human=ItemSourceHooks.BeginFishing(__0,host.Session.Rod,__1,host.Session.Token);
         }
-        internal static void ObserveNativeProduct(Player player,IEntitySource source,Item item)
+        internal static HostCompanions.FishingGrant BeforeNativeProduct(Player player,Item item)
         {
             var grant=actorGrant;
-            if(grant==null || !ReferenceEquals(grant.Actor.Body,player) || !(source is EntitySource_FishedOut fished) ||
-                !ReferenceEquals(fished.Entity,grant.Bobber) || item.type!=grant.Type || item.stack<=0)return;
+            // Native Give owns this scope and its identified bobber. Observe
+            // the actual GetItem entrance, including an entirely overflowing
+            // item; the small QuickSpawnItem wrappers can be inlined.
+            if(grant==null || !ReferenceEquals(grant.Actor.Body,player) || item==null ||
+                item.type!=grant.Type || item.stack<=0)return null;
             grant.Prefix=item.prefix;
-            grant.Produced=true;
+            return grant;
         }
         private static Exception Given(Exception __exception,bool __runOriginal,GrantState __state)
         {
