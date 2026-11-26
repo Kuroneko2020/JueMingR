@@ -84,6 +84,8 @@ namespace JueMingR.TerrariaHost.Companions
             mobilityHand=StageMobility(a,frame,manualSupply || !frame.EmergencyHand && (heldSlot>=0 || buff),
                 handless && (manualCommand != null || attackAfterExit), valid && !manualSupply, out var delivery) || mobilityHand;
             a.Behavior.RecordMovementDelivery(delivery);
+            if (behavior.AutoTeleportEnabled && behavior.AutoTeleportBlockedEnabled && behavior.Follow && fishing == null)
+                CaptureAutoTeleportMovement(a, delivery, frame.TemporaryGoal);
 
             bool occupiedHand = mobilityHand || manualSupply || a.Supplies.LifeFrame == Main.GameUpdateCount || heldSlot >= 0 || buff;
             if (fishing != null)
@@ -328,6 +330,7 @@ namespace JueMingR.TerrariaHost.Companions
                 ObserveMobility(a);
                 a.Behavior.ObserveMovement(a.Body,a.Mobility);
             }
+            if (a.Preferences.AutoTeleportEnabled) ObserveAutoTeleport(a);
             // A completed live update has recomputed effective accessories.
             // Inventory changes must not use the previous accessory result.
             if(!a.Body.dead)a.TileReachPending=false;
@@ -359,6 +362,8 @@ namespace JueMingR.TerrariaHost.Companions
                 CancelItemGestureForActor(a);CloseActor(a,"已永久死亡");return;
             }
             if(!a.Body.dead || a.DeathObserved)return;a.DeathObserved=true;
+            a.AutoTeleport?.ResetObservation();
+            a.AutoTeleportDelay=0;
             CancelItemGestureForActor(a);
             var following = a.Fishing != null && !a.Preferences.Follow ? a.Profile.Behavior : null;
             if (following != null) following.Follow = true;

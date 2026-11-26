@@ -13,10 +13,11 @@ namespace JueMingR.TerrariaHost.Hotkeys
         internal const string RecallName = "传送AI到玩家";
         // The two 32-character GUIDs leave at most eleven characters for
         // the action in the shared 96-character hotkey document limit.
+        // Only settings with a bindable action are listed in enum order.
         private static readonly string[] Keys = { "follow", "attack", "life", "mana", "buff", "growth", "respawn", "nurse", "furniture",
-            "fish-gear", "fish-store", "fish-cut", "fish-stop", "fish-group", "fishing" };
+            "fish-gear", "fish-store", "fish-cut", "fish-stop", "fish-group", "fishing", "auto-warp" };
         private static readonly string[] Names = { "跟随主人", "允许攻击", "主动回血", "主动回蓝", "使用增益物品", "使用成长物品", "自动复活", "护士治疗", "家具增益",
-            "自动配装", "自动存放鱼", "切杆跳过", "传送后停止钓鱼", "自动换装", "钓鱼模式" };
+            "自动配装", "自动存放鱼", "切杆跳过", "传送后停止钓鱼", "自动换装", "钓鱼模式", "自动传送" };
         private readonly DynamicHotkeyOwner owner;
         private readonly HotkeyStateFeedback feedback;
         private IReadOnlyList<CompanionProfile> observedProfiles;

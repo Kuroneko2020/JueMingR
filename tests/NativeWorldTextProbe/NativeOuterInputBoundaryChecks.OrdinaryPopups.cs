@@ -193,6 +193,7 @@ namespace NativeWorldTextProbe
                     Step(neutral, false, Keys.W);
                 }
                 Step(neutral, false, Keys.F5); Step(neutral, false);
+                AutomaticTeleportPopupInput(resources, Step, originalJump, outside);
                 Console.WriteLine("PASS real native ordinary popup clicks: Death, Map and Footprint preserve unrelated W, protect source-specific press/release, and recover correctly after focus loss.");
             }
             finally
@@ -204,6 +205,147 @@ namespace NativeWorldTextProbe
                 Terraria.GameContent.FontAssets.MouseText = originalFont;
                 px = originalX; py = originalY;
             }
+        }
+
+        private static void AutomaticTeleportPopupInput(Harmony resources, Action<Vector2, bool, Keys[]> step,
+            List<string> originalJump, Vector2 outside)
+        {
+            var window = Get(shell, "CompanionUi");
+            var host = Get(context, "Companions");
+            var layout = Get(Get(shell, "State"), "Layout");
+            var pane = Get(window, "autoTeleportPopup");
+            var hotkeys = Get(input, "Hotkeys");
+            var bindings = PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus;
+            var archive = Get(host, "profiles");
+            // The companion window at this viewport reaches the old test
+            // coordinate (20,20). Use the outer margin, where native controls
+            // are eligible even while the companion manager remains open.
+            Vector2 worldPoint = new Vector2(4, 4);
+            Vector2 neutral = worldPoint * Main.UIScale;
+            Keys[] held = { Keys.W };
+            resources.Patch(Get(window, "renderer").GetType().GetMethod("Refresh", F),
+                postfix: new HarmonyMethod(typeof(NativeOuterInputBoundaryChecks), nameof(CompanionPopupCpuAssets)));
+            var text = Get(pane, "textInput");
+            var ime = text.GetType().GetNestedType("NativeIme", F);
+            resources.Patch(ime.GetProperty("Composition", F).GetGetMethod(true),
+                prefix: new HarmonyMethod(typeof(NativeOuterInputBoundaryChecks), nameof(ImeComposition)));
+            resources.Patch(ime.GetProperty("Candidates", F).GetGetMethod(true),
+                prefix: new HarmonyMethod(typeof(NativeOuterInputBoundaryChecks), nameof(NoGamepad)));
+            resources.Patch(ime.GetMethod("Toggle", F),
+                prefix: new HarmonyMethod(typeof(NativeOuterInputBoundaryChecks), nameof(ImeToggleSink)));
+            NativeQuickItemChecks.Until(() =>
+            {
+                step(neutral, false, held);
+                return (bool)Get(host, "CanCreate");
+            });
+            Require((bool)Call(host, "Create", "自动传送输入验证"), "outer popup fixture creates an actual owned archive profile");
+            Guid id = (Guid)Get(host, "LastCreatedId");
+            NativeQuickItemChecks.Until(() =>
+            {
+                step(neutral, false, held);
+                return (bool)Call(archive, "IsSaved", id);
+            });
+            bool Visible() => (bool)Get(pane, "Visible");
+            void UnclaimedW() => Require(!(bool)Call(hotkeys, "IsSuppressed", (int)Keys.W), "ordinary teleport popup preserves held W");
+            Vector2 ControlPoint(string prefix)
+            {
+                var control = ((IEnumerable)Get(window, "controls")).Cast<object>().Single(c =>
+                    ((string)Get(c, "Key")).StartsWith(prefix, StringComparison.Ordinal));
+                return PopupTestCenter(Get(control, "Rect"), 0, 0) * Main.UIScale;
+            }
+            void Click(Vector2 point)
+            {
+                step(point, true, held); step(point, false, held); UnclaimedW();
+            }
+            void Open()
+            {
+                Call(shell, "OpenCompanions", Get(layout, "Viewport"));
+                step(neutral, false, held);
+                Require((bool)Get(window, "Visible"), "the actual CompanionWindow prepared without a GPU draw");
+                if ((int)Get(window, "page") != 1) Click(ControlPoint("configuration/"));
+                Click(ControlPoint("config-AutoTeleportEnabled/配置/"));
+                Require(Visible(), "native input opens the actual automatic teleport popup");
+            }
+            void Queue(string typed)
+            {
+                Main.keyCount = typed.Length;
+                for (int i = 0; i < typed.Length; i++)
+                { Main.keyInt[i] = typed[i]; Main.keyString[i] = typed[i].ToString(); }
+            }
+
+            Open();
+            object blocked = Get(pane, "blocked");
+            var check = PopupTestCenter(Get(blocked, "Check"), 0, 0) * Main.UIScale;
+            Click(check);
+            Require(!NativeCompanionConfigurationChecks.Profile(host, id).Behavior.AutoTeleportBlockedEnabled,
+                "the real checkbox commits its setting during uninterrupted W");
+            Click(PopupTestCenter(Get(pane, "close"), 0, 0) * Main.UIScale);
+            Require(!Visible(), "native close button dismisses the automatic teleport popup");
+            Click(ControlPoint("config-AutoTeleportEnabled/配置/"));
+            step(neutral, false, new[] { Keys.W, Keys.Escape });
+            Require(!Visible() && (bool)Call(hotkeys, "IsSuppressed", (int)Keys.Escape), "ordinary Escape closes only the popup");
+            UnclaimedW();
+            Require((bool)Get(window, "Visible") && !(bool)Call(shell, "ClaimsPopupPoint", worldPoint),
+                "Escape leaves the companion manager open and the cursor outside the remaining F5 surfaces");
+            step(neutral, false, held); step(neutral, false, held);
+            UnclaimedW();
+
+            Click(ControlPoint("config-AutoTeleportEnabled/配置/"));
+            Require(Visible(), "the same held W allows ordinary clicks after Escape releases");
+            bindings["Jump"] = new List<string> { nameof(Keys.Space), "Mouse1" };
+            check = PopupTestCenter(Get(blocked, "Check"), 0, 0) * Main.UIScale;
+            step(check, true, held);
+            Require(Get(pane, "pressed").ToString() == "BlockedCheck" && ((int)Get(input, "uiMouseTail") & 1) != 0 &&
+                !Main.LocalPlayer.controlUseItem && !Main.LocalPlayer.controlJump,
+                "the actual checkbox owns the initial Mouse1 source before any use item or jump");
+            Call(shell, "CloseAndSubmitPosition");
+            int before = clicks;
+            step(outside, true, held); step(outside, true, held);
+            Require(Main.LocalPlayer.controlUp && !Main.LocalPlayer.controlUseItem && !Main.LocalPlayer.controlJump,
+                "native movement resumes while the retired Mouse1 item use and jump source stays owned");
+            step(outside, true, new[] { Keys.W, Keys.Space }); step(outside, true, new[] { Keys.W, Keys.Space });
+            Require(!Main.LocalPlayer.controlUseItem && Main.LocalPlayer.controlUp && Main.LocalPlayer.controlJump,
+                "the retired checkbox Mouse1 cannot suppress independent W or Space even with a shared Jump binding");
+            UnclaimedW();
+            step(outside, false, held);
+            Require(clicks == before && !NativeCompanionConfigurationChecks.Profile(host, id).Behavior.AutoTeleportBlockedEnabled,
+                "the original release reaches neither the closed checkbox nor the native interface below it");
+            bindings["Jump"] = originalJump;
+            step(outside, true, held); step(outside, false, held);
+            Require(clicks == before + 1, "a truly new native mouse gesture is delivered once with W still down");
+            step(neutral, false, Array.Empty<Keys>());
+
+            Open();
+            var field = PopupTestCenter(Get(blocked, "Field"), 0, 0) * Main.UIScale;
+            Click(field);
+            expectTextLease = true;
+            try { step(field, false, Array.Empty<Keys>()); }
+            finally { expectTextLease = false; }
+            Require((bool)Get(text, "OwnsTextToken") && !(bool)Get(Get(window, "textInput"), "OwnsTextToken") &&
+                observedTextWriting && Main.blockInput, "only the numeric editor holds the actual outer input lease");
+            Queue("13\r"); step(field, false, new[] { Keys.Enter });
+            Require(NativeCompanionConfigurationChecks.Profile(host, id).Behavior.AutoTeleportBlockedSeconds == 13 &&
+                !(bool)Get(text, "OwnsTextToken") && !Main.blockInput,
+                "the original Enter character queue commits only the numeric field and returns the block lease");
+            step(field, false, Array.Empty<Keys>());
+            Click(field); step(field, false, Array.Empty<Keys>());
+            Queue("29"); step(field, false, Array.Empty<Keys>());
+            foreground = false;
+            step(field, true, Array.Empty<Keys>());
+            Require(!Visible() && !Main.blockInput && !(bool)Get(text, "OwnsTextToken") &&
+                NativeCompanionConfigurationChecks.Profile(host, id).Behavior.AutoTeleportBlockedSeconds == 13,
+                "real focus loss retires the draft and the original Main block without saving its partial input");
+            foreground = true;
+            step(neutral, false, Array.Empty<Keys>()); step(neutral, false, held); step(neutral, false, held);
+            Require(Main.LocalPlayer.controlUp, "native movement resumes after focus returns and a trusted neutral sample");
+            step(neutral, false, Array.Empty<Keys>());
+            Console.WriteLine("PASS actual automatic teleport popup through original input: ordinary W, retained mouse source, shared Jump, native numeric lease and Enter, and focus retirement.");
+        }
+
+        private static void CompanionPopupCpuAssets(ref bool __result)
+        {
+            // Only the GPU asset readiness gate is bypassed in a CPU leaf.
+            __result = true;
         }
 
         private static Vector2 PopupTestCenter(object rect, float x, float y) =>

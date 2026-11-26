@@ -9,7 +9,9 @@ namespace JueMingR.Platform.Companions
     public enum CompanionSetting
     {
         Follow, Attack, Life, Mana, Buff, Growth, Respawn, Nurse, Furniture,
-        FishingEquipment, FishingStorage, FishingCut, FishingTeleport, FishingLoadout, FishingMode
+        FishingEquipment, FishingStorage, FishingCut, FishingTeleport, FishingLoadout, FishingMode,
+        AutoTeleportEnabled, AutoTeleportBlockedEnabled, AutoTeleportBlockedSeconds,
+        AutoTeleportDistanceEnabled, AutoTeleportDistanceTiles
     }
 
     public readonly struct CompanionWeaponPreference
@@ -41,6 +43,11 @@ namespace JueMingR.Platform.Companions
         public bool GrowthEnabled { get; set; } = true;
         public FishingOptions Fishing { get; set; } = DefaultFishing;
         public bool TeleportStopsFishing { get; set; } = true;
+        public bool AutoTeleportEnabled { get; set; }
+        public bool AutoTeleportBlockedEnabled { get; set; } = true;
+        public int AutoTeleportBlockedSeconds { get; set; } = 5;
+        public bool AutoTeleportDistanceEnabled { get; set; } = true;
+        public int AutoTeleportDistanceTiles { get; set; } = 150;
         // If a multiplayer transfer lost its last receipt, preserve the raw
         // source bytes but record that these exact slots are not spendable.
         public ulong FishingDepositUnconfirmedSlots { get; set; }
@@ -49,6 +56,22 @@ namespace JueMingR.Platform.Companions
         public int[] ExcludedManaTypes { get; set; } = Array.Empty<int>();
         public int[] AllowedGrowthTypes { get; set; } = Array.Empty<int>();
         public int[] AllowedBuffTypes { get; set; } = Array.Empty<int>();
+
+        public static bool IsFishingSetting(CompanionSetting setting)
+        {
+            switch (setting)
+            {
+                case CompanionSetting.FishingEquipment:
+                case CompanionSetting.FishingStorage:
+                case CompanionSetting.FishingCut:
+                case CompanionSetting.FishingTeleport:
+                case CompanionSetting.FishingLoadout:
+                case CompanionSetting.FishingMode:
+                    return true;
+                default:
+                    return false;
+            }
+        }
 
         public int SettingValue(CompanionSetting setting)
         {
@@ -70,6 +93,11 @@ namespace JueMingR.Platform.Companions
                 case CompanionSetting.FishingLoadout: return Fishing.Loadout ? 1 : 0;
                 // An activity exists only on a live actor for this world.
                 case CompanionSetting.FishingMode: return 0;
+                case CompanionSetting.AutoTeleportEnabled: return AutoTeleportEnabled ? 1 : 0;
+                case CompanionSetting.AutoTeleportBlockedEnabled: return AutoTeleportBlockedEnabled ? 1 : 0;
+                case CompanionSetting.AutoTeleportBlockedSeconds: return AutoTeleportBlockedSeconds;
+                case CompanionSetting.AutoTeleportDistanceEnabled: return AutoTeleportDistanceEnabled ? 1 : 0;
+                case CompanionSetting.AutoTeleportDistanceTiles: return AutoTeleportDistanceTiles;
                 default: throw new ArgumentOutOfRangeException(nameof(setting));
             }
         }
@@ -89,6 +117,7 @@ namespace JueMingR.Platform.Companions
         {
             if (Fishing == null || Fishing.Auto || Fishing.AnglerContinuous ||
                 FishingDepositUnconfirmedSlots >= (1UL << MainInventorySlots) ||
+                AutoTeleportBlockedSeconds <= 0 || AutoTeleportDistanceTiles <= 0 ||
                 MainWeapons == null || MainWeapons.Length > MaxMainWeapons ||
                 (HealthRecoveryMode != CompanionHealthRecoveryMode.Fast && HealthRecoveryMode != CompanionHealthRecoveryMode.Smart))
                 return false;

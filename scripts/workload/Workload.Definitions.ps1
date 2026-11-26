@@ -57,6 +57,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Dash.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Graph.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionWormholeChecks.cs'=@('native-CompanionWormholeCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionAutoTeleportChecks.cs'=@('native-CompanionWormholeCpu','native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionDoorFollowChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFacilityFollowChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionPlannedMovementChecks.cs'=@('native-CompanionNavigationCpu')

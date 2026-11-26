@@ -24,7 +24,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal int PayerSlot;
             internal Vector2 Destination;
             internal RecallSend Send;
-            internal bool Paid, OwnerPaid, Waiting = true, Open, EndQueued, ReplySeen, LocalEntered, Moved, AckQueued;
+            internal bool Automatic, Paid, OwnerPaid, Waiting = true, Open, EndQueued, ReplySeen, LocalEntered, Moved, AckQueued;
         }
 
         // At most one live command per activation. Timed-out windows keep only
@@ -39,7 +39,8 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool QueryManualRecall(Guid profileId, out string reason) =>
             PrepareWormhole(profileId, out _, out _, out _, out reason);
 
-        private bool PrepareWormhole(Guid id, out Actor actor, out Vector2 destination, out RecoverySource source, out string reason)
+        private bool PrepareWormhole(Guid id, out Actor actor, out Vector2 destination, out RecoverySource source, out string reason,
+            bool automatic = false)
         {
             actor = null;
             source = default(RecoverySource);
@@ -52,11 +53,13 @@ namespace JueMingR.TerrariaHost.Companions
                 reason = "需要存活的当前玩家。";
             else if (Main.netMode != 0 && (Main.netMode != 1 || actor.Connection == null || actor.Connection.Finished))
                 reason = "队友连接不可用。";
-            else if (ReferenceEquals(submittingWormhole?.Actor, actor) || HasWaitingWormhole(actor))
+            else if (ReferenceEquals(submittingWormhole?.Actor, actor) || HasWaitingWormhole(actor) ||
+                automatic && wormholeWindows.ContainsKey(actor) ||
+                (automatic || actor.LastRecallWasAutomatic) && RecalledThisUpdate(actor))
                 reason = "正在等待传送结果。";
             else if (actor.Body.Bottom == owner.Bottom)
                 reason = "队友已在目标位置。";
-            else if (!FindWormholeSource(actor, out source))
+            else if (!FindWormholeSource(actor, out source, automatic))
                 reason = "需要消耗虫洞药水";
             else if (!WormholeDestination(actor.Body, owner, out destination))
                 reason = "玩家身边没有安全的传送位置。";
@@ -93,16 +96,25 @@ namespace JueMingR.TerrariaHost.Companions
             return false;
         }
 
-        private bool FindWormholeSource(Actor actor, out RecoverySource source)
+        private bool FindWormholeSource(Actor actor, out RecoverySource source, bool automatic)
         {
             var inventory = actor.Body.inventory;
             for (int slot = 0; slot < CompanionBehavior.MainInventorySlots; slot++)
+            {
+#if DEBUG
+                if (automatic) AutoTeleportInventoryVisits++;
+#endif
                 if (WormholePotion(inventory[slot]) && SupplyAdmitted(actor, inventory, 0, slot))
                 { source = SupplySource(actor, inventory, 0, slot); return true; }
+            }
             inventory = owner.inventory;
             var operations = OwnerOperations;
             if (operations != null && operations.Session > 0)
                 for (int slot = 0; slot < CompanionBehavior.MainInventorySlots; slot++)
+                {
+#if DEBUG
+                    if (automatic) AutoTeleportInventoryVisits++;
+#endif
                     if (WormholePotion(inventory[slot]) && OwnerWormholeSlot(owner, inventory, slot))
                     {
                         var item = inventory[slot];
@@ -110,6 +122,7 @@ namespace JueMingR.TerrariaHost.Companions
                             Account = 0, Type = item.type, Stack = item.stack, Session = operations.Session };
                         return true;
                     }
+                }
             source = default(RecoverySource);
             return false;
         }
@@ -121,10 +134,12 @@ namespace JueMingR.TerrariaHost.Companions
             !CompanionItemRules.Blocked(player, CompanionInventoryArea.Inventory, slot, OwnerOperations) &&
             OwnerItems?.CompanionPaymentSlotProtected(player, items, slot) != true;
 
-        internal bool TryManualRecall(Guid profileId)
+        internal bool TryManualRecall(Guid profileId) => TryRecall(profileId, automatic: false);
+
+        private bool TryRecall(Guid profileId, bool automatic)
         {
-            if (!PrepareWormhole(profileId, out var actor, out var destination, out var source, out string reason))
-            { ShowWormholeResult(profileId, reason, false); return false; }
+            if (!PrepareWormhole(profileId, out var actor, out var destination, out var source, out string reason, automatic))
+                return RejectRecallAdmission(profileId, automatic, reason);
 
             bool fromOwner = ReferenceEquals(source.Player, owner);
             var operations = OwnerOperations;
@@ -135,16 +150,16 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 if (!ReferenceEquals(source.Items, owner.inventory) || !ReferenceEquals(source.Item, source.Items[source.Slot]) ||
                     source.Item.type != source.Type || source.Item.stack != source.Stack || !OwnerWormholeSlot(owner, source.Items, source.Slot))
-                { ShowWormholeResult(profileId, "虫洞药水已变动，请重试。", false); return false; }
+                    return RejectRecallAdmission(profileId, automatic, "虫洞药水已变动，请重试。");
                 ownerSlots = new[] { sourceBit, 0UL, 0UL, 0UL, 0UL };
                 lease = operations.NewUseToken();
                 if (!operations.TryBeginRecovery(source.Session, ownerSlots, lease))
-                { ShowWormholeResult(profileId, "玩家的物品正在使用。", false); return false; }
+                    return RejectRecallAdmission(profileId, automatic, "玩家的物品正在使用。");
             }
             else
             {
                 if (!SourceCurrent(actor, source) || !SupplyAdmitted(actor, source.Items, 0, source.Slot))
-                { ShowWormholeResult(profileId, "虫洞药水已变动，请重试。", false); return false; }
+                    return RejectRecallAdmission(profileId, automatic, "虫洞药水已变动，请重试。");
                 actor.Supplies.PaymentSlots[0] |= sourceBit;
             }
 
@@ -153,7 +168,7 @@ namespace JueMingR.TerrariaHost.Companions
                 Actor = actor, Body = actor.Body, Owner = owner, Connection = actor.Connection, World = world,
                 Profile = profileId, OwnerId = actor.Profile.OwnerId, Session = session, Generation = actor.Generation,
                 Epoch = actor.Profile.DataEpoch, Destination = destination, OwnerPaid = fromOwner, PayerSlot = source.Slot,
-                Deadline = Stopwatch.GetTimestamp() + 5 * Stopwatch.Frequency
+                Deadline = Stopwatch.GetTimestamp() + 5 * Stopwatch.Frequency, Automatic = automatic
             };
             Item debit = null;
             submittingWormhole = attempt;
@@ -188,14 +203,27 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 if (fromOwner) operations.EndRecovery(source.Session, ownerSlots, lease, false);
                 else actor.Supplies.PaymentSlots[0] &= ~sourceBit;
+                if (attempt.Paid || attempt.LocalEntered || attempt.Moved || attempt.Send != RecallSend.None)
+                {
+                    actor.LastRecallGeneration = attempt.Generation;
+                    actor.LastRecallSubmission = Main.GameUpdateCount;
+                    actor.LastRecallWasAutomatic = automatic;
+                }
+                if (attempt.Connection == null) SetAutoTeleportFailureDelay(attempt);
                 if (attempt.Connection != null && attempt.Before != 0) QueueWormholeEnd(attempt);
                 if (attempt.Paid) RecordWormholePayment(attempt, source, debit);
                 if (attempt.Moved) CompleteWormhole(attempt, true);
                 else if (attempt.LocalEntered) CompleteWormhole(attempt, false, "传送结果未确认，已消耗 1 瓶虫洞药水。");
                 else if (attempt.Send == RecallSend.None) CompleteWormhole(attempt, false, "未能提交传送。");
-                else ShowWormholeResult(profileId, "正在等待传送结果。", true);
+                else if (!automatic) ShowWormholeResult(profileId, "正在等待传送结果。", true);
             }
             return attempt.LocalEntered || attempt.Moved || attempt.Send != RecallSend.None;
+        }
+
+        private bool RejectRecallAdmission(Guid profile, bool automatic, string reason)
+        {
+            if (!automatic) ShowWormholeResult(profile, reason, false);
+            return false;
         }
 
         private void RecordWormholePayment(WormholeRecall attempt, RecoverySource source, Item debit)
@@ -269,7 +297,16 @@ namespace JueMingR.TerrariaHost.Companions
             if (attempt.After != marker) return;
             windows.RemoveAt(0);
             if (windows.Count == 0) wormholeWindows.Remove(actor);
+            // Wire attribution ends here even if the UI timed out first.
+            // Only this original attempt can set its terminal retry delay.
+            SetAutoTeleportFailureDelay(attempt);
             CompleteWormhole(attempt, attempt.Moved && attempt.AckQueued, "传送结果未确认。");
+        }
+
+        private void SetAutoTeleportFailureDelay(WormholeRecall attempt)
+        {
+            if (!attempt.Moved && attempt.Paid && WormholeActivationCurrent(attempt))
+                DelayAutoTeleport(attempt.Actor, PaidFailureAutoTeleportDelay);
         }
 
         private WormholeRecall MatchWormholeReply(Actor actor, byte[] packet)
@@ -321,6 +358,10 @@ namespace JueMingR.TerrariaHost.Companions
             var attempt = decodingWormhole ?? submittingWormhole;
             if (!ReferenceEquals(attempt?.Actor, actor) || destination != attempt.Destination || !WormholeActivationCurrent(attempt)) return;
             attempt.Moved = true;
+            // Local UnityTeleport reaches this synchronously. The submitter
+            // must not set a waiting state or overwrite this real arrival.
+            actor.AutoTeleport?.ResetObservation();
+            DelayAutoTeleport(actor, ArrivedAutoTeleportDelay);
             bool hadMobilityHand = actor.Mobility.PreviousSelection >= 0;
             RetireMobilityHand(actor);
             if (hadMobilityHand) actor.Body.controlUseItem = false;
@@ -376,6 +417,7 @@ namespace JueMingR.TerrariaHost.Companions
                 Trace.TraceInformation("Companion wormhole {0}/{1} paid from {2} inventory slot {3}; local entry {4}, wire submission {5}, moved {6}, ACK queued {7}.",
                     attempt.Profile, attempt.Generation, attempt.OwnerPaid ? "owner" : "actor", attempt.PayerSlot,
                     attempt.LocalEntered, attempt.Send, attempt.Moved, attempt.AckQueued);
+            if (attempt.Automatic && !moved && !attempt.Paid) return;
             ShowWormholeResult(attempt.Profile, moved ? attempt.Body.name + " · 已传送，消耗" + payer + "虫洞药水 1 瓶" : failure, moved);
         }
 

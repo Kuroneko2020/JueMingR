@@ -100,6 +100,7 @@ namespace JueMingR.TerrariaHost.Companions
                 }
             }
             actor.Fishing = activity;
+            actor.AutoTeleport?.ResetObservation();
             fishingActors++;
             actor.Behavior.Navigator.IntentChanged(actor.Mobility);
             return Result(true, "");

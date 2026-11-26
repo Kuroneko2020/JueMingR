@@ -48,6 +48,11 @@ namespace JueMingR.TerrariaHost.Companions
             internal long LastAimAttempt;
             internal CompanionBehaviorHost Behavior=new CompanionBehaviorHost();
             internal readonly CompanionMobilityState Mobility = new CompanionMobilityState();
+            internal CompanionAutoTeleport AutoTeleport;
+            internal uint AutoTeleportDelayedAt, AutoTeleportDelay;
+            internal uint LastRecallSubmission;
+            internal long LastRecallGeneration;
+            internal bool LastRecallWasAutomatic;
             internal bool HasAim;
             internal bool Dirty,Faulted,WasUsing;
             internal bool DeathObserved,PermanentDeathPending,TileReachPending;
@@ -236,6 +241,7 @@ namespace JueMingR.TerrariaHost.Companions
         private void Detach(Actor a)
         {
             RetireJoinFeedback(a);
+            a.AutoTeleport=null;
             a.TeamPending=false;a.TeamConnection=null;
             CancelCompanionItemOnce(a);
             CancelItemGestureForActor(a);
@@ -293,7 +299,10 @@ namespace JueMingR.TerrariaHost.Companions
                 if (actors.TryGetValue(id, out var fishingActor) && FishingActive(fishingActor) && behavior.Follow != fishingActor.Preferences.Follow)
                     return Result(false, "正在钓鱼");
                 if (actors.TryGetValue(id, out var a) && !a.Closing)
+                {
                     CaptureActorState(a, behavior);
+                    a.AutoTeleport?.Configure(a.Preferences);
+                }
                 else if (a != null) return Result(false, "等待队友收回后再修改设置。");
                 else profiles.SetBehavior(id, behavior);
                 return Result(true, "");
@@ -412,6 +421,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if(a.Closing)continue;
                     if(a.Faulted && FishingActive(a)){CloseActor(a,a.Status);continue;}
                     if(a.Connection!=null){PumpConnection(a);if(a.Connection?.Finished==true){CloseActor(a,a.Connection.Error??"连接已结束");continue;}}
+                    if(a.AutoTeleport?.HasCandidate==true)ConsumeAutoTeleport(a);
                     UpdatePasswordAttempt(a);
                     PublishTeam(a);
                     if(a.TeamSavePending && Main.GameUpdateCount>=a.NextSave)SaveTeam(a);

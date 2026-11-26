@@ -15,6 +15,7 @@ namespace JueMingR.Infrastructure.Companions
         // Full native character data has its own bound; the preference-only
         // 64 KiB limit does not apply to banks, loadouts and Journey research.
         private const int MaximumBytes = 16 * 1024 * 1024;
+        private const int CurrentVersion = 8;
         private static readonly byte[] DefaultFishingBytes = new FishingCodec().Encode(CompanionBehavior.DefaultFishing);
         private readonly string root;
         private readonly Dictionary<string, Document> documents = new Dictionary<string, Document>(StringComparer.OrdinalIgnoreCase);
@@ -182,7 +183,7 @@ namespace JueMingR.Infrastructure.Companions
             using (var stream = new MemoryStream())
             using (var writer = new BinaryWriter(stream, new UTF8Encoding(false, true)))
             {
-                writer.Write("JueMingR.Companion"); writer.Write(7);
+                writer.Write("JueMingR.Companion"); writer.Write(CurrentVersion);
                 writer.Write(profile.Id.ToByteArray()); writer.Write(profile.OwnerId.ToByteArray());
                 writer.Write(profile.Name); writer.Write(profile.Revision); writer.Write(profile.DataEpoch);
                 var behavior = profile.Behavior;
@@ -206,6 +207,11 @@ namespace JueMingR.Infrastructure.Companions
                 byte[] fishing = ReferenceEquals(behavior.Fishing, CompanionBehavior.DefaultFishing) ?
                     DefaultFishingBytes : new FishingCodec().Encode(behavior.Fishing);
                 writer.Write(fishing.Length); writer.Write(fishing);
+                writer.Write(behavior.AutoTeleportEnabled);
+                writer.Write(behavior.AutoTeleportBlockedEnabled);
+                writer.Write(behavior.AutoTeleportBlockedSeconds);
+                writer.Write(behavior.AutoTeleportDistanceEnabled);
+                writer.Write(behavior.AutoTeleportDistanceTiles);
                 byte[] data = profile.NativeData; writer.Write(data.Length); writer.Write(data); writer.Flush();
                 using (var sha = SHA256.Create()) writer.Write(sha.ComputeHash(stream.ToArray()));
                 writer.Flush();
@@ -227,7 +233,7 @@ namespace JueMingR.Infrastructure.Companions
             {
                 if (reader.ReadString() != "JueMingR.Companion") throw new InvalidDataException("不支持的队友档案格式。");
                 int version = reader.ReadInt32();
-                if (version < 1 || version > 7) throw new InvalidDataException("不支持的队友档案格式。");
+                if (version < 1 || version > CurrentVersion) throw new InvalidDataException("不支持的队友档案格式。");
                 Guid id = new Guid(reader.ReadBytes(16)), owner = new Guid(reader.ReadBytes(16));
                 string name = reader.ReadString(); long revision = reader.ReadInt64(), epoch = reader.ReadInt64();
                 var behavior = new CompanionBehavior { Follow = ReadBoolean(reader), AttackEnabled = ReadBoolean(reader) };
@@ -246,6 +252,16 @@ namespace JueMingR.Infrastructure.Companions
                         try { behavior.Fishing = new FishingCodec().Decode(fishing); }
                         catch (PreferenceFormatException e) { throw new InvalidDataException("无法读取队友钓鱼设置。", e); }
                     }
+                }
+                // Older layouts go straight from the existing preferences to
+                // native data and keep the behavior's auto-teleport defaults.
+                if (version >= 8)
+                {
+                    behavior.AutoTeleportEnabled = ReadBoolean(reader);
+                    behavior.AutoTeleportBlockedEnabled = ReadBoolean(reader);
+                    behavior.AutoTeleportBlockedSeconds = reader.ReadInt32();
+                    behavior.AutoTeleportDistanceEnabled = ReadBoolean(reader);
+                    behavior.AutoTeleportDistanceTiles = reader.ReadInt32();
                 }
                 int length = reader.ReadInt32();
                 if (length <= 0 || length > MaximumBytes || length != stream.Length - stream.Position)

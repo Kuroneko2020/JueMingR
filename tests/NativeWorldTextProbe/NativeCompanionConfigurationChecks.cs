@@ -105,7 +105,7 @@ namespace NativeWorldTextProbe
             var owner = Main.LocalPlayer;
             var body = (Player)Call(host, "GetBody", id);
             var behavior = Profile(host, id).Behavior;
-            Require(!owner.dead && !body.dead && (string)Get(Control(window, "actor-state/"), "Text") == "点击收回",
+            Require(!owner.dead && !body.dead && (string)Get(Control(window, "actor-state/"), "Text") == "退出",
                 "the physical 1920x1080 specimen is the same live-owner and joined-actor topology");
             void Click(string prefix) => NativeToolsUiChecks.Click(context, NativeToolsUiChecks.Point(Get(Control(window, prefix), "Rect")) * Main.UIScale);
             Click("configuration/"); Click("inventory/");
@@ -195,6 +195,8 @@ namespace NativeWorldTextProbe
                 var renderer=Get(shell,"renderer");Call(renderer,"RefreshResources");Call(renderer,"Prepare",Get(shell,"State"),screen.X,screen.Y,1f);
                 Set(window,"selected",id);Call(shell,"OpenCompanions",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));rest();rest();
                 TraceReportedToolbar(context, graphics, window, output);
+                graphics.LoadItemTextures(new[] { (int)ItemID.WormholePotion });
+                CheckBackpackTeleport(context, window, host, id, body, click, rest);
                 var panel=Get(window,"panel");
                 var leftTools=new[]{"拿走全部","存放全部","快速堆叠","补货"};
                 var toolbar=Get(Control(window,"weapon-select/"),"Rect");
@@ -215,9 +217,9 @@ namespace NativeWorldTextProbe
                 click("once-cancel/");
                 click("configuration/");
                 Require(Get(window,"panel").Equals(panel) &&
-                    Controls(window).Cast<object>().Count(c=>GetOptional(c,"HotkeyId")!=null)==10 &&
+                    Controls(window).Cast<object>().Count(c=>GetOptional(c,"HotkeyId")!=null)==11 &&
                     !Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith("config-tab:",StringComparison.Ordinal)),
-                    "nine toggle shortcut entries and the separate recall shortcut share the fixed backpack envelope");
+                    "ten toggle shortcut entries and the separate recall shortcut share the fixed backpack envelope");
                 Require(!Controls(window).Cast<object>().Any(c=>((string)Get(c,"Key")).StartsWith("actor-state/",StringComparison.Ordinal)||((string)Get(c,"Key")).StartsWith("team:",StringComparison.Ordinal)),"team and membership actions stay on the backpack page");
                 image("companion-config-behavior");
                 click("configuration-fishing/");
@@ -226,6 +228,7 @@ namespace NativeWorldTextProbe
                     "six actual fishing bindings render inside the same companion envelope");
                 image("companion-config-fishing");
                 click("configuration-general/");
+                CheckAutoTeleportPopup(window, host, input, id, other, click, frame, image);
                 int builds=(int)Get(window,"LayoutBuilds");for(int i=0;i<100;i++)prepare();Require((int)Get(window,"LayoutBuilds")==builds,"stable configuration prepares rebuild no controls");
                 CheckHotkeyOwnership(context, window, host, shell, id, other, click, rest,
                     () => graphics.Image(Path.Combine(output,"companion-independent-hotkey-popup.png"),
@@ -346,6 +349,147 @@ namespace NativeWorldTextProbe
             finally {Call(window,"Close");imeField.SetValue(text,originalIme);owner.name=ownerName;NativeToolsUiChecks.Mouse(Vector2.Zero,false);}
         }
 
+        private static void CheckBackpackTeleport(object context, object window, object host, Guid id, Player body,
+            Action<string> click, Action rest)
+        {
+            const string entry = "actor-wormhole/";
+            const int potionSlot = 43;
+            var owner = Main.LocalPlayer;
+            var prior = body.inventory[potionSlot];
+            var originalPosition = body.position;
+            var actor = Call(host, "Owned", body);
+            long activation = (long)Get(actor, "Generation");
+            try
+            {
+                body.position = owner.position + new Vector2(96, 0);
+                rest();
+                var button = Control(window, entry);
+                Require(!(bool)Get(button, "Enabled") && (string)Get(button, "Hint") == "需要消耗虫洞药水",
+                    "backpack teleport uses the shared disabled resource reason");
+                body.inventory[potionSlot] = new Item(ItemID.WormholePotion) { stack = 2 };
+                rest();
+                button = Control(window, entry);
+                Require((bool)Get(button, "Enabled") && (string)Get(button, "Hint") == "把AI队友传送到玩家，消耗虫洞药水",
+                    "available backpack teleport shows the exact shared action and cost");
+                var point = NativeToolsUiChecks.Point(Get(button, "Rect"));
+                NativeToolsUiChecks.UiFrame(context, point, true);
+                Require(GetOptional(window, "armedKey") != null, "the real backpack button captures its original press");
+                Set(actor, "Generation", activation + 1);
+                NativeToolsUiChecks.UiFrame(context, point, false);
+                Require(body.inventory[potionSlot].stack == 2 && body.Bottom != owner.Bottom,
+                    "releasing a previous body activation cannot consume a potion or teleport the replacement");
+                Set(actor, "Generation", activation);
+                rest();
+                click(entry);
+                Require(body.inventory[potionSlot].stack == 1 && body.Bottom == owner.Bottom && body.teleportStyle == 3 &&
+                    (bool)Call(host, "IsJoined", id), "one physical backpack click executes original-style teleport and consumes exactly one bottle");
+            }
+            finally
+            {
+                Set(actor, "Generation", activation);
+                body.position = originalPosition;
+                body.inventory[potionSlot] = prior;
+                rest();
+            }
+        }
+
+        private static void CheckAutoTeleportPopup(object window, object host, object input, Guid id, Guid other,
+            Action<string> click, Action<Vector2, bool, Keys[], int> frame, Action<string> image)
+        {
+            const string entry = "config-AutoTeleportEnabled/配置/";
+            object pane = Get(window, "autoTeleportPopup");
+            object blocked = Get(pane, "blocked"), distance = Get(pane, "distance");
+            object imeInput = Get(pane, "textInput");
+            var ime = imeInput.GetType().GetField("ime", BindingFlags.Instance | BindingFlags.NonPublic);
+            object originalIme = ime.GetValue(imeInput);
+            Keys[] held = { Keys.W };
+            void Step(Vector2 point, bool down, params Keys[] keys) => frame(point, down, keys, 0);
+            void HeldClick(object target, string rect)
+            {
+                Vector2 point = NativeToolsUiChecks.Point(Get(target, rect));
+                Step(point, false, held); Step(point, true, held); Step(point, false, held);
+            }
+            void UnclaimedW() => Require(!(bool)Call(Get(input, "Hotkeys"), "IsSuppressed", (int)Keys.W),
+                "ordinary automatic teleport clicks cannot suppress a continuously held W");
+            bool Visible() => (bool)Get(pane, "Visible");
+            CompanionBehavior Saved(Guid target) => Profile(host, target).Behavior;
+
+            try
+            {
+                ime.SetValue(imeInput, new PreviewIme(ime.FieldType).GetTransparentProxy());
+                var label = ((IEnumerable)Get(window, "labels")).Cast<object>().Single(e => (string)Get(e, "Text") == "自动传送");
+                Step(NativeToolsUiChecks.Point(Get(label, "HintRect")), false, held);
+                Require((bool)Get(Get(window, "hint"), "Visible") &&
+                    (string)Get(Get(label, "Description"), "Text") == "到达条件后AI尝试自动传送到玩家",
+                    "the standard row presents its measured feature-name hover explanation");
+                HeldClick(Control(window, entry), "Rect"); UnclaimedW();
+                Require(Visible() && !(bool)Get(window, "SupplyPopupVisible") && !Saved(id).AutoTeleportEnabled &&
+                    Saved(id).AutoTeleportBlockedEnabled && Saved(id).AutoTeleportDistanceEnabled,
+                    "disabled automatic teleport opens its own two-condition editor with both conditions checked");
+                HeldClick(blocked, "Check"); HeldClick(distance, "Check"); UnclaimedW();
+                Require(!Saved(id).AutoTeleportBlockedEnabled && !Saved(id).AutoTeleportDistanceEnabled && !Saved(id).AutoTeleportEnabled,
+                    "the two actual checkboxes can both be off while the main switch is unchanged");
+                HeldClick(pane, "close"); UnclaimedW();
+                Require(!Visible() && GetOptional(window, "Editor") == null, "ordinary close has no numeric lease");
+                HeldClick(Control(window, entry), "Rect"); UnclaimedW();
+
+                HeldClick(blocked, "Field"); Step(Vector2.Zero, false);
+                Require((bool)Get(window, "OwnsTextToken") && !(bool)Get(window, "PasswordPromptVisible"),
+                    "numeric click acquires its own shared native text lease independently of password");
+                Queue("12"); Step(Vector2.Zero, false); image("companion-config-auto-teleport");
+                Require((string)Get(Get(pane, "editView"), "Text") == "12" && !Saved(id).AutoTeleportBlockedEnabled,
+                    "committed native characters are drawn as digits while the adjacent checkbox is untouched");
+                var current = Profile(host, id);
+                Require((bool)Call(host, "SetAutoTeleportSetting", current.OwnerId, id, Get(host, "CreationSessionToken"),
+                    current.DataEpoch, CompanionSetting.AutoTeleportDistanceTiles, 250), "another control can update the latest archive during a draft");
+                Queue("\r"); Step(Vector2.Zero, false, Keys.Enter);
+                Require(Saved(id).AutoTeleportBlockedSeconds == 12 && Saved(id).AutoTeleportDistanceTiles == 250 && !(bool)Get(window, "OwnsTextToken"),
+                    "Enter merges only the edited numeric field and releases the native lease");
+                HeldClick(blocked, "Check");
+                Require(Saved(id).AutoTeleportBlockedEnabled && Saved(id).AutoTeleportBlockedSeconds == 12,
+                    "rechecking the condition keeps its independently saved threshold");
+
+                foreach (string invalid in new[] { "", "0", "-1", "2147483648" })
+                {
+                    HeldClick(distance, "Field"); Step(Vector2.Zero, false);
+                    if (invalid == "") Step(Vector2.Zero, false, Keys.Back);
+                    Queue(invalid + "\r"); Step(Vector2.Zero, false, Keys.Enter);
+                    Require(Saved(id).AutoTeleportDistanceTiles == 250 && GetOptional(pane, "validation") != null,
+                        "invalid submitted text leaves the last accepted threshold intact");
+                    Queue("\u001b"); Step(Vector2.Zero, false, Keys.Escape);
+                    Require(Visible() && GetOptional(window, "Editor") == null && !(bool)Get(window, "OwnsTextToken"),
+                        "Escape cancels only the draft and retires the text lease");
+                    Step(Vector2.Zero, false);
+                }
+
+                HeldClick(distance, "Field"); Step(Vector2.Zero, false);
+                Queue("99"); Step(Vector2.Zero, false);
+                HeldClick(Control(window, "profile:" + other + "/"), "Rect");
+                Require((Guid)Get(window, "selected") == id && GetOptional(window, "Editor") == null,
+                    "the click leaving an editor abandons the draft without activating the covered roster control");
+                click("profile:" + other + "/");
+                Require(!Visible() && (Guid)Get(window, "selected") == other && Saved(other).AutoTeleportDistanceTiles == 150 &&
+                    Saved(id).AutoTeleportDistanceTiles == 250, "a fresh selection retires the old panel without crossing identities");
+                click(entry);
+                Require(Visible() && !(bool)Call(host, "IsJoined", other),
+                    "the offline profile can still open and edit automatic teleport rules");
+                HeldClick(distance, "Field"); Step(Vector2.Zero, false);
+                Queue("37"); Step(Vector2.Zero, false);
+                var archived = Profile(host, other);
+                Require((bool)Call(host, "Reset", other) && Profile(host, other).DataEpoch != archived.DataEpoch,
+                    "real archived reset advances the identity while a draft is open");
+                Queue("\r"); Step(Vector2.Zero, false, Keys.Enter);
+                Require(!Visible() && !(bool)Get(window, "OwnsTextToken") && Saved(other).AutoTeleportDistanceTiles == 150,
+                    "an Enter queued for the previous archive epoch cannot commit after reset");
+                Step(Vector2.Zero, false);
+                click("profile:" + id + "/");
+                Require((bool)Call(host, "RestoreBehavior", id), "restore the original test profile before testing hotkeys");
+                Step(Vector2.Zero, false);
+                Console.WriteLine("PASS automatic teleport editor: original Shell clicks and character queue, independent checks, field merge, invalid and cancelled drafts, selection and archive epoch retirement.");
+            }
+            finally { ime.SetValue(imeInput, originalIme); }
+        }
+
         private static int failDeletionHotkey;
 
         private static void CheckDeletion(object window, object host, object shell, Guid id, Guid other,
@@ -374,6 +518,8 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { rest(); return !bindings.Busy; });
             Require(bindings.Get(deletedKeys+"wormhole")?.MainKey==(int)NativeCompanionHotkeyFeedbackChecks.WormholeKey,
                 "retirement includes the persisted one-shot recall row established by native keyboard checks");
+            Require(bindings.Get(deletedKeys+"auto-warp")?.MainKey==(int)NativeCompanionHotkeyFeedbackChecks.AutoTeleportKey,
+                "retirement includes the persisted automatic teleport row established by native keyboard checks");
             Require(bindings.StoredEntries.Any(row => row.Key == deletedKeys + "buff" && row.Value == ""), "empty row really persisted");
             scroll("request-delete/"); click("request-delete/"); scroll("confirm-delete/"); image("companion-config-delete-confirmation");
             click("profile:"+other+"/");
@@ -385,6 +531,7 @@ namespace NativeWorldTextProbe
             Require((bool)Call(host,"Join",id),"real reset identity rejoins for active deletion");
             var body=(Player)Call(host,"GetBody",id); int slot=body.whoAmI;
             var oldAction=registry.Find(deletedKeys+"attack");
+            var oldAutoTeleport=registry.Find(deletedKeys+"auto-warp");
             var actor=Call(host,"Owned",body);
             var hooks=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionHooks");
             var enter=hooks.GetMethod("Enter",BindingFlags.Static|BindingFlags.NonPublic);
@@ -404,7 +551,8 @@ namespace NativeWorldTextProbe
                 System.Threading.Interlocked.Exchange(ref failDeletionHotkey,1);
                 click("confirm-delete/");
                 Require(!body.active && !body.dead && Main.item.Count(item=>item.active)==items && !ReferenceEquals(Main.player[slot],body) &&
-                    !controller.active && !oldAction.Invoke(HotkeyContext.SinglePlayer) && !(bool)Call(host,"Join",id),
+                    !controller.active && !oldAction.Invoke(HotkeyContext.SinglePlayer) && !oldAutoTeleport.Invoke(HotkeyContext.SinglePlayer) &&
+                    !(bool)Call(host,"Join",id),
                     "confirmed deletion retires the active body, controller, slot and keys with no native death or item drop");
                 Require((Guid)Get(window,"selected")==other && Profile(host,other).Id==other,"selected deletion falls through to the remaining real profile");
                 Call(window,"Close");
@@ -438,7 +586,7 @@ namespace NativeWorldTextProbe
             finally { Main.gameMenu=menu; rest(); }
             string savedHotkeys=File.ReadAllText(hotkeysPath);
             Require(!savedHotkeys.Contains(deletedKeys) && retainedRows.SequenceEqual(bindings.StoredEntries) && !File.Exists(deletedPath+".delete"),
-                "actual document retry removes the nine toggle rows and the one-shot recall including empty mappings, preserving other bindings");
+                "actual document retry removes the ten toggle rows and the one-shot recall including empty mappings, preserving other bindings");
             Require((bool)Call(host,"Create",profile.Name),"the same name can create a genuinely new character after confirmed deletion");
             Guid replacement=(Guid)Get(host,"LastCreatedId");
             var archive=Get(host,"profiles");

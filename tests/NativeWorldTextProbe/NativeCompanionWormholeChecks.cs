@@ -84,6 +84,8 @@ namespace NativeWorldTextProbe
                 var failed = new List<BusinessAssertionException>();
                 try { Local(host, actor, first, second, human, body, other, feedback); }
                 catch (BusinessAssertionException error) { failed.Add(error); }
+                try { NativeCompanionAutoTeleportChecks.Run(host, first, second, human, body, other); }
+                catch (BusinessAssertionException error) { failed.Add(error); }
                 try { Wire(host, actor, first, human, body, feedback); }
                 catch (BusinessAssertionException error) { failed.Add(error); }
                 if (failed.Count == 1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failed[0]).Throw();
@@ -399,6 +401,7 @@ namespace NativeWorldTextProbe
                         Server(); Apply(ack, ai);
                         Require((int)Get(serverPlayers[ai], "unacknowledgedTeleports") == 0, "both original requests settle their own server movement protection");
                         Client(clientPlayers, player);
+                        AutomaticWire(host, actor, id, human, body, stream, ai, feedback, Server, () => Client(clientPlayers, player));
                         Set(actor, "Connection", null);
                     }
                 }
@@ -411,6 +414,81 @@ namespace NativeWorldTextProbe
                 listener.Stop();
             }
             Console.WriteLine("PASS actual TCP mode 2/0/3, independent observer, shared native FIFO, exact two payer streams, queue rejection, bounded timeout and same-coordinate separation, and old-activation suppression after real respawn.");
+        }
+
+        private static void AutomaticWire(object host, object actor, Guid id, Player human, Player body, NetworkStream stream, int ai,
+            List<(Guid Id, string Text, bool Result)> feedback, Action server, Action client)
+        {
+            var saved = ((CompanionProfile)Get(actor, "Profile")).Behavior;
+            var windowsByActor = (IDictionary)Get(host, "wormholeWindows");
+            Require((bool)Call(host, "SetBehavior", id, NativeCompanionAutoTeleportChecks.Preferences(blocked: false, distance: true)),
+                "automatic wire scenario uses the same real saved trigger settings");
+            try
+            {
+                for (int i = 0; i < 901; i++) NativeQuickItemChecks.BeginWorldStep();
+                human.position.X += 160;
+                Put(body.inventory, PotionSlot, 3);
+                var initial = body.position;
+                Tick(120);
+                Require(windowsByActor.Contains(actor) && body.inventory[PotionSlot].stack == 2 && body.position == initial,
+                    "automatic policy submits exactly once while the original wire has not returned a displacement");
+                var orderBegin = ReadFrame(stream);
+                var request = ReadFrame(stream);
+                var orderEnd = ReadFrame(stream);
+                var payer = ReadFrame(stream);
+                Require(orderBegin[2] == 154 && request[2] == 65 && orderEnd[2] == 154 && payer[2] == 5,
+                    "the automatic attempt uses the original ordered wire and original payer packet");
+                var windows = (IList)windowsByActor[actor];
+                Set(windows[0], "Deadline", Stopwatch.GetTimestamp() - 1);
+                Call(host, "PumpConnection", actor);
+                int admissions = (int)(GetOptional(host, "AutoTeleportAdmissions") ?? 0);
+                int visits = (int)(GetOptional(host, "AutoTeleportInventoryVisits") ?? 0);
+                Tick(1080);
+                Require(windows.Count == 1 && body.inventory[PotionSlot].stack == 2 && feedback.Last().Text.Contains("超时") &&
+                    (int)(GetOptional(host, "AutoTeleportAdmissions") ?? 0) == admissions &&
+                    (int)(GetOptional(host, "AutoTeleportInventoryVisits") ?? 0) == visits,
+                    "a timed-out result leaves the original window and blocks all automatic payer scans while waiting");
+
+                // Only the real native marker echoes arrive; no mode 0 from
+                // this attempt ever applied position. The paid slot still
+                // belongs to the completed old command.
+                server(); Apply(orderBegin, ai); Apply(orderEnd, ai); Apply(payer, ai);
+                client();
+                NativeQuickItemChecks.Until(() => { Call(host, "PumpConnection", actor); return !windowsByActor.Contains(actor); });
+                Tick(899);
+                Require(body.inventory[PotionSlot].stack == 2 && body.position == initial,
+                    "a closed paid attempt without arrival enters its bounded retry delay");
+                Tick(1);
+                Require(windowsByActor.Contains(actor) && body.inventory[PotionSlot].stack == 1,
+                    "actual wire closure and elapsed simulation retry delay allow a new command and one new debit");
+                orderBegin = ReadFrame(stream);
+                request = ReadFrame(stream);
+                orderEnd = ReadFrame(stream);
+                payer = ReadFrame(stream);
+                windows = (IList)windowsByActor[actor];
+                Set(windows[0], "Deadline", Stopwatch.GetTimestamp() - 1);
+                Call(host, "PumpConnection", actor);
+                server(); Apply(orderBegin, ai); Apply(request, ai); Apply(orderEnd, ai); Apply(payer, ai);
+                client();
+                NativeQuickItemChecks.Until(() => { Call(host, "PumpConnection", actor); return !windowsByActor.Contains(actor); });
+                var ack = NativeCompanionTeamChecks.ReadKind(stream, 65);
+                Require(ack[3] == 3 && body.Bottom == human.Bottom && body.inventory[PotionSlot].stack == 1 &&
+                    (uint)Get(actor, "AutoTeleportDelay") == 600 && !(bool)Get(Get(actor, "AutoTeleport"), "HasCandidate"),
+                    "late actual mode 0 still moves, clears old motion eligibility and starts success cooldown after timed-out feedback");
+                server(); Apply(ack, ai); client();
+                Console.WriteLine($"AUTO TELEPORT wire timing: wait=1080 simulated updates, extra admissions=0, extra inventory visits=0; paid failure delay=900; late arrival cooldown=600");
+            }
+            finally { Call(host, "SetBehavior", id, saved); }
+
+            void Tick(int count)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    NativeQuickItemChecks.BeginWorldStep();
+                    Call(host, "ObserveAutoTeleport", actor);
+                    Call(host, "ConsumeAutoTeleport", actor);
+                }
+            }
         }
 
         private static bool Query(object host, Guid id, out string reason)

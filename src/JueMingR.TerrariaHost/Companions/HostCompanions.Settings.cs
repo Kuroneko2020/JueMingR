@@ -65,6 +65,7 @@ namespace JueMingR.TerrariaHost.Companions
                 case CompanionSetting.Nurse: behavior.AllowNurse = !behavior.AllowNurse; break;
                 case CompanionSetting.Furniture: behavior.FurnitureEnabled = !behavior.FurnitureEnabled; break;
                 case CompanionSetting.Respawn: behavior.AutoRespawn = !behavior.AutoRespawn; break;
+                case CompanionSetting.AutoTeleportEnabled: behavior.AutoTeleportEnabled = !behavior.AutoTeleportEnabled; break;
                 case CompanionSetting.FishingTeleport: behavior.TeleportStopsFishing = !behavior.TeleportStopsFishing; break;
                 case CompanionSetting.FishingEquipment:
                 case CompanionSetting.FishingStorage:
@@ -89,6 +90,31 @@ namespace JueMingR.TerrariaHost.Companions
             if (setting == CompanionSetting.FishingTeleport) behavior.TeleportStopsFishing = value != 0;
             else behavior.Fishing = behavior.Fishing.Change(FishingFeature(setting), value);
             return SetBehavior(id, behavior);
+        }
+
+        internal bool SetAutoTeleportSetting(Guid ownerId, Guid id, long expectedSession, long expectedDataEpoch,
+            CompanionSetting setting, int value)
+        {
+            var profile = SettingProfile(ownerId, id);
+            if (expectedSession != session || profile == null || profile.DataEpoch != expectedDataEpoch)
+                return Result(false, "队友设置已失效。");
+
+            // Open editors can outlive unrelated inventory and preference
+            // revisions. Merge this one value into the current profile only.
+            var behavior = profile.Behavior;
+            switch (setting)
+            {
+                case CompanionSetting.AutoTeleportEnabled: behavior.AutoTeleportEnabled = value == 1; break;
+                case CompanionSetting.AutoTeleportBlockedEnabled: behavior.AutoTeleportBlockedEnabled = value == 1; break;
+                case CompanionSetting.AutoTeleportDistanceEnabled: behavior.AutoTeleportDistanceEnabled = value == 1; break;
+                case CompanionSetting.AutoTeleportBlockedSeconds: behavior.AutoTeleportBlockedSeconds = value; break;
+                case CompanionSetting.AutoTeleportDistanceTiles: behavior.AutoTeleportDistanceTiles = value; break;
+                default: return false;
+            }
+            if (value != behavior.SettingValue(setting) || behavior.AutoTeleportBlockedSeconds <= 0 ||
+                behavior.AutoTeleportDistanceTiles <= 0)
+                return Result(false, "自动传送设置数值无效。");
+            return value == profile.SettingValue(setting) || SetBehavior(id, behavior);
         }
 
         private static int FishingFeature(CompanionSetting setting)

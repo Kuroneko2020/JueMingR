@@ -16,6 +16,7 @@ namespace NativeWorldTextProbe
     internal static class NativeCompanionHotkeyFeedbackChecks
     {
         internal const Keys WormholeKey = Keys.NumPad7;
+        internal const Keys AutoTeleportKey = Keys.NumPad8;
         internal static void Run(object context, object window, object host, Guid first, Guid second,
             Action<string> click, Action release, ProbeGraphics graphics, string output)
         {
@@ -31,6 +32,7 @@ namespace NativeWorldTextProbe
             string prefix = "companions.profile." + originalFirst.OwnerId.ToString("N") + ".";
             string firstKeys = prefix + first.ToString("N") + ".", secondKeys = prefix + second.ToString("N") + ".";
             string firstLife = firstKeys + "life", secondLife = secondKeys + "life";
+            string autoTeleport = firstKeys + "auto-warp";
             var originalCamera = Main.screenPosition;
             bool showItems = Main.showItemText;
             Action<Keys> press = key => NativeToolsUiChecks.UiFrame(context, Vector2.Zero, false, key);
@@ -41,9 +43,13 @@ namespace NativeWorldTextProbe
             });
             Action<string, Keys> bind = (id, key) =>
             {
-                Require(HotkeyChord.TryCreate((int)key, HotkeyModifiers.None, out var chord, out _) &&
-                    bindings.TrySet(id, chord, null, out _, out _), "register actual companion chord " + key);
+                Require(HotkeyChord.TryCreate((int)key, HotkeyModifiers.None, out var chord, out string invalidKey),
+                    "create companion chord " + key + ": " + invalidKey);
+                Require(bindings.TrySet(id, chord, null, out long command, out string rejected),
+                    "register actual companion chord " + key + " for " + id + ": " + rejected);
                 NativeQuickItemChecks.Until(() => { release(); return !bindings.Busy; });
+                Require(bindings.CompletionId == command && bindings.CompletionSucceeded && chord.Equals(bindings.Get(id)),
+                    "save actual companion chord " + key + " for " + id);
             };
             Action<string, string> shown = (id, text) =>
             {
@@ -79,6 +85,9 @@ namespace NativeWorldTextProbe
                 };
                 foreach (var row in rows)
                     if (bindings.Get(firstKeys + row.suffix) == null) bind(firstKeys + row.suffix, row.key);
+                // Unbound profile actions exist while their configuration is
+                // visible. Bind here, then exercise the key with the pane closed.
+                bind(autoTeleport, AutoTeleportKey);
                 click("profile:" + second + "/");
                 bind(secondLife, Keys.F19);
                 Call(window, "Close"); release();
@@ -112,6 +121,7 @@ namespace NativeWorldTextProbe
                     shown(action, originalFirst.Name + " · " + row.name + (row.suffix == "furniture" ? " 已关闭" : " 已开启"));
                 }
                 CheckPersistence(host, archive, feedback, display, second, secondLife, press, release, saved, shown);
+                CheckAutoTeleport(host, archive, feedback, display, first, second, autoTeleport, press, release, saved, shown);
                 var oldAction = registry.Find(secondLife);
                 Rename(archive, Profile(host, second), "更名队友");
                 Require(!oldAction.Invoke(HotkeyContext.SinglePlayer), "old action cannot label the renamed character before registry refresh");
@@ -137,10 +147,11 @@ namespace NativeWorldTextProbe
                 var icons = ((IEnumerable)Get(window, "controls")).Cast<object>().Where(c => GetOptional(c, "HotkeyId") != null).ToArray();
                 string recallId = firstKeys + "wormhole";
                 var recallIcon = icons.Single(icon => (string)Get(icon, "HotkeyId") == recallId);
-                Require(icons.Length == 10 && icons.Where(icon => icon != recallIcon).All(icon =>
+                Require(icons.Length == 11 && icons.Any(icon => (string)Get(icon, "HotkeyId") == autoTeleport) &&
+                    icons.Where(icon => icon != recallIcon).All(icon =>
                     (string)Get(icon, "Hint") == "双击设置功能开关快捷键") &&
                     (string)Get(recallIcon, "Hint") == "双击设置传送AI到玩家快捷键",
-                    "nine concrete key controls retain their toggle hint and one recall control describes the one-shot action");
+                    "ten switch controls retain the switch hint and recall describes the separate one-shot action");
                 NativeToolsUiChecks.UiFrame(context, NativeToolsUiChecks.Point(Get(icons[0], "Rect")), false);
                 var hint = Get(window, "hint");
                 Require((bool)Get(hint, "Visible") && (string)Get(hint, "text") == "双击设置功能开关快捷键",
@@ -200,7 +211,7 @@ namespace NativeWorldTextProbe
                     release(); click("profile:" + first + "/"); release();
                 }
                 finally { actorBody.position = oldPosition; actorBody.inventory[slot] = previousItem; }
-                Console.WriteLine("PASS nine companion switch keys plus the actual one-shot recall key, shared physical binding popup, exact archive receipts, and native short feedback.");
+                Console.WriteLine("PASS ten companion switch keys plus the actual one-shot recall key, shared physical binding popup, exact archive receipts, and native short feedback.");
             }
             finally
             {
@@ -211,6 +222,70 @@ namespace NativeWorldTextProbe
                 Call(host, "SetBehavior", second, originalSecond.Behavior);
                 release();
             }
+        }
+
+        private static void CheckAutoTeleport(object host, object archive, object feedback, object display, Guid id, Guid neighbor,
+            string action, Action<Keys> press, Action release, Action<Guid> saved, Action<string, string> shown)
+        {
+            Call(feedback, "Clear");
+            var profile = Profile(host, id);
+            var other = Profile(host, neighbor).Behavior;
+            long session = (long)Get(host, "CreationSessionToken");
+            long epoch = profile.DataEpoch;
+            bool Change(CompanionSetting setting, int value) =>
+                (bool)Call(host, "SetAutoTeleportSetting", profile.OwnerId, id, session, epoch, setting, value);
+
+            Require(Change(CompanionSetting.AutoTeleportBlockedSeconds, 7) &&
+                Change(CompanionSetting.AutoTeleportDistanceTiles, 275) &&
+                Change(CompanionSetting.AutoTeleportBlockedEnabled, 0) &&
+                Change(CompanionSetting.AutoTeleportDistanceEnabled, 0) &&
+                Change(CompanionSetting.AutoTeleportEnabled, 0), "updates merge into the newest revision of one profile");
+            long revision = Profile(host, id).Revision;
+            Require(!Change(CompanionSetting.AutoTeleportDistanceTiles, 0) &&
+                !(bool)Call(host, "SetAutoTeleportSetting", profile.OwnerId, id, session, epoch + 1, CompanionSetting.AutoTeleportBlockedSeconds, 1) &&
+                !(bool)Call(host, "SetAutoTeleportSetting", profile.OwnerId, id, session + 1, epoch, CompanionSetting.AutoTeleportBlockedSeconds, 1) &&
+                Profile(host, id).Revision == revision, "invalid values, sessions and data epochs leave the latest revision intact");
+            saved(id);
+
+            var body = (Player)Call(host, "GetBody", id);
+            const int slot = 43;
+            var previousItem = body.inventory[slot];
+            var previousPosition = body.position;
+            var potion = new Item(ItemID.WormholePotion);
+            body.inventory[slot] = potion;
+            body.position = Main.LocalPlayer.position + new Vector2(96, 0);
+            try
+            {
+                lock (Get(Get(archive, "manager"), "gate"))
+                {
+                    long beforeKey = Profile(host, id).Revision;
+                    press(AutoTeleportKey);
+                    press(AutoTeleportKey);
+                    var current = Profile(host, id);
+                    var preferences = current.Behavior;
+                    Require(current.Revision == beforeKey + 1 && preferences.AutoTeleportEnabled &&
+                        !preferences.AutoTeleportBlockedEnabled && preferences.AutoTeleportBlockedSeconds == 7 &&
+                        !preferences.AutoTeleportDistanceEnabled && preferences.AutoTeleportDistanceTiles == 275 &&
+                        Profile(host, neighbor).Behavior.AutoTeleportEnabled == other.AutoTeleportEnabled &&
+                        Profile(host, neighbor).Behavior.AutoTeleportDistanceTiles == other.AutoTeleportDistanceTiles,
+                        "one held key changes only its own character's total switch and preserves both disabled thresholds");
+                    Require((int)Get(feedback, "PendingCount") == 1 && (int)Get(display, "Count") == 0 &&
+                        ReferenceEquals(body.inventory[slot], potion) && body.inventory[slot].stack == 1 &&
+                        body.position == Main.LocalPlayer.position + new Vector2(96, 0),
+                        "automatic switch waits for its actual save without executing a manual recall");
+                }
+                saved(id);
+                shown(action, profile.Name + " · 自动传送 已开启");
+            }
+            finally
+            {
+                body.inventory[slot] = previousItem;
+                body.position = previousPosition;
+            }
+            release();
+            press(AutoTeleportKey);
+            saved(id);
+            shown(action, profile.Name + " · 自动传送 已关闭");
         }
 
         private static void CheckPersistence(object host, object archive, object feedback, object display, Guid id,
