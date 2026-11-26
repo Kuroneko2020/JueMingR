@@ -1,4 +1,5 @@
 using JueMingR.Features.Blueprint;
+using JueMingR.Platform.Hotkeys;
 using JueMingR.TerrariaHost.F5;
 
 namespace JueMingR.TerrariaHost.Blueprint
@@ -32,17 +33,21 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal string MaterialsDisabledReason { get { return !ControlsEnabled ? "蓝图当前不可用" : Library == null ? "蓝图材料暂不可用" : null; } }
         internal bool CanOpenMaterials { get { return MaterialsDisabledReason == null; } }
-        internal void OpenMaterials()
+        internal void OpenMaterials() { OpenMaterialsFromGesture(null); }
+        private void OpenMaterialsFromGesture(HotkeyChord gesture)
         {
             if(!Input.CanStartActions || Shell?.BlueprintMaterialsUi==null)return;
             var origin=Shell.State.Visible?BlueprintMaterialsSource.F5:BlueprintMaterialsSource.World;
             if(!CanOpenMaterials && !Shell.BlueprintMaterialsUi.SameWorld(origin))return;
+            if (gesture != null) Input.ConsumeUiCommand(gesture.MainKey);
+            else Input.ConsumeHotkeyActions();
             Pointer.Cancel(); Toolbar.Cancel(); State.Interrupt();
             Shell.OpenBlueprintMaterials(origin, Shell.BlueprintMaterialsAnchor());
         }
         internal void OpenMaterialsFromToolbar(F5Rect anchor)
         {
             if (!Input.CanStartActions || Shell?.BlueprintMaterialsUi == null || !CanOpenMaterials && !Shell.BlueprintMaterialsUi.SameWorld(BlueprintMaterialsSource.Toolbar)) return;
+            Input.ConsumeHotkeyActions();
             Pointer.Cancel(); Toolbar.Cancel(); State.Interrupt();
             Shell.OpenBlueprintMaterials(BlueprintMaterialsSource.Toolbar, anchor);
         }

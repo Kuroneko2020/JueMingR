@@ -67,14 +67,13 @@ namespace JueMingR.TerrariaHost.EntityLabels
         internal void Close()
         {
             if (!Visible && Editor == null && !HasCapture) return;
-            if (HasCapture) input.Hotkeys.SuppressHeld();
             // Submitted settings belong to the captured target. Retire this draft
             // after releasing input so closed-shell samples cannot reload it.
             TextInput.End(true); Editor = null; selection = null; ActiveSlider = -1; armed = StylePopupCommand.None;
             Hovered = StylePopupCommand.None; OwnsPointer = BlockPointer = ConsumeWheel = false;
         }
         private void CancelGesture()
-        { ActiveSlider = -1; armed = StylePopupCommand.None; TextInput.End(true); Editor?.CancelDraft(); input.Hotkeys.SuppressHeld(); }
+        { ActiveSlider = -1; armed = StylePopupCommand.None; TextInput.End(true); Editor?.CancelDraft(); }
         internal void Prepare(float width, float height, float scale, object font, Func<string, float, F5Size> measure, int skin, F5Rect anchor)
         {
             if (!Visible) return;
@@ -110,17 +109,24 @@ namespace JueMingR.TerrariaHost.EntityLabels
             TextInput.Process(active);
             bool pressed = input.Hotkeys.IsNew(256), released = !left && previousLeft;
             Hovered = geometryCurrent ? Layout.Hit(x, y) : StylePopupCommand.None;
-            OwnsPointer = captured || HasCapture || ContainsPointer(x, y) || input.HotkeyPointerOwned;
+            bool inside = ContainsPointer(x, y);
+            OwnsPointer = captured || HasCapture || inside || input.HotkeyPointerOwned;
             BlockPointer = OwnsPointer;
+            if (inside) for (int key = 256; key <= 260; key++) input.ClaimUiMousePress(key);
             if (!wasEditing && input.Hotkeys.IsNew((int)Keys.Escape))
             {
-                input.Hotkeys.SuppressKey((int)Keys.Escape);
+                input.ConsumeCancellation((int)Keys.Escape);
                 if (ActiveSlider >= 0 || armed != StylePopupCommand.None) CancelGesture(); else Close();
-                input.ConsumeHotkeyActions(); previousLeft = left; return;
+                previousLeft = left; return;
             }
             if (geometryCurrent && pressed)
             {
-                if (Layout.HexField.Offset(Layout.Panel.X, Layout.Panel.Y).Contains(x, y)) TextInput.Begin(Editor);
+                if (Layout.HexField.Offset(Layout.Panel.X, Layout.Panel.Y).Contains(x, y))
+                {
+                    // Only entering HEX takes a keyboard lease. Sliders and
+                    // ordinary buttons retain their own mouse-button tails.
+                    if (TextInput.Begin(Editor)) input.Hotkeys.SuppressHeld();
+                }
                 else
                 {
                     for (int i = 0; i < 3; i++) if (Layout.Sliders[i].Offset(Layout.Panel.X, Layout.Panel.Y).Contains(x, y))
@@ -150,11 +156,9 @@ namespace JueMingR.TerrariaHost.EntityLabels
                     else if (command == StylePopupCommand.Reset) { selection.Reset(); Editor.Load(selection.Color()); }
                 }
             }
-            if (Visible && ContainsPointer(x, y))
-                for (int key = 256; key <= 260; key++) if (input.Hotkeys.IsNew(key)) input.Hotkeys.SuppressKey(key);
             OwnsPointer |= HasCapture; BlockPointer |= OwnsPointer;
             ConsumeWheel = OwnsPointer && wheel != 0;
-            if (captured || HasCapture || OwnsPointer && input.Hotkeys.HasSuppressedKeys) { input.Hotkeys.SuppressHeld(); input.ConsumeHotkeyActions(); }
+            if (captured || HasCapture || OwnsPointer && input.Hotkeys.HasSuppressedKeys) input.ConsumeHotkeyActions();
             previousLeft = left;
         }
     }

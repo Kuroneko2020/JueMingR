@@ -37,11 +37,14 @@ namespace NativeWorldTextProbe
                 Require(HotkeyDocument.Decode(File.ReadAllBytes(path)).Entries.Any(row => row.Key == placed && row.Value == "L"), "actual isolated common hotkeys.json persists placed-list action");
                 Call(shell, "CloseAndSubmitPosition");
                 NativeQuickItemChecks.Sample(input, Array.Empty<Keys>()); NativeQuickItemChecks.Sample(input, Array.Empty<Keys>());
-                NativeQuickItemChecks.Sample(input, new[] { Keys.L });
-                bindings.Dispatch((HotkeyInput)Get(input, "Hotkeys"), HotkeyContext.SinglePlayer, true);
+                var sampled = (HotkeyInput)Get(input, "Hotkeys");
+                NativeQuickItemChecks.Sample(input, new[] { Keys.W, Keys.L, Keys.X });
+                bindings.Dispatch(sampled, HotkeyContext.SinglePlayer, true);
                 Require((bool)Get(Get(shell, "BlueprintPlacedUi"), "Visible"), "shared binding dispatch reaches real Host/Shell placed-list opener");
-                Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Sample(input, new[] { Keys.L });
-                bindings.Dispatch((HotkeyInput)Get(input, "Hotkeys"), HotkeyContext.SinglePlayer, true);
+                Require(sampled.IsSuppressed((int)Keys.L) && !sampled.IsSuppressed((int)Keys.W) && !sampled.IsNew((int)Keys.X),
+                    "placed-list opener consumes competing frozen edges but retains only its own registered primary");
+                Call(shell, "CloseAndSubmitPosition"); NativeQuickItemChecks.Sample(input, new[] { Keys.W, Keys.L });
+                bindings.Dispatch(sampled, HotkeyContext.SinglePlayer, true);
                 Require(!(bool)Get(Get(shell, "State"), "Visible"), "held common action cannot reopen after explicit close");
                 Console.WriteLine("PASS placed-list hotkey: default unbound, common conflict, real document persistence, common dispatch -> real Host/Shell and held suppression.");
             }

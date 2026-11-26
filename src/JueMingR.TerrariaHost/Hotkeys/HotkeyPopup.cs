@@ -96,13 +96,17 @@ namespace JueMingR.TerrariaHost.Hotkeys
             Hovered = geometryCurrent && !wasHelp ? Layout.Hit(x, y, DetailOffset) : HotkeyPopupCommand.None;
             HelpVisible = geometryCurrent && (Hovered == HotkeyPopupCommand.Help || wasHelp);
             bool helpPointer = Hovered == HotkeyPopupCommand.Help || wasHelp;
-            OwnsPointer = Capturing || ContainsPointer(x, y) || armed != HotkeyPopupCommand.None || input.HotkeyPointerOwned;
+            bool ownsSample = OwnsPointer = Capturing || ContainsPointer(x, y) || armed != HotkeyPopupCommand.None || input.HotkeyPointerOwned;
             BlockPointer = OwnsPointer;
             // Disabled controls and help reserve physical keys even in capture.
             // Suppression retains the tail; keycaps have no command or hover.
             bool controlPointer = geometryCurrent && Layout.OverControl(x, y);
             if ((!Capturing && ContainsPointer(x, y)) || controlPointer || helpPointer)
-                for (int key = 256; key <= 260; key++) if (input.Hotkeys.IsNew(key)) input.Hotkeys.SuppressKey(key);
+                for (int key = 256; key <= 260; key++)
+                {
+                    if (!Capturing) input.ClaimUiMousePress(key);
+                    else if (input.Hotkeys.IsNew(key)) input.Hotkeys.SuppressKey(key);
+                }
             bool cancelledGesture = armed != HotkeyPopupCommand.None && (!geometryCurrent || armedGeneration != Layout.Generation);
             if (!geometryCurrent || cancelledGesture)
             {
@@ -110,7 +114,7 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 if (Capturing) Cancel("窗口布局已变化，录入已取消");
             }
             if (pressed && Hovered != HotkeyPopupCommand.None && !cancelledGesture)
-            { armed = Hovered; armedGeneration = Layout.Generation; input.Hotkeys.SuppressHeld(); }
+            { armed = Hovered; armedGeneration = Layout.Generation; }
             // Entry clicks are UI gestures before recording considers Mouse1.
             // Retain the whole tail even if dragging away cancels activation.
             if(EntryGesture && pressed)entryTail=true;
@@ -142,7 +146,9 @@ namespace JueMingR.TerrariaHost.Hotkeys
                 if (!helpPointer && DetailsExpanded && Layout.DetailViewport.Offset(Layout.Panel.X, Layout.Panel.Y).Contains(x, y))
                     ScrollDetails(wheel > 0 ? -3 : 3);
             }
-            if (Capturing || OwnsPointer && input.Hotkeys.HasSuppressedKeys) input.ConsumeHotkeyActions();
+            // The control keeps its release sample even if it closed the view.
+            // Whole-keyboard ownership starts only when Record enters capture.
+            if (Capturing || ownsSample && (controlGesture || input.Hotkeys.HasSuppressedKeys)) input.ConsumeHotkeyActions();
             if(!left)entryTail=false;
             previousLeft = left;
         }

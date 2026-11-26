@@ -1,3 +1,4 @@
+using JueMingR.Platform.Hotkeys;
 using JueMingR.TerrariaHost.F5;
 
 namespace JueMingR.TerrariaHost.Blueprint
@@ -12,11 +13,12 @@ namespace JueMingR.TerrariaHost.Blueprint
                 !ProjectionPersistenceReady ? "正在恢复当前世界蓝图" : deletePending ? "正在删除蓝图模板" : null; }
         }
         internal bool CanOpenPlacedList { get { return PlacedListDisabledReason == null; } }
-        internal void OpenPlacedList()
+        internal void OpenPlacedList() { OpenPlacedListFromGesture(null); }
+        private void OpenPlacedListFromGesture(HotkeyChord gesture)
         {
             if (!CanOpenPlacedList || !Input.CanStartActions) return;
             Pointer.Cancel(); Toolbar.Cancel(); State.Interrupt();
-            Shell?.OpenBlueprintPlacedList();
+            Shell?.OpenBlueprintPlacedList(gesture);
         }
         internal bool PlacedInstanceExists(long session, long instance)
         { return session == generation && HasSession && projectionScene.Exists(value => value.Identity.SessionGeneration == session && value.Identity.ProjectionGeneration == instance); }

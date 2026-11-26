@@ -107,7 +107,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             registry.Register(new HotkeyAction(BlueprintControls.CaptureAction, "采集蓝图", HotkeyContext.Gameplay, () => ControlsEnabled, Toggle));
             registry.Register(new HotkeyAction(BlueprintControls.SaveAction, "保存采集", HotkeyContext.Gameplay, () => CanSave, () => Save()));
             registry.Register(new HotkeyAction(BlueprintControls.LibraryAction, "打开蓝图库", HotkeyContext.Gameplay, () => CanOpenLibrary, OpenLibrary));
-            registry.Register(new HotkeyAction(BlueprintControls.PlacedListAction, "已放置列表", HotkeyContext.Gameplay, () => CanOpenPlacedList, OpenPlacedList));
+            registry.Register(new HotkeyAction(BlueprintControls.PlacedListAction, "已放置列表", HotkeyContext.Gameplay, () => CanOpenPlacedList, OpenPlacedListFromGesture));
             registry.Register(new HotkeyAction(BlueprintControls.MoveAction, "移动蓝图", HotkeyContext.Gameplay, () => CanInvokeMove, MoveProjection));
             registry.Register(new HotkeyAction(BlueprintControls.RemoveAction, "移除蓝图", HotkeyContext.Gameplay, () => CanInvokeRemove, RemoveProjection));
             registry.Register(new HotkeyAction(BlueprintControls.MirrorAction, "水平镜像", HotkeyContext.Gameplay, () => CanInvokeMirror, MirrorProjection));
@@ -124,7 +124,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             Action substitution = () => SetSameTypeReplacement(!SameTypeReplacementEnabled);
             if (feedback != null) substitution = feedback.Immediate(BlueprintControls.SubstitutionAction, "同类替换", substitution, () => SameTypeReplacementEnabled ? 1 : 0, () => ControlsEnabled);
             registry.Register(new HotkeyAction(BlueprintControls.SubstitutionAction, "同类替换", HotkeyContext.Gameplay, () => ControlsEnabled, substitution));
-            registry.Register(new HotkeyAction(BlueprintControls.MaterialsAction, "施工材料", HotkeyContext.Gameplay, () => CanOpenMaterials, OpenMaterials));
+            registry.Register(new HotkeyAction(BlueprintControls.MaterialsAction, "施工材料", HotkeyContext.Gameplay, () => CanOpenMaterials, OpenMaterialsFromGesture));
         }
         private void ObserveMapping()
         {

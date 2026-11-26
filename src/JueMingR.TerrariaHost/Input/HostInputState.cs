@@ -42,7 +42,7 @@ namespace JueMingR.TerrariaHost.Input
         private string[] keys = new string[0];
         private readonly bool[] physical = new bool[HotkeyChord.KeyCount];
         private bool consumeInventoryOnNextMapping, inventoryHasUnownedMouseMapping;
-        private int inventoryMouseTail;
+        private int uiMouseTail;
         private static readonly Dictionary<string, Keys> keyboardCodes = BuildKeyboardCodes();
         private static Dictionary<string, Keys> BuildKeyboardCodes()
         {
@@ -110,7 +110,7 @@ namespace JueMingR.TerrariaHost.Input
             ReadOnlyMouseMask = readOnlyTail;
             // MouseInput only staged these tokens; keyboard and gamepad mappings
             // have not merged yet. Filtering here preserves shared keyboard binds.
-            int excludedMouse = OwnedMouseMask | ReadOnlyMouseMask | inventoryMouseTail;
+            int excludedMouse = OwnedMouseMask | ReadOnlyMouseMask | uiMouseTail;
             for (int i = mouseKeys.Count - 1; i >= 0; i--)
             {
                 string key = mouseKeys[i];
@@ -120,7 +120,16 @@ namespace JueMingR.TerrariaHost.Input
             // mouse source for the same action available to vanilla.
             if (consumeInventoryOnNextMapping && GetInventoryBindings() is List<string> bindings)
                 foreach (string token in mouseKeys) inventoryHasUnownedMouseMapping |= bindings.Contains(token);
-            if (reliable) { mouseTail &= down; readOnlyTail &= down; inventoryMouseTail &= down; previousMouse = down; }
+            if (reliable) { mouseTail &= down; readOnlyTail &= down; uiMouseTail &= down; previousMouse = down; }
+        }
+        internal void ClaimUiMousePress(int key)
+        {
+            if (!Hotkeys.IsNew(key)) return;
+            // The control owns this sample. Retain only its physical mouse
+            // source for later mappings, even if the view closes first.
+            // A merged action can still arrive from an independent key.
+            uiMouseTail |= 1 << (key - 256);
+            Hotkeys.ConsumePress(key);
         }
         internal void ConsumeOwnedMouseEdges()
         { for (int i = 0; i < 5; i++) if ((OwnedMouseMask & 1 << i) != 0) Hotkeys.ConsumePress(256 + i); }
@@ -249,7 +258,7 @@ namespace JueMingR.TerrariaHost.Input
             {
                 int key = 256 + button;
                 int bit = 1 << button;
-                if (((OwnedMouseMask | ReadOnlyMouseMask | inventoryMouseTail) & bit) != 0 ||
+                if (((OwnedMouseMask | ReadOnlyMouseMask | uiMouseTail) & bit) != 0 ||
                     !Hotkeys.IsNew(key) || !bindings.Contains(HotkeyChord.KeyName(key))) continue;
                 if (button >= 2 || mouseClick == InventoryMouseClick.CloseMenu)
                 {
@@ -265,7 +274,7 @@ namespace JueMingR.TerrariaHost.Input
 
             // Mouse tokens have already mapped in this frame. Own their held
             // buttons at the existing pre-mapping filter from the next sample.
-            inventoryMouseTail |= mousePresses;
+            uiMouseTail |= mousePresses;
             ConsumeMappedInventory();
             return keyboardPress || mouseClosesMenu;
         }
@@ -364,6 +373,10 @@ namespace JueMingR.TerrariaHost.Input
                 mouse.MiddleButton == ButtonState.Released && mouse.XButton1 == ButtonState.Released && mouse.XButton2 == ButtonState.Released &&
                 !heldOperationKey && ExternalModalState != ExternalModalPhase.ModalOwned)
             {
+                // The early mapping still ran inside the rearm barrier. This
+                // trusted neutral sample retires the old UI mouse sources so
+                // the next physical press cannot be filtered as their tail.
+                uiMouseTail = 0;
                 rearming = false;
                 if (ExternalModalState == ExternalModalPhase.AwaitFocusedNeutral)
                 { ExternalModalState = ExternalModalPhase.None; externalModalRequest = Guid.Empty; }
@@ -422,13 +435,13 @@ namespace JueMingR.TerrariaHost.Input
             Hotkeys.SuppressHeld();
             ConsumeNativeUiActions();
         }
-        internal void ConsumeCancellation(int key)
+        internal void ConsumeCancellation(int key) { ConsumeUiCommand(key); }
+        internal void ConsumeUiCommand(int key)
         {
-            // An accepted child cancellation owns this frame across every
-            // dispatch admission, including target/journey/blueprint shortcuts.
-            // Retain only its actual key tail: consuming frozen edges must not
-            // suppress held movement until those unrelated keys are released.
-            Hotkeys.SuppressKey(key);
+            // An accepted shortcut or cancellation owns this frame across all
+            // dispatch admissions. Only its actual primary owns a release tail.
+            if (key >= 256) ClaimUiMousePress(key);
+            else Hotkeys.SuppressKey(key);
             for (int i = 1; i < HotkeyChord.KeyCount; i++) Hotkeys.ConsumePress(i);
             ConsumeHotkeyActions();
         }

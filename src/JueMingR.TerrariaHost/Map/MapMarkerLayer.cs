@@ -91,7 +91,13 @@ namespace JueMingR.TerrariaHost.Map
             {
                 if (visible == null || !visible.MatchesScreen()) { pressed = -1; previousLeft = left; ConsumePointer(); return; }
                 Layout(visible); hover = Hit(input.MapMouseX, input.MapMouseY);
-                if (input.Hotkeys.IsNew(27) || input.Hotkeys.IsNew(257)) { bool escape = input.Hotkeys.IsNew(27); Cancel(); tail = true; input.Hotkeys.SuppressHeld(); if (escape) input.ConsumeHotkeyActions(); ConsumePointer(); return; }
+                bool escape = input.Hotkeys.IsNew(27), rightClick = input.Hotkeys.IsNew(257);
+                if (escape || rightClick)
+                {
+                    if (rightClick) input.ClaimUiMousePress(257);
+                    if (escape) input.ConsumeCancellation(27);
+                    Cancel(); tail = true; ConsumePointer(); return;
+                }
                 if (input.Hotkeys.IsNew(256))
                 {
                     if (hover < 0) { Cancel(); tail = true; ConsumePointer(); return; }

@@ -5,6 +5,7 @@ using JueMingR.Features.MapMarkers;
 using JueMingR.Features.Text;
 using JueMingR.TerrariaHost.Input;
 using JueMingR.TerrariaHost.Notes;
+using Microsoft.Xna.Framework.Input;
 using TextElements = JueMingR.Features.Text.TextElements;
 using Terraria;
 
@@ -50,7 +51,7 @@ namespace JueMingR.TerrariaHost.F5
         public void CancelEdit() { host.Workspace.CancelEdit(); dirty = true; }
         public void PreserveUncommittedInput(TextEditBuffer editor) { host.Workspace.PreserveUncommittedInput(editor); }
         internal void Open(bool exploration)
-        { mode = exploration ? 2 : 1; session = host.Session; scroll = 0; dirty = true; input.Hotkeys.SuppressHeld(); input.ConsumeHotkeyActions(); }
+        { mode = exploration ? 2 : 1; session = host.Session; scroll = 0; dirty = true; }
         internal void BeforeInput(bool active) { TextInput.BeforeSample(active && Visible && mode == 1); }
         internal void Suspend()
         { TextInput.Release(false); host.Workspace.Suspend(); mode = 0; Pressed = Hovered = -1; OwnsPointer = false; dirty = true; Hint.Clear(); }
@@ -78,13 +79,17 @@ namespace JueMingR.TerrariaHost.F5
             TextInput.AfterSample(active && Visible && mode == 1, null, input.KeyboardSample, input.SampleFocused);
             if (!active || !input.SampleFocused) { if (Visible) Suspend(); previousLeft = left; return; }
             if (!Visible) { previousLeft = left; return; }
-            OwnsPointer = ContainsPointer(x, y) || Pressed >= 0 || TextInput.Owned;
+            bool inside = ContainsPointer(x, y);
+            bool ownsSample = OwnsPointer = inside || Pressed >= 0 || TextInput.Owned;
             Hovered = geometryCurrent ? Hit(x, y) : -1;
-            if (input.Hotkeys.IsNew(27) && !wasEditing)
-            { SafeAction(Suspend); input.Hotkeys.SuppressHeld(); input.ConsumeHotkeyActions(); previousLeft = left; return; }
+            if (input.Hotkeys.IsNew((int)Keys.Escape) && !wasEditing)
+            {
+                if (inside) for (int key = 256; key <= 260; key++) input.ClaimUiMousePress(key);
+                input.ConsumeCancellation((int)Keys.Escape); SafeAction(Suspend); previousLeft = left; return;
+            }
             if (!geometryCurrent || Pressed >= 0 && pressedGeneration != Generation) { Pressed = -1; pressedId = null; }
             if (geometryCurrent && input.Hotkeys.IsNew(256) && Hovered >= 0)
-            { Pressed = Hovered; pressedGeneration = Generation; pressedId = Targets[Hovered]; input.Hotkeys.SuppressHeld(); }
+            { Pressed = Hovered; pressedGeneration = Generation; pressedId = Targets[Hovered]; input.ClaimUiMousePress(256); }
             if (!left && previousLeft && Pressed >= 0)
             {
                 int index = Pressed; string target = pressedId; Pressed = -1; pressedId = null;
@@ -92,7 +97,9 @@ namespace JueMingR.TerrariaHost.F5
             }
             if (geometryCurrent && Body.Contains(x, y) && wheel != 0)
             { ConsumeWheel = true; scroll = Math.Max(0, Math.Min(maximumScroll, scroll + (wheel > 0 ? -1 : 1))); dirty = true; Pressed = -1; }
-            if (OwnsPointer) input.ConsumeHotkeyActions(); previousLeft = left;
+            // The click belongs to this sample, even if SafeAction closes the
+            // view now or completes later via a save receipt.
+            if (ownsSample) input.ConsumeHotkeyActions(); previousLeft = left;
         }
         private int Hit(float x, float y)
         { for (int i = 0; i < Buttons.Count; i++) if (Enabled[i] && Buttons[i].Rect.Offset(Panel.X, Panel.Y).Contains(x, y)) return i; return -1; }

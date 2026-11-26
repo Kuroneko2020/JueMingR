@@ -4,6 +4,7 @@ using System.Globalization;
 using JueMingR.Features.Notes;
 using JueMingR.Platform.DeathHistory;
 using JueMingR.TerrariaHost.Input;
+using Microsoft.Xna.Framework.Input;
 
 namespace JueMingR.TerrariaHost.F5
 {
@@ -48,11 +49,10 @@ namespace JueMingR.TerrariaHost.F5
         {
             Close(); Mode = quantity ? 1 : 2; page = currentPage; session = host.Session; Offset = 0; dirty = true;
             if (!quantity) host.RequestDetails(0);
-            input.Hotkeys.SuppressHeld(); input.ConsumeHotkeyActions();
         }
         internal void Close()
         {
-            if (Visible) { host.RequestDetails(-1); host.RequestSelection(null); input.Hotkeys.SuppressHeld(); input.ConsumeHotkeyActions(); }
+            if (Visible) { host.RequestDetails(-1); host.RequestSelection(null); }
             Mode = 0; Pressed = Hovered = -1; OwnsPointer = BlockPointer = false; scroll = 0; full = null; readText = null; SelectedId = null; shown = null; dirty = true;
         }
         internal bool ContainsPointer(float x, float y) { return Visible && Panel.Contains(x, y); }
@@ -66,23 +66,26 @@ namespace JueMingR.TerrariaHost.F5
             CheckSession();
             if (!active || !input.SampleFocused || Visible && page != currentPage) { Close(); previousLeft = input.SampleFocused ? left : true; return; }
             if (!Visible) { previousLeft = left; return; }
-            OwnsPointer = ContainsPointer(x, y) || Pressed >= 0 || input.HotkeyPointerOwned;
+            bool inside = ContainsPointer(x, y);
+            // Keep the accepted release owned for this sample even if Execute
+            // closes the popup and returns its visible pointer ownership.
+            bool ownsSample = OwnsPointer = inside || Pressed >= 0 || input.HotkeyPointerOwned;
             // The modal blocks main-page actions everywhere; only its actual
             // panel claims native pointer input (no full-screen transparent hit).
             BlockPointer = true;
             Hovered = geometryCurrent ? Hit(x, y) : -1;
-            if (input.Hotkeys.IsNew(27))
-            { input.Hotkeys.SuppressHeld(); input.ConsumeHotkeyActions(); if (Mode == 3) Back(); else Close(); previousLeft = left; return; }
-            if (ContainsPointer(x, y)) for (int key = 256; key <= 260; key++) if (input.Hotkeys.IsNew(key)) input.Hotkeys.SuppressKey(key);
+            if (inside) for (int key = 256; key <= 260; key++) input.ClaimUiMousePress(key);
+            if (input.Hotkeys.IsNew((int)Keys.Escape))
+            { input.ConsumeCancellation((int)Keys.Escape); if (Mode == 3) Back(); else Close(); previousLeft = left; return; }
             bool cancelled = Pressed >= 0 && (!geometryCurrent || pressedGeneration != Generation);
             if (!geometryCurrent || cancelled) Pressed = -1;
             if (pressed && Hovered >= 0 && !cancelled)
-            { Pressed = Hovered; pressedGeneration = Generation; input.Hotkeys.SuppressHeld(); }
+            { Pressed = Hovered; pressedGeneration = Generation; }
             if (!left && previousLeft && Pressed >= 0)
             { int command = Pressed; Pressed = -1; if (command == Hovered && pressedGeneration == Generation) Execute(command); }
-            if (geometryCurrent && ContainsPointer(x, y) && wheel != 0)
+            if (geometryCurrent && inside && wheel != 0)
             { ConsumeWheel = true; if (Body.Contains(x, y)) { int step = Math.Max(1, Math.Min(3, (int)(Body.Height / lineHeight))); scroll = Math.Max(0, Math.Min((int)bodyMax, scroll + (wheel > 0 ? -step : step))); dirty = true; Pressed = -1; } }
-            if (OwnsPointer) input.ConsumeHotkeyActions();
+            if (ownsSample) input.ConsumeHotkeyActions();
             previousLeft = left;
         }
         private int Hit(float x, float y)

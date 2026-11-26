@@ -4,6 +4,7 @@ using System.Globalization;
 using JueMingR.Features.Blueprint;
 using JueMingR.TerrariaHost.Blueprint;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 
 namespace JueMingR.TerrariaHost.F5
 {
@@ -100,9 +101,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             Close(); source = origin; anchor = entry; asset = template; selected = 0; session = host.UiSession;
             Visible = true; ready = false; dirty = true; scroll = scopeScroll = 0; snapshot = null; shownInstances = null;
-            // Retire the opening gesture in the shared physical owner. We do
-            // not create another mouse sample or synthesize a neutral release.
-            host.Input.Hotkeys.SuppressHeld(); host.Input.ConsumeHotkeyActions();
+            // The caller owns the opening action, including when it was a
+            // click on the toolbar or library. Preparing the view owns no keys.
         }
         internal void MoveAnchor(F5Rect entry)
         {
@@ -117,7 +117,7 @@ namespace JueMingR.TerrariaHost.F5
         internal bool Captured { get { return dragging || armed != null || leftTail || rightTail; } }
         internal void Close()
         {
-            if (Visible) { host.SetMaterialViewDemand(false); host.Input.Hotkeys.SuppressHeld(); host.Input.ConsumeHotkeyActions(); }
+            if (Visible) host.SetMaterialViewDemand(false);
             Visible = ready = dropDown = OwnsPointer = false; armed = hovered = null; hoveredItem = 0;
             asset = null; snapshot = null; shownInstances = observedInstances = null; labels.Clear(); buttons.Clear(); scopes.Clear(); visibleScopes.Clear(); scopeLabels.Clear();
             strictInstance = false;
@@ -145,9 +145,9 @@ namespace JueMingR.TerrariaHost.F5
             OwnsPointer = inside || dragging || leftTail || rightTail || host.Input.HotkeyPointerOwned;
             if (!current) { armed = null; EndDrag(); }
             hovered = current ? Hit(point) : null;
-            if (host.Input.Hotkeys.IsNew(27) || f5)
+            if (host.Input.Hotkeys.IsNew((int)Keys.Escape) || f5)
             {
-                host.Input.Hotkeys.SuppressKey(27); host.Input.ConsumeHotkeyActions();
+                host.Input.ConsumeCancellation((int)(f5 ? Keys.F5 : Keys.Escape));
                 if (dropDown && !f5) { dropDown = false; armed = null; dirty = true; } else Close();
                 previousLeft = left; RetireTails(left, right, focused); return;
             }

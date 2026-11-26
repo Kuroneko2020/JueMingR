@@ -490,11 +490,14 @@ namespace JueMingR.TerrariaHost.F5
             BlueprintUi?.PauseForMaterials(); BlueprintMaterialsUi.OpenAsset(entry, anchor);
         }
         internal void BeforeBlueprintLibraryOpen() { BlueprintPlacedUi?.Close(); }
-        internal void OpenBlueprintPlacedList()
+        internal void OpenBlueprintPlacedList(HotkeyChord gesture)
         {
             if (blueprint == null || BlueprintPlacedUi == null || blueprintPlacedLeavePending || !blueprint.CanOpenPlacedList) return;
             var owner = blueprint; long session = owner.UiSession;
-            inputState.Hotkeys.SuppressHeld(); inputState.ConsumeHotkeyActions();
+            // The toolbar/F5 already owns its click. A bound opener retains
+            // its primary until release, even if Notes postpones navigation.
+            if (gesture != null) inputState.ConsumeUiCommand(gesture.MainKey);
+            else inputState.ConsumeHotkeyActions();
             Action<bool> open = success =>
             {
                 blueprintPlacedLeavePending = false;
@@ -1392,23 +1395,29 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void NavigateSecondary(F5Element entry)
         {
+            // ClickedControl proves a completed click in this layout. Consume
+            // that sample here, before a map save can defer the transition.
+            // Open/Close and delayed receipts must not claim later held keys.
             F5Command command=entry.Command;
             if(command==F5Command.MarkerManage || command==F5Command.ExplorationDetails)
             {
                 bool close=MapPopup?.Visible==true && mapPopupAnchor==command;
                 if(!close && renderer.MapControls?.Available(command)!=true)return;
+                inputState.ConsumeHotkeyActions();
                 LeaveMapForSecondary(()=>{HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();FootprintPopup?.Close();if(!close){mapPopupAnchor=command;MapPopup.Open(command==F5Command.ExplorationDetails);}});
             }
             else if(command==F5Command.DeathDetails || command==F5Command.DeathConfigure)
             {
                 bool close=DeathPopup?.Visible==true && deathPopupAnchor==command;
                 if(!close && renderer.DeathControls?.Available(command)!=true)return;
+                inputState.ConsumeHotkeyActions();
                 LeaveMapForSecondary(()=>{HotkeyPopup?.Close();StylePopup?.Close();FootprintPopup?.Close();if(close)DeathPopup.Close();else{deathPopupAnchor=command;DeathPopup.Open(command==F5Command.DeathConfigure,State.Page);}});
             }
             else if(command==F5Command.FootprintConfigure)
             {
                 bool close=FootprintPopup?.Visible==true;
                 if(!close && renderer.FootprintControls?.Available(command)!=true)return;
+                inputState.ConsumeHotkeyActions();
                 LeaveMapForSecondary(()=>{HotkeyPopup?.Close();StylePopup?.Close();DeathPopup?.Close();if(close)FootprintPopup.Close();else FootprintPopup.Open(State.Page);});
             }
         }

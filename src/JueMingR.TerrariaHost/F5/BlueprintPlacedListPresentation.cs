@@ -72,7 +72,6 @@ namespace JueMingR.TerrariaHost.F5
         internal void Open()
         {
             Close(); Opened = true; session = host.UiSession; shell.ScrollTo(0);
-            host.Input.Hotkeys.SuppressHeld(); host.Input.ConsumeHotkeyActions();
         }
         internal void Close()
         {
@@ -125,7 +124,7 @@ namespace JueMingR.TerrariaHost.F5
                     if (!right && !previousRight && ReferenceEquals(target, hovered) && pressedGeneration == generation && pressedSession == session && pressedInstance == InstanceOf(target)) Execute(target, pressedInstance);
                 }
                 if (!secondaryOnly && host.Input.Hotkeys.IsNew((int)Keys.Escape))
-                { host.Input.Hotkeys.SuppressKey((int)Keys.Escape); host.Input.ConsumeHotkeyActions(); Back(); }
+                { host.Input.ConsumeCancellation((int)Keys.Escape); Back(); }
             }
             ConsumeLeft |= leftTail; ConsumeRight |= rightTail;
             if (focused) { if (!left) leftTail = false; if (!right) rightTail = false; }

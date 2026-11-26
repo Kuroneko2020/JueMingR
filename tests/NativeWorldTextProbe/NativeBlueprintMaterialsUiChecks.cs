@@ -185,9 +185,12 @@ namespace NativeWorldTextProbe
                 Frame(shell, input, 1, 1, false); Frame(shell, input, 1, 1, false, 0, Keys.F8);
                 Require((bool)Get(host, "AutoBuildEnabled"), "a fresh automatic-build chord toggles on through the shared dispatcher");
                 Call(controls, "Execute", Enum.Parse(commands, "BlueprintAutoBuildOff")); Frame(shell, input, 1, 1, false);
-                Frame(shell, input, 1, 1, false, 0, Keys.F9);
+                Frame(shell, input, 1, 1, false, 0, Keys.F9, Keys.W, Keys.X);
                 Require((bool)Get(popup, "Visible") && !(bool)Get(state, "Visible") && Get(popup, "Source").ToString() == "World", "actual material binding opens the world modal without a hidden F5 host window");
-                Frame(shell, input, 1, 1, false, 0, Keys.F9); Frame(shell, input, 1, 1, false);
+                var sampled = (HotkeyInput)Get(input, "Hotkeys");
+                Require(sampled.IsSuppressed((int)Keys.F9) && !sampled.IsSuppressed((int)Keys.W) && !sampled.IsNew((int)Keys.X),
+                    "material opener consumes competing frozen edges but retains only its own registered primary");
+                Frame(shell, input, 1, 1, false, 0, Keys.F9, Keys.W); Frame(shell, input, 1, 1, false);
                 Require((bool)Get(popup, "Visible"), "the opening material chord cannot retrigger while held");
                 Prepare(shell, graphics);
                 var body = Get(popup, "Body"); float x = (float)Get(body, "X") + 5, y = (float)Get(body, "Y") + 5;
