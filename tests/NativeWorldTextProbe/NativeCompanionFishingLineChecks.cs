@@ -516,8 +516,13 @@ namespace NativeWorldTextProbe
             NativeToolExecutionChecks.Sample(context, input, new Vector2(300, 580), false);
             NativeQuickItemChecks.BeginWorldStep();
             Call(context, "UpdateRuntime");
+            UpdateActorsAndProjectiles(first, second);
+        }
+
+        internal static void UpdateActorsAndProjectiles(Player first, Player second = null)
+        {
             first.Update(first.whoAmI);
-            second.Update(second.whoAmI);
+            second?.Update(second.whoAmI);
             int previous = Main.ProjectileUpdateLoopIndex;
             try
             {

@@ -379,7 +379,7 @@ namespace JueMingR.TerrariaHost.Companions
             actor.Combat.Choice = actor.Combat.ReadyChoice = actor.Combat.Pursuit = actor.Combat.Probe = default(CompanionAttackChoice);
             actor.Behavior.PositionChanged(actor.Body);
             IdleAim(actor);
-            FishingArrivedByWormhole(actor);
+            FishingArrivedByWormhole(actor, attempt.Automatic);
         }
 
         private void PumpWormholes(Actor actor)

@@ -15,6 +15,125 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCompanionFishingOpeningChecks
     {
+        // Reuses the normal seat, body, rod and projectile stages after the
+        // wire scenario has captured, but not yet delivered, its response.
+        internal sealed class LateWireSeat : IDisposable
+        {
+            private static readonly Point Chair = new Point(70, 50);
+            private readonly object host, actor;
+            private readonly Player owner, body;
+            private readonly Tile[,] tiles;
+            private readonly AnchoredEntitiesCollection seats;
+            private readonly Item earring;
+            private readonly Vector2 requested;
+            private int previousKey;
+
+            internal LateWireSeat(object host, object actor, Player owner, Player body)
+            {
+                this.host = host; this.actor = actor; this.owner = owner; this.body = body;
+                // The wire fixture already initialized and locked native
+                // tile data. Add only the fishing assets this later stage uses.
+                var drops = new Terraria.GameContent.FishDropRules.FishDropRuleList();
+                new Terraria.GameContent.FishDropRules.GameContentFishDropPopulator(drops).Populate();
+                Main.FishDropsDB = drops;
+                Main.instance.ChumBucketProjectileHelper = new ChumBucketProjectileHelper();
+                seats = Main.sittingManager;
+                Main.sittingManager = new AnchoredEntitiesCollection();
+                tiles = Main.tile;
+                Main.tile = (Tile[,])tiles.Clone();
+                for (int x = 42; x < 87; x++)
+                    for (int y = 45; y < 78; y++) Main.tile[x, y] = new Tile();
+                for (int x = 42; x < 73; x++) NativeToolsChecks.Tile(x, 51, TileID.Stone);
+                for (int x = 74; x <= 84; x++)
+                    for (int y = 54; y < 75; y++) Main.tile[x, y].liquid = 255;
+                var top = Main.tile[Chair.X, Chair.Y - 1];
+                var bottom = Main.tile[Chair.X, Chair.Y];
+                top.active(true); top.type = TileID.Chairs; top.frameX = 18;
+                bottom.active(true); bottom.type = TileID.Chairs; bottom.frameX = 18; bottom.frameY = 18;
+                Require(PlayerSittingHelper.GetSittingTargetInfo(owner, Chair.X, Chair.Y, out _, out Vector2 seat, out _, out _),
+                    "the later fishing request uses a genuine native chair");
+                owner.Bottom = seat + new Vector2(-8, 0);
+                owner.velocity = Vector2.Zero;
+                owner.controlLeft = owner.controlRight = owner.controlDown = owner.controlUp = owner.controlJump = false;
+                owner.sitting.SitDown(owner, Chair.X, Chair.Y);
+                Require(owner.sitting.isSitting, "the owner is seated when reopening the real fishing activity");
+                requested = owner.Bottom;
+                body.velocity = Vector2.Zero;
+                body.ResetFallDamage();
+                body.inventory[0] = new Item(ItemID.WoodFishingPole);
+                body.inventory[55] = new Item(ItemID.Worm) { stack = 30 };
+                body.inventory[12] = earring = new Item(ItemID.AnglerEarring);
+            }
+
+            internal void BeforeArrival(object activity)
+            {
+                Require((Point)Get(activity, "Seat") == Chair && (Vector2)Get(activity, "RequestedFeet") == requested,
+                    "the reopening records the real chair and the owner's latest feet");
+                owner.sitting.SitUp(owner, multiplayerBroadcast: false);
+                owner.Bottom = new Vector2(880, requested.Y);
+                Projectile wet = null;
+                for (int frame = 0; frame < 360 && wet == null; frame++)
+                {
+                    Step();
+                    wet = NativeCompanionFishingLineChecks.WetBobber(body);
+                }
+                Require(wet != null && body.sitting.isSitting && body.Bottom == requested &&
+                    body.armor.Any(item => ReferenceEquals(item, earring)),
+                    "the newer activity genuinely sits, equips its loan and reaches liquid before the delayed original reply: " +
+                    BodyState() + " search=" + GetOptional(activity, "Status") + " wet=" + wet?.Center);
+                previousKey = (int)wet.key;
+            }
+
+            internal void AfterArrival(object activity)
+            {
+                Require((Point)Get(activity, "Seat") == Chair && (Vector2)Get(activity, "RequestedFeet") == requested &&
+                    !body.sitting.isSitting && !(bool)Get(activity, "Hold") && GetOptional(activity, "Water") == null,
+                    "the displacement invalidates the newer body's old pose and water only, preserving its requested chair");
+                bool restored = false;
+                Projectile wet = null;
+                for (int frame = 0; frame < 480; frame++)
+                {
+                    Step();
+                    restored |= ReferenceEquals(body.inventory[12], earring);
+                    wet = NativeCompanionFishingLineChecks.WetBobber(body);
+                    if (wet != null && (int)wet.key != previousKey) break;
+                }
+                var pool = new Rectangle(74 * 16, 54 * 16, 11 * 16, 21 * 16);
+                bool retired = !Main.projectile.Any(p => p.active && p.bobber && p.owner == body.whoAmI && (int)p.key == previousKey);
+                // Native liquid contact uses the bobber's body rectangle.
+                // Its center can still be outside at the first wet update.
+                Require(wet != null && (int)wet.key != previousKey && restored && body.sitting.isSitting && body.Bottom == requested &&
+                    wet.Hitbox.Intersects(pool) && retired,
+                    "the original gear handback and old bobber finish before returning to the same native chair and casting another wet line: " +
+                    BodyState() + " wet=" + wet?.Hitbox + " restored=" + restored + " oldRetired=" + retired);
+                Console.WriteLine($"PASS late automatic wire arrival returns to chair {body.Bottom}; gear handback={restored}; " +
+                    $"old bobber {previousKey} retired={retired}; new native wet bobber {(int)wet.key} hitbox={wet.Hitbox} intersects pool={pool}.");
+            }
+
+            private void Step()
+            {
+                Main.sittingManager.ClearPlayerAnchors();
+                NativeQuickItemChecks.BeginWorldStep();
+                // Keep the already-attached wire fixture's actual session.
+                // Its temporary server/client table swaps are not a new world.
+                Call(host, "Update", (ulong)Main.GameUpdateCount);
+                NativeCompanionFishingLineChecks.UpdateActorsAndProjectiles(body);
+                Require(ReferenceEquals(Call(host, "Owned", body), actor) && (bool)Get(actor, "Ready") &&
+                    !(bool)Get(actor, "Closing") && !(bool)Get(actor, "Faulted"), "the connected actor remains live during native fishing updates: " + BodyState());
+            }
+
+            private string BodyState() => "status=" + Get(actor, "Status") + " lastUpdate=" + Get(actor, "LastUpdate") +
+                " mode=" + Main.netMode + " slot=" + body.whoAmI + " feet=" + body.Bottom +
+                " sitting=" + body.sitting.isSitting + " failure=" + GetOptional(actor, "TerminalFailure");
+
+            public void Dispose()
+            {
+                if (owner.sitting.isSitting) owner.sitting.SitUp(owner, multiplayerBroadcast: false);
+                Main.sittingManager = seats;
+                Main.tile = tiles;
+            }
+        }
+
         internal static void Run(object context, object host, object input, Player actor, Player other,
             CompanionProfile profile, CompanionProfile otherProfile)
         {

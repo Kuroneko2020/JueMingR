@@ -8,6 +8,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using HarmonyLib;
+using JueMingR.Features.Fishing;
 using JueMingR.Platform.Companions;
 using JueMingR.Testing;
 using Microsoft.Xna.Framework;
@@ -402,6 +403,7 @@ namespace NativeWorldTextProbe
                         Require((int)Get(serverPlayers[ai], "unacknowledgedTeleports") == 0, "both original requests settle their own server movement protection");
                         Client(clientPlayers, player);
                         AutomaticWire(host, actor, id, human, body, stream, ai, feedback, Server, () => Client(clientPlayers, player));
+                        AutomaticFishingWire(host, actor, id, human, body, serverPlayers[ai], stream, ai, Server, () => Client(clientPlayers, player));
                         Set(actor, "Connection", null);
                     }
                 }
@@ -414,6 +416,117 @@ namespace NativeWorldTextProbe
                 listener.Stop();
             }
             Console.WriteLine("PASS actual TCP mode 2/0/3, independent observer, shared native FIFO, exact two payer streams, queue rejection, bounded timeout and same-coordinate separation, and old-activation suppression after real respawn.");
+        }
+
+        private static void AutomaticFishingWire(object host, object actor, Guid id, Player human, Player body, Player authority,
+            NetworkStream stream, int ai, Action server, Action client)
+        {
+            var profile = (CompanionProfile)Get(actor, "Profile");
+            var saved = profile.Behavior;
+            var pending = (IDictionary)Get(host, "wormholeWindows");
+            var cases = new[]
+            {
+                (Name: "started, stop preference", StopPreference: true, End: false, Reopen: false),
+                (Name: "started, continue preference", StopPreference: false, End: false, Reopen: false),
+                (Name: "explicitly ended", StopPreference: true, End: true, Reopen: false),
+                (Name: "ended and reopened at another anchor", StopPreference: false, End: true, Reopen: true)
+            };
+            var failures = new List<string>();
+            NativeCompanionFishingOpeningChecks.LateWireSeat continuation = null;
+            try
+            {
+                foreach (var scene in cases)
+                {
+                    var options = NativeCompanionAutoTeleportChecks.Preferences(blocked: false, distance: true);
+                    options.TeleportStopsFishing = scene.StopPreference;
+                    if (scene.Reopen) options.Fishing = new FishingOptions(equipment: true);
+                    Require((bool)Call(host, "SetBehavior", id, options), "save the actual automatic and manual fishing preferences");
+                    for (int i = 0; i < 601; i++) NativeQuickItemChecks.BeginWorldStep();
+                    var arrival = new Vector2(780, 816);
+                    human.Bottom = arrival;
+                    body.Bottom = new Vector2(1060, 816);
+                    var start = body.position;
+                    Put(body.inventory, PotionSlot, 2);
+                    for (int i = 0; i < 120; i++)
+                    {
+                        NativeQuickItemChecks.BeginWorldStep();
+                        Call(host, "ObserveAutoTeleport", actor);
+                        Call(host, "ConsumeAutoTeleport", actor);
+                    }
+                    Require(pending.Contains(actor) && body.position == start && body.inventory[PotionSlot].stack == 1 &&
+                        (bool)Get(((IList)pending[actor])[0], "Automatic"), "the paid automatic request is already in flight before the fishing command");
+                    var open = ReadFrame(stream);
+                    var request = ReadFrame(stream);
+                    var close = ReadFrame(stream);
+                    var debit = ReadFrame(stream);
+                    Require(open[2] == 154 && request[2] == 65 && request[3] == 2 && close[2] == 154 &&
+                        debit[2] == 5 && debit[3] == ai && BitConverter.ToInt16(debit, 4) == PotionSlot,
+                        "the real companion TCP stream carries ordered native fences, wormhole mode 2 and one payer slot");
+
+                    human.Bottom = new Vector2(1040, 816);
+                    Require(Toggle(true), "the owner's normal fishing command starts while the automatic reply is pending");
+                    object expected = Get(actor, "Fishing");
+                    if (scene.Reopen) continuation = new NativeCompanionFishingOpeningChecks.LateWireSeat(host, actor, human, body);
+                    if (scene.End)
+                    {
+                        Require(Toggle(false), "the owner can explicitly finish the newer fishing activity");
+                        expected = null;
+                        if (scene.Reopen)
+                        {
+                            Require(Toggle(true), "the owner can reopen fishing after moving to a different anchor");
+                            expected = Get(actor, "Fishing");
+                        }
+                        else
+                        {
+                            options.Follow = false;
+                            Require((bool)Call(host, "SetBehavior", id, options), "the owner explicitly disables Follow on their latest activity choice");
+                        }
+                    }
+                    Vector2 requested = human.Bottom;
+                    if (expected != null)
+                        Require((Vector2)Get(expected, "RequestedFeet") == requested && requested != arrival,
+                            "the newer requested feet differ from the old network destination");
+                    continuation?.BeforeArrival(expected);
+
+                    server();
+                    foreach (var frame in new[] { open, request, close, debit }) Apply(frame, ai);
+                    Require(authority.Bottom == arrival && authority.inventory[PotionSlot].stack == 1,
+                        "the original server applies the old displacement and its real payer packet");
+                    client();
+                    NativeQuickItemChecks.Until(() => { Call(host, "PumpConnection", actor); return !pending.Contains(actor); });
+                    var ack = NativeCompanionTeamChecks.ReadKind(stream, 65);
+                    Require(ack[3] == 3 && body.Bottom == arrival && body.inventory[PotionSlot].stack == 1,
+                        "the old paid displacement still applies once and returns its real native mode 3 ACK");
+                    server(); Apply(ack, ai);
+                    Require((int)Get(authority, "unacknowledgedTeleports") == 0, "the server consumes that native ACK");
+                    client();
+
+                    object actual = GetOptional(actor, "Fishing");
+                    bool preservesChoice = ReferenceEquals(actual, expected) &&
+                        (actual == null || (Vector2)Get(actual, "RequestedFeet") == requested);
+                    if (scene.End && !scene.Reopen)
+                        preservesChoice &= !((CompanionProfile)Get(actor, "Profile")).Behavior.Follow;
+                    string evidence = $"late automatic fishing ({scene.Name}): expected activity={(expected != null)} anchor={requested}; " +
+                        $"actual activity={(actual != null)} anchor={(actual == null ? null : Get(actual, "RequestedFeet"))}; old arrival={body.Bottom}, paid stack={body.inventory[PotionSlot].stack}";
+                    Console.WriteLine((preservesChoice ? "PASS " : "FAIL ") + evidence);
+                    if (!preservesChoice) failures.Add(evidence);
+                    else continuation?.AfterArrival(expected);
+                    Require(Toggle(false), "retire the last scene through the ordinary fishing command");
+                }
+                Require(failures.Count == 0, "an older automatic displacement must preserve the latest native fishing choice: " + string.Join(" | ", failures));
+            }
+            finally
+            {
+                client();
+                try
+                {
+                    Toggle(false);
+                    Call(host, "SetBehavior", id, saved);
+                }
+                finally { continuation?.Dispose(); }
+            }
+
+            bool Toggle(bool active) => (bool)Call(host, "SetFishing", profile.OwnerId, id, active);
         }
 
         private static void AutomaticWire(object host, object actor, Guid id, Player human, Player body, NetworkStream stream, int ai,

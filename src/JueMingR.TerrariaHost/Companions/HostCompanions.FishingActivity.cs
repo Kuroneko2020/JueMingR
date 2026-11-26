@@ -54,9 +54,9 @@ namespace JueMingR.TerrariaHost.Companions
                 return tile;
             }
 
-            internal void ResetWater(Vector2 center)
+            internal void ResetWater(Vector2? center = null)
             {
-                Water = new CompanionFishingWater(center);
+                Water = center.HasValue ? new CompanionFishingWater(center.Value) : null;
                 Scanned = false;
                 Candidate = 0;
                 Measuring = Pond = RecheckingPond = null;
@@ -125,9 +125,26 @@ namespace JueMingR.TerrariaHost.Companions
             return SetBehavior(actor.Profile.Id, preferences);
         }
 
-        private void FishingArrivedByWormhole(Actor actor)
+        private void FishingArrivedByWormhole(Actor actor, bool automatic)
         {
-            if (actor.Fishing == null) return;
+            var activity = actor.Fishing;
+            if (activity == null) return;
+            if (automatic)
+            {
+                // The command was issued during Follow. A fishing activity
+                // present now owns a newer player-selected pose. Recover
+                // the displaced body and its line without replacing that
+                // activity or applying the manual recall preference.
+                if (activity.Seated) StandFromFishingSeat(actor);
+                StopFishingLine(actor);
+                actor.FishingLine.RestoreGear = true;
+                activity.Hold = activity.SeatPending = activity.Seated = false;
+                activity.FeetGoal = activity.RequestedFeet;
+                activity.Approach = 0;
+                activity.NextSeat = activity.BlockedAt = activity.RetryOriginalAt = 0;
+                activity.ResetWater();
+                return;
+            }
             bool stop = actor.Preferences.TeleportStopsFishing;
             EndFishingActivity(actor, follow: stop);
             if (!stop)
