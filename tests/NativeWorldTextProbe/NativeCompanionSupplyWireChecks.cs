@@ -216,6 +216,15 @@ namespace NativeWorldTextProbe
                 VerifyPrimaryRoomHandoff(host, actor, human, nurse);
                 var chat = NativeCompanionChatChecks.Attach(host);
                 restoreChat = chat.Restore;
+                var profile = (CompanionProfile)Get(actor, "Profile");
+                void Follow()
+                {
+                    var preference = ((CompanionProfile)Get(actor, "Profile")).Behavior;
+                    preference.Follow = true;
+                    Require((bool)Call(host, "SetBehavior", profile.Id, preference), "socket fixture sets real following behavior");
+                }
+                var beforePhone = body.position;
+                Follow();
                 var phoneRequest = UseShellphone(host, actor, body, actorPeer, chat.Remote, out string operation);
 
                 Main.netMode = 2;
@@ -244,13 +253,39 @@ namespace NativeWorldTextProbe
                     "original server consumes the real AI's Wood×7 packet5 into its last actual Bank4 slot");
                 Require(!serverHuman.bank4.item[bankItemSlot].IsNetStateDifferent(ownerBankBeforeTransfer),
                     "original server keeps the human's corresponding Bank4 cell at its post-nurse value");
+                var linkedServerPlayers = Main.player;
                 VerifyShellphoneResponse(host, actor, primaryPlayers, body, human, serverBody, actorPeer, humanPeer, humanClient, phoneRequest);
-                Main.netMode = 1; Main.dedServ = false; Main.myPlayer = humanSlot; Main.player = primaryPlayers;
-                var profile = (CompanionProfile)Get(actor, "Profile");
                 object View() => Call(host, "GetChat", profile.OwnerId, profile.Id);
-                var entries = (IReadOnlyList<LlmHistoryEntry>)Get(View(), "Entries");
-                Require(entries.Single(entry => entry.Id.ToString("N") == operation).Text.Contains("已传送到世界出生点"),
-                    "late original phone arrival updates the previously unconfirmed operation");
+                void SettleLateStay(string id, bool revoked)
+                {
+                    Main.netMode = 1; Main.dedServ = false; Main.myPlayer = humanSlot; Main.player = primaryPlayers;
+                    NativeQuickItemChecks.Until(() =>
+                    {
+                        Call(host, "PumpConnection", actor);
+                        return GetOptional(Get(actor, "Supplies"), "ChatTeleportPending") == null;
+                    });
+                    Call(host, "Control", actor);
+                    var records = (IReadOnlyList<LlmHistoryEntry>)Get(View(), "Entries");
+                    string card = records.Single(entry => entry.Id.ToString("N") == id).Text;
+                    Require(card.Contains("已传送到世界出生点") &&
+                        card.Contains(revoked ? "待命指令已失效" : "队友已原地待命") &&
+                        ((CompanionProfile)Get(actor, "Profile")).Behavior.Follow == revoked,
+                        "late arrival keeps its original operation and respects the latest real control authority: " + card);
+                }
+                SettleLateStay(operation, revoked: false);
+
+                body.position = beforePhone;
+                Follow();
+                var supersededRequest = UseShellphone(host, actor, body, actorPeer, chat.Remote,
+                    out string supersededOperation, expectedRecovery: "队友已原地待命");
+                var manual = ((CompanionProfile)Get(actor, "Profile")).Behavior;
+                manual.AttackEnabled = !manual.AttackEnabled;
+                Require((bool)Call(host, "SetBehavior", profile.Id, manual), "manual behavior supersedes the settled model order");
+                Main.netMode = 2; Main.dedServ = true; Main.myPlayer = 255; Main.player = linkedServerPlayers;
+                VerifyShellphoneResponse(host, actor, primaryPlayers, body, human, serverBody, actorPeer, humanPeer, humanClient,
+                    supersededRequest, activateClients: false);
+                SettleLateStay(supersededOperation, revoked: true);
+
                 LlmRequest recovered = null;
                 chat.Remote.Reply = request =>
                 {
@@ -259,9 +294,10 @@ namespace NativeWorldTextProbe
                 };
                 SendChat(host, profile, "几点前的手机传送完成了吗？");
                 NativeQuickItemChecks.Until(() => { Call(host, "PumpChat"); return !(bool)Get(View(), "IsRunning"); });
-                Require(recovered?.Messages.Last().Text.Contains("已传送到世界出生点") == true,
-                    "only the next explicit player message includes the late original phone arrival");
-                Console.WriteLine("PASS chat Shellphone original socket request, ordered native 154/73/154, original server 65 and ACK, late correction to the same action, and next-user recovery.");
+                Require(recovered?.Messages.Last().Text.Contains("已传送到世界出生点") == true &&
+                    recovered.Messages.Last().Text.Contains("待命指令已失效"),
+                    "next explicit player message includes the second late arrival and its revoked stay");
+                Console.WriteLine("PASS chat Shellphone original 154/73/154, server 65 and ACK after model finish, preserved stay, manual override, and next-user recovery.");
                 Console.WriteLine("PASS split nurse actual owner and AI TCP send streams -> original server 5/16/35/50; no 66; pre-admitted links.");
                 Console.WriteLine("PASS panel void transfer uses separate original TCP player-slot 5 send and receive, with no chest 32.");
             }
@@ -303,7 +339,7 @@ namespace NativeWorldTextProbe
         }
 
         private static byte[][] UseShellphone(object host, object actor, Player body, TcpClient peer,
-            NativeCompanionChatChecks.Transport transport, out string operation)
+            NativeCompanionChatChecks.Transport transport, out string operation, string expectedRecovery = null)
         {
             const int slot = 35;
             var originalItem = body.inventory[slot];
@@ -323,6 +359,8 @@ namespace NativeWorldTextProbe
                     switch (++replies)
                     {
                         case 1:
+                            Require(expectedRecovery == null || exchange.Messages.Last().Text.Contains(expectedRecovery),
+                                "next explicit player turn receives the first late arrival and confirmed stay");
                             call = new LlmToolCall("native-find-phone", "query_inventory", "{}",
                                 new Dictionary<string, object> { ["offset"] = slot });
                             break;
@@ -331,7 +369,8 @@ namespace NativeWorldTextProbe
                             int token = row.IndexOf("source=", StringComparison.Ordinal);
                             Require(row.Contains("世界出生点") && token >= 0, "original shellphone form was observed");
                             call = new LlmToolCall("native-use-phone", "use_item_once", "{}",
-                                new Dictionary<string, object> { ["source"] = row.Substring(token + 7) });
+                                new Dictionary<string, object>
+                                { ["source"] = row.Substring(token + 7), ["stay_after_teleport"] = true });
                             break;
                         default:
                             receipt = exchange.Messages.Last().Results.Single();
@@ -339,7 +378,7 @@ namespace NativeWorldTextProbe
                     }
                     return Task.FromResult(new LlmTurn("", new[] { call }, "{}"));
                 };
-                SendChat(host, profile, "用背包里的贝壳手机传送到世界出生点。");
+                SendChat(host, profile, "用背包里的贝壳手机传送到世界出生点，到达后等我。");
                 NativeQuickItemChecks.Until(() =>
                 {
                     Call(host, "PumpChat");
@@ -363,8 +402,9 @@ namespace NativeWorldTextProbe
                 Call(host, "Control", actor);
                 NativeQuickItemChecks.Until(() => { Call(host, "PumpChat"); return !(bool)Get(View(), "IsRunning"); });
                 var pending = (IReadOnlyList<LlmHistoryEntry>)Get(View(), "Entries");
-                operation = pending.Single(entry => entry.Kind == "action" && entry.Text.Contains("结果未确认")).Id.ToString("N");
-                Require(receipt?.IsError == true && receipt.Output.Contains(operation) && replies == 3,
+                operation = pending.Last(entry => entry.Kind == "action" && entry.Text.Contains("结果未确认")).Id.ToString("N");
+                Require(receipt?.IsError == true && receipt.Output.Contains(operation) && replies == 3 &&
+                    ((CompanionProfile)Get(actor, "Profile")).Behavior.Follow,
                     "the originally accepted phone reports unconfirmed with its actual operation identity");
                 return new[] { before, request, after };
             }
@@ -372,7 +412,8 @@ namespace NativeWorldTextProbe
         }
 
         private static void VerifyShellphoneResponse(object host, object actor, Player[] primaryPlayers, Player body, Player human,
-            Player serverBody, TcpClient actorPeer, TcpClient humanPeer, TcpClient humanClient, byte[][] request)
+            Player serverBody, TcpClient actorPeer, TcpClient humanPeer, TcpClient humanClient, byte[][] request,
+            bool activateClients = true)
         {
             int slot = body.whoAmI;
             var serverPlayers = Main.player;
@@ -388,7 +429,7 @@ namespace NativeWorldTextProbe
             foreach (var pair in new[] { Tuple.Create(slot, actorPeer), Tuple.Create(human.whoAmI, humanPeer) })
             {
                 var client = serverClients[pair.Item1];
-                client.Activate(new TcpSocket(pair.Item2));
+                if (activateClients) client.Activate(new TcpSocket(pair.Item2));
                 NetMessage.buffer[pair.Item1].broadcast = true;
                 for (int x = 0; x < client.TileSections.GetLength(0); x++)
                     for (int y = 0; y < client.TileSections.GetLength(1); y++)

@@ -203,6 +203,12 @@ namespace JueMingR.TerrariaHost.F5
             }
             ModelField("name", "连接名称", modelDraft.DisplayName, value => modelDraft.DisplayName = value, 80);
             ModelButtonRow(("save-name", "保存连接", SaveModel, !saving && modelRead == null));
+            ModelParagraph(modelStatus);
+            if (!String.IsNullOrEmpty(modelTestDetails))
+            {
+                if (modelTestDetailsExpanded) ModelParagraph(modelTestDetails);
+                ModelButtonRow(ModelResultDetails());
+            }
             bool enabled = modelConnections.Enabled;
             if (stored == null)
                 ModelButtonRow(("enabled", enabled ? "关闭直连" : "启用直连",
@@ -217,7 +223,6 @@ namespace JueMingR.TerrariaHost.F5
             }
             BuildModelBinding(stored, saving);
             if (!String.IsNullOrEmpty(modelStorage)) ModelParagraph(modelStorage);
-            if (!String.IsNullOrEmpty(modelStatus)) ModelParagraph(modelStatus);
         }
 
         private void BuildModelSetup()
@@ -277,11 +282,13 @@ namespace JueMingR.TerrariaHost.F5
             var options = new List<(string, string, Action, bool)>();
             options.Add(("manage", "管理连接", () => OpenModelPage(ModelPageView.Connections), modelWrite == null));
             if (modelPreset != null) options.Add(("details", "使用说明", () => OpenModelPage(ModelPageView.ProviderDetails), true));
-            if (!String.IsNullOrEmpty(modelTestDetails))
-                options.Add(("test-details", modelTestDetailsExpanded ? "收起测试详情" : "测试详情", () => { modelTestDetailsExpanded = !modelTestDetailsExpanded; Invalidate(); }, true));
+            if (!String.IsNullOrEmpty(modelTestDetails)) options.Add(ModelResultDetails());
             ModelButtonRow(options.ToArray());
             ModelDisclosure("advanced", "高级设置", modelAdvancedExpanded, () => { modelAdvancedExpanded = !modelAdvancedExpanded; HideModelSecrets(); Invalidate(); });
         }
+
+        private (string Key, string Label, Action Run, bool Enabled) ModelResultDetails() =>
+            ("test-details", modelTestDetailsExpanded ? "收起详情" : "详细结果", () => { modelTestDetailsExpanded = !modelTestDetailsExpanded; Invalidate(); }, true);
 
         private void BuildModelFooter()
         {
@@ -295,14 +302,13 @@ namespace JueMingR.TerrariaHost.F5
             {
                 modelRead == null ? ("test-chat", "测试连接", (Action)(() => StartModelTest(false)), idle) :
                     ("cancel-read", "取消请求", () => { CancelModelRequest(); ModelMessage("已取消请求。"); }, true),
-                ("test-tools", "测试工具", () => StartModelTest(true), idle),
                 ("save-use", "保存为默认", SaveModelAndUse, idle)
             }, modelFooterView, alignLastRight: true);
         }
 
         private float ModelFooterHeight(float row)
         {
-            float buttons = ConfigurationWidth("测试连接") + ConfigurationWidth("测试工具") + ConfigurationWidth("保存为默认") + 8;
+            float buttons = ConfigurationWidth("测试连接") + ConfigurationWidth("保存为默认") + 8;
             return row * (buttons > modelWidth ? 3 : 2) + 10;
         }
 

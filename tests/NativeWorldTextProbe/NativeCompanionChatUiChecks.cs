@@ -234,7 +234,7 @@ namespace NativeWorldTextProbe
                 Require(GetOptional(window, "modelDraft") != null &&
                     new[] { "model-provider", "model-field-base-setup", "model-field-api-key", "model-field-model-id", "model-test-chat", "model-save-use" }
                         .All(key => Control(key) != null && (bool)Get(Control(key), "Enabled")) &&
-                    new[] { "model-create", "model-copy", "model-delete", "model-field-name", "model-enabled", "model-default", "model-plan", "model-region" }
+                    new[] { "model-create", "model-copy", "model-delete", "model-field-name", "model-enabled", "model-default", "model-plan", "model-region", "model-test-tools" }
                         .All(key => Control(key) == null) && !(bool)Get(Control("model-save-use"), "Selected"),
                     "the zero-profile narrow page immediately exposes a complete custom connection form");
                 var connections = Get(host, "ChatConnections");
@@ -290,6 +290,14 @@ namespace NativeWorldTextProbe
                     Require(Control(key) != null, "scroll reveals " + key);
                 }
                 void ToTop() { Set(window, "modelOffset", 0); Call(window, "Invalidate"); Prepare(); }
+                ScrollTo("model-manage"); Click("model-manage"); Click("model-save-name");
+                NativeQuickItemChecks.Until(() => { Prepare(); return GetOptional(window, "modelWrite") == null; });
+                string[] Feedback() => ((IEnumerable)Get(window, "labels")).Cast<object>().Select(label => (string)Get(label, "Text")).ToArray();
+                Require(Feedback().Contains("保存未完成") && Feedback().Contains("请填写或选择模型 ID。") && Control("model-test-details") != null,
+                    "a real failed configuration write exposes its actionable cause on the management page");
+                Click("model-test-details");
+                Require(!Feedback().Contains("请填写或选择模型 ID。"), "management can collapse its visible failure details");
+                Click("model-back-to-setup");
                 void SetPreset(LlmPreset preset)
                 {
                     ToTop();
@@ -337,7 +345,10 @@ namespace NativeWorldTextProbe
                 if ((bool)Get(window, "modelAdvancedExpanded")) Click("model-advanced");
                 ToTop(); ScrollTo("model-advanced");
                 Click("model-advanced");
-                Require(Control("model-test-tools") != null && (bool)Get(window, "modelAdvancedExpanded"), "advanced fields expand in place while the fixed actions remain available");
+                Require(Control("model-test-chat") != null && Control("model-save-use") != null && (bool)Get(window, "modelAdvancedExpanded"),
+                    "advanced fields expand in place while the fixed basic actions remain available");
+                ScrollTo("model-test-tools");
+                Require((bool)Get(Control("model-test-tools"), "Enabled"), "advanced conversation settings expose the real safe tool test");
                 Require(((LlmConnectionDraft)Get(window, "modelDraft")).BaseUrl == customBase, "opening or closing disclosure preserves the entered custom address");
                 Sample(modelPoint, wheel: -120);
                 int scroll = Convert.ToInt32(Get(window, "modelOffset"));

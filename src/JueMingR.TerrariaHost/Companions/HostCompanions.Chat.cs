@@ -28,6 +28,7 @@ namespace JueMingR.TerrariaHost.Companions
     internal sealed partial class HostCompanions
     {
         private const int MaxChatText = 8192;
+        private const int MaxRecoveryFacts = 32;
         private ILlmTransport chatTransport;
         private ILlmStore chatStore;
         private readonly ConcurrentQueue<ChatCommand> chatCommands = new ConcurrentQueue<ChatCommand>();
@@ -48,6 +49,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             internal Guid Owner, Profile;
             internal long HistoryEpoch;
+            internal long ControlEpoch;
             internal bool Deleted, SkipSummary, NeedsRecoverySummary;
             internal ChatBoundary WireBoundary;
             internal string Status;
@@ -128,7 +130,7 @@ namespace JueMingR.TerrariaHost.Companions
         private sealed class ChatRun
         {
             internal ChatSession Conversation;
-            internal long HistoryEpoch;
+            internal long HistoryEpoch, StayEpoch;
             internal Guid Id = Guid.NewGuid();
             internal FishingAnchor Anchor;
             internal LlmConnectionSnapshot Connection;
@@ -137,6 +139,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal List<LlmMessage> Wire;
             internal ChatBoundary Boundary;
             internal IReadOnlyList<LlmHistoryEntry> SentFacts;
+            internal List<LlmHistoryEntry> PublicFacts;
             internal string StreamText = "";
             internal readonly Dictionary<string, ChatSource> Sources = new Dictionary<string, ChatSource>(StringComparer.Ordinal);
             internal readonly Dictionary<string, ChatResult> Consumed = new Dictionary<string, ChatResult>(StringComparer.Ordinal);
@@ -261,7 +264,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (chat.Clearing != null) { reason = "正在清空聊天记录。"; return false; }
             if (chatRuns.Count >= 8) { reason = "聊天请求过多，请稍后发送。"; return false; }
 
-            StopChat(chat, "上一轮回复已被新消息替换。", keepNotice: chat.Current != null);
+            if (chat.Current != null) StopChat(chat, "上一轮回复已被新消息替换。", keepNotice: true);
             var presence = ChatPresenceOf(profile, out _);
             var boundary = ChatBoundaryOf(profile, connection, presence);
             string actionReason = presence.Unavailable ?? CompanionChat.GameToolsUnavailable(connection);
@@ -415,10 +418,12 @@ namespace JueMingR.TerrariaHost.Companions
 
         private void StopChat(ChatSession chat, string reason, bool keepNotice)
         {
+            chat.ControlEpoch++;
             var run = chat.Current;
             if (run != null)
             {
                 chat.Current = null;
+                RecoverChatFacts(run);
                 // A begun native operation retains its completion callback.
                 // Cancellation only withdraws the mailbox and the pending hand request.
                 if (actors.TryGetValue(chat.Profile, out var actor) && actor.Profile.OwnerId == chat.Owner &&
@@ -440,6 +445,7 @@ namespace JueMingR.TerrariaHost.Companions
             foreach (var chat in chats.Values)
             {
                 if (chat.Current != null) StopChat(chat, "已结束当前世界中的模型回复。", true);
+                else chat.ControlEpoch++;
                 chat.Wire.Clear();
                 chat.WireSize = 0;
             }
@@ -468,8 +474,7 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     if (!ChatIdentityCurrent(run))
                         StopChat(chat, "队友或世界已变化，已停止上一轮模型回复。", true);
-                    else if (!ChatConnections.TryResolve(chat.Owner, chat.Profile, out var connection, out _) ||
-                        connection.WireIdentity != run.Connection.WireIdentity)
+                    else if (!ChatConnectionCurrent(run))
                         StopChat(chat, "模型连接已变化，已停止上一轮回复。", true);
                     else if (run.Stop.IsCancellationRequested && !run.Task.IsCompleted)
                         StopChat(chat, "模型回复超时，已撤回尚未开始的操作。", true);
@@ -551,6 +556,10 @@ namespace JueMingR.TerrariaHost.Companions
                 run.Boundary.Equals(ChatBoundaryOf(profile, run.Connection, ChatPresenceOf(profile, out _)));
         }
 
+        private bool ChatConnectionCurrent(ChatRun run) =>
+            ChatConnections.TryResolve(run.Conversation.Owner, run.Conversation.Profile, out var connection, out _) &&
+            connection.WireIdentity == run.Connection.WireIdentity;
+
         private void FinishChat(ChatRun run)
         {
             var chat = run.Conversation;
@@ -562,7 +571,7 @@ namespace JueMingR.TerrariaHost.Companions
                 chat.Status = turn.LocalNotice ?? "模型回复已结束。";
                 if (turn.LocalNotice != null) AddChatEntry(chat, "status", turn.LocalNotice);
                 chat.WireBoundary = run.Boundary;
-                if (turn.LocalNotice != null && turn.WireJson == null) chat.NeedsRecoverySummary = true;
+                if (turn.LocalNotice != null && turn.WireJson == null) RecoverChatFacts(run);
                 else foreach (var fact in run.SentFacts) chat.PendingFacts.Remove(fact);
                 chat.WireSize = CompanionChat.MeasureWire(run.Wire);
                 chat.Wire = chat.WireSize > run.Connection.InputBudget ? new List<LlmMessage>() : run.Wire;
@@ -571,10 +580,19 @@ namespace JueMingR.TerrariaHost.Companions
             string partial = Volatile.Read(ref run.StreamText);
             if (partial.Length != 0) AddChatEntry(chat, "assistant", partial);
             var error = run.Task.Exception?.GetBaseException();
+            if (run.Task.IsCanceled && run.StayEpoch != 0 && chat.ControlEpoch == run.StayEpoch) chat.ControlEpoch++;
             chat.Status = run.Task.IsCanceled ? "模型回复超时，已撤回尚未开始的操作。" :
                 error is LlmException || error is InvalidOperationException ? error.Message : "模型回复失败。";
-            chat.NeedsRecoverySummary = true;
+            RecoverChatFacts(run);
             AddChatEntry(chat, "status", chat.Status);
+        }
+
+        private static void RecoverChatFacts(ChatRun run)
+        {
+            var chat = run.Conversation;
+            chat.NeedsRecoverySummary = true;
+            if (run.PublicFacts != null)
+                foreach (var fact in run.PublicFacts) KeepChatFact(chat.PendingFacts, fact);
         }
 
         private static string PreviousChatSummary(IReadOnlyList<LlmHistoryEntry> entries, int budget) =>
@@ -598,19 +616,29 @@ namespace JueMingR.TerrariaHost.Companions
                 String.Join("\n", included.Select(entry => entry.Kind + "：" + entry.Text));
         }
 
-        private void AddChatEntry(ChatSession chat, string kind, string text, Guid? entryId = null, bool recover = false)
+        private static void KeepChatFact(List<LlmHistoryEntry> facts, LlmHistoryEntry entry)
+        {
+            int previous = facts.FindIndex(candidate => candidate.Id == entry.Id);
+            if (previous >= 0)
+            {
+                if (facts[previous].Time > entry.Time) return;
+                facts.RemoveAt(previous);
+            }
+            if (facts.Count >= MaxRecoveryFacts) facts.RemoveAt(0);
+            facts.Add(entry);
+        }
+
+        private void AddChatEntry(ChatSession chat, string kind, string text, Guid? entryId = null, bool recover = false,
+            ChatRun factOwner = null)
         {
             if (chat.Deleted || String.IsNullOrWhiteSpace(text)) return;
             if (text.Length > MaxChatText) text = text.Substring(0, MaxChatText);
             var entry = new LlmHistoryEntry(entryId ?? Guid.NewGuid(), kind, text, DateTimeOffset.UtcNow);
-            if (recover)
-            {
-                // An action card can be edited far back in visible history.
-                // Carry late facts independently until a real user sends again.
-                chat.PendingFacts.RemoveAll(candidate => candidate.Id == entry.Id);
-                if (chat.PendingFacts.Count >= 16) chat.PendingFacts.RemoveAt(0);
-                chat.PendingFacts.Add(entry);
-            }
+            // The player's display limit can discard a receipt before its
+            // tool round closes. Keep a bounded public fallback independently.
+            if (recover) KeepChatFact(chat.PendingFacts, entry);
+            else if (factOwner != null)
+                KeepChatFact(factOwner.PublicFacts ?? (factOwner.PublicFacts = new List<LlmHistoryEntry>()), entry);
             var entries = entryId.HasValue ? chat.Entries.ToList() : null;
             int index = entries?.FindIndex(existing => existing.Id == entry.Id) ?? -1;
             if (index >= 0)

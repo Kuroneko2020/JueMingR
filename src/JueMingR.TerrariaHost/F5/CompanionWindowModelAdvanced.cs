@@ -40,6 +40,8 @@ namespace JueMingR.TerrariaHost.F5
             ModelParagraph(thinkingHint + "。模型支持的值以服务商为准。");
 
             ModelHeading("对话与行动");
+            ModelButtonRow(("test-tools", "测试工具", () => StartModelTest(true), modelRead == null && modelWrite == null));
+            ModelParagraph("检查模型能否返回工具调用，测试期间不会执行游戏操作。");
             ModelInteger("input-budget", "上下文输入预算", modelDraft.InputBudget, 1024, 524288, value => modelDraft.InputBudget = value);
             ModelInteger("history-limit", "保留聊天条目数", modelDraft.HistoryLimit, 1, 500, value => modelDraft.HistoryLimit = value);
             ModelParagraph("输入接近预算时会用可见事实摘要续接。聊天页可以新开上下文，聊天记录仍可查看。");

@@ -192,7 +192,7 @@ namespace JueMingR.TerrariaHost.Companions
 
         private void CompleteChatQuery(ChatCommand command, string text, string publicText = null, bool error = false)
         {
-            AddChatEntry(command.Run.Conversation, "query", publicText ?? text);
+            AddChatEntry(command.Run.Conversation, "query", publicText ?? text, factOwner: command.Run);
             command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, text, error));
         }
 
@@ -246,13 +246,14 @@ namespace JueMingR.TerrariaHost.Companions
             if (run.Conversation.HistoryEpoch == run.HistoryEpoch)
             {
                 AddChatEntry(run.Conversation, "action", result.Label(), Guid.ParseExact(result.Id, "N"),
-                    recover || run.Conversation.Current != run);
+                    recover || run.Conversation.Current != run, factOwner: run);
             }
         }
 
         private void ChangeChatBehavior(ChatCommand command, Actor actor, string mode, bool? attack, bool stop)
         {
             var action = NewChatAction(command, "切换活动");
+            command.Run.Conversation.ControlEpoch++;
             bool endedFishing = false;
             if ((stop || mode != null) && actor.Fishing != null)
             {
@@ -289,8 +290,11 @@ namespace JueMingR.TerrariaHost.Companions
 
         private void InvalidateChatAction(Guid profileId, string reason)
         {
-            if (chats.TryGetValue((profiles.OwnerId, profileId), out var chat) && chat.Current != null)
-                StopChat(chat, reason, true);
+            if (chats.TryGetValue((profiles.OwnerId, profileId), out var chat))
+            {
+                if (chat.Current != null) StopChat(chat, reason, true);
+                else chat.ControlEpoch++;
+            }
         }
 
         private void StartChatFishing(ChatCommand command, Actor actor, bool notify)
@@ -312,6 +316,7 @@ namespace JueMingR.TerrariaHost.Companions
             FishingNativeBait(actor.Body, out int bait, out _);
             if (bait <= 0)
             { CompleteChatAction(command, action, "failed", "队友没有可用鱼饵。"); return; }
+            run.Conversation.ControlEpoch++;
             action.TaskId = Guid.NewGuid().ToString("N");
             var activity = BeginFishingActivity(actor, run.Anchor);
             activity.ChatTaskId = action.TaskId;
@@ -428,7 +433,17 @@ namespace JueMingR.TerrariaHost.Companions
             once.ChatActivation = command.Run.Boundary.Activation;
             once.ChatDataEpoch = command.Run.Boundary.DataEpoch;
             once.ChatStayAfterTeleport = stayAfterTeleport;
-            once.ChatCanStay = () => command.Run.Conversation.Current == command.Run && ChatIdentityCurrent(command.Run);
+            var run = command.Run;
+            long controlEpoch = ++run.Conversation.ControlEpoch;
+            if (stayAfterTeleport)
+            {
+                // The user's accepted stay order outlives a completed model
+                // turn. Manual control, another accepted order, or loss of
+                // the original body or connection still revokes that order.
+                run.StayEpoch = controlEpoch;
+                once.ChatCanStay = () => run.Conversation.ControlEpoch == controlEpoch &&
+                    ChatIdentityCurrent(run) && ChatConnectionCurrent(run);
+            }
             once.ChatStarted = message => UpdateChatAction(command.Run, action, "running", message);
             once.ChatComplete = (state, message) =>
             {
@@ -449,7 +464,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var action = NewChatAction(command, "召回队友", "recall");
             if (action == null) return;
-            TryRecall(actor.Profile.Id, automatic: false,
+            if (TryRecall(actor.Profile.Id, automatic: false,
                 chatResult: (state, message, waitingForNative) =>
                 {
                     if (action.Settled)
@@ -467,7 +482,7 @@ namespace JueMingR.TerrariaHost.Companions
                     else if (state == "running")
                         UpdateChatAction(command.Run, action, state, message);
                     else CompleteChatAction(command, action, state, message, waitForNative: waitingForNative);
-                });
+                })) command.Run.Conversation.ControlEpoch++;
         }
     }
 }
