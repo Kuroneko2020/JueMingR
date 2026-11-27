@@ -144,6 +144,12 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Platform.Companions.CompanionSetting",
                 "JueMingR.Platform.Companions.CompanionOwnerArchive",
                 "JueMingR.Platform.Companions.CompanionDeletion",
+                "JueMingR.Platform.Companions.CompanionTaskIdentity",
+                "JueMingR.Platform.Companions.CompanionTaskCondition",
+                "JueMingR.Platform.Companions.CompanionTaskStep",
+                "JueMingR.Platform.Companions.CompanionTaskOutcome",
+                "JueMingR.Platform.Companions.CompanionTaskAttempt",
+                "JueMingR.Platform.Companions.CompanionTaskSnapshot",
                 "JueMingR.Platform.Companions.ICompanionArchive"
             };
             var actual = new HashSet<string>(assembly.GetExportedTypes().Select(type => type.FullName), StringComparer.Ordinal);
