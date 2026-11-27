@@ -32,6 +32,8 @@ namespace JueMingR.TerrariaHost.Map
         private long nextPublish, offeredRevision = -1, offeredCalibration = -1;
         private int shownPercent = -1, shownStatus = -1, scanProgress, scanState, formattedProgress = -1, formattedState = -1;
         private long assetGeneration;
+        private long locatedGeneration = -1;
+        private string locatedMarker;
         private string scanText = "等待地图就绪";
 #if DEBUG
         internal long PublishChecks, FormattedValues, FormattedDetails, SummaryOffers;
@@ -42,6 +44,21 @@ namespace JueMingR.TerrariaHost.Map
         internal int Width { get { return width; } }
         internal int Height { get { return height; } }
         internal bool OwnershipCurrent { get { return Session >= 0 && ReferenceEquals(token, probe.SessionIdentity); } }
+        internal string TaskSelectedMarker
+        {
+            get
+            {
+                var saved = Markers.Saved;
+                if (locatedMarker == null || locatedGeneration != MapGeneration || !OwnershipCurrent || !Markers.Loaded || saved == null || saved.Pair != pair)
+                    return null;
+                foreach (var record in saved.Records) if (record.Id == locatedMarker) return record.Id;
+                return null;
+            }
+        }
+        // Only the map's successful Locate action establishes a reference for a
+        // later conversation. Hover, rename drafts and requests still queued
+        // for the native map view do not replace that reference.
+        internal void RecordLocatedMarker(string id) { locatedMarker = id; locatedGeneration = MapGeneration; }
         internal HostMapFeatures(string directory, SingleFeatureRuntime runtime, Items.ItemSessionProbe probe, HostInputState input)
         {
             this.runtime = runtime; this.probe = probe;

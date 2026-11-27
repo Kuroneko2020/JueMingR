@@ -94,6 +94,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 chatHistoryView = chatHistoryView.Offset(x, y);
                 chatDraftRect = chatDraftRect.Offset(x, y);
+                chatTaskHeading = chatTaskHeading.Offset(x, y);
             }
             else
             {
@@ -108,6 +109,11 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (page == ChatPage && chatHistoryView.Contains(point.X, point.Y))
             {
+                if (chatTaskDetails)
+                {
+                    chatTaskOffset = Math.Max(0, Math.Min(chatTaskMaximum, chatTaskOffset - Math.Sign(wheel) * 48));
+                    return;
+                }
                 chatOffset = Math.Max(0, Math.Min(chatMaximum, chatOffset - Math.Sign(wheel) * 48));
                 bool atLatest = chatOffset >= chatMaximum;
                 if (followChat != atLatest) Invalidate();
@@ -132,6 +138,16 @@ namespace JueMingR.TerrariaHost.F5
             else DrawModel();
         }
 
+        private void PublishAiImeAnchor(TextEditBuffer editor, F5Rect field, F5Rect caret)
+        {
+            var currentUi = Main.UIScaleMatrix;
+            if (preparedGeneration != generation || matrix != currentUi || !aiInput.CanPresentEditor(editor) || Main.instance == null) return;
+            // This runs inside the editor's actual render pass (including the
+            // dropdown search). The active scissor includes the caller's clip.
+            var clip = F5HintLayout.Intersect(field, F5ControlRenderer.LogicalClip(Main.spriteBatch.GraphicsDevice.ScissorRectangle, matrix));
+            if (F5ControlRenderer.TryImeAnchor(caret, clip, matrix, currentUi, out var anchor)) Main.instance.SetIMEPanelAnchor(anchor, 0);
+        }
+
         private sealed class CompanionAiInput : ITextEditSession, INotesClipboard
         {
             private readonly CompanionWindow window;
@@ -143,6 +159,7 @@ namespace JueMingR.TerrariaHost.F5
             internal bool Secret { get; private set; }
             public TextEditBuffer Editor { get; private set; }
             internal bool OwnsTextToken => input.OwnsTextToken;
+            internal bool CanPresentEditor(TextEditBuffer editor) => input.CanPresentEditor(window.input, editor);
             internal string Composition => input.HasCurrentEditorLease ? input.Composition : "";
             internal string Error => input.Error ?? Editor?.Error;
 

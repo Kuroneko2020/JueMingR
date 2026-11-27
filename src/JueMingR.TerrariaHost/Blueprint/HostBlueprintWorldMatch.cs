@@ -1048,6 +1048,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                     // under this one lock, rather than reading the template a
                     // mandatory second time or trusting only the last range.
                     foreach (var range in state.Ranges) if (!range.Current || !ProjectionMatchCurrent(range,range.Stamp)) return;
+                    // A companion may still be settling its final native hand.
+                    // Keep the exact retired instance as proof, distinct from manual removal.
+                    item.CompletedByWorldMatch = true;
                     RetireProjection(item); PublishProjectionScene(); InterruptProjection(); Pointer.Cancel(); Toolbar.Cancel();
                     if ((ProjectionMode == BlueprintProjectionMode.SelectingMove || ProjectionMode == BlueprintProjectionMode.SelectingRemove) && projectionScene.Count == 0) ProjectionMode = BlueprintProjectionMode.None;
 #if DEBUG

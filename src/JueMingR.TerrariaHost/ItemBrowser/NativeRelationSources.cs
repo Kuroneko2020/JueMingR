@@ -25,6 +25,8 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal string DropStatus { get; private set; } = "NPC 来源尚未准备";
         internal string ShimmerStatus { get; private set; } = "微光来源尚未准备";
         internal long Revision { get; private set; }
+        internal bool Done => dropsDone && shimmerDone;
+        internal bool IsCurrent(NativeItemCatalog catalog) => catalog.Ready && catalogRevision == catalog.Revision;
 #if DEBUG
         internal long NpcReads, GlobalReads, ShimmerReads;
 #endif

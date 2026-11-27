@@ -73,7 +73,8 @@ namespace JueMingR.TerrariaHost.Companions
                 if(TryRequestTerrain(x,y,a.Body.team))return;
             }
             if (RequestEnvironmentTerrain()) return;
-            RequestFishingTerrain();
+            if (RequestFishingTerrain()) return;
+            RequestTaskTerrain();
         }
         private static int TerrainKey(int sectionX,int sectionY)
         {

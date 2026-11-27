@@ -35,6 +35,13 @@ namespace JueMingR.TerrariaHost.Companions
             internal readonly CompanionCombatState Combat = new CompanionCombatState();
             internal readonly CompanionSupplyState Supplies = new CompanionSupplyState();
             internal FishingActivity Fishing;
+            internal TaskJob TaskWork;
+            internal TaskTravel TaskTravel;
+            internal TaskCombat TaskCombat;
+            internal Guid TaskControlId;
+            internal TaskWorldHand TaskWorldHand;
+            internal Dictionary<string,TargetTile> TaskTiles;
+            internal Vector2? TaskLastFeet;
             internal readonly CompanionFishingLine FishingLine = new CompanionFishingLine();
             internal readonly ActorEnvironment Environment = new ActorEnvironment();
             internal FurnitureRecovery Furniture;
@@ -220,6 +227,10 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private bool CloseActor(Actor a,string failure)
         {
+            RetireTaskForActor(a, "队友已收回或连接结束。");
+            RetireWorldHand(a);
+            a.TaskLastFeet = null;
+            a.TaskTiles = null;
             InvalidateChatAction(a.Profile.Id, "队友已收回或停止活动，已撤回待执行的模型指令。");
             if(failure!=null)a.TerminalFailure=failure;
             a.Closing=true;a.Body.controlUseItem=false;a.Body.channel=false;
@@ -249,6 +260,11 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void Detach(Actor a)
         {
+            if (a.TaskWork != null || a.TaskTravel != null || a.TaskCombat != null)
+                RetireTaskForActor(a, "队友身体已退出。");
+            RetireWorldHand(a);
+            a.TaskLastFeet = null;
+            a.TaskTiles = null;
             RetireJoinFeedback(a);
             a.AutoTeleport=null;
             a.Environment.Tiles=null;
@@ -315,7 +331,10 @@ namespace JueMingR.TerrariaHost.Companions
                     return Result(false, "正在钓鱼");
                 if (manual && (behavior.Follow != (profile.SettingValue(CompanionSetting.Follow) != 0) ||
                     behavior.AttackEnabled != (profile.SettingValue(CompanionSetting.Attack) != 0)))
+                {
+                    if (actors.TryGetValue(id, out var intentActor)) RetireTaskForActor(intentActor, "玩家已手动修改队友行为。");
                     InvalidateChatAction(id, "已采用手动行为设置，撤回待执行的模型指令。");
+                }
                 if (actors.TryGetValue(id, out var a) && !a.Closing)
                 {
                     CaptureActorState(a, behavior);
@@ -331,10 +350,11 @@ namespace JueMingR.TerrariaHost.Companions
         public void OnSessionEnded()
         {
             RetireArchiveIdentity();
+            PumpDukeFishing(retiring:true);
             SetFishingPage(Guid.Empty, Guid.Empty);
             navigationWorld.Reset();
             navigationActive=false;
-            owner=null;world=null;EndPasswordSession();prediction.EndWorld();CompanionThreatField.Reset();EndRetiringConnectionSession();steam.Dispose();ClearWorldSources();
+            owner=null;world=null;taskNpcWitnesses.Clear();EndPasswordSession();prediction.EndWorld();CompanionThreatField.Reset();EndRetiringConnectionSession();steam.Dispose();ClearWorldSources();
         }
         private void RetireArchiveIdentity()
         {
@@ -385,6 +405,7 @@ namespace JueMingR.TerrariaHost.Companions
             steam.Pump();
             PumpRetiringConnections();
             PumpChat();
+            PumpDukeFishing();
             if(!ArchiveIdentityCurrent())return;
             FlushItemSync();
             FlushSourceRequests();RequestSharedTerrain();
@@ -441,6 +462,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if(a.Closing)continue;
                     if(a.Faulted){CloseActor(a,a.Status);continue;}
                     if(a.Connection!=null){PumpConnection(a);if(a.Connection?.Finished==true){CloseActor(a,a.Connection.Error??"连接已结束");continue;}}
+                    PumpTask(a);
                     if(a.AutoTeleport?.HasCandidate==true)ConsumeAutoTeleport(a);
                     UpdatePasswordAttempt(a);
                     PublishTeam(a);

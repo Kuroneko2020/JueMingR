@@ -586,6 +586,10 @@ try {
         Assert-Route ($llmPlan.name -contains $name -and $all.name -contains $name) ('model consumer stays in Related and Full: '+$name)
     }
     Assert-Route ((Get-WorkloadExpectedNativeLeaf 'native-CompanionChatUiCpu') -ceq 'companions-chat-ui') 'chat UI requires the expected actual native leaf'
+    foreach ($fixture in @('Tasks','ResourceTask','CraftWire','ServiceTask','ShimmerTask','DukeTask','ChatUi')) {
+        Assert-Route (@(Get-WorkloadPathChecks "tests/NativeWorldTextProbe/NativeCompanion${fixture}Checks.cs") -contains 'native-CompanionFishingLineCpu') `
+            ('companion task fixture reaches the shared native task consumer: '+$fixture)
+    }
     $environmentRoute = Get-WorkloadRoute @('src/JueMingR.TerrariaHost/Companions/HostCompanions.Environment.cs','tests/NativeWorldTextProbe/NativeCompanionEnvironmentChecks.cs')
     $environmentPlan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog $environmentRoute.groups)
     Assert-Route ($environmentRoute.unknown.Count -eq 0 -and $environmentPlan.name -contains 'native-CompanionEnvironmentCpu' -and

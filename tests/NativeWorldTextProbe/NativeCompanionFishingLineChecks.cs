@@ -208,6 +208,8 @@ namespace NativeWorldTextProbe
                     ReferenceEquals(first.armor[4], oldWear), "ordinary stop retires the native bobber and restores exact borrowed references");
                 Console.WriteLine("PASS AI fishing: two real wet casts, pause, one native pull/bait debit/fish, chest source, recast, separate quests, sonar and exact loadout return.");
                 NativeCompanionFishingOpeningChecks.Run(context, host, input, first, second, a, b);
+                NativeCompanionTasksChecks.Run(context, host, input, human, first, second, () => Step(context, input, first, second));
+                NativeCompanionDukeTaskChecks.Run(host, human, first, () => Step(context,input,first,second));
                 NativeCompanionChatChecks.Run(host, human, first, a, () => Step(context, input, first, second));
             }
             finally

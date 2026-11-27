@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace JueMingR.Features.Blueprint
 {
@@ -72,6 +73,23 @@ namespace JueMingR.Features.Blueprint
 
         // Source transport remains in physical order. Complete object consumers
         // explicitly request display row-major, never reinterpret raw offsets.
+        public bool TryApplyWorkCore(BlueprintProjectionWindow source, BlueprintProjectionBounds displayCore,
+            out BlueprintProjectionWindow target, out string reason)
+        {
+            if (source == null) return TryApply(source,true,out target,out reason);
+            var core = SourceBounds(displayCore);
+            var selected = new HashSet<int>(source.Cells.Where(cell=>core.Contains(cell.X,cell.Y) && cell.ObjectId > 0 &&
+                (Mask.Apply(cell).Layers & CaptureLayer.Tile) != 0).Select(cell=>cell.ObjectId));
+            // An incomplete object touching only the outside of the halo
+            // must not invalidate the work core. Objects inside the core
+            // still pass the normal whole-footprint proof in TryApply.
+            var cells = source.Cells.Where(cell=>core.Contains(cell.X,cell.Y) || selected.Contains(cell.ObjectId)).ToArray();
+            var objects = source.Objects.Where(item=>selected.Contains(item.Id)).ToArray();
+            var exact = new BlueprintProjectionWindow(source.Identity,source.WindowGeneration,source.Summary,source.Bounds,
+                cells,objects,true,provenDoorContext:source.ProvenDoorContext);
+            return TryApply(exact,true,out target,out reason);
+        }
+
         public bool TryApply(BlueprintProjectionWindow source, bool displayRowMajor, out BlueprintProjectionWindow target, out string reason, bool keepEmpty = false)
         {
             target = null; reason = null;

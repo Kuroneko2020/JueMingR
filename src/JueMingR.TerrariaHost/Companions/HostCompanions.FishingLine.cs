@@ -69,10 +69,12 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var p = a.Body;
             var line = a.FishingLine;
-            if (line.Bobbers.Count != 0)
+            foreach (var known in line.Bobbers)
             {
+                if (!FishingObservation.Live(known.Body,p)) continue;
                 // The live native cast retains its original rod. A better
-                // rod found while planning can only authorize a later cast.
+                // rod can only authorize a later cast. A retired native
+                // projectile must not pin a stale rod until the next body tick.
                 rod = RodCurrent(a) ? line.Rod : null;
                 return rod != null;
             }
@@ -145,7 +147,7 @@ namespace JueMingR.TerrariaHost.Companions
                 if (line.Bobbers.Count == 0 && line.Issued == FishingHand.None) line.Ending = false;
                 return false;
             }
-            if (preempt || !ready || Main.GameUpdateCount < line.RetryAt) return false;
+            if (preempt || !ready || TaskFishingCapacityBlocked(a) || Main.GameUpdateCount < line.RetryAt) return false;
             if (line.Bobbers.Count != 0)
             {
                 if (line.PullReceived || line.Cutting || !FishingHandFree(p)) return false;
@@ -159,6 +161,12 @@ namespace JueMingR.TerrariaHost.Companions
                 foreach (var b in line.Bobbers)
                 {
                     if (!b.Body.InLiquid || b.Body.Projectile.ai[1] >= 0) continue;
+                    if (a.Fishing.Duke != null)
+                    {
+                        // A native Duke bite belongs to this exact cast.
+                        bite |= b.Qualified && b.Body.Projectile.localAI[2] == ItemID.TruffleWorm && DukeEligibleBobber(a,b.Body.Projectile);
+                        continue;
+                    }
                     bite = true;
                     var candidate = b.Body.Candidate;
                     var value = a.Preferences.Fishing;
@@ -175,7 +183,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if (line.Issued == FishingHand.Cast || line.Cutting) return false;
             bool hasRod = TryFishingRod(a, liquid, out var rod);
-            FishingNativeBait(p, out int baitPower, out _);
+            FishingActivityBait(a, out int baitPower, out _);
             FishingNeedsGear(a, !hasRod && liquid != 1, baitPower <= 0);
             if (!hasRod || baitPower <= 0 || !TryFishingAim(a, rod, out Vector2 aim) || !UpdateFishingGear(a, true, liquid) ||
                 !NativeActorCanFish(p, rod, liquid) || !RefreshActorEnvironment(a) || !FishingHandFree(p))
@@ -210,7 +218,7 @@ namespace JueMingR.TerrariaHost.Companions
                 RodCurrent(a) && p.selectedItem == line.RodSlot;
             if (current && line.Staged == FishingHand.Cast)
             {
-                FishingNativeBait(p, out int baitPower, out _);
+                FishingActivityBait(a, out int baitPower, out _);
                 current = baitPower > 0 && NativeActorCanFish(p, line.Rod, FishingLiquid(a)) &&
                     TryFishingAim(a, line.Rod, out line.Aim);
                 if (current) a.Aim = line.Aim;

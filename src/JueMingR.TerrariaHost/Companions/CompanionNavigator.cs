@@ -68,6 +68,9 @@ namespace JueMingR.TerrariaHost.Companions
         internal uint QueryPendingAge => pendingSince == 0 ? 0 : Main.GameUpdateCount - pendingSince;
         internal Vector2 Target => target;
         internal bool Supported => supported;
+        internal bool TaskArrived(Player body, Vector2 goal) => hasTarget && action.Id == 0 && supported &&
+            Vector2.DistanceSquared(target, goal) <= .01f && Math.Abs(body.velocity.X) <= 1.25f &&
+            Math.Abs(body.velocity.Y) <= 1.25f && CloseTarget(body,CompanionNativeContact.Feet(body));
 
         internal Vector2 DeliveredTravelAxis(CompanionMovementDelivery delivery, Vector2 feet)
         {

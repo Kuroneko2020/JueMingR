@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using JueMingR.Platform.Companions;
 using JueMingR.Platform.Llm;
+using JueMingR.TerrariaHost.ItemBrowser;
 using Terraria;
 
 namespace JueMingR.TerrariaHost.Companions
@@ -14,8 +15,9 @@ namespace JueMingR.TerrariaHost.Companions
         {
             ChatTool("get_companion_state", "Read the companion's current status and activity."),
             ChatTool("query_inventory", "List a page of items and source references. Teleport items report their native destination in their current form.",
-                "\"area\":{\"type\":\"string\",\"enum\":[\"inventory\",\"piggy_bank\",\"safe\",\"defender_forge\",\"void_vault\"]}," +
-                "\"filter\":{\"type\":\"string\",\"maxLength\":64},\"offset\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":58}"),
+                "\"area\":{\"type\":\"string\",\"enum\":[\"inventory\",\"armor\",\"equipment\",\"piggy_bank\",\"safe\",\"defender_forge\",\"void_vault\"]}," +
+                "\"filter\":{\"type\":\"string\",\"maxLength\":64},\"purpose\":{\"type\":\"string\"},\"minimum_power\":{\"type\":\"integer\",\"minimum\":0}," +
+                "\"offset\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":58}"),
             ChatTool("set_behavior", "Set following or staying and/or change whether the companion attacks.",
                 "\"mode\":{\"type\":\"string\",\"enum\":[\"follow\",\"stay\"]},\"attack\":{\"type\":\"boolean\"}"),
             ChatTool("start_fishing", "Start the existing fishing activity at the feet/seat captured when the user sent this message.",
@@ -34,6 +36,10 @@ namespace JueMingR.TerrariaHost.Companions
         private static LlmToolDefinition ChatTool(string name, string description, string fields = "", string required = "") =>
             new LlmToolDefinition(name, description,
                 "{\"type\":\"object\",\"properties\":{" + fields + "},\"additionalProperties\":false" + required + "}");
+
+        private static IReadOnlyList<LlmToolDefinition> AllChatTools => ChatToolProjection.Value;
+        private static readonly Lazy<IReadOnlyList<LlmToolDefinition>> ChatToolProjection =
+            new Lazy<IReadOnlyList<LlmToolDefinition>>(() => ChatTools.Concat(TaskChatTools).Concat(KnowledgeChatTools).ToArray());
 
         private readonly struct ChatSource
         {
@@ -108,13 +114,18 @@ namespace JueMingR.TerrariaHost.Companions
                             "，自动攻击：" + (actor.Preferences.AttackEnabled ? "开" : "关") +
                             "，生命 " + actor.Body.statLife + "/" + actor.Body.statLifeMax2 +
                             "，魔力 " + actor.Body.statMana + "/" + actor.Body.statManaMax2 +
-                            "。可查询背包内的原版传送物品及其目的地。观察时间（UTC）" + time);
+                            "；基础生命 " + actor.Body.statLifeMax + "，装备后防御 " + actor.Body.statDefense +
+                            "，当前持物 #" + actor.Body.HeldItem.type + "，翼飞 " + (actor.Body.wingsLogic > 0) +
+                            "，冲刺 " + (actor.Body.dashType > 0) +
+                            "。可分开查询装备、背包、世界和实际任务。观察时间（UTC）" + time);
                         return;
                     case "query_inventory":
-                        if (!ChatFields(args, "area", "filter", "offset") ||
+                        if (!ChatFields(args, "area", "filter", "purpose", "minimum_power", "offset") ||
                             !ChatString(args, "area", 24, out var area) || !ChatString(args, "filter", 64, out var filter) ||
+                            !ChatString(args, "purpose", 24, out var purpose) || !NativeKnowledgeQuery.IsPurpose(purpose) ||
+                            !ReadChatInt(args, "minimum_power", 0, 0, 10000, out int power) ||
                             !ChatOffset(args, out int offset)) break;
-                        QueryChatInventory(command, actor, area, filter, offset);
+                        QueryChatInventory(command, actor, area, filter?.Trim(), purpose, power, offset);
                         return;
                     case "set_behavior":
                     case "stop_activity":
@@ -147,6 +158,7 @@ namespace JueMingR.TerrariaHost.Companions
                         else RejectChatTool(command, "本会话中没有这项操作。");
                         return;
                 }
+                if (DispatchChatTaskTool(command) || DispatchChatKnowledgeTool(command, actor)) return;
                 RejectChatTool(command, "工具名称或参数不受支持。");
             }
             catch (Exception)
@@ -254,6 +266,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var action = NewChatAction(command, "切换活动");
             command.Run.Conversation.ControlEpoch++;
+            if ((stop || mode != null) && GetTask(actor.Profile.OwnerId, actor.Profile.Id)?.IsActive == true)
+                StopTask(actor.Profile.OwnerId, actor.Profile.Id);
             bool endedFishing = false;
             if ((stop || mode != null) && actor.Fishing != null)
             {
@@ -276,6 +290,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (ChatProfile(ownerId, profileId) == null || !TryFishingActor(ownerId, profileId, out var actor))
                 return false;
             InvalidateChatAction(profileId, "已停止当前活动的待执行模型指令。");
+            StopTask(ownerId, profileId);
             bool fishing = actor.Fishing != null;
             if (fishing && !EndFishingActivity(actor)) return false;
             var behavior = actor.Profile.Behavior;
@@ -345,13 +360,15 @@ namespace JueMingR.TerrariaHost.Companions
             CompleteChatAction(command, action, "running", "已开始前往发送时的钓位（" + tile.X + "，" + tile.Y + "）。");
         }
 
-        private void QueryChatInventory(ChatCommand command, Actor actor, string area, string filter, int offset)
+        private void QueryChatInventory(ChatCommand command, Actor actor, string area, string filter, string purpose, int power, int offset)
         {
             CompanionInventoryArea inventory;
             switch (area)
             {
                 case null:
                 case "inventory": inventory = CompanionInventoryArea.Inventory; break;
+                case "armor": inventory = CompanionInventoryArea.Armor; break;
+                case "equipment": inventory = CompanionInventoryArea.Misc; break;
                 case "piggy_bank": inventory = CompanionInventoryArea.PiggyBank; break;
                 case "safe": inventory = CompanionInventoryArea.Safe; break;
                 case "defender_forge": inventory = CompanionInventoryArea.DefenderForge; break;
@@ -375,12 +392,12 @@ namespace JueMingR.TerrariaHost.Companions
             for (int slot = offset; slot < length; slot++)
             {
                 var item = items[slot];
-                if (item == null || item.IsAir || !String.IsNullOrEmpty(filter) &&
-                    item.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (item == null || item.IsAir || !NativeKnowledgeQuery.NameMatches(item, filter)) continue;
+                string destination = DescribeItemTeleport(item.type);
+                if (!NativeKnowledgeQuery.Matches(item, purpose, power, destination)) continue;
                 if (rows.Count == 12) { rows.Add("下一页 offset=" + slot); break; }
                 string line = "槽 " + slot + " · " + item.Name + "（类型 " + item.type + "，前缀 " + item.prefix + "）×" + item.stack;
                 observed.Add(item.Name + " ×" + item.stack);
-                var destination = ItemTeleportDestination(ItemTeleportKind(item.type));
                 if (destination != null) line += " · 原版传送：" + destination;
                 if (inventory == CompanionInventoryArea.Inventory && slot < CompanionBehavior.MainInventorySlots &&
                     command.Run.Sources.Count < 128)
@@ -391,7 +408,9 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 rows.Add(line);
             }
-            CompleteChatQuery(command, rows.Count == 0 ? "这一页没有匹配的物品。" : String.Join("\n", rows),
+            bool aliasesPending = NativeItemAliases.IsPending(filter);
+            CompleteChatQuery(command, rows.Count == 0 ? aliasesPending ? "partial · 还在准备原版别名，当前名称没有匹配项。" :
+                "这一页没有匹配的物品。" : String.Join("\n", rows),
                 "查看物品 · " + (observed.Count == 0 ? "这一页没有匹配的物品。" : String.Join("、", observed)));
         }
 

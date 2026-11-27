@@ -97,6 +97,7 @@ namespace JueMingR.TerrariaHost.Companions
             InstallMobilityHooks();
             CompanionSupplyHooks.Install(value);
             InstallFishing();
+            InstallTaskCritters();
             installed=true;
         }
         private static void Patch(Type t,string method,string prefix=null,string postfix=null,string finalizer=null,string transpiler=null,Type[] args=null)
@@ -130,12 +131,13 @@ namespace JueMingR.TerrariaHost.Companions
             private readonly NPC[] npcTable;
             private readonly uint[,] staticHits;
             private readonly IDisposable personalView;
+            private readonly bool exactWorldUse, autoPaint, autoActuator;
             private readonly BiomeScope scene;
             internal int HumanIndex => previous == null ? oldPlayer : previous.HumanIndex;
             internal List<ShieldImpact> HumanShieldHits;
             internal Scope Root => previous == null ? this : previous.Root;
             private static ulong Resources(Player p){unchecked{ulong value=1469598103934665603;for(int i=0;i<p.inventory.Length;i++){var item=p.inventory[i];value=(value^(uint)(item.type*31+item.stack))*1099511628211;}return value;}}
-            internal Scope(HostCompanions.Actor actor,Vector2 aim,bool inventory,bool personalItems,bool rawCursor=false)
+            internal Scope(HostCompanions.Actor actor,Vector2 aim,bool inventory,bool personalItems,bool rawCursor=false,bool exactWorldUse=false)
             {
                 this.inventory=inventory;life=actor.Body.statLife;mana=actor.Body.statMana;if(inventory)resources=Resources(actor.Body);
                 staticHits=host.EnterObservedNpcHitState(Main.npc);npcTable=host.EnterNpcObservation();
@@ -156,6 +158,15 @@ namespace JueMingR.TerrariaHost.Companions
                 // Scoped native effects (for example campfires, banners and
                 // candles) must see the same actor as the borrowed player ID.
                 scene=new BiomeScope(actor.Environment.Scene);
+                this.exactWorldUse = exactWorldUse;
+                if (exactWorldUse)
+                {
+                    autoPaint = actor.Body.autoPaint; autoActuator = actor.Body.autoActuator;
+                    // Blueprint layers and direct tile actions have exact
+                    // resource intent. Native builder accessory side effects
+                    // must not consume other paint, wire, or actuators.
+                    actor.Body.autoPaint = actor.Body.autoActuator = false;
+                }
             }
             public void Dispose()
             {
@@ -171,6 +182,7 @@ namespace JueMingR.TerrariaHost.Companions
                     try{try{personalView?.Dispose();}finally{try{host.LeaveNpcObservation(npcTable);}finally{host.LeaveObservedNpcHitState(staticHits);}}}
                     finally
                     {
+                        if (exactWorldUse) { Actor.Body.autoPaint = autoPaint; Actor.Body.autoActuator = autoActuator; }
                         scene.Dispose();
                         Main.myPlayer=oldPlayer;Main.mouseX=x;Main.mouseY=y;Player.tileTargetX=tileX;Player.tileTargetY=tileY;Main.mapFullscreen=map;Main.mouseItem=mouse;current=previous;
                         ApplyHumanShieldHits(HumanShieldHits);
@@ -210,7 +222,7 @@ namespace JueMingR.TerrariaHost.Companions
             host.RefreshActorEnvironment(a);
             host.AfterBody(a);}}
         private static void NpcWorldAfter(){host?.AdvanceNpcObservation();}
-        private static void PersonalItemsAfter(){host?.AdvancePersonalItems();}
+        private static void PersonalItemsAfter(){host?.AdvancePersonalItems();host?.AdvanceTaskShimmerDrops();}
         private static void CompanionNamesAfter(){host?.DrawCompanionNames();}
         private static Exception PlayerFinal(Exception __exception,Player __instance,PlayerStep __state)
         {
@@ -231,6 +243,11 @@ namespace JueMingR.TerrariaHost.Companions
             if(use && host.PrepareMobilityItem(a,out Vector2 mobilityAim))
             {
                 __state=new Scope(a,mobilityAim,__instance.controlUseItem,false);
+                return;
+            }
+            if(use && host.PrepareWorldTaskItem(a,out Vector2 taskAim))
+            {
+                __state=new Scope(a,taskAim,true,false,exactWorldUse:true);
                 return;
             }
             if(use)
@@ -376,6 +393,7 @@ namespace JueMingR.TerrariaHost.Companions
             bool teleport = copy[2] == 65;
             if (teleport) host.ObserveWormholeSend(current.Actor, copy, null);
             if (copy.Length == 4 && copy[2] == 73) host.PrepareChatItemTeleportRequest(current.Actor, copy[3]);
+            if (copy[2] == 21) host.PrepareTaskShimmerDrop(current.Actor);
             try { current.PacketAccepted = connection.TrySend(copy); }
             catch (CompanionConnection.SendQueueFullException) when (teleport && !connection.IsRelay)
             {
@@ -383,7 +401,12 @@ namespace JueMingR.TerrariaHost.Companions
                 throw;
             }
             if (teleport) host.ObserveWormholeSend(current.Actor, copy, current.PacketAccepted);
-            if(current.PacketAccepted)host.RecordActorPacket(current.Actor,copy);
+            if(current.PacketAccepted)
+            {
+                host.ObserveTaskWorldSend(current.Actor,copy);
+                if (copy[2] == 61) host.ObserveDukeSend(current.Actor,copy);
+                host.RecordActorPacket(current.Actor,copy);
+            }
             return false;
         }
         private static bool Packet(MessageBuffer __instance,int start,int length,ref int messageType,out bool __state)
@@ -410,6 +433,11 @@ namespace JueMingR.TerrariaHost.Companions
             if (messageType == 66 && length >= 4 && BitConverter.ToInt16(__instance.readBuffer,start+2)>0)
                 host.SharedHealApplied(__instance.readBuffer[start+1]);
             if (messageType == 23 || messageType == 28 || messageType == 54 || messageType == 60) host.PrimaryNpcApplied(__instance.readBuffer,start,length);
+            int tileOffset = messageType == 17 ? 2 : messageType == 48 || messageType == 59 || messageType == 63 ||
+                messageType == 64 || messageType == 79 ? 1 : -1;
+            if (tileOffset >= 0 && length >= tileOffset + 4)
+                host.ObserveTaskWorldTile(BitConverter.ToInt16(__instance.readBuffer,start+tileOffset),
+                    BitConverter.ToInt16(__instance.readBuffer,start+tileOffset+2));
         }
         private static bool ObservationPending(ref int damage,ref bool phaseChange)
         {if(host==null || !host.ReadingObservation)return true;damage=0;phaseChange=false;return false;}

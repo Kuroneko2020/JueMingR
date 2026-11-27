@@ -478,7 +478,7 @@ namespace NativeWorldTextProbe
             Require((bool)Get(content, "HoldingPending") && (int)Get(content, "Count") == 70 && (float)Get(popup, "scroll") == scroll,
                 "empty Pending preserves same-scope measured ItemType rows and scroll instead of clamping to the top");
             var labels = Objects(Get(popup, "labels"));
-            Require(labels.Any(e => ((string)Get(e, "Text")).Contains("剩余材料 —")), "Pending summary never presents the last exact total as current");
+            Require(labels.Any(e => (string)Get(e, "Text") == "剩余材料正在计算"), "Pending summary never presents the last exact total as current");
             foreach (var row in Objects(Get(content, "Visible")))
             {
                 var glyphs = Objects(Get(row, "Glyphs"));

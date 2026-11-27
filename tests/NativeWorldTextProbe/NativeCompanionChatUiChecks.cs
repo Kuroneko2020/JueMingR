@@ -9,6 +9,7 @@ using System.Runtime.Remoting.Proxies;
 using System.Threading;
 using System.Threading.Tasks;
 using JueMingR.Platform.Hotkeys;
+using JueMingR.Platform.Companions;
 using JueMingR.Platform.Llm;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -117,9 +118,119 @@ namespace NativeWorldTextProbe
                 Image("chat-wide");
                 Resize(1280, 800, 1f); SeedChat(); Image("chat-medium");
                 Resize(700, 500, 1f); SeedChat(); Image("chat-narrow");
+                CheckDrawContinuity(context, window, graphics, output);
+                Resize(960, 640, 1f);
+                Call(window, "Toggle", Get(layout, "Viewport")); PrepareTaskPicture();
                 Console.WriteLine("PASS original XNA model and chat at 700x500, 1280x800 and 1920x1080 (115%); dropdown, long fields, advanced errors and conversation cards.");
+
+                void PrepareTaskPicture()
+                {
+                    Resize(960, 640, 1f);
+                    NativeCompanionCoreLifecycleChecks.PrepareHuman();
+                    Require((bool)Call(host, "Join", id), "the showcased task uses a real joined companion");
+                    var body = Call(host, "GetBody", id);
+                    var actor = Call(host, "Owned", body);
+                    var profile = (CompanionProfile)Get(actor, "Profile");
+                    var identity = new CompanionTaskIdentity(profile.OwnerId, id, (long)Get(host, "session"), (long)Get(actor, "Generation"), profile.DataEpoch);
+                    var anchor = host.GetType().GetMethod("CaptureFishingAnchor", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { Main.LocalPlayer });
+                    var need = new CompanionTaskCondition("has_item", new Dictionary<string, object>
+                    { ["item_type"] = (int)Terraria.ID.ItemID.TerraBlade, ["quantity"] = 1 }, wait: true, timeoutTicks: 600);
+                    var waiting = (CompanionTaskSnapshot)Call(host, "SubmitTask", identity, "有武器后待命",
+                        new[] { new CompanionTaskStep("stand_by", null, condition: need) }, anchor, Guid.NewGuid());
+                    Require(waiting.State == "accepted", "condition task enters the real runtime: " + waiting.Detail);
+                    CompanionTaskSnapshot Current() => (CompanionTaskSnapshot)Call(host, "GetTask", profile.OwnerId, id, null);
+                    NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); return Current().State == "waiting"; });
+                    Resize(960, 640, 1f);
+                    Open("profile:" + id); Open("chat");
+                    Require((string)Get(window, "chatTaskReason") == Current().Detail && Current().Detail.Contains("主背包数量 0"),
+                        "default task view renders the authoritative waiting reason without opening details");
+                    Image("chat-task-waiting");
+                    Open("chat-stop-task:" + waiting.TaskId);
+                    var task = (CompanionTaskSnapshot)Call(host, "SubmitTask", identity, "在这里等我", new[] { new CompanionTaskStep("stand_by", null) }, anchor, Guid.NewGuid());
+                    Require(task.State == "accepted", "task visible in native draw begins in the authoritative accepted state");
+                    NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); return ((CompanionTaskSnapshot)Call(host, "GetTask", profile.OwnerId, id, null)).State == "succeeded"; });
+                    Resize(960, 640, 1f);
+                    Require(Control("chat-stop-task:" + task.TaskId) != null, "an already entered standby remains stoppable in the visible task bar");
+                    Require(((string)Get(window, "chatTaskSummary")).StartsWith("待命中", StringComparison.Ordinal), "default view presents the real ongoing stance");
+                    Image("chat-task");
+                    Open("chat-task-details"); Image("chat-task-detail");
+                    bool follows = profile.Behavior.Follow;
+                    Open("chat-stop-task:" + task.TaskId);
+                    Require(((CompanionTaskSnapshot)Call(host, "GetTask", profile.OwnerId, id, null)).State == "cancelled" &&
+                        ((CompanionProfile)Get(actor, "Profile")).Behavior.Follow == follows && Control("chat-stop-task:" + task.TaskId) == null,
+                        "the real viewed task stop retires the completed standby and preserves Follow");
+                    Console.WriteLine("PASS native rendered task bar, expandable receipt and physical stop after entering standby.");
+                }
             }
             finally { Call(window, "Close"); NativeToolsUiChecks.Mouse(Vector2.Zero, false); }
+        }
+
+        internal static void CheckTaskControls(object context, object host, CompanionProfile first, CompanionProfile second)
+        {
+            var shell = Get(context, "Shell"); var window = Get(shell, "CompanionUi");
+            var layout = Get(Get(shell, "State"), "Layout");
+            var renderer = Get(shell, "renderer");
+            var originalFont = Terraria.GameContent.FontAssets.MouseText;
+            var screen = new Vector2(700, 500);
+            var ai = Get(window, "aiInput"); var text = Get(ai, "input");
+            var imeField = text.GetType().GetField("ime", BindingFlags.Instance | BindingFlags.NonPublic);
+            object originalIme = imeField.GetValue(text);
+            CompanionTaskSnapshot View(CompanionProfile profile) => (CompanionTaskSnapshot)Call(host, "GetTask", profile.OwnerId, profile.Id, null);
+            object Control(string key) => ((IEnumerable)Get(window, "controls")).Cast<object>().SingleOrDefault(c =>
+                ((string)Get(c, "Key")).StartsWith(key + "/", StringComparison.Ordinal));
+            void Sample(Vector2 at, bool left = false, string queue = "", int wheel = 0)
+            {
+                NativeToolsUiChecks.Mouse(at, left);
+                Call(window, "BeforeInput", true);
+                Main.keyCount = queue.Length;
+                for (int i = 0; i < queue.Length; i++) { Main.keyInt[i] = queue[i]; Main.keyString[i] = queue[i].ToString(); }
+                Call(window, "ProcessLayoutInput", true, new KeyboardState(), at, Matrix.Identity, screen, true, wheel);
+            }
+            Vector2 At(string key) => NativeToolsUiChecks.Point(Get(Control(key) ?? throw new InvalidOperationException("Task fixture control absent: " + key), "Rect"));
+            void Click(string key) { var at = At(key); Sample(at); Sample(at, true); Sample(at); }
+            try
+            {
+                if (originalFont?.Value == null) FiniteCostChecks.SetCpuFont(8);
+                Call(renderer, "RefreshResources");
+                Call(renderer, "Prepare", Get(shell, "State"), screen.X, screen.Y, 1f);
+                Call(window, "Close"); imeField.SetValue(text, new TextCandidate(imeField.FieldType).GetTransparentProxy());
+                NativeToolsUiChecks.Mouse(Vector2.Zero, false);
+                Call(window, "Toggle", Get(layout, "Viewport"));
+                Call(window, "PrepareLayout", Matrix.Identity, screen);
+                var a = View(first); var b = View(second);
+                Require(a.State == "paused" && b.State == "succeeded", "task UI uses independently observed running and completed task states");
+                Click("profile:" + first.Id); Click("chat"); Click("chat-draft");
+                Sample(At("chat-draft"), queue: "任务期间的草稿");
+                var editor = (JueMingR.Features.Text.TextEditBuffer)Get(ai, "Editor");
+                var editorRect = Get(window, "chatDraftRect");
+                var history = Get(window, "chatBlocks");
+                int layouts = (int)Get(window, "LayoutBuilds");
+                for (int i = 0; i < 60; i++) Call(window, "PrepareLayout", Matrix.Identity, screen);
+                Require((int)Get(window, "LayoutBuilds") == layouts, "stable task progress does not rebuild the chat layout");
+                var historyOffset = (float)Get(window, "chatOffset");
+                Click("chat-task-details");
+                var details = ((IEnumerable)Get(window, "chatTaskDetailLines")).Cast<object>().Select(line => (string)Get(line, "Text")).ToArray();
+                Require(details.Any(line => line.Contains("第 1 步")) && ReferenceEquals(editor, Get(ai, "Editor")) && editor.Text == "任务期间的草稿" &&
+                    editorRect.Equals(Get(window, "chatDraftRect")), "showing real receipts keeps the current editor and its layout");
+                Sample(NativeToolsUiChecks.Point(Get(window, "chatHistoryView")), wheel: -120);
+                Click("chat-task-details");
+                Require((float)Get(window, "chatOffset") == historyOffset && ReferenceEquals(history, Get(window, "chatBlocks")), "task receipt browsing preserves the conversation scroll and cache");
+                Click("profile:" + second.Id);
+                bool follow = (bool)Get(Get(Call(window, "CurrentProfile"), "Behavior"), "Follow");
+                Click("chat-stop-task:" + b.TaskId);
+                Require(View(second).State == "cancelled" && View(first).TaskId == a.TaskId && View(first).State == "paused" &&
+                    (bool)Get(Get(Call(window, "CurrentProfile"), "Behavior"), "Follow") == follow,
+                    "stopping an ongoing stance after completion targets only the selected companion and leaves Follow unchanged");
+                Require(Control("chat-stop-task:" + b.TaskId) == null, "retired task no longer offers a stop action");
+                Click("profile:" + first.Id);
+                Require(ReferenceEquals(editor, Get(Get(window, "currentChatDraft"), "Text")), "reselecting the first companion restores its own unsent draft");
+                Console.WriteLine("PASS real task toolbar: progress, details, draft and scroll, no steady rebuild, stable owner-selected stop after standby completion, preserved Follow.");
+            }
+            finally
+            {
+                Call(window, "Close"); imeField.SetValue(text, originalIme); Main.clrInput(); NativeToolsUiChecks.Mouse(Vector2.Zero, false);
+                Terraria.GameContent.FontAssets.MouseText = originalFont; Call(renderer, "RefreshResources");
+            }
         }
 
         private sealed class TextCandidate : RealProxy
@@ -127,11 +238,163 @@ namespace NativeWorldTextProbe
             internal TextCandidate(Type type) : base(type) { }
             internal string Composition = "";
             internal bool Candidate;
+            internal int Toggles;
             public override IMessage Invoke(IMessage message)
             {
                 var call = (IMethodCallMessage)message;
+                if (call.MethodName == "Toggle") Toggles++;
                 object result = call.MethodName == "get_Composition" ? (object)Composition : call.MethodName == "get_Candidates" ? Candidate : (object)null;
                 return new ReturnMessage(result, null, 0, call.LogicalCallContext, call);
+            }
+        }
+
+        private static void CheckDrawContinuity(object context, object window, ProbeGraphics graphics, string output)
+        {
+            const BindingFlags fields = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public;
+            var physicalInput = Get(context, "Input");
+            var ai = Get(window, "aiInput"); var text = Get(ai, "input");
+            var imeField = text.GetType().GetField("ime", fields); var originalIme = imeField.GetValue(text);
+            var ime = new TextCandidate(imeField.FieldType);
+            var nativeAnchor = typeof(Main).GetField("imePanelAnchor", fields);
+            var foreground = Get(physicalInput, "foregroundWindow");
+            float scale = Main.UIScale; int oldWidth = Main.screenWidth, oldHeight = Main.screenHeight;
+            var screen = new Vector2(960, 640);
+            void Prepare() => Call(window, "Prepare", Main.UIScaleMatrix, screen);
+            object Rect(string key) => Get(((IEnumerable)Get(window, "controls")).Cast<object>().SingleOrDefault(c =>
+                ((string)Get(c, "Key")).StartsWith(key + "/", StringComparison.Ordinal)) ?? throw new InvalidOperationException("IME fixture field absent: " + key), "Rect");
+            void Sample(Vector2 at, bool left = false, Keys[] keys = null, string press = null)
+            {
+                keys = keys ?? Array.Empty<Keys>();
+                NativeQuickItemChecks.Sample(physicalInput, keys);
+                NativeToolsUiChecks.Mouse(at, left);
+                Call(window, "BeforeInput", true);
+                if (press != null)
+                {
+                    Main.keyCount = press.Length;
+                    for (int i = 0; i < press.Length; i++) { Main.keyInt[i] = press[i]; Main.keyString[i] = press[i].ToString(); }
+                }
+                Call(window, "Process", true, new KeyboardState(keys), at, Main.UIScaleMatrix, screen, true, 0);
+            }
+            void Click(Vector2 at) { Sample(at); Sample(at, true); Sample(at); }
+            Color[] Draw(Rectangle? restrict = null)
+            {
+                nativeAnchor.SetValue(null, null);
+                return graphics.Pixels(() =>
+                {
+                    var device = graphics.GraphicsDevice;
+                    var prior = device.ScissorRectangle;
+                    if (restrict.HasValue) device.ScissorRectangle = restrict.Value;
+                    try { Call(window, "Draw"); }
+                    finally { if (restrict.HasValue) device.ScissorRectangle = prior; }
+                }, Main.UIScaleMatrix, (int)screen.X, (int)screen.Y);
+            }
+            Vector2 Anchor() => (Vector2)Get(nativeAnchor.GetValue(null) ?? throw new InvalidOperationException("Native IME anchor missing"), "Position");
+            Rectangle Crop(object rect)
+            {
+                var a = Vector2.Transform(new Vector2((float)Get(rect, "X"), (float)Get(rect, "Y")), Main.UIScaleMatrix);
+                var b = Vector2.Transform(new Vector2((float)Get(rect, "Right"), (float)Get(rect, "Bottom")), Main.UIScaleMatrix);
+                return new Rectangle((int)Math.Ceiling(a.X), (int)Math.Ceiling(a.Y), (int)Math.Floor(b.X) - (int)Math.Ceiling(a.X),
+                    (int)Math.Floor(b.Y) - (int)Math.Ceiling(a.Y));
+            }
+            bool SameCrop(Color[] a, Color[] b, Rectangle area)
+            {
+                for (int y = area.Top; y < area.Bottom; y++)
+                    for (int x = area.Left; x < area.Right; x++)
+                        if (a[y * (int)screen.X + x] != b[y * (int)screen.X + x]) return false;
+                return true;
+            }
+            void Check(string label, object field)
+            {
+                var at = NativeToolsUiChecks.Point(field);
+                Click(at);
+                var buffer = (JueMingR.Features.Text.TextEditBuffer)Get(ai, "Editor");
+                Sample(at, press: "测");
+                string committed = buffer.Text;
+                var baseline = Draw();
+                ime.Composition = "pin"; ime.Candidate = true;
+                Sample(at);
+                var composing = Draw(); var anchor = Anchor(); var crop = Crop(field);
+                Require(!SameCrop(baseline, composing, crop), label + " shows inline composition in the actual surface");
+                var point = Vector2.Transform(anchor - new Vector2(0, 32), Main.UIScaleMatrix);
+                bool caretInk = Enumerable.Range(Math.Max(crop.Left, (int)point.X - 1), 3).Where(x => x < crop.Right).Any(x =>
+                    composing[(int)(point.Y - 2) * (int)screen.X + x] == Color.White);
+                int toggles = ime.Toggles, builds = (int)Get(window, "LayoutBuilds");
+                Main.keyCount = 1; Main.keyInt[0] = '中'; Main.keyString[0] = "中";
+                for (int frame = 0; frame < 3; frame++)
+                {
+                    Main.CurrentInputTextTakerOverride = null;
+                    Call(physicalInput, "BeginUpdate");
+                    var pixels = Draw();
+                    Require(Anchor() == anchor && SameCrop(composing, pixels, crop) && Main.CurrentInputTextTakerOverride == null &&
+                        Main.keyCount == 1 && Main.keyInt[0] == '中' && ReferenceEquals(buffer, Get(ai, "Editor")) && buffer.Text == committed,
+                        label + " keeps anchor and field pixels through an empty native update and leaves the pending text untouched");
+                }
+                Require(crop.Contains((int)point.X, (int)point.Y - 1) && caretInk,
+                    label + " publishes a visible caret baseline at the actual scaled field");
+                var foreign = new object(); Main.CurrentInputTextTakerOverride = foreign; Draw();
+                Require(nativeAnchor.GetValue(null) == null && ReferenceEquals(Main.CurrentInputTextTakerOverride, foreign), label + " cannot draw the candidate for a foreign owner");
+                Main.CurrentInputTextTakerOverride = null;
+                Draw(new Rectangle(0, 0, (int)screen.X, Math.Max(1, crop.Top - 1)));
+                Require(nativeAnchor.GetValue(null) == null && ReferenceEquals(buffer, Get(ai, "Editor")), label + " suppresses a clipped anchor while retaining the edit");
+                Require(ime.Toggles == toggles && (int)Get(window, "LayoutBuilds") == builds, label + " rendering never toggles IME or rebuilds layout");
+                Draw();
+                graphics.Image(Path.Combine(output, "companion-ime-" + label + ".png"), () => Call(window, "Draw"), Main.UIScaleMatrix, (int)screen.X, (int)screen.Y);
+                ime.Composition = ""; ime.Candidate = false;
+                Sample(at, keys: new[] { Keys.Enter }); Sample(at, keys: new[] { Keys.Enter }, press: "\r"); Sample(at);
+                Require(ReferenceEquals(buffer, Get(ai, "Editor")) && buffer.Text == committed.Insert(buffer.Caret - 1, "中"),
+                    label + " candidate confirmation commits once and the held Enter does not submit the editor");
+                Console.WriteLine("PASS original XNA IME presentation: " + label + ", same 3 empty-frame crops and anchor, typed input resumed once.");
+            }
+            try
+            {
+                imeField.SetValue(text, ime.GetTransparentProxy());
+                Main.screenWidth = (int)screen.X; Main.screenHeight = (int)screen.Y; Main.UIScale = 1.15f;
+                PlayerInput.CacheOriginalScreenDimensions(); Prepare();
+                Check("chat", Rect("chat-draft"));
+                var chat = (JueMingR.Features.Text.TextEditBuffer)Get(ai, "Editor");
+                Sample(NativeToolsUiChecks.Point(Rect("chat-draft")), keys: new[] { Keys.LeftShift, Keys.Enter }, press: "\r");
+                Require(chat.Text.Contains("\n"), "chat Shift+Enter still inserts a newline after the native IME candidate tail");
+                Click(NativeToolsUiChecks.Point(Rect("model")));
+                Check("model-field", Rect("model-field-base-setup"));
+                Click(NativeToolsUiChecks.Point(Rect("model-provider")));
+                Check("provider-search", Get(Get(window, "modelDropdownSearch"), "Rect"));
+                Click(Vector2.Zero);
+                Call(window, "LoadModelDraft", Call(window, "NewModelDraft")); Prepare();
+                Click(NativeToolsUiChecks.Point(Rect("model-provider")));
+                var popup = Get(window, "modelDropdownPanel");
+                Click(new Vector2((float)Get(popup, "X") + 20, (float)Get(window, "ModelDropdownListTop") + 1.5f * (float)Get(window, "modelDropdownRow")));
+                var draft = (LlmConnectionDraft)Get(window, "modelDraft");
+                Require(draft.PresetId == "deepseek_official_chat", "the known real provider route opens a supported model discovery");
+                draft.ApiKey = "isolated-test-key";
+                var connections = Get(window, "modelConnections"); var oldTransport = Get(connections, "transport");
+                var discovery = new DiscoveryTransport { Next = Task.FromResult<IReadOnlyList<LlmModelInfo>>(new[]
+                { new LlmModelInfo("chat-one", "支持文字"), new LlmModelInfo("chat-two", "支持文字") }) };
+                Set(connections, "transport", discovery);
+                try
+                {
+                    Click(NativeToolsUiChecks.Point(Rect("model-discover")));
+                    NativeQuickItemChecks.Until(() => { Prepare(); return Get(window, "modelPicker").ToString() == "Models"; });
+                    Require(discovery.Reads == 1 && discovery.Inference == 0, "the actual discovered model page is available with a controlled connection reply");
+                }
+                finally { Set(connections, "transport", oldTransport); }
+                Check("model-search", Rect("model-field-search"));
+                Main.UIScale = 1f; Draw();
+                Require(nativeAnchor.GetValue(null) == null, "a stale companion matrix does not publish an anchor");
+                Main.UIScale = 1.15f; Prepare();
+                Set(physicalInput, "foregroundWindow", (Func<IntPtr>)(() => IntPtr.Zero));
+                Call(physicalInput, "BeginUpdate"); Draw();
+                Require(nativeAnchor.GetValue(null) == null && !(bool)Get(physicalInput, "CanPrepareText"), "real focus check closes the draw-only eligibility");
+                Call(window, "Process", true, new KeyboardState(), Vector2.Zero, Main.UIScaleMatrix, screen, false, 0);
+                Require(GetOptional(ai, "Editor") == null && !(bool)Get(text, "Owned"), "focus loss retires the actual editor lease");
+                Console.WriteLine("PASS original XNA four AI edit consumers: 12 skipped-sample Draws, native anchors and identical editor pixels, foreign/clipped/stale/focus gates, no token or queued-text changes, Chinese Enter and multiline tail.");
+            }
+            finally
+            {
+                Call(window, "Close"); imeField.SetValue(text, originalIme); Set(physicalInput, "foregroundWindow", foreground);
+                Main.screenWidth = oldWidth; Main.screenHeight = oldHeight; Main.UIScale = scale; PlayerInput.CacheOriginalScreenDimensions();
+                nativeAnchor.SetValue(null, null); Main.clrInput();
+                NativeQuickItemChecks.Sample(physicalInput, Array.Empty<Keys>());
+                NativeQuickItemChecks.Sample(physicalInput, Array.Empty<Keys>());
             }
         }
 

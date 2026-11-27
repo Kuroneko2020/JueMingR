@@ -18,9 +18,11 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly Dictionary<int,Actor> joiningSlots = new Dictionary<int,Actor>();
         private long playerSlotFenceSequence, sendingPlayerSlotFence;
         internal Actor Decoding {get;private set;}
+        partial void ObserveTaskAnglerReceipt(Actor actor);
 
         internal void RecordActorPacket(Actor a, byte[] frame)
         {
+            if (frame.Length >= 3 && frame[2] == 21) RecordTaskShimmerDrop(a);
             if (frame.Length == 4 && frame[2] == 73) ObserveChatItemTeleportRequest(a, frame[3]);
             if (frame.Length >= 8 && frame[2] == 16 && frame[3] == a.Body.whoAmI)
             {
@@ -56,8 +58,11 @@ namespace JueMingR.TerrariaHost.Companions
 
         private void RetireConnection(Actor a)
         {
+            RetireTaskShimmerDrop(a);
             var connection = a.Connection;
             if (connection == null) return;
+            RetireTaskChestConnection(a);
+            RetireTaskCraftConnection(a);
             RetireWormholes(a);
             string deathFailure = null;
             bool unconfirmedDeath = connection.HasUnconfirmedDeath;
@@ -124,10 +129,12 @@ namespace JueMingR.TerrariaHost.Companions
                 using(var stream=new MemoryStream(packet,false))using(var r=new BinaryReader(stream))
                 {
                     byte id=r.ReadByte();
+                    if (ConsumeTaskChestActorFrame(a, packet) || ConsumeTaskCraftResponse(a, packet)) continue;
                     if(id==74)
                     {
                         if(packet.Length!=3)throw new InvalidDataException("队友钓鱼任务帧不完整。");
                         a.FishingLine.Quest=packet[1];a.FishingLine.QuestFinished=packet[2]!=0;
+                        ObserveTaskAnglerReceipt(a);
                         continue;
                     }
                     if(id==5){DecodeFishStorageReply(a,packet);if(a.Closing)return;continue;}
@@ -165,7 +172,7 @@ namespace JueMingR.TerrariaHost.Companions
                         continue;
                     }
                     if(id==23)ObservePredictedNpc(a,packet,0,packet.Length);
-                    if(id==154){ActorPingReceived(a);continue;}
+                    if(id==154){ObserveTaskChestFence(a);ActorPingReceived(a);continue;}
                     if(id==162){StrikeAcknowledged(a);continue;}
                     if(id==49 && a.Ready){CompleteNpcSnapshot(a);continue;}
                     if(id==2)
@@ -284,6 +291,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool AcceptPrimary(byte[] data,int start,int length)
         {
             if(ReadingObservation || Decoding!=null || length<1)return true;int id=data[start];if(id==49)CompleteNpcSnapshot(null);
+            if (id == 32) ObserveTaskChestPrimary(data, start, length);
             if(length<2)return true;int slot=data[start+1];var a=OwnedSlot(slot);
             if(id==65 && OwnedSlot(DirectedPlayerTeleport(data,start,length)) is Actor receiver && receiver.Ready &&
                 !receiver.Closing && receiver.Body.active && receiver.Connection!=null)return false;
@@ -295,6 +303,9 @@ namespace JueMingR.TerrariaHost.Companions
             // The original server relays this body's 36 to other clients,
             // including the primary. That relay is not a local biome sample.
             if(id==MessageID.SyncPlayerZone && (a!=null || joiningSlots.TryGetValue(slot,out var joining) && joining.BirthSubmitted))return false;
+            // A local task chest is opened by its own ordered 33 response.
+            // The primary stream's 80 notifications can trail a later close.
+            if (a != null && id == 80) return false;
             if(a!=null && (id==4 || id==5 || id==12 || id==13 || id==16 || id==42 || id==45 || id==96 || id==157 || id==50 || id==117 || id==118 || id==135 || id==147))return false;
             if((id==27 || id==29) && length>=5)
             {var key=(ProjectileKey)BitConverter.ToInt32(data,start+1);Projectile projectile;if(key.TryGetActive(out projectile) && ProjectileActor(projectile)!=null)return false;if(key.Spawner!=owner?.whoAmI && (HasActors || projectileSources.Count!=0))return RouteProjectile(null,data,start,length);}

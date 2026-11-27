@@ -176,11 +176,8 @@ namespace JueMingR.TerrariaHost.F5
             // The caret and its baseline must be inside this frame's final
             // scissor, not merely inside an offscreen field's old logical box.
             float bottom = Math.Min(field.Bottom - 2, top + textHeight);
-            if (x < field.X + 5 || x + 1 > field.Right - 4 || x < clip.X || x + 1 > clip.Right || top < clip.Y || bottom > clip.Bottom || bottom <= top) return false;
-            var physical = Vector2.Transform(new Vector2(x, bottom), frozen);
-            var logical = Vector2.Transform(physical, Matrix.Invert(currentUi));
-            // Terraria 1.4.5.8 DrawIMEPanel subtracts 32 UI logical units.
-            anchor = new Vector2(logical.X, logical.Y + 32); return true;
+            if (x < field.X + 5 || x + 1 > field.Right - 4) return false;
+            return F5ControlRenderer.TryImeAnchor(new F5Rect(x, top, 1, bottom - top), clip, frozen, currentUi, out anchor);
         }
         private void Fill(SpriteBatch batch, F5Rect r, Color color)
         { if (r.Width > 0 && r.Height > 0) batch.Draw(pixel, new Vector2(r.X, r.Y), new Rectangle(0, 0, 1, 1), color, 0, Vector2.Zero, new Vector2(r.Width, r.Height), SpriteEffects.None, 0); }

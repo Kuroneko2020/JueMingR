@@ -41,6 +41,10 @@ namespace JueMingR.TerrariaHost.Input
         // The native token is cleared by outer Updates that may skip input but
         // still Draw. Presentation may retain only this exact editor's lease.
         internal bool HasCurrentEditorLease { get { return leased && bound != null && ReferenceEquals(bound, workspace.Editor); } }
+        // A skipped input phase may leave a valid visual edit with a null native
+        // token. Only the input phase may claim that token or consume characters.
+        internal bool CanPresentEditor(HostInputState input, TextEditBuffer editor) =>
+            ReferenceEquals(editor, bound) && HasCurrentEditorLease && input.CanPrepareText && !OtherTextOwner;
         internal bool OwnsTextToken { get { return ReferenceEquals(Main.CurrentInputTextTakerOverride, owner); } }
         internal bool HasComposition { get { return leased && (Composition.Length != 0 || ime.Candidates || pendingHighSurrogate != 0); } }
         internal bool OtherTextOwner

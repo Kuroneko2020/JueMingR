@@ -34,6 +34,8 @@ namespace JueMingR.TerrariaHost.Companions
                 SeatFrameX = tile?.frameX ?? 0;
                 SeatFrameY = tile?.frameY ?? 0;
             }
+            internal FishingAnchor(Vector2 feet, float gravity)
+            { Feet = feet; Gravity = gravity; Seat = null; SeatType = 0; SeatFrameX = SeatFrameY = 0; }
         }
 
         internal sealed class FishingActivity
@@ -47,7 +49,9 @@ namespace JueMingR.TerrariaHost.Companions
             internal bool Hold, SeatPending, Seated, Reported, AnnouncedSeat, AnnouncedBlocked, AnnouncedWater;
             internal int GearNotice, Candidate, Approach;
             internal string ChatTaskId;
+            internal Guid? OwnerTaskId;
             internal Action ChatNeedsBait, ChatEnded, ChatCastConfirmed;
+            internal DukeFishing Duke;
             internal bool ChatBaitAnnounced;
             internal uint NextSeat, NextTerrain, NextPondCheck, NextTerrainRequest, NextFreshSearch, BlockedAt, RetryOriginalAt;
             internal Vector2 BlockedFeet;
@@ -113,6 +117,9 @@ namespace JueMingR.TerrariaHost.Companions
             if (!TryFishingActor(ownerId, id, out var actor) || enabled && (!owner.active || owner.dead))
                 return Result(false, "当前不能切换钓鱼模式。");
             InvalidateChatAction(id, "已采用手动钓鱼设置，撤回待执行的模型指令。");
+            bool wasFishing = FishingActive(actor);
+            RetireTaskForActor(actor, "玩家已手动修改钓鱼活动。");
+            if (!enabled && wasFishing && !FishingActive(actor)) return RestoreFishingFollow(actor);
             if (enabled == FishingActive(actor)) return true;
             if (!enabled) return EndFishingActivity(actor, follow: true);
             BeginFishingActivity(actor, CaptureFishingAnchor(owner));
@@ -146,18 +153,25 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool FishingActive(Actor actor) => actor.Fishing != null;
         private static int FishingLiquid(Actor actor) => actor.Fishing?.Pond?.Liquid ?? -1;
         private bool FishingPagePauses(Actor actor) => fishingPageOwner == actor.Profile.OwnerId && fishingPageId == actor.Profile.Id;
-        private static bool FishingFollowsOwner(Actor actor) => actor.Fishing == null && actor.Preferences.Follow;
+        private static bool FishingFollowsOwner(Actor actor) => actor.Fishing == null &&
+            (actor.TaskTravel?.FollowOwner ?? actor.Preferences.Follow);
 
         private bool EndFishingActivity(Actor actor, bool follow = false, bool retire = false, bool movingFishingTask = false)
         {
             if (actor.Fishing == null && !retire) return true;
             var previous = actor.Fishing;
             if (previous != null) { actor.Fishing = null; fishingActors--; }
+            if (previous?.Duke != null) dukeFishingActors--;
             if (previous?.Seated == true) StandFromFishingSeat(actor);
             StopFishingLine(actor, retire);
             actor.Behavior.Navigator.IntentChanged(actor.Mobility);
             if (!movingFishingTask) previous?.ChatEnded?.Invoke();
-            if (!follow || actor.Preferences.Follow) return true;
+            return !follow || RestoreFishingFollow(actor);
+        }
+
+        private bool RestoreFishingFollow(Actor actor)
+        {
+            if (actor.Preferences.Follow) return true;
             var preferences = actor.Profile.Behavior;
             preferences.Follow = true;
             return ApplyBehavior(actor.Profile.Id, preferences, manual: false);
@@ -191,7 +205,7 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     ChatTaskId = activity.ChatTaskId, ChatNeedsBait = activity.ChatNeedsBait,
                     ChatEnded = activity.ChatEnded, ChatBaitAnnounced = activity.ChatBaitAnnounced,
-                    ChatCastConfirmed = activity.ChatCastConfirmed
+                    ChatCastConfirmed = activity.ChatCastConfirmed, OwnerTaskId = activity.OwnerTaskId
                 };
                 fishingActors++;
             }
@@ -409,7 +423,7 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 return;
             }
-            FishingNativeBait(actor.Body, out int baitPower, out _);
+            FishingActivityBait(actor, out int baitPower, out _);
             if (baitPower <= 0) return;
             activity.Status = "正在寻找可钓水域";
             if (!activity.Scanned)
@@ -434,7 +448,8 @@ namespace JueMingR.TerrariaHost.Companions
                         activity.Measuring = null;
                     }
                 }
-                if (activity.Pond.Eligible && TryFishingRod(actor, activity.Pond.Liquid, out var rod))
+                if (activity.Pond.Eligible && (activity.Duke == null || activity.Pond.Count > 1000 && activity.Pond.Liquid == 0 &&
+                    DukeCoastalColumn(entry.Cell.X)) && TryFishingRod(actor, activity.Pond.Liquid, out var rod))
                 {
                     if (activity.Cast == null || !activity.Cast.Matches(actor.Body, rod))
                         activity.Cast = new CompanionFishingCast(actor.Body, rod, entry);
@@ -484,10 +499,11 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if (unchecked((int)(now - activity.NextPondCheck)) < 0) return true;
             var measuring = activity.RecheckingPond ?? (activity.RecheckingPond = new CompanionFishingWater.Pond(activity.Cast.Entry.Cell));
-            if (measuring.ValidateMinimum(ref budget, activity.ReadWaterTile) != CompanionFishingWater.Result.Ready) return true;
+            int minimum = activity.Duke == null ? 75 : 1001;
+            if (measuring.ValidateMinimum(ref budget, activity.ReadWaterTile,minimum) != CompanionFishingWater.Result.Ready) return true;
             activity.RecheckingPond = null;
             activity.NextPondCheck = now + 120;
-            return measuring.Eligible;
+            return measuring.Count >= minimum && (activity.Duke == null || measuring.Liquid == 0);
         }
 
         private bool RequestFishingTerrain()
@@ -564,6 +580,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 if (!activity.ChatBaitAnnounced) activity.ChatNeedsBait();
                 activity.ChatBaitAnnounced = true;
+                activity.GearNotice = notice;
                 return;
             }
             if (activity.GearNotice != notice && SayFishing(actor, rod ? "我需要一根鱼竿。" : "我需要可用的鱼饵。")) activity.GearNotice = notice;

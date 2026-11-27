@@ -316,8 +316,9 @@ namespace JueMingR.TerrariaHost.F5
                 if (edit.SelectionRight > edit.SelectionLeft)
                     Fill(new F5Rect(rect.X + 7 + edit.SelectionLeft, rect.Y + 4, edit.SelectionRight - edit.SelectionLeft, rect.Height - 8), new Color(62, 101, 170));
                 renderer.Label(Move(ModelEditElement(edit.Text, edit.Size, rect.Height), rect.X, rect.Y));
-                Fill(new F5Rect(rect.X + 7 + edit.Caret, rect.Y + 4, 1, rect.Height - 8), Color.White);
-                if (aiInput.OwnsTextToken) Main.instance?.SetIMEPanelAnchor(new Vector2(rect.X + 7 + edit.Caret, rect.Bottom + 32), 0);
+                var caret = new F5Rect(rect.X + 7 + edit.Caret, rect.Y + 4, 1, rect.Height - 8);
+                Fill(caret, Color.White);
+                PublishAiImeAnchor(modelPresentedEditor, rect, caret);
                 if (!String.IsNullOrEmpty(aiInput.Error)) renderer.Text(aiInput.Error,
                     new F5Rect(rect.X + 7, rect.Bottom - 15, rect.Width - 14, 15), Color.Gold, .56f);
             }

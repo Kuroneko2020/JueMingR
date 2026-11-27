@@ -117,7 +117,8 @@ namespace NativeWorldTextProbe
                 human.position += new Vector2(96, 0);
                 first.SetResult(calls(tool("fish", "start_fishing", new KeyValuePair<string, object>("notify_no_bait", true))));
                 Ended();
-                Require(isFishing(), "model tool installed the real actor fishing activity");
+                Require(isFishing(), "model tool installed the real actor fishing activity: " +
+                    String.Join(" | ", Entries().Reverse().Take(4).Select(entry => entry.Kind + " " + entry.Text)));
                 var fishing = Get(actor, "Fishing");
                 Require((Vector2)Get(fishing, "RequestedFeet") == expectedAnchor,
                     "changing owner position during inference keeps the send-time feet");
@@ -314,6 +315,7 @@ namespace NativeWorldTextProbe
                         "real mirror reaches native spawn before confirmed stay, preserves owner and releases the original hand");
                 }
                 finally { body.statLife = life; body.inventory[49] = prior; body.inventory[48] = priorSecond; body.inventory[47] = priorThird; }
+                CheckColdKnowledgeAndStrategy(host, remote, human, body, profile, nativeStep, Ended, Sent);
                 CheckClearAndDeletion(host, profile, fixture.Store, View, Entries, PumpUntil);
                 var connections = (LlmConnections)Get(host, "ChatConnections");
                 var draft = connections.Edit(connections.DefaultId);
@@ -359,6 +361,271 @@ namespace NativeWorldTextProbe
                 human.position = old;
                 // Restore composition for the surrounding native fishing checks.
                 fixture.Restore();
+            }
+        }
+
+        private static void CheckColdKnowledgeAndStrategy(object host, Transport remote, Player human, Player body,
+            CompanionProfile profile, Action nativeStep, Action ended, Action<string> send)
+        {
+            var knowledge = Get(host, "ChatKnowledge");
+            var catalog = Get(knowledge, "Native");
+            LlmToolCall Tool(string name, params KeyValuePair<string, object>[] fields) => new LlmToolCall(name,
+                name, "{}", fields.ToDictionary(field => field.Key, field => field.Value));
+            KeyValuePair<string, object> Field(string name, object value) => new KeyValuePair<string, object>(name, value);
+            LlmTurn CallTool(LlmToolCall tool) => new LlmTurn("", new[] { tool }, "{}");
+            var reply = new LlmTurn("我已读到本轮实际信息。", Array.Empty<LlmToolCall>(), "{}");
+            string RunQuery(string prompt, LlmToolCall tool)
+            {
+                string result = null;
+                remote.Reply = request =>
+                {
+                    if (request.Messages.Last().Kind != LlmMessageKind.ToolResults) return Task.FromResult(CallTool(tool));
+                    result = request.Messages.Last().Results.Single().Output;
+                    return Task.FromResult(reply);
+                };
+                send(prompt);
+                ended();
+                return result;
+            }
+
+            var search = Tool("find_game_items", Field("filter", "Magic Mirror"), Field("purpose", "home_teleport"));
+            Require(!(bool)Get(catalog, "CatalogCurrent"), "the original browser catalog starts cold");
+            string cold = RunQuery("什么物品能回自己的出生点？", search);
+            Require(cold?.StartsWith("pending", StringComparison.Ordinal) == true,
+                "live internal chat produces a demand instead of a false empty query");
+            for (int i = 0; i < 192 && !(bool)Get(catalog, "CatalogCurrent"); i++) nativeStep();
+            Require((bool)Get(catalog, "CatalogCurrent"), "real host updates prepared the same catalog while the browser remained closed");
+            string ready = RunQuery("再查 Magic Mirror。", search);
+            Require(ready?.StartsWith("ready", StringComparison.Ordinal) == true && ready.Contains("#" + ItemID.MagicMirror) &&
+                ready.Contains("队友自身出生点"), "stable English name, native item identity and teleport purpose are linked");
+            string chinese = RunQuery("按中文名再查魔镜。", Tool("find_game_items", Field("filter", "魔镜"), Field("purpose", "home_teleport")));
+            Require(chinese?.Contains("#" + ItemID.MagicMirror) == true, "embedded Chinese and current resource aliases lead to the same identity");
+            var recipes = Tool("get_game_item_sources", Field("item_type", (int)ItemID.Torch), Field("kind", "recipe"));
+            var pendingRecipe = RunQuery("查制作火把的真实配方。", recipes);
+            Require(pendingRecipe?.StartsWith("pending", StringComparison.Ordinal) == true,
+                "recipe family wakes separately from the completed item catalog");
+            for (int i = 0; i < 192 && !(bool)Get(catalog, "Ready"); i++) nativeStep();
+            string torchRecipes = RunQuery("配方准备好了吗？", recipes);
+            Require(torchRecipes?.StartsWith("ready", StringComparison.Ordinal) == true && torchRecipes.Contains("recipe:") &&
+                torchRecipes.Contains("原料") && torchRecipes.Contains("站点"),
+                "published vanilla recipe carries the real identity, materials and station");
+
+            var previousInventory = body.inventory.Take(50).ToArray();
+            var previousHuman = human.position;
+            int previousLife = body.statLife, previousMaximum = body.statLifeMax;
+            var previousMobility = (body.wingsLogic, body.rocketBoots, body.dashType, body.miscEquips[4]);
+            var previousClock = (Main.dayTime, Main.time, Main.dayRate);
+            bool previousEye = NPC.downedBoss1;
+            var previousDrops = Main.ItemDropsDB;
+            try
+            {
+                for (int slot = 0; slot < previousInventory.Length; slot++)
+                    if (body.inventory[slot]?.createTile == TileID.Torches) body.inventory[slot] = new Item();
+                var route = Tool("choose_game_strategy", Field("goal", "explore"), Field("destination", "here"), Field("stay", true));
+                string withoutLight = RunQuery("帮我准备探索这里，到了等我。", route);
+                Require(withoutLight?.Contains("照明") == true && !withoutLight.Contains("strategy_id="),
+                    "missing actual light prevents a premature exploration plan");
+                body.inventory[43] = new Item(ItemID.Torch) { stack = 10 };
+                body.inventory[44] = new Item(ItemID.MagicMirror);
+                body.inventory[45] = new Item(ItemID.LesserHealingPotion);
+                human.position = body.position;
+                bool proposed = false, submitted = false;
+                remote.Reply = request =>
+                {
+                    var last = request.Messages.Last();
+                    if (last.Kind != LlmMessageKind.ToolResults) return Task.FromResult(CallTool(route));
+                    string result = last.Results.Single().Output;
+                    if (last.Results.Single().Id == "submit_strategy")
+                    {
+                        submitted = result.Contains("accepted");
+                        return Task.FromResult(reply);
+                    }
+                    const string token = "strategy_id=";
+                    int index = result.IndexOf(token, StringComparison.Ordinal);
+                    proposed = index >= 0 && result.Contains("move_to") && result.Contains("stand_by");
+                    Require(proposed, "matching real supplies select an actual movement itinerary");
+                    return Task.FromResult(CallTool(Tool("submit_strategy", Field("strategy_id", result.Substring(index + token.Length, 32)))));
+                };
+                send("现在有物资了，去我发送的位置等我。");
+                ended();
+                object TaskView() => Call(host, "GetTask", profile.OwnerId, profile.Id, null);
+                for (int i = 0; i < 60 && (string)Get(TaskView(), "State") != "succeeded"; i++) nativeStep();
+                Require(proposed && submitted && (string)Get(TaskView(), "State") == "succeeded" &&
+                    (string)Get(TaskView(), "Detail") != null,
+                    "the live strategy candidate executes through the registered task owner after the model ends");
+
+                CheckStrategyCraftDelivery(Call(host, "Owned", body), remote, human, body, nativeStep, ended, send, TaskView, RunQuery);
+
+                var boss = Tool("choose_game_strategy", Field("goal", "prepare_boss"), Field("boss", "skeletron"));
+                Main.dayTime = false;
+                Main.dayRate = 1;
+                Main.time = Main.nightLength - 1;
+                string lateNight = RunQuery("今晚准备骷髅王。", boss);
+                Main.time = 0;
+                body.wingsLogic = body.rocketBoots = body.dashType = 0;
+                body.miscEquips[4] = new Item();
+                string noTravel = RunQuery("今晚准备骷髅王。", boss);
+                body.miscEquips[4] = new Item(ItemID.GrapplingHook);
+                body.rocketBoots = 1;
+                for (int slot = 0; slot < previousInventory.Length; slot++)
+                    if (body.inventory[slot]?.healLife > 0) body.inventory[slot] = new Item();
+                string noMedicine = RunQuery("今晚准备骷髅王。", boss);
+                Require(lateNight?.Contains("窗口不足") == true && noTravel?.Contains("机动手段不足") == true &&
+                    noMedicine?.Contains("需要加强可消费补给") == true,
+                    "the same boss goal chooses different priorities for the actual night, equipment and inventory: " +
+                    String.Join(" | ", new[] { lateNight, noTravel, noMedicine }.Select(value => value?.Split('\n')[0] ?? "no tool response")));
+
+                NPC.downedBoss1 = false;
+                body.inventory[45] = new Item(ItemID.LesserHealingPotion);
+                body.inventory[47] = new Item(ItemID.WoodenSword);
+                var shield = Tool("choose_game_strategy", Field("goal", "prepare_boss"), Field("boss", "eye"),
+                    Field("item_type", (int)ItemID.EoCShield));
+                string sourcePending = RunQuery("首杀克眼能先用克苏鲁护盾吗？", shield);
+                Require(sourcePending?.Contains("物品来源尚未完整建立") == true, "do not claim a first-victory dependency before its sources load");
+                if (Main.ItemDropsDB == null)
+                {
+                    var nativeDrops = new Terraria.GameContent.ItemDropRules.ItemDropDatabase();
+                    nativeDrops.Populate();
+                    Main.ItemDropsDB = nativeDrops;
+                }
+                var origin = Get(knowledge, "Sources");
+                for (int i = 0; i < 1200 && GetOptional(origin, "Drops") == null; i++) nativeStep();
+                string firstEye = RunQuery("首杀克眼能先用克苏鲁护盾吗？", shield);
+                Require(firstEye?.Contains("前置循环") == true, "native boss-bag and contained loot resolve the actual first-win dependency: " +
+                    firstEye?.Split('\n')[0] + " / " + Get(origin, "DropStatus"));
+                body.rocketBoots = 1;
+                body.inventory[44] = new Item(ItemID.EoCShield);
+                string ownedShield = RunQuery("首杀克眼能先用克苏鲁护盾吗？", shield);
+                Require(ownedShield?.Contains("世界首胜状态不改变合法持有事实") == true,
+                    "legitimate cross-world inventory overrides the first-win source block");
+
+                body.statLifeMax = 100;
+                body.inventory[46] = new Item(ItemID.LifeCrystal) { stack = 2 };
+                string twoUses = RunQuery("连续用两颗生命水晶。", Tool("submit_task", Field("title", "使用两颗生命水晶"),
+                    Field("steps", new object[] { new Dictionary<string, object> { ["operation"] = "use_item", ["repeat"] = 2,
+                        ["arguments"] = new Dictionary<string, object> { ["item_type"] = (int)ItemID.LifeCrystal } } })));
+                Require(twoUses?.Contains("accepted") == true, "chat admits multiple stable item-use iterations in one task");
+                for (int i = 0; i < 200 && (string)Get(TaskView(), "State") != "succeeded"; i++) nativeStep();
+                Require((string)Get(TaskView(), "State") == "succeeded" && body.statLifeMax == 140 && body.inventory[46].IsAir,
+                    "two durable native steps resolve fresh inventory and each consume exactly one real growth item");
+            }
+            finally
+            {
+                Array.Copy(previousInventory, body.inventory, previousInventory.Length);
+                body.statLife = previousLife;
+                body.statLifeMax = previousMaximum;
+                (body.wingsLogic, body.rocketBoots, body.dashType, body.miscEquips[4]) = previousMobility;
+                (Main.dayTime, Main.time, Main.dayRate) = previousClock;
+                NPC.downedBoss1 = previousEye;
+                Main.ItemDropsDB = previousDrops;
+                human.position = previousHuman;
+            }
+            Console.WriteLine("PASS chat cold shared native catalog, purpose and stable alias, fact-sensitive candidate and actual task settlement.");
+        }
+
+        private static void CheckStrategyCraftDelivery(object actor, Transport remote, Player human, Player body,
+            Action nativeStep, Action ended, Action<string> send, Func<object> taskView,
+            Func<string, LlmToolCall, string> query)
+        {
+            var actorItems = body.inventory.ToArray();
+            var ownerItems = human.inventory.ToArray();
+            bool previousNearby = Player.Settings.CraftFromNearbyChests;
+            bool previousDay = Main.dayTime;
+            int previousSelected = body.selectedItem;
+            var feet = body.Bottom.ToTileCoordinates();
+            var point = new Point(feet.X + 8, feet.Y - 2);
+            int slot = Array.FindIndex(Main.chest, chest => chest == null);
+            Require(slot >= 0, "private strategy fixture has a native chest slot");
+            var previousTiles = new Tile[2, 2];
+            LlmToolCall Choose(bool nearby) => new LlmToolCall("craft-choice", "choose_game_strategy", "{}",
+                new Dictionary<string, object> { ["goal"] = "craft", ["item_type"] = (int)ItemID.Torch,
+                    ["quantity"] = 3, ["allow_nearby"] = nearby, ["deliver_to_owner"] = true });
+            try
+            {
+                Player.Settings.CraftFromNearbyChests = true;
+                for (int i = 0; i < 58; i++)
+                {
+                    human.inventory[i] = new Item();
+                    body.inventory[i] = new Item();
+                }
+                // Leave a real non-emissive item in the held slot. A newly
+                // crafted Torch must not become the active light source in this headless fixture.
+                body.inventory[0] = new Item(ItemID.DirtBlock);
+                body.selectedItemState.Select(0);
+                body.selectedItemState.Update();
+                Require(body.selectedItem == 0, "native held slot is settled before making a light source");
+                body.inventory[10] = new Item(ItemID.Wood);
+                for (int x = 0; x < 2; x++)
+                    for (int y = 0; y < 2; y++)
+                    {
+                        previousTiles[x, y] = Main.tile[point.X + x, point.Y + y];
+                        var tile = new Tile { type = TileID.Containers, frameX = (short)(18 * x), frameY = (short)(18 * y) };
+                        tile.active(true);
+                        Main.tile[point.X + x, point.Y + y] = tile;
+                    }
+                var chest = Chest.CreateWorldChest(slot, point.X, point.Y);
+                chest.item[0] = new Item(ItemID.Gel) { stack = 2 };
+                Main.dayTime = true;
+                var boss = new LlmToolCall("prepare-choice", "choose_game_strategy", "{}", new Dictionary<string, object>
+                {
+                    ["goal"] = "prepare_boss", ["boss"] = "skeletron", ["item_type"] = (int)ItemID.Torch,
+                    ["quantity"] = 3, ["allow_nearby"] = true
+                });
+                string window = query("白天先准备骷髅王和照明。", boss);
+                Require(window?.Contains("窗口不足") == true && window.Contains("原版配方") && !window.Contains("strategy_id="),
+                    "the selected boss-window route cannot submit a conflicting craft even when a native recipe is ready: " + window);
+                string denied = query("只用已有背包材料做三支火把交给我。", Choose(false));
+                Require(denied?.Contains("strategy_id=") == false && chest.item[0].stack == 2,
+                    "actual nearby-only materials require explicit authorization");
+                string accepted = null;
+                remote.Reply = request =>
+                {
+                    var last = request.Messages.Last();
+                    if (last.Kind != LlmMessageKind.ToolResults)
+                        return Task.FromResult(new LlmTurn("", new[] { Choose(true) }, "{}"));
+                    var result = last.Results.Single();
+                    if (result.Id == "submit-craft-choice")
+                    {
+                        accepted = result.Output;
+                        return Task.FromResult(new LlmTurn("已受理本次制作。", Array.Empty<LlmToolCall>(), "{}"));
+                    }
+                    const string token = "strategy_id=";
+                    int index = result.Output.IndexOf(token, StringComparison.Ordinal);
+                    Require(index >= 0 && result.Output.Contains("craft_item → transfer_item"), result.Output);
+                    return Task.FromResult(new LlmTurn("", new[] { new LlmToolCall("submit-craft-choice", "submit_strategy", "{}",
+                        new Dictionary<string, object> { ["strategy_id"] = result.Output.Substring(index + token.Length, 32) }) }, "{}"));
+                };
+                send("可以从附近箱子用材料制作三支火把，把成品给我。");
+                ended();
+                Require(accepted?.Contains("accepted") == true, "scripted provider submits the actual craft candidate: " + accepted);
+                var receipt = (CompanionTaskSnapshot)taskView();
+                for (int i = 0; i < 240 && receipt.IsActive; i++)
+                {
+                    nativeStep();
+                    receipt = (CompanionTaskSnapshot)taskView();
+                }
+                Require(receipt.State == "succeeded" && receipt.Attempts.Count == 2 &&
+                    receipt.Attempts[0].Operation == "craft_item" && receipt.Attempts[0].Completed == 3 &&
+                    receipt.Attempts[1].Operation == "transfer_item" && receipt.Attempts[1].Completed == 3 &&
+                    human.inventory.Where(item => item.type == ItemID.Torch).Sum(item => item.stack) == 3 &&
+                    !body.inventory.Any(item => item.type == ItemID.Torch) && body.inventory[10].IsAir && chest.item[0].stack == 1,
+                    "native strategy used real actor wood and nearby Gel and delivered the verified output: " + receipt.Detail +
+                    " / " + GetOptional(actor, "TerminalFailure") + " / " +
+                    String.Join(" | ", receipt.Attempts.Select(attempt => attempt.Operation + " " + attempt.State + " " + attempt.Detail)));
+                Console.WriteLine("PASS scripted chat choose and submit: authorized nearby vanilla craft and exact owner delivery.");
+            }
+            finally
+            {
+                if (Main.chest[slot] != null) Chest.RemoveChest(slot);
+                for (int x = 0; x < 2; x++)
+                    for (int y = 0; y < 2; y++)
+                        if (previousTiles[x, y] != null) Main.tile[point.X + x, point.Y + y] = previousTiles[x, y];
+                Array.Copy(actorItems, body.inventory, actorItems.Length);
+                Array.Copy(ownerItems, human.inventory, ownerItems.Length);
+                Player.Settings.CraftFromNearbyChests = previousNearby;
+                Main.dayTime = previousDay;
+                body.selectedItemState.Select(previousSelected);
+                body.selectedItemState.Update();
             }
         }
 

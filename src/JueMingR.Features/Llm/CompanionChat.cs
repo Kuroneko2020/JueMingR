@@ -31,16 +31,16 @@ namespace JueMingR.Features.Llm
             for (int round = 0; round < maxTurns; round++)
             {
                 cancellation.ThrowIfCancellationRequested();
-                if (MeasureWire(wire) > connection.InputBudget)
-                    return FinishLocally(wire, closedCount, dispatched, "本轮上下文已达到设定上限。");
                 string limit = tools.Count == 0
                     ? unavailableReason ?? GameToolsUnavailable(connection) ?? "本轮没有可用的游戏工具。"
                     : remaining == 0 ? "已达到本轮工具调用次数上限。"
                     : round + 1 == maxTurns ? "已达到本轮模型往返次数上限。" : null;
                 // Preserve the schema and completed tool pairs for private
                 // reasoning replay. Text-only intent never grants execution.
-                var request = new LlmRequest(limit == null ? instructions : instructions +
-                    "\n请只用文字回复。当前不接受工具调用。" + limit, wire, tools, textOnly: limit != null);
+                string requestInstructions = limit == null ? instructions : instructions + "\n请只用文字回复。当前不接受工具调用。" + limit;
+                if (MeasureWire(wire) + MeasureEnvelope(requestInstructions, tools) > connection.InputBudget)
+                    return FinishLocally(wire, closedCount, dispatched, "本轮上下文已达到设定上限。");
+                var request = new LlmRequest(requestInstructions, wire, tools, textOnly: limit != null);
                 var turn = await transport.CompleteAsync(connection, request,
                     text, cancellation).ConfigureAwait(false);
                 cancellation.ThrowIfCancellationRequested();
@@ -123,6 +123,15 @@ namespace JueMingR.Features.Llm
                     foreach (var result in message.Results)
                         size += (result.Id?.Length ?? 0) + (result.Output?.Length ?? 0);
             }
+            return size;
+        }
+
+        // Counts UTF-16 text units as a local input estimate; it does not
+        // predict service-provider tokens or exclude their encoding overhead.
+        public static long MeasureEnvelope(string instructions, IReadOnlyList<LlmToolDefinition> tools)
+        {
+            long size = instructions?.Length ?? 0;
+            foreach (var tool in tools) size += tool.Name.Length + tool.Description.Length + tool.SchemaJson.Length;
             return size;
         }
 

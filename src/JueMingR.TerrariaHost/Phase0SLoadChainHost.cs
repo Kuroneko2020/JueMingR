@@ -1014,6 +1014,20 @@ namespace JueMingR.TerrariaHost
                 if (footprintPackage) { Footprints = new Footprints.HostFootprints(gameDirectory, runtime.SharedRuntime, itemProbe, Input); runtime.SharedRuntime.AddFeature(Footprints); }
                 notes = new Notes.HostNotes(gameDirectory);
                 if (PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage) Browser = new ItemBrowser.HostItemBrowser(gameDirectory, worldTiles, Input);
+                if (Companions != null)
+                {
+                    Companions.ChatKnowledge = Browser?.Knowledge;
+                    Companions.TaskSelectedMarker = () => MapFeatures?.TaskSelectedMarker;
+                    Companions.TaskBlueprint = () => Blueprint;
+                    Companions.TaskMarkers = () =>
+                    {
+                        var map = MapFeatures;
+                        var saved = map?.Markers.Saved;
+                        return map != null && map.OwnershipCurrent && map.Markers.Loaded && saved?.Pair == map.Pair
+                            ? saved?.Records ?? Array.Empty<JueMingR.Features.MapMarkers.MarkerRecord>()
+                            : Array.Empty<JueMingR.Features.MapMarkers.MarkerRecord>();
+                    };
+                }
                 if (hotkeyPackage) ShortFeedback = new Feedback.LocalShortFeedback(runtime.SharedRuntime, Input);
                 if (Companions != null && ShortFeedback != null)
                     Companions.ManualRecallFeedback = (id, text, succeeded) =>

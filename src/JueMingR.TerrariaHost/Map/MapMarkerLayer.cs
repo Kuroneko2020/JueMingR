@@ -78,6 +78,7 @@ namespace JueMingR.TerrariaHost.Map
                     CloseForLocate?.Invoke(); Main.mapFullscreen = true; Main.resetMapFull = false; Main.PanTargetMapFullscreen = false;
                     Main.mapFullscreenPos = new Vector2((float)Math.Max(10, Math.Min(host.Width - 10, record.X)), (float)Math.Max(10, Math.Min(host.Height - 19, record.Y)));
                     Main.grabMapX = input.MapMouseX; Main.grabMapY = input.MapMouseY;
+                    host.RecordLocatedMarker(record.Id);
                     tail = true; ConsumePointer(); visible = null;
                 }
             }

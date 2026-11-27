@@ -154,8 +154,10 @@ namespace JueMingR.TerrariaHost.Companions
         {
             return target != null && target.whoAmI >= 0 && target.whoAmI < Main.maxNPCs &&
                 ReferenceEquals(Main.npc[target.whoAmI], target) && target.generation == generation &&
-                CombatSelection.Receives(target, false) && !target.townNPC && !NPCID.Sets.IsTownPet[target.type] &&
-                !NPCID.Sets.CountsAsCritter[target.type] && ObservedNpcCombatReady(target) && !PredictionDead(a, target) &&
+                ((CombatSelection.Receives(target, false) && !target.townNPC && !NPCID.Sets.IsTownPet[target.type] &&
+                    !NPCID.Sets.CountsAsCritter[target.type]) || TaskLacewingTarget(a,target,generation)) &&
+                TaskAllowsTarget(a, target, generation) &&
+                ObservedNpcCombatReady(target) && !PredictionDead(a, target) &&
                 (a.Fishing == null || a.Fishing.Threats.Contains(target, generation)) &&
                 Vector2.DistanceSquared(a.Body.Center, target.Center + target.netOffset) <= CompanionCombatRadius * CompanionCombatRadius;
         }

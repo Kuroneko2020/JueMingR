@@ -63,6 +63,7 @@ namespace JueMingR.TerrariaHost.F5
                 Invalidate();
             }
             if (profile == null) return;
+            ObserveChatTask();
             var updated = host.GetChat(chatOwner, chatProfile);
             if (chatView == null || updated == null || updated.IsRunning != chatView.IsRunning || updated.CanSend != chatView.CanSend ||
                 updated.CanStopActivity != chatView.CanStopActivity || updated.Connection != chatView.Connection ||
@@ -83,6 +84,7 @@ namespace JueMingR.TerrariaHost.F5
             currentChatDraft = null;
             chatOwner = chatProfile = Guid.Empty;
             chatConfirmation = 0;
+            ResetChatTask();
             chatView = null;
             chatDraftLayout = null;
             chatDraftLines = Array.Empty<F5Element>();
@@ -98,6 +100,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             ObserveChat();
             chatHistoryView = chatDraftRect = default(F5Rect);
+            chatTaskHeading = default(F5Rect);
             float width = Math.Min(760, bodyView.Width - 24);
             float x = bodyView.X + (bodyView.Width - width) / 2, top = bodyView.Y;
             var profile = CurrentProfile();
@@ -122,9 +125,12 @@ namespace JueMingR.TerrariaHost.F5
                 top += line;
             }
             top = BuildChatActions(x, top + 3, width) + 3;
+            if (chatTask != null) top = BuildChatTask(x, top, width, row);
 
             float bottom = bodyView.Bottom - 3;
-            float fieldHeight = Math.Max(line + 6, Math.Min(72, (bottom - top) * .38f));
+            // A status update or a task receipt can change the history viewport,
+            // but cannot move the active editor or its candidate baseline.
+            float fieldHeight = Math.Max(line + 6, Math.Min(72, bodyView.Height * .30f));
             float editTop = bottom - fieldHeight - row - 4;
             chatHistoryView = new F5Rect(x, top, width, Math.Max(0, editTop - top - 5));
             chatDraftRect = new F5Rect(x, editTop, width, fieldHeight);
@@ -132,7 +138,7 @@ namespace JueMingR.TerrariaHost.F5
             fieldButton.Element = null;
             float actionTop = bottom - row;
             var actions = new List<(string, string, Action, bool)>(3);
-            if (!followChat) actions.Add(ChatAction("latest", "回到最新", () => { followChat = true; chatOffset = chatMaximum; Invalidate(); }));
+            if (!followChat && !chatTaskDetails) actions.Add(ChatAction("latest", "回到最新", () => { followChat = true; chatOffset = chatMaximum; Invalidate(); }));
             if (!String.IsNullOrWhiteSpace(status)) actions.Add(ChatAction("copy-status", "复制状态", () =>
                 ShowNotice(aiInput.TryCopy(status) ? "已复制当前状态。" : "无法复制当前状态。")));
             actions.Add(connected ? ChatAction("send", "发送", () => SendChat(), chatView.CanSend, blur: false)
@@ -165,7 +171,7 @@ namespace JueMingR.TerrariaHost.F5
                 ChatAction("restart", "另起对话", () => ConfirmChat(2), hasHistory)
             };
             if (chatView?.IsRunning == true) actions.Add(ChatAction("stop-reply", "停止回复", () => host.StopChatReply(chatOwner, chatProfile)));
-            if (chatView?.CanStopActivity == true) actions.Add(ChatAction("stop-activity", "停止活动", () =>
+            if (!chatTaskStoppable && chatView?.CanStopActivity == true) actions.Add(ChatAction("stop-activity", "停止活动", () =>
             {
                 if (!host.StopChatActivity(chatOwner, chatProfile)) ShowNotice("当前没有可停止的活动。");
             }));
@@ -251,6 +257,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (currentChatDraft == null || chatDraftRect.Width <= 16) return;
             chatLineHeight = Math.Max(21, (FontAssets.MouseText?.Value?.LineSpacing ?? rowHeight) * ChatScale + 2);
+            PrepareChatTaskDetails();
             float historyWidth = Math.Max(1, chatHistoryView.Width - 20);
             if (chatHistoryWidth != historyWidth || chatHistorySkin != skin)
             {
@@ -408,9 +415,11 @@ namespace JueMingR.TerrariaHost.F5
         private void DrawChat()
         {
             if (currentChatDraft == null || chatDraftRect.Width <= 16) return;
-            if (chatHistoryView.Height > 0) renderer.Pass(matrix, chatHistoryView, DrawChatHistory);
+            if (chatTaskHeading.Width > 0) renderer.Pass(matrix, bodyView, DrawChatTaskHeading);
+            if (chatHistoryView.Height > 0) renderer.Pass(matrix, chatHistoryView, chatTaskDetails ? (Action)DrawChatTaskDetails : DrawChatHistory);
             renderer.Pass(matrix, chatDraftRect, DrawChatDraft);
-            renderer.Pass(matrix, panel, () => ScrollIndicator(chatHistoryView, (int)chatOffset, (int)chatMaximum));
+            renderer.Pass(matrix, panel, () => ScrollIndicator(chatHistoryView, (int)(chatTaskDetails ? chatTaskOffset : chatOffset),
+                (int)(chatTaskDetails ? chatTaskMaximum : chatMaximum)));
         }
 
         private void DrawChatHistory()
@@ -484,7 +493,6 @@ namespace JueMingR.TerrariaHost.F5
             if (!editingChat) return;
             float caretX = x + chatDraftLayout.CaretX(draft.Caret);
             float caretY = y + chatDraftLayout.LineOf(draft.Caret) * chatLineHeight;
-            Fill(new F5Rect(caretX, caretY, 1, chatLineHeight - 2), Color.White);
             string composition = aiInput.Composition;
             if (composition.Length > 0)
             {
@@ -492,8 +500,13 @@ namespace JueMingR.TerrariaHost.F5
                 float left = Math.Min(caretX, chatDraftRect.Right - width - 2);
                 Fill(new F5Rect(left, caretY, width, chatLineHeight), new Color(20, 31, 49));
                 renderer.Text(composition, new F5Rect(left + 3, caretY, width - 6, chatLineHeight), Color.Gold, ChatScale);
+                // The composition strip is painted above the committed text.
+                // Its end is the visible caret while the candidate is edited.
+                caretX = left + width - 2;
             }
-            if (aiInput.OwnsTextToken) Main.instance?.SetIMEPanelAnchor(new Vector2(caretX, Math.Min(chatDraftRect.Bottom, caretY + chatLineHeight) + 32), 0);
+            var caret = new F5Rect(caretX, caretY, 1, chatLineHeight - 2);
+            Fill(caret, Color.White);
+            PublishAiImeAnchor(draft, chatDraftRect, caret);
             if (!String.IsNullOrEmpty(aiInput.Error)) renderer.Text(aiInput.Error,
                 new F5Rect(x, chatDraftRect.Bottom - chatLineHeight, chatDraftRect.Width - 14, chatLineHeight), Color.Gold, ChatScale);
         }

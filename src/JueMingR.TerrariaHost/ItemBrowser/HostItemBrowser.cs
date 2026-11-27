@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
     // Composition only: each capability retains its own state and outlet.
     internal sealed class HostItemBrowser : IDisposable
     {
-        internal readonly HostItemKnowledge Knowledge = new HostItemKnowledge();
+        internal readonly HostItemKnowledge Knowledge;
         internal readonly HostChestLocator Locator;
         internal readonly HostAnnouncements Announcements;
         internal readonly ReadOnlyTargetGesture Targets;
@@ -23,7 +23,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private bool disposed;
         internal HostItemBrowser(string directory, WorldTileObservation world, HostInputState input)
         {
-            this.input = input; Locator = new HostChestLocator(world, Knowledge);
+            this.input = input; Knowledge = new HostItemKnowledge(() => input.Mapping); Locator = new HostChestLocator(world, Knowledge);
             Knowledge.Native.BindPlacementClock(() => input.Mapping);
             Announcements = new HostAnnouncements(directory);
             Targets = new ReadOnlyTargetGesture(input, Knowledge.Native);
@@ -61,7 +61,7 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         }
         private void RestoreBrowser()
         { if (!disposed && shell != null && !Main.gameMenu && input.IsFocused) { shell.State.Navigate(3); shell.State.RestoreVisible(); } }
-        internal void Update(long tick) { if (disposed) return; Announcements.Update(); Targets.Update(tick); Locator.Update(tick); }
+        internal void Update(long tick) { if (disposed) return; Announcements.Update(); Targets.Update(tick); Locator.Update(tick); Knowledge.StepChat(); }
         internal void FailClosed() { Targets.Cancel(); Locator.Clear(); }
         private void OnExit(object sender, EventArgs e) { Dispose(); }
         public void Dispose()
