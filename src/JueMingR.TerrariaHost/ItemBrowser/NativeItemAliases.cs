@@ -64,5 +64,17 @@ namespace JueMingR.TerrariaHost.ItemBrowser
             }
             return false;
         }
+
+        internal static bool MatchesExact(string localizationKey, string name)
+        {
+            const string prefix = "ItemName.";
+            if (localizationKey?.StartsWith(prefix, StringComparison.Ordinal) != true || IsPending(name)) return false;
+            var loading = Prepared.Value;
+            if (loading.Status != TaskStatus.RanToCompletion) return false;
+            foreach (var dictionary in loading.GetAwaiter().GetResult())
+                if (dictionary != null && dictionary.Exists(localizationKey) &&
+                    String.Equals(dictionary.GetTextValue(localizationKey), name, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
     }
 }

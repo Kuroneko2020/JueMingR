@@ -145,42 +145,137 @@ namespace NativeWorldTextProbe
                     "actual original server denial triggers native refund for only the second attempt");
                 Console.WriteLine("PASS true Terraria craft NetModule writer, server chest debit/denial, role-bound product, and native local refund.");
 
-                // Native chest take uses a distinct ordinary 31/33 interaction,
-                // then receives the original server's actual 32 on the primary.
                 VerifiedChest();
                 var sourceReport = (CompanionTaskOutcome)Call(host, "TryGetTaskObservation", identity, "resource_sources",
                     new Dictionary<string, object> { ["item_type"] = (int)ItemID.StoneBlock }, anchor);
                 Require(sourceReport.Value?.StartsWith("chest:", StringComparison.Ordinal) == true && sourceReport.Completed == 6,
                     "authoritatively received current chest supplies the requested source: " + sourceReport.Detail);
-                var transfer = new CompanionTaskStep("transfer_item", new Dictionary<string, object> { ["item_type"] = (int)ItemID.StoneBlock,
-                    ["amount"] = 1, ["source"] = sourceReport.Value, ["destination"] = "self_inventory" });
-                var box = (CompanionTaskSnapshot)Call(host, "SubmitTask", identity, "真正服务器箱子转移", new[] { transfer }, anchor, Guid.NewGuid());
-                sent.Clear();
-                NativeQuickItemChecks.BeginWorldStep(); Call(host, "PumpTask", actor);
-                Require(sent.Any(packet => packet[2] == 31) && !sent.Any(packet => packet[2] == 32), "opening goes through the actor's original connection before storage writes");
-                actorReplies.Clear();
-                Server();
-                foreach (var packet in sent.Where(packet => packet[2] == 154 || packet[2] == 31)) Decode(NetMessage.buffer[body.whoAmI], packet);
-                Require(replica.chest == chest.index && actorReplies.Any(packet => packet[2] == 33), "original server assigned this socket an open chest");
-                Client();
-                foreach (var response in actorReplies) Call(connection, "ReceiveRelay", response);
-                Call(host, "PumpConnection", actor);
-                sent.Clear();
-                NativeQuickItemChecks.BeginWorldStep(); Call(host, "PumpTask", actor);
-                var write = sent.Single(packet => packet[2] == 32);
-                Require(Snapshot(box.TaskId).State == "waiting" && Count(ItemID.StoneBlock) == 1 && chest.item[1].stack == 6,
-                    "one exact body-side change waits for the server's explicit chest-state relay");
-                contents.Clear();
-                Server(); Decode(NetMessage.buffer[body.whoAmI], write); Client();
-                Require(contents.Count == 1 && chest.item[1].stack == 5, "original server applied the exact new chest stack and relayed it");
+                void PumpBox()
+                { NativeQuickItemChecks.BeginWorldStep(); Call(host, "PumpTask", actor); }
+                var profiles = Get(host, "profiles");
+                (Guid id, byte[] frame) WriteBox(bool deposit)
+                {
+                    var step = new CompanionTaskStep("transfer_item", new Dictionary<string, object> {
+                        ["item_type"] = (int)ItemID.StoneBlock, ["amount"] = 1,
+                        ["source"] = deposit ? "self_inventory" : sourceReport.Value,
+                        ["destination"] = deposit ? sourceReport.Value : "self_inventory" });
+                    var box = (CompanionTaskSnapshot)Call(host, "SubmitTask", identity, "真正服务器箱子转移",
+                        new[] { step }, anchor, Guid.NewGuid());
+                    sent.Clear();
+                    PumpBox();
+                    Require(sent.Any(packet => packet[2] == 31) && !sent.Any(packet => packet[2] == 32),
+                        "opening goes through the actor's original connection before storage writes: " + Snapshot(box.TaskId).Detail);
+                    actorReplies.Clear();
+                    Server();
+                    foreach (var packet in sent.Where(packet => packet[2] == 154 || packet[2] == 31)) Decode(NetMessage.buffer[actorRecipient], packet);
+                    Require(replica.chest == chest.index && actorReplies.Any(packet => packet[2] == 33),
+                        "original server assigned this socket an open chest");
+                    Client();
+                    foreach (var response in actorReplies) Call(connection, "ReceiveRelay", response);
+                    Call(host, "PumpConnection", actor);
+                    sent.Clear();
+                    PumpBox();
+                    if (deposit)
+                    {
+                        Require(!sent.Any(packet => packet[2] == 32) &&
+                            ((CompanionProfile)Get(actor, "Profile")).FishingDepositUnconfirmedSlots != 0,
+                            "pending deposit source is preserved in the normal archive before network dispatch");
+                        NativeQuickItemChecks.Until(() => { Call(profiles, "Pump"); return (bool)Call(profiles, "IsSaved", profile.Id); });
+                        PumpBox();
+                    }
+                    Require(Snapshot(box.TaskId).State == "waiting" && sent.Count(packet => packet[2] == 32) == 1,
+                        "original sender produced exactly one chest update: " + Snapshot(box.TaskId).Detail);
+                    return (box.TaskId, sent.Single(packet => packet[2] == 32));
+                }
+                int ConsumeBox(byte[] sentFrame)
+                {
+                    contents.Clear();
+                    int slot = sentFrame[5];
+                    var primaryBefore = chest.item[slot].Clone();
+                    Server();
+                    try
+                    {
+                        Decode(NetMessage.buffer[actorRecipient], sentFrame);
+                        return chest.item[slot].stack;
+                    }
+                    finally
+                    {
+                        // The fixture shares native globals. Restore the
+                        // separate primary view until its reader gets 32.
+                        Client();
+                        chest.item[slot] = primaryBefore;
+                    }
+                }
+                void CloseBox()
+                {
+                    var release = sent.Last(packet => packet[2] == 33);
+                    Server(); Decode(NetMessage.buffer[actorRecipient], release); Client();
+                    Require(replica.chest == -1, "the real server processes the release of the actor's chest lease");
+                }
+
+                var pull = WriteBox(deposit: false);
+                Require(Count(ItemID.StoneBlock) == 0 && chest.item[1].stack == 6 && body.inventoryChestStack.Any(held => held),
+                    "real sender reserves the exact bag destination without crediting it before server consumption");
+                int heldSlot = Array.FindIndex(body.inventoryChestStack, held => held);
+                var pickup = typeof(Player).GetMethod("GetItem_FillEmptyInventorySlot", BindingFlags.Instance | BindingFlags.NonPublic);
+                Require(!(bool)pickup.Invoke(body, new object[] { new Item(ItemID.StoneBlock), GetItemSettings.PickupItemFromWorld,
+                    new Item(ItemID.StoneBlock), heldSlot }) && body.inventory[heldSlot].IsAir,
+                    "the actual native pickup scanner leaves the pending empty destination available");
+                Require(ConsumeBox(pull.frame) == 5 && contents.Count == 1, "original server applied the exact new chest stack and relayed it");
+                Require(Count(ItemID.StoneBlock) == 0 && chest.item[1].stack == 6,
+                    "the server consuming 32 does not bypass the still-pending primary receipt");
+                Require(((CompanionTaskSnapshot)Call(host, "PauseTask", identity, pull.id, true)).State == "paused",
+                    "pause can arrive while the primary receipt is outstanding");
                 Decode(NetMessage.buffer[256], contents[0]);
-                NativeQuickItemChecks.BeginWorldStep(); Call(host, "PumpTask", actor);
-                Require(Snapshot(box.TaskId).State == "succeeded" && Count(ItemID.StoneBlock) == 1 && body.chest == -1,
-                    "actual authoritative relay settles once and releases the body chest lease");
-                var release = sent.Last(packet => packet[2] == 33);
-                Server(); Decode(NetMessage.buffer[body.whoAmI], release); Client();
-                Require(replica.chest == -1, "the real server processes the release of the actor's chest lease");
-                Console.WriteLine("PASS true Terraria chest open, assigned actor, ordered write, server debit/primary relay and close.");
+                Decode(NetMessage.buffer[256], contents[0]);
+                Require(Snapshot(pull.id).State == "succeeded" && Count(ItemID.StoneBlock) == 1 && chest.item[1].stack == 5 && body.chest == -1,
+                    "actual authoritative relay settles the already sent write while paused and releases the body chest lease");
+                CloseBox();
+
+                var push = WriteBox(deposit: true);
+                Require(Count(ItemID.StoneBlock) == 1 && chest.item[1].stack == 5,
+                    "a submitted deposit still owns the exact unchanged source");
+                var stopped = (CompanionTaskSnapshot)Call(host, "StopTask", profile.OwnerId, profile.Id, (Guid?)push.id);
+                Require(stopped.State == "cancelled" && !sent.Any(packet => packet[2] == 33), "stopping leaves the already issued operation awaiting its own reply");
+                Require(ConsumeBox(push.frame) == 6 && contents.Count == 1 && chest.item[1].stack == 5 && Count(ItemID.StoneBlock) == 1,
+                    "the server accepted the deposit while the real bag still awaits receipt");
+                Decode(NetMessage.buffer[256], contents[0]);
+                Decode(NetMessage.buffer[256], contents[0]);
+                var late = Snapshot(push.id);
+                Require(late.State == "cancelled" && late.Attempts.Single().Completed == 1 && Count(ItemID.StoneBlock) == 0 &&
+                    ((CompanionProfile)Get(actor, "Profile")).FishingDepositUnconfirmedSlots == 0 && !body.inventoryChestStack.Any(held => held),
+                    "duplicate late original replies settle only the cancelled task's own deposit and clear exactly its saved mask");
+                CloseBox();
+
+                var rejectedPull = WriteBox(deposit: false);
+                try
+                {
+                    Main.chest[chest.index] = null;
+                    ConsumeBox(rejectedPull.frame);
+                    Require(contents.Count == 0 && Count(ItemID.StoneBlock) == 0,
+                        "the real server ignores a missing chest and the backpack remains unchanged");
+                }
+                finally { Main.chest[chest.index] = chest; }
+                for (int i = 0; i < 301; i++) NativeQuickItemChecks.BeginWorldStep();
+                Call(host, "PumpTaskChestReceipts");
+                Require(Snapshot(rejectedPull.id).State == "unconfirmed" && Count(ItemID.StoneBlock) == 0 && chest.item[1].stack == 6 &&
+                    sent.Count(packet => packet[2] == 32) == 1,
+                    "original rejection preserves both item counts without replay");
+                CloseBox();
+
+                var lostPull = WriteBox(deposit: false);
+                // The actor transport retires before the queued frame reaches
+                // the server. The still-connected primary has no 32 to decode.
+                Call(connection, "Disconnect", "测试在服务器消费前中断队友连接");
+                Call(host, "RetireTaskChestConnection", actor);
+                Require(Snapshot(lostPull.id).State == "unconfirmed" && Count(ItemID.StoneBlock) == 0 && chest.item[1].stack == 6 &&
+                    sent.Count(packet => packet[2] == 32) == 1,
+                    "retirement before server consumption preserves both item counts without replay");
+                for (int i = 0; i < 301; i++) NativeQuickItemChecks.BeginWorldStep();
+                Call(host, "PumpTaskChestReceipts");
+                Require(Count(ItemID.StoneBlock) == 0 && !body.inventoryChestStack.Any(held => held),
+                    "only the uncredited withdrawal reservation ends on bounded receipt timeout");
+                Console.WriteLine("PASS true Terraria chest 31/32 success, pre-receipt backpack unchanged, cancelled late receipt once, and ignored/disconnected transfer conserved.");
             }
             finally
             {

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using JueMingR.Features.Blueprint;
+using JueMingR.Features.MapMarkers;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -35,13 +36,7 @@ namespace NativeWorldTextProbe
             CompanionTaskSnapshot View(CompanionProfile profile) => (CompanionTaskSnapshot)Call(host,"GetTask",profile.OwnerId,profile.Id,null);
             CompanionTaskSnapshot Start(CompanionTaskIdentity identity, string name, object anchor, params CompanionTaskStep[] steps) =>
                 (CompanionTaskSnapshot)Call(host,"SubmitTask",identity,name,steps,anchor,Guid.NewGuid());
-            object Capture(Player player)
-            {
-                // Send-time helper is the same value constructor as chat admission.
-                var method = host.GetType().GetMethod("CaptureFishingAnchor", System.Reflection.BindingFlags.Static |
-                    System.Reflection.BindingFlags.NonPublic);
-                return method.Invoke(null,new object[] { player });
-            }
+            object Capture(Player player) => Call(host,"CaptureTaskSendAnchor",player);
             void Finish(CompanionProfile profile, int ticks = 240)
             {
                 for (int frame = 0; frame < ticks && View(profile).IsActive; frame++) tick();
@@ -139,6 +134,25 @@ namespace NativeWorldTextProbe
                     returned.Attempts.Count == 2 && returned.Attempts[0].Detail.Contains("发送点") &&
                     returned.Attempts[1].Detail.Contains("出发点") && Vector2.Distance(first.Bottom,tripOrigin) < 22f,
                     "round trip uses distinct actual outbound and original companion return positions: " + returned.Detail + MotionEvidence());
+                var markerA = new MarkerRecord(Guid.NewGuid().ToString("N"),64,55,8,"出发地标甲");
+                var markerB = new MarkerRecord(Guid.NewGuid().ToString("N"),80,55,8,"出发地标乙");
+                var previousMarkers = Get(host,"TaskMarkers");
+                var previousSelection = Get(host,"TaskSelectedMarker");
+                var selected = markerA;
+                try
+                {
+                    Set(host,"TaskMarkers",(Func<IReadOnlyList<MarkerRecord>>)(()=>new[] { markerA,markerB }));
+                    Set(host,"TaskSelectedMarker",(Func<string>)(()=>selected.Id));
+                    var sent = Capture(human);
+                    selected = markerB;
+                    var marked = Start(aid,"去发送时定位的标记",sent,Node("move_to",("destination","selected")));
+                    Finish(a);
+                    Require(View(a).TaskId == marked.TaskId && View(a).State == "succeeded" &&
+                        View(a).Attempts.Single().Value == "marker:"+markerA.Id && Math.Abs(first.Bottom.X-(64*16+8))<=20,
+                        "after moving the map selection to B, native movement follows the captured A reference");
+                }
+                finally { Set(host,"TaskMarkers",previousMarkers); Set(host,"TaskSelectedMarker",previousSelection); }
+                CheckPreviousReceipts(host,aid,a,human,first,Capture(human),tick);
                 first.inventory[47] = new Item(ItemID.CopperPickaxe);
                 first.inventory[48] = new Item(ItemID.StoneBlock) { stack = 3 };
                 human.Bottom = first.Bottom;
@@ -202,6 +216,7 @@ namespace NativeWorldTextProbe
                     "the fixed blueprint produces a whole original chair with one actual item debit: " + View(a).Detail + "/" +
                     String.Join("/",View(a).Attempts.Select(attempt=>attempt.Detail)) + " stack=" + first.inventory[48].stack +
                     " target=" + Main.tile[bx,53] + "/" + Main.tile[bx,54] + " source=" + Main.tile[58,53] + "/" + Main.tile[58,54]);
+                CheckProjectionFinalProof(host,blueprint,input,library,aid,a,first,workAnchor,tick);
                 var stale = new CompanionTaskIdentity(a.OwnerId,a.Id,world,aid.Activation+1,a.DataEpoch);
                 Require(Start(stale,"失效身份",frozen,Node("stand_by")).State == "rejected",
                     "an obsolete activation cannot start a task");
@@ -239,6 +254,112 @@ namespace NativeWorldTextProbe
                 for(int slot=0;slot<workSupplies.Length;slot++) first.inventory[43+slot] = workSupplies[slot];
                 Call(Get(context,"Blueprint"),"ClearProjection");
                 Main.tile = tileBefore;
+            }
+        }
+
+        private static void CheckPreviousReceipts(object host, CompanionTaskIdentity identity, CompanionProfile profile,
+            Player human, Player body, object anchor, Action tick)
+        {
+            var actorItems = body.inventory.ToArray();
+            var ownerItems = human.inventory.ToArray();
+            int selectedSlot = body.selectedItem;
+            int ProductCount(Player player) => player.inventory.Where(item=>item?.type==ItemID.Torch).Sum(item=>item.stack);
+            CompanionTaskStep Transfer(object amount) => new CompanionTaskStep("transfer_item",new Dictionary<string,object>
+            {
+                ["item_type"]=(int)ItemID.Torch,["amount"]=amount,["source"]="self_inventory",["destination"]="owner_inventory"
+            });
+            CompanionTaskSnapshot Run(params CompanionTaskStep[] steps)
+            {
+                var job = (CompanionTaskSnapshot)Call(host,"SubmitTask",identity,"紧邻步骤回执",steps,anchor,Guid.NewGuid());
+                for (int i=0; i<24 && job.IsActive; i++)
+                { tick(); job=(CompanionTaskSnapshot)Call(host,"GetTask",profile.OwnerId,profile.Id,job.TaskId); }
+                return job;
+            }
+            try
+            {
+                body.inventory[46]=new Item(ItemID.StoneBlock);
+                body.selectedItemState.Select(46);
+                body.inventory[47]=new Item(ItemID.Wood) { stack=3 };
+                body.inventory[48]=new Item(ItemID.Gel) { stack=3 };
+                for(int slot=0;slot<human.inventory.Length;slot++)
+                    if(human.inventory[slot]?.type==ItemID.Torch) human.inventory[slot]=new Item();
+                int prior=ProductCount(human);
+                var craft = new CompanionTaskStep("craft_item",new Dictionary<string,object>
+                    { ["item_type"]=(int)ItemID.Torch,["amount"]=3 });
+                var blank = new CompanionTaskStep("stand_by",null);
+                var skip = new CompanionTaskStep("stand_by",null,condition:new CompanionTaskCondition("has_item",
+                    new Dictionary<string,object> { ["item_type"]=(int)ItemID.Torch,["quantity"]=9999 }));
+                var missing=Run(craft,blank,Transfer("$previous"));
+                Require(missing.State=="failed" && missing.Attempts.Count==2 && missing.Attempts[0].Value=="3" &&
+                    missing.Attempts[1].Value==null && ProductCount(human)==prior,
+                    "an adjacent valueless receipt cannot fall back to an earlier numeric receipt: " + missing.Detail);
+                var skipped=Run(craft,skip,Transfer("$previous"));
+                Require(skipped.State=="failed" && skipped.Attempts.Count==2 && skipped.Attempts[1].State=="skipped" &&
+                    ProductCount(human)==prior,"an adjacent skipped step cannot authorize use of an earlier number: " + skipped.Detail);
+                var explicitStep=Run(craft,blank,Transfer("$step.0"));
+                Require(explicitStep.State=="succeeded" && ProductCount(human)==prior+3,
+                    "explicit step reference still uses the selected step's real numeric receipt: " + explicitStep.Detail);
+            }
+            finally
+            {
+                Array.Copy(actorItems,body.inventory,actorItems.Length);
+                Array.Copy(ownerItems,human.inventory,ownerItems.Length);
+                body.selectedItemState.Select(selectedSlot);
+            }
+        }
+
+        private static void CheckProjectionFinalProof(object host, object blueprint, object input, LibraryState library,
+            CompanionTaskIdentity identity, CompanionProfile profile, Player body, object anchor, Action tick)
+        {
+            const int left=10, right=74, row=54;
+            var first=Main.tile[left,row]; var footing=Main.tile[left,row+1]; var last=Main.tile[right,row];
+            var supply=body.inventory[48];
+            try
+            {
+                Main.tile[left,row]=new Tile(); NativeToolsChecks.Tile(left,row,TileID.Stone);
+                Main.tile[left,row+1]=new Tile(); NativeToolsChecks.Tile(left,row+1,TileID.Stone);
+                Main.tile[right,row]=new Tile();
+                body.inventory[48]=new Item(ItemID.StoneBlock) { stack=3 };
+                var entry=NativeBlueprintBudgetChecks.Save(library,new[]
+                {
+                    new CaptureCell { X=0,Layers=CaptureLayer.Tile,TileType=TileID.Stone },
+                    new CaptureCell { X=64,Layers=CaptureLayer.Tile,TileType=TileID.Stone }
+                },65,1);
+                var instance=NativeBlueprintWorldMatchChecks.Place(blueprint,input,entry,left,row,tick);
+                var observed=(CompanionTaskOutcome)Call(host,"TryGetTaskObservation",identity,"observe_blueprints",
+                    new Dictionary<string,object>(),anchor);
+                Require(observed.Value!=null,"two-region projection has one live fixed reference: " + observed.Detail);
+                var step=new CompanionTaskStep("build_projection",new Dictionary<string,object> { ["reference"]=observed.Value });
+                var job=(CompanionTaskSnapshot)Call(host,"SubmitTask",identity,"两个区块验证",new[] { step },anchor,Guid.NewGuid());
+                var actor=Call(host,"Owned",body);
+                Require(job.State=="accepted","two-region construction admitted: " + job.Detail);
+                NativeQuickItemChecks.Until(()=>
+                {
+                    tick();
+                    var live=GetOptional(actor,"TaskWork");
+                    var execution=live==null?null:GetOptional(live,"Current");
+                    var state=execution==null?null:GetOptional(execution,"State");
+                    return state!=null && (int)Get(state,"PageX")==64;
+                });
+                WorldGen.KillTile(left,row,noItem:true);
+                Require(!Main.tile[left,row].active(),"one previously checked tile was actually removed from the world");
+                CompanionTaskSnapshot View() => (CompanionTaskSnapshot)Call(host,"GetTask",profile.OwnerId,profile.Id,job.TaskId);
+                NativeQuickItemChecks.Until(()=> { tick(); return !View().IsActive || View().Detail.Contains("蓝图有差异"); });
+                Require(View().State=="waiting" && Main.tile[right,row].active() && !(bool)Get(instance,"CompletedByWorldMatch"),
+                    "later placement cannot complete while the earlier world tile differs: " + View().Detail);
+                WorldGen.PlaceTile(left,row,TileID.Stone,mute:true);
+                Require(Main.tile[left,row].active(),"native world mutation restored the earlier target");
+                NativeQuickItemChecks.Until(()=> { tick(); return !View().IsActive; });
+                Require(View().State=="succeeded" && (bool)Get(instance,"CompletedByWorldMatch"),
+                    "the shared native matcher confirms both regions on the original task: " + View().Detail);
+                Console.WriteLine("PASS two-region companion construction waits for a changed earlier region and closes on the shared current proof.");
+            }
+            finally
+            {
+                Call(host,"StopTask",profile.OwnerId,profile.Id,null);
+                Call(blueprint,"ClearProjection");
+                Main.tile[left,row]=first; Main.tile[left,row+1]=footing; Main.tile[right,row]=last;
+                body.inventory[48]=supply;
             }
         }
 

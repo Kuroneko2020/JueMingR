@@ -133,10 +133,13 @@ namespace JueMingR.TerrariaHost.Companions
                         if (!(stop ? ChatFields(args, "mode") : ChatFields(args, "mode", "attack")) ||
                             !ChatString(args, "mode", 8, out var mode) || mode != null && mode != "follow" && mode != "stay" ||
                             !ChatBool(args, "attack", out var attack) || !stop && mode == null && !attack.HasValue) break;
+                        if (stop && !run.Authority.Stop || !run.Authority.Mode(mode, attack))
+                        { RejectChatTool(command, ChatAuthority.Denied); return; }
                         ChangeChatBehavior(command, actor, mode, attack, stop);
                         return;
                     case "start_fishing":
                         if (!ChatFields(args, "notify_no_bait") || !ChatBool(args, "notify_no_bait", out var notify)) break;
+                        if (!run.Authority.FishActivity) { RejectChatTool(command, ChatAuthority.Denied); return; }
                         StartChatFishing(command, actor, notify == true);
                         return;
                     case "use_item_once":
@@ -146,6 +149,7 @@ namespace JueMingR.TerrariaHost.Companions
                         return;
                     case "manual_recall":
                         if (!ChatFields(args)) break;
+                        if (!run.Authority.Recall) { RejectChatTool(command, ChatAuthority.Denied); return; }
                         RecallChatActor(command, actor);
                         return;
                     case "get_action_status":
@@ -419,6 +423,9 @@ namespace JueMingR.TerrariaHost.Companions
             const string useIntent = "item-once";
             if (!command.Run.Sources.TryGetValue(source, out var recorded))
             { RejectChatTool(command, "请先查询背包并使用本轮返回的物品来源。"); return; }
+            if (!command.Run.Authority.Item(recorded.Type) ||
+                stayAfterTeleport && !command.Run.Authority.Mode("stay", null))
+            { RejectChatTool(command, ChatAuthority.Denied); return; }
             if (command.Run.Consumed.TryGetValue(useIntent, out var existing))
             {
                 if (existing.ItemType == recorded.Type && existing.StayAfterTeleport == stayAfterTeleport &&

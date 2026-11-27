@@ -291,7 +291,6 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool AcceptPrimary(byte[] data,int start,int length)
         {
             if(ReadingObservation || Decoding!=null || length<1)return true;int id=data[start];if(id==49)CompleteNpcSnapshot(null);
-            if (id == 32) ObserveTaskChestPrimary(data, start, length);
             if(length<2)return true;int slot=data[start+1];var a=OwnedSlot(slot);
             if(id==65 && OwnedSlot(DirectedPlayerTeleport(data,start,length)) is Actor receiver && receiver.Ready &&
                 !receiver.Closing && receiver.Body.active && receiver.Connection!=null)return false;

@@ -400,6 +400,8 @@ namespace JueMingR.TerrariaHost.Companions
                         ? "对应物品已减少，但未核到" + name + "生效，不重发。" : "未见物品消耗或" + name + "生效，请检查原版时间、群系和进度条件。");
                 return TaskOutcome("running", "已交给原版动作，正等" + name + "的实际结果。");
             }
+            if (work.Hand != null)
+                return work.HandReceipt ?? TaskOutcome("running", "召唤物已排队，尚未进入原版用物。");
             if (RealEventOngoing(type) || type == ItemID.CelestialSigil && NPC.MoonLordCountdown > 0)
                 return TaskOutcome("failed", name + "已出现或已开始进入世界，本次未另用物品。");
             int slot = FindServiceItem(actor, type, execution.Number("slot", -1), 1);
@@ -411,11 +413,19 @@ namespace JueMingR.TerrariaHost.Companions
                 return TaskOutcome("failed", reason ?? "原版未接纳该物品。");
             work.InitialQuantity = CountTaskInventory(actor, type);
             work.Hand = actor.Supplies.Once;
+            work.Hand.Task = execution;
             work.Hand.ChatActivation = execution.Job.Identity.Activation;
             work.Hand.ChatDataEpoch = execution.Job.Identity.DataEpoch;
-            work.Hand.ChatComplete = (state, detail) => work.HandReceipt = TaskOutcome(state, detail);
-            work.Started = Main.GameUpdateCount;
-            execution.MarkSubmitted();
+            work.Hand.TaskStarted = () => work.Started = Main.GameUpdateCount;
+            work.Hand.ChatComplete = (state, detail) =>
+            {
+                work.HandReceipt = TaskOutcome(state, detail);
+                if (!execution.Issued || ReferenceEquals(execution.Job.Current, execution)) return;
+                int used = Math.Max(0, work.InitialQuantity - CountTaskInventory(actor, type));
+                execution.Settle(RealEventOngoing(type) && (used > 0 || state == "succeeded")
+                    ? TaskOutcome("succeeded", "已实际观察到" + name + "生效；对应物品净减少 " + used + " 个。", 1)
+                    : TaskOutcome("unconfirmed", name + "用物已结算，但事件效果未确认。" + detail));
+            };
             return TaskOutcome("running", "已受理一次原版召唤用物。");
         }
 
@@ -560,8 +570,8 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void CancelTaskEvent(TaskExecution execution)
         {
-            if (execution.State is EventUse work && work.Hand != null && ReferenceEquals(execution.Actor.Supplies.Once, work.Hand))
-                CancelChatItemOnce(execution.Actor, "已撤回尚未开始的事件用物。");
+            if (execution.State is EventUse work)
+                CancelQueuedTaskItem(execution.Actor, work.Hand, "已撤回尚未开始的事件用物。");
             if (execution.State is NaturalEventUse natural && ReferenceEquals(execution.Actor.TaskCombat, natural.Combat))
             {
                 execution.Actor.TaskCombat = null;

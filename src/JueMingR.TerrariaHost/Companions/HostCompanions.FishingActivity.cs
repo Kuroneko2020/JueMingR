@@ -23,6 +23,8 @@ namespace JueMingR.TerrariaHost.Companions
             internal readonly Point? Seat;
             internal readonly ushort SeatType;
             internal readonly short SeatFrameX, SeatFrameY;
+            internal readonly string SelectedMarkerId;
+            internal readonly long MarkerSession;
             internal bool Valid => Gravity != 0;
 
             internal FishingAnchor(Player player, Point? seat, Tile tile)
@@ -33,9 +35,17 @@ namespace JueMingR.TerrariaHost.Companions
                 SeatType = tile?.type ?? 0;
                 SeatFrameX = tile?.frameX ?? 0;
                 SeatFrameY = tile?.frameY ?? 0;
+                SelectedMarkerId = null;
+                MarkerSession = 0;
             }
             internal FishingAnchor(Vector2 feet, float gravity)
-            { Feet = feet; Gravity = gravity; Seat = null; SeatType = 0; SeatFrameX = SeatFrameY = 0; }
+            { Feet = feet; Gravity = gravity; Seat = null; SeatType = 0; SeatFrameX = SeatFrameY = 0; SelectedMarkerId = null; MarkerSession = 0; }
+            internal FishingAnchor(FishingAnchor spatial, string markerId, long markerSession)
+            {
+                Feet = spatial.Feet; Gravity = spatial.Gravity; Seat = spatial.Seat; SeatType = spatial.SeatType;
+                SeatFrameX = spatial.SeatFrameX; SeatFrameY = spatial.SeatFrameY;
+                SelectedMarkerId = markerId; MarkerSession = markerSession;
+            }
         }
 
         internal sealed class FishingActivity

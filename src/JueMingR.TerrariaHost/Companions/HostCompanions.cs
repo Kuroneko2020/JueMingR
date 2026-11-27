@@ -18,6 +18,7 @@ namespace JueMingR.TerrariaHost.Companions
     {
         internal sealed class Actor
         {
+            internal ulong TaskChestResolvedDepositSlots;
             internal CompanionProfile Profile;internal Player Body,Previous;
             private CompanionProfile preferencesSource;
             private CompanionBehavior preferences;
@@ -401,7 +402,10 @@ namespace JueMingR.TerrariaHost.Companions
             ValidateItemGesture();
             profiles.Pump();
             if(savingCreation!=Guid.Empty && profiles.IsSaved(savingCreation)){savingCreation=Guid.Empty;if(Feedback=="正在保存新人物。")Feedback="";}
-            foreach(var closing in actors.Values.Where(a=>a.Closing && a.CloseCaptured).ToArray())if(profiles.IsSaved(closing.Profile.Id))Release(closing,true);if(failed)return;
+            PumpTaskChestReceipts();
+            foreach(var closing in actors.Values.Where(a=>a.Closing && a.CloseCaptured).ToArray())
+                if(!WaitingForTaskChestActor(closing) && profiles.IsSaved(closing.Profile.Id))Release(closing,true);
+            if(failed)return;
             steam.Pump();
             PumpRetiringConnections();
             PumpChat();

@@ -35,7 +35,7 @@ namespace JueMingR.TerrariaHost.Companions
                     !TryQueueItemOnce(actor, slot, false, out reason)) continue;
                 var once = actor.Supplies.Once;
                 execution.State = once;
-                execution.MarkSubmitted();
+                once.Task = execution;
                 once.ChatActivation = execution.Job.Identity.Activation;
                 once.ChatDataEpoch = execution.Job.Identity.DataEpoch;
                 string name = item.Name;
@@ -51,8 +51,8 @@ namespace JueMingR.TerrariaHost.Companions
 
         private void CancelTaskItem(TaskExecution execution)
         {
-            if (execution.State is ItemOnce command && ReferenceEquals(execution.Actor.Supplies.Once, command))
-                CancelChatItemOnce(execution.Actor, "已停止任务并撤回尚未开始的用物。");
+            if (execution.State is ItemOnce command)
+                CancelQueuedTaskItem(execution.Actor, command, "已停止任务并撤回尚未开始的用物。");
         }
     }
 }

@@ -9,7 +9,7 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal sealed partial class HostCompanions
     {
-        internal const string FishingDepositUnconfirmedMessage = "这名队友有尚未确认的存鱼结果，暂不能加入或转移物品。";
+        internal const string FishingDepositUnconfirmedMessage = "这名队友有尚未确认的储存结果，暂不能加入或转移物品。";
         internal long CreationSessionToken { get { return session; } }
         internal Guid LastCreatedId { get; private set; }
         internal CompanionProfile SettingProfile(Guid ownerId, Guid id)
@@ -295,7 +295,9 @@ namespace JueMingR.TerrariaHost.Companions
             }
             // Native inventory and moves/removals of weapon hints are captured
             // in one revision. A failed write retries that same latest body.
-            actor.Profile = profiles.CapturePreferencesAndSave(actor.Profile.Id, actor.Body, actor.Generation, preferences);
+            actor.Profile = profiles.CapturePreferencesAndSave(actor.Profile.Id, actor.Body, actor.Generation, preferences,
+                actor.TaskChestResolvedDepositSlots);
+            actor.TaskChestResolvedDepositSlots = 0;
         }
     }
 }

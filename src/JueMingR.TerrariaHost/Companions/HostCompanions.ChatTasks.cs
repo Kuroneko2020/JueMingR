@@ -84,6 +84,7 @@ namespace JueMingR.TerrariaHost.Companions
                         CompleteChatQuery(command, FormatTask(GetTask(run.Boundary.Owner, run.Boundary.Profile, taskId)));
                     else
                     {
+                        if (!run.Authority.Stop) { RejectChatTool(command, ChatAuthority.Denied); return true; }
                         var stopped = StopTask(run.Boundary.Owner, run.Boundary.Profile, taskId);
                         if (stopped != null && stopped.State != "rejected") run.Conversation.ControlEpoch++;
                         CompleteChatQuery(command, FormatTask(stopped), error: stopped == null || stopped.State == "rejected");
@@ -117,15 +118,21 @@ namespace JueMingR.TerrariaHost.Companions
                         CompleteChatQuery(command, FormatTask(GetTask(run.Boundary.Owner, run.Boundary.Profile, existing)));
                     else
                     {
+                        if (!run.Authority.Plan(extra, out var cost)) { RejectChatTool(command, cost.Denial); return true; }
                         var updated = command.Call.Name == "append_task" ? AppendTask(identity, existing.Value, extra, run.Anchor)
                             : ReplaceTaskTail(identity, existing.Value, extra, run.Anchor);
-                        if (updated != null && updated.State != "rejected") run.SubmittedPlans.Add(appendKey, existing.Value);
+                        if (updated != null && updated.State != "rejected")
+                        {
+                            run.SubmittedPlans.Add(appendKey, existing.Value);
+                            run.Authority.Commit(cost);
+                        }
                         CompleteChatQuery(command, FormatTask(updated), error: updated == null || updated.State == "rejected");
                     }
                     return true;
                 case "set_task_paused":
                     if (!ChatFields(args, "task_id", "paused") || !ReadTaskGuid(args, out var pauseId) || !pauseId.HasValue ||
                         !ChatBool(args, "paused", out bool? paused) || !paused.HasValue) break;
+                    if (!run.Authority.Pause(paused.Value)) { RejectChatTool(command, ChatAuthority.Denied); return true; }
                     var state = PauseTask(identity, pauseId.Value, paused.Value);
                     CompleteChatQuery(command, FormatTask(state), error: state == null || state.State == "rejected");
                     return true;
@@ -145,10 +152,12 @@ namespace JueMingR.TerrariaHost.Companions
                 CompleteChatQuery(command, FormatTask(GetTask(run.Boundary.Owner, run.Boundary.Profile, previous)));
                 return;
             }
+            if (!run.Authority.Plan(steps, out var cost)) { RejectChatTool(command, cost.Denial); return; }
             var result = SubmitTask(identity, title.Trim(), steps, run.Anchor, Guid.ParseExact(OperationId(command), "N"));
             if (result != null && result.TaskId != Guid.Empty)
             {
                 run.SubmittedPlans.Add(key, result.TaskId);
+                run.Authority.Commit(cost);
                 run.Conversation.ControlEpoch++;
             }
             CompleteChatQuery(command, FormatTask(result), error: result == null || result.State == "rejected");

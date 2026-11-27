@@ -23,6 +23,8 @@ namespace JueMingR.TerrariaHost.Companions
             internal object World;
             internal uint Expires;
             internal int PreviousSelection;
+            internal TaskExecution Task;
+            internal Action TaskStarted;
             internal byte Prefix;
             internal Guid ChatRunId;
             internal CancellationToken ChatCancellation;
@@ -309,6 +311,13 @@ namespace JueMingR.TerrariaHost.Companions
             else if (state.ChatFinishingOnce != null) FinishChatHeldItemIfReady(actor, true);
             var command = state.Once;
             if (command == null) return false;
+            // The task still owns queued hands. During a pause do not claim
+            // the hand or spend the normal busy-wait time budget.
+            if (ItemTaskPaused(command))
+            {
+                command.Expires++;
+                return false;
+            }
             if (command.ChatCancellation.IsCancellationRequested)
             {
                 CancelChatItemOnce(actor, "已撤回尚未开始的用物请求。");
@@ -337,8 +346,17 @@ namespace JueMingR.TerrariaHost.Companions
             if (HandlessShape(actor.Body)) return true;
             if (!admittedKind.HasValue || admittedKind == CompanionSupplyKind.Growth) return true;
             state.Once = null;
-            UseQuick(actor, admittedKind.Value, command.Source, manual: true, chatComplete: command.ChatComplete);
+            UseQuick(actor, admittedKind.Value, command.Source, manual: true, chatComplete: command.ChatComplete, command: command);
             return true;
+        }
+
+        private static bool ItemTaskPaused(ItemOnce command) => command?.Task is TaskExecution task && !task.Issued && task.Job.Paused;
+
+        private static void SubmitItemTask(ItemOnce command)
+        {
+            if (!(command?.Task is TaskExecution task) || task.Issued) return;
+            task.MarkSubmitted();
+            command.TaskStarted?.Invoke();
         }
 
         internal void CancelCompanionItemOnce(Actor actor)
@@ -557,6 +575,22 @@ namespace JueMingR.TerrariaHost.Companions
             if (pending?.ChatComplete == null) return;
             actor.Supplies.Once = null;
             pending.ChatComplete("cancelled", reason);
+        }
+
+        private void CancelQueuedTaskItem(Actor actor, ItemOnce command, string reason)
+        {
+            if (command?.Task == null || command.Task.Issued) return;
+            var state = actor.Supplies;
+            if (ReferenceEquals(state.Once, command)) CancelChatItemOnce(actor, reason);
+            else if (ReferenceEquals(state.HeldOnce, command))
+            {
+                state.HeldOnce = null;
+                state.HeldSource = default(RecoverySource);
+                state.RestoreSelection = -1;
+                actor.Body.controlUseItem = false;
+                actor.Body.selectedItemState.Select(command.PreviousSelection);
+                command.ChatComplete?.Invoke("cancelled", reason);
+            }
         }
     }
 }

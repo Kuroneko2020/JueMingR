@@ -49,7 +49,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             RegisterTaskObservation("resource_sources", "查当前队友、主人、可访问个人储存和附近世界箱的资源来源。Value 为首个可确认的有货端点。",
                 QueryTaskResources, new TaskField("item_type", "integer", min: 1, max: ItemID.Count - 1));
-            RegisterTaskOperation("transfer_item", "按指定来源、目的地、数量和最低保留数移动物品。端点由 resource_sources 提供。",
+            RegisterTaskOperation("transfer_item", "按数量和最低保留数移动物品。端点由 resource_sources 提供。联机世界箱和主人、个人银行或另一世界箱之间的转移，拆成两步并使用 self_inventory（队友背包）中转；第二步数量用第一步已确认数量。",
                 TransferTaskItems, CancelTaskChestTransfer,
                 new TaskField("item_type", "integer", true, 1, ItemID.Count - 1), new TaskField("amount", "integer", true, 1, 99999),
                 new TaskField("source", required: true, min: 1, max: 64), new TaskField("destination", required: true, min: 1, max: 64),
@@ -183,7 +183,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var body = human ? owner : actor.Body;
             var items = CompanionResources.Items(body, area);
-            return itemDraft?.DependsOn(items, slot) == true || ItemSlotBlocked(human, body, area, slot);
+            return !human && area == CompanionInventoryArea.Inventory && TaskChestSourceHeld(actor, slot) ||
+                itemDraft?.DependsOn(items, slot) == true || ItemSlotBlocked(human, body, area, slot);
         }
 
         private CompanionTaskOutcome TransferTaskItems(TaskExecution execution)
@@ -195,6 +196,12 @@ namespace JueMingR.TerrariaHost.Companions
             if (ReferenceEquals(source.Items, destination.Items)) return TaskOutcome("failed", "来源和目的地是同一个容器。");
             if (source.Chest != null && destination.Chest != null) return TaskOutcome("failed", "两个世界箱之间需要以队友背包为中转。");
             var chest = source.Chest ?? destination.Chest;
+            if (Main.netMode == 1 && chest != null)
+            {
+                var backpack = source.Chest != null ? destination : source;
+                if (backpack.Owner || backpack.Area != CompanionInventoryArea.Inventory)
+                    return TaskOutcome("failed", "联机世界箱请用队友背包中转，再按已确认数量移动到主人或个人储存。");
+            }
             if (chest != null && !TaskChestReachable(actor, chest)) return ApproachTaskChest(execution, chest);
             if (Main.netMode == 1 && chest != null)
                 return BeginTaskChestTransfer(execution, source, destination);
@@ -253,14 +260,12 @@ namespace JueMingR.TerrariaHost.Companions
             if (destination.Chest == null) draft.Stage(destination.Owner, destination.Area, to);
             if (!draft.TryPrepare(out var changes) || source.Chest != null && !TaskChestReachable(actor, source.Chest) ||
                 destination.Chest != null && !TaskChestReachable(actor, destination.Chest)) return TaskOutcome("waiting", "槽位或容器已变化，即将重新核对。");
-            if (remote != null && !SubmitTaskChestSlot(execution, remote, source.Chest != null ? from : to, moved))
-                return TaskOutcome("waiting", "正在等待队友连接接受箱子操作。", remote.Completed);
+            if (remote != null) return PrepareTaskChestSlot(remote, source.Chest != null ? from : to, moved, changes);
             execution.MarkSubmitted();
-            if (remote == null && source.Chest != null) ApplyTaskChestSlots(source, from);
-            if (remote == null && destination.Chest != null) ApplyTaskChestSlots(destination, to);
+            if (source.Chest != null) ApplyTaskChestSlots(source, from);
+            if (destination.Chest != null) ApplyTaskChestSlots(destination, to);
             foreach (var change in changes) change.Apply();
             FinishItemCommit(actor, changes, "");
-            if (remote != null) return TaskOutcome("waiting", "箱子操作已发送，等待服务器回传实际槽位。", remote.Completed);
             return TaskOutcome(moved == amount ? "succeeded" : "partial", "实际移动 " + moved + " 件。" +
                 (moved < amount ? "剩余数量受保留数、可用物品或目标空间限制。" : ""), moved);
         }

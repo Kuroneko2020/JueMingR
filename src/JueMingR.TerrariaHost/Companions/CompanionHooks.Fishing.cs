@@ -81,9 +81,9 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static bool CompanionFishingStorageHold(Player p, int slot)
         {
-            if (slot < 0 || slot >= 50 || !p.inventoryChestStack[slot]) return false;
+            if (slot < 0 || slot >= p.inventoryChestStack.Length || !p.inventoryChestStack[slot]) return false;
             var a = host?.Owned(p);
-            return a != null && HostCompanions.FishingSourceHeld(a, slot);
+            return a != null && (host.TaskChestSourceHeld(a, slot) || slot < 50 && HostCompanions.FishingSourceHeld(a, slot));
         }
 
         internal static HostCompanions FishingHost => host;

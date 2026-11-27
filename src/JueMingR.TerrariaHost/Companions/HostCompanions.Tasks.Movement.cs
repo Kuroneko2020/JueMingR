@@ -16,6 +16,8 @@ namespace JueMingR.TerrariaHost.Companions
     {
         internal Func<IReadOnlyList<MarkerRecord>> TaskMarkers = () => Array.Empty<MarkerRecord>();
         internal Func<string> TaskSelectedMarker = () => null;
+        private FishingAnchor CaptureTaskSendAnchor(Player player) =>
+            new FishingAnchor(CaptureFishingAnchor(player), TaskSelectedMarker(), session);
         private readonly Dictionary<int,TaskNpcWitness> taskNpcWitnesses = new Dictionary<int,TaskNpcWitness>();
 
         private sealed class TaskNpcWitness
@@ -294,9 +296,18 @@ namespace JueMingR.TerrariaHost.Companions
                     feet = new Vector2(x * 16 + 8, (float)Main.worldSurface * 16);
                     break;
                 case "selected":
+                    // Freeze selection at the player input edge. Current map
+                    // records can invalidate that ID but cannot substitute it.
+                    if (execution.Anchor.MarkerSession != session || execution.Anchor.SelectedMarkerId == null)
+                    { error = "发送消息时没有在当前世界定位已保存的标记。"; return false; }
+                    var selected = (TaskMarkers() ?? Array.Empty<MarkerRecord>()).FirstOrDefault(marker =>
+                        marker.Id == execution.Anchor.SelectedMarkerId);
+                    if (selected == null) { error = "发送时定位的地图标记已不可用。"; return false; }
+                    feet = new Vector2((float)selected.X * 16, (float)selected.Y * 16);
+                    site.Name = selected.Name; site.Reference = "marker:" + selected.Id;
+                    break;
                 case "marker":
                 case "reference":
-                    if (destination == "selected") reference = TaskSelectedMarker();
                     if (reference?.StartsWith("pylon:", StringComparison.Ordinal) == true && Main.PylonSystem?.Pylons != null)
                     {
                         foreach (var pylon in Main.PylonSystem.Pylons)

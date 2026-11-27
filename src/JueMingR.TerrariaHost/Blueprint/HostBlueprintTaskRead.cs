@@ -17,6 +17,18 @@ namespace JueMingR.TerrariaHost.Blueprint
         private readonly Dictionary<BlueprintProjectionIdentity,TaskProjectionRead> taskProjectionReads =
             new Dictionary<BlueprintProjectionIdentity,TaskProjectionRead>();
 
+        internal bool TaskProjectionHasKnownDifference(BlueprintProjectionPlacement placement)
+        {
+            var match = placement.Match;
+            // The existing change observer invalidates these counts as soon
+            // as a range changes. Task polling never scans the world again.
+            return match != null && match.Current == match.Ranges.Length && match.Unknown == 0 &&
+                ReferenceEquals(match.TargetView,placement.View) && match.OriginX == placement.OriginX &&
+                match.OriginY == placement.OriginY && ProjectionQualificationCurrent(placement) &&
+                placement.Qualification.EffectiveUnknownLayerCount == 0 &&
+                match.Targets == placement.Qualification.EffectiveRequiredLayerCount && match.Matches < match.Targets;
+        }
+
         internal TaskProjectionRead BeginTaskProjectionRead(BlueprintProjectionPlacement placement,BlueprintProjectionBounds bounds)
         {
             if (!HasSession || Library == null || !projectionScene.Contains(placement)) return null;

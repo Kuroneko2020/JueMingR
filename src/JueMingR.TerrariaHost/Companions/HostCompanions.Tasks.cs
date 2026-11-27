@@ -396,10 +396,14 @@ namespace JueMingR.TerrariaHost.Companions
                 if (IsStepReference(value as string))
                 {
                     string text = (string)value;
-                    int index = text == "$previous" ? -1 : Int32.Parse(text.Substring(6), CultureInfo.InvariantCulture);
-                    var prior = job.Receipts.LastOrDefault(item => item.StepIndex < job.Cursor &&
-                        (index < 0 || index == item.StepIndex) && item.State == "succeeded" && item.Value != null);
-                    value = prior?.Value;
+                    bool adjacent = text == "$previous";
+                    int index = adjacent ? job.Cursor - 1 : Int32.Parse(text.Substring(6), CultureInfo.InvariantCulture);
+                    // Select the step and its last attempt before considering
+                    // success for $previous. Explicit selection can still retrieve
+                    // an earlier successful iteration of the named step.
+                    var prior = index < job.Cursor ? job.Receipts.LastOrDefault(item => item.StepIndex == index &&
+                        (adjacent || item.State == "succeeded" && item.Value != null)) : null;
+                    value = prior?.State == "succeeded" ? prior.Value : null;
                     if (operation.Fields.Any(field => field.Name == pair.Key && field.Kind == "integer") &&
                         Int32.TryParse(value as string, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count)) value = count;
                 }

@@ -30,6 +30,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal CompanionTaskOutcome Result;
             internal HostBlueprint Owner;
             internal HostBlueprint.TaskProjectionRead Read;
+            internal uint? VerifyingSince;
         }
 
         private void RegisterBlueprintTaskOperations()
@@ -86,7 +87,20 @@ namespace JueMingR.TerrariaHost.Companions
             if (state.Cells == null)
             {
                 if (state.PageY < 0)
-                    return TaskOutcome("succeeded","已核对蓝图各区块，完成 " + state.Moves + " 次有效原版操作。",state.Moves);
+                {
+                    if (!state.VerifyingSince.HasValue)
+                    {
+                        state.VerifyingSince = Main.GameUpdateCount;
+                        state.Members = null;
+                        state.Objects = null;
+                    }
+                    bool difference = source.TaskProjectionHasKnownDifference(current);
+                    if (Main.GameUpdateCount - state.VerifyingSince.Value >= 1800)
+                        return TaskOutcome(state.Moves > 0 ? "partial" : "failed",difference ?
+                            "当前世界仍与蓝图有差异。" : "未能在期限内确认整个蓝图。",state.Moves);
+                    return TaskOutcome("waiting",difference ? "当前世界仍与蓝图有差异，等待修正。" :
+                        "施工步骤已走完，正在核对整个蓝图。",state.Moves);
+                }
                 var display = new BlueprintProjectionBounds(state.PageX,state.PageY,Math.Min(64,state.View.Width-state.PageX),
                     Math.Min(64,state.View.Height-state.PageY));
                 if (state.Read == null)

@@ -172,12 +172,13 @@ namespace JueMingR.Platform.Companions
         public FishingOptions Fishing => behavior.Fishing;
         public ulong FishingDepositUnconfirmedSlots => behavior.FishingDepositUnconfirmedSlots;
         public byte[] NativeData { get { return (byte[])nativeData.Clone(); } }
-        public CompanionProfile Revise(byte[] data, CompanionBehavior preferences = null, bool reset = false, bool? permanentlyDead = null)
+        public CompanionProfile Revise(byte[] data, CompanionBehavior preferences = null, bool reset = false, bool? permanentlyDead = null,
+            ulong resolvedStorageSlots = 0)
         {
             var next = preferences ?? behavior;
-            // Routine preference and inventory saves cannot clear evidence of
-            // an unresolved transfer. Only the existing data reset owns that.
-            ulong pending = reset ? 0 : next.FishingDepositUnconfirmedSlots | FishingDepositUnconfirmedSlots;
+            // Keep the archive format. Routine captures retain the quarantine.
+            // Only reset or the native storage attempt's exact resolved slots can clear it.
+            ulong pending = reset ? 0 : (next.FishingDepositUnconfirmedSlots | FishingDepositUnconfirmedSlots) & ~resolvedStorageSlots;
             if (next.FishingDepositUnconfirmedSlots != pending)
             {
                 next = next.Clone();

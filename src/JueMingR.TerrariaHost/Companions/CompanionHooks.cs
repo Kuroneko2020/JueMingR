@@ -57,6 +57,8 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player),nameof(Player.UpdateBiomes),nameof(ActorBiomesBefore),finalizer:nameof(ActorBiomesAfter));
             Patch(typeof(Player),"PickupItem",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Player),"GrabItems",nameof(UseBefore),finalizer:nameof(ScopeFinal));
+            Patch(typeof(Player),"GetItem_FillIntoOccupiedSlot",nameof(TaskChestPickupSlot));
+            Patch(typeof(Player),"GetItem_FillEmptyInventorySlot",nameof(TaskChestPickupSlot));
             Patch(typeof(Player),"PurgeDD2EnergyCrystals",transpiler:nameof(TrackEnergyPurge));
             Patch(typeof(WorldItem),"UpdateItem",postfix:nameof(ItemOwner));
             Patch(typeof(Projectile),"AI",nameof(ProjectileBefore),finalizer:nameof(ScopeFinal),transpiler:nameof(DeferSharedProjectileHeal));
@@ -433,6 +435,14 @@ namespace JueMingR.TerrariaHost.Companions
             if (messageType == 66 && length >= 4 && BitConverter.ToInt16(__instance.readBuffer,start+2)>0)
                 host.SharedHealApplied(__instance.readBuffer[start+1]);
             if (messageType == 23 || messageType == 28 || messageType == 54 || messageType == 60) host.PrimaryNpcApplied(__instance.readBuffer,start,length);
+            if (__instance.whoAmI == 256)
+            {
+                if (messageType == 32) host.ObserveTaskChestPrimary(__instance.readBuffer, start, length);
+                if (messageType == 80 && length == 4)
+                    host.ObserveTaskChestLease(__instance.readBuffer[start + 1], BitConverter.ToInt16(__instance.readBuffer, start + 2));
+                if (messageType == 14 && length == 3 && __instance.readBuffer[start + 2] == 0)
+                    host.ObserveTaskChestLease(__instance.readBuffer[start + 1], -1);
+            }
             int tileOffset = messageType == 17 ? 2 : messageType == 48 || messageType == 59 || messageType == 63 ||
                 messageType == 64 || messageType == 79 ? 1 : -1;
             if (tileOffset >= 0 && length >= tileOffset + 4)
@@ -442,6 +452,14 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool ObservationPending(ref int damage,ref bool phaseChange)
         {if(host==null || !host.ReadingObservation)return true;damage=0;phaseChange=false;return false;}
         private static bool ObservationVisual(){return host==null || !host.ReadingObservation;}
+        private static bool TaskChestPickupSlot(Player __instance, int i)
+        {
+            // Native pickup scans do not check inventoryChestStack. Skip just
+            // the reserved AI slot and let the original scan try the others.
+            if (!__instance.inventoryChestStack[i]) return true;
+            var actor = host?.Owned(__instance);
+            return actor == null || !host.TaskChestSourceHeld(actor, i);
+        }
         private static bool Save()
         {
             if(current==null)return true;

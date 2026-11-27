@@ -85,6 +85,8 @@ namespace JueMingR.TerrariaHost.Companions
         private bool SupplyAdmitted(Actor actor, Item[] array, int account, int slot, bool ownsSelected = false)
         {
             var body = actor.Body;
+            var queued = actor.Supplies.Once;
+            if (ItemTaskPaused(queued) && queued.Source.Slot == slot && ReferenceEquals(queued.Source.Items, array)) return false;
             if (SupplySlotBlocked(body, array, slot) || itemDraft?.DependsOn(array, slot) == true ||
                 ReferenceEquals(array[slot], Main.mouseItem)) return false;
             if (account != 0) return true;
@@ -274,7 +276,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
 
         private void UseQuick(Actor actor, CompanionSupplyKind kind, RecoverySource source, bool manual = false,
-            Action<string, string> chatComplete = null)
+            Action<string, string> chatComplete = null, ItemOnce command = null)
         {
             var state = actor.Supplies;
             if (!source.Found || state.Quick.Found || !SourceCurrent(actor, source))
@@ -293,6 +295,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 using (CompanionHooks.Enter(actor, actor.Aim))
                 {
+                    SubmitItemTask(command);
                     switch (kind)
                     {
                         case CompanionSupplyKind.Life: actor.Body.QuickHeal(); break;
@@ -340,7 +343,8 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal int CompanionHeldSlot(Actor actor, bool includeAutomatic = true)
         {
-            if (actor.Supplies.Once is ItemOnce command && (!command.Kind.HasValue || command.Kind == CompanionSupplyKind.Growth))
+            if (actor.Supplies.Once is ItemOnce command && !ItemTaskPaused(command) &&
+                (!command.Kind.HasValue || command.Kind == CompanionSupplyKind.Growth))
                 return command.Source.Slot;
             if (!includeAutomatic || !actor.Preferences.GrowthEnabled || actor.Preferences.AllowedGrowthTypes.Length == 0 ||
                 !SupplyActorReady(actor) || actor.Body.noItems || actor.Body.CCed || actor.Body.cursed) return -1;
@@ -369,6 +373,16 @@ namespace JueMingR.TerrariaHost.Companions
             var state = actor.Supplies;
             if (state.HeldSource.Found || slot < 0 || slot >= 50) return;
             var command = state.Once;
+            if (ItemTaskPaused(command))
+            {
+                if (command.Source.Slot == slot)
+                {
+                    actor.Body.controlUseItem = false;
+                    actor.Body.selectedItemState.Select(command.PreviousSelection);
+                    return;
+                }
+                command = null; // An unrelated automatic growth slot remains available.
+            }
             if (command?.ChatCancellation.IsCancellationRequested == true)
             {
                 CancelChatItemOnce(actor, "已撤回尚未开始的用物请求。");
@@ -422,7 +436,22 @@ namespace JueMingR.TerrariaHost.Companions
             if (allowed && SourceCurrent(actor, source) && SupplyActorReady(actor) &&
                 actor.Body.selectedItem == source.Slot && !actor.Body.noItems && !actor.Body.CCed && !actor.Body.cursed &&
                 (command == null || source.Item.prefix == command.Prefix && ManualAmmoAvailable(actor, source.Item, out reason)) &&
-                (command != null && !command.Kind.HasValue || CompanionSupplyCatalog.GrowthEligible(actor.Body, source.Type))) return;
+                (command != null && !command.Kind.HasValue || CompanionSupplyCatalog.GrowthEligible(actor.Body, source.Type)))
+            {
+                // Only the real ItemCheck prefix can irrevocably submit a
+                // held item. Preparing the hotbar and queuing input does not.
+                if (ItemTaskPaused(command))
+                {
+                    state.HeldSource = default(RecoverySource);
+                    state.HeldOnce = null;
+                    state.Once = command;
+                    state.RestoreSelection = -1;
+                    actor.Body.controlUseItem = false;
+                    actor.Body.selectedItemState.Select(command.PreviousSelection);
+                }
+                else if (actor.Body.controlUseItem) SubmitItemTask(command);
+                return;
+            }
             actor.Body.controlUseItem = false;
             state.HeldSource = default(RecoverySource);
             state.HeldOnce = null;

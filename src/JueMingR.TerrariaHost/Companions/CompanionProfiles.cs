@@ -145,11 +145,14 @@ namespace JueMingR.TerrariaHost.Companions
         internal void EndPlay(Player body) { File(body).PausePlayTimer(); }
         internal CompanionProfile CaptureAndSave(Guid id, Player body, long activation)
         { return CapturePreferencesAndSave(id, body, activation, null); }
-        internal CompanionProfile CapturePreferencesAndSave(Guid id, Player body, long activation, CompanionBehavior preferences)
+        internal CompanionProfile CapturePreferencesAndSave(Guid id, Player body, long activation, CompanionBehavior preferences,
+            ulong resolvedStorageSlots = 0)
         {
             var current = manager.FindActivated(id, activation);
             if (current == null) throw new InvalidOperationException("队友实例已失效，未保存旧身体。");
-            var revised = current.Revise(Capture(body), preferences); manager.Update(revised, activation); return revised;
+            var revised = current.Revise(Capture(body), preferences, resolvedStorageSlots: resolvedStorageSlots);
+            manager.Update(revised, activation);
+            return revised;
         }
         internal CompanionProfile SetOfflineTeam(Guid id, int team)
         {

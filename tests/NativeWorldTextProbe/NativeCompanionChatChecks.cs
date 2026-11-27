@@ -455,6 +455,7 @@ namespace NativeWorldTextProbe
                     "the live strategy candidate executes through the registered task owner after the model ends");
 
                 CheckStrategyCraftDelivery(Call(host, "Owned", body), remote, human, body, nativeStep, ended, send, TaskView, RunQuery);
+                CheckTaskAuthorityAndPause(host, human, body, profile, nativeStep, RunQuery);
 
                 var boss = Tool("choose_game_strategy", Field("goal", "prepare_boss"), Field("boss", "skeletron"));
                 Main.dayTime = false;
@@ -626,6 +627,176 @@ namespace NativeWorldTextProbe
                 Main.dayTime = previousDay;
                 body.selectedItemState.Select(previousSelected);
                 body.selectedItemState.Update();
+            }
+        }
+
+        private static void CheckTaskAuthorityAndPause(object host, Player human, Player body, CompanionProfile profile,
+            Action nativeStep, Func<string, LlmToolCall, string> query)
+        {
+            var actor = Call(host, "Owned", body);
+            var identity = new CompanionTaskIdentity(profile.OwnerId, profile.Id, (long)Get(host, "session"),
+                (long)Get(actor, "Generation"), profile.DataEpoch);
+            CompanionTaskSnapshot View() => (CompanionTaskSnapshot)Call(host, "GetTask", profile.OwnerId, profile.Id, null);
+            LlmToolCall Tool(string name, params (string Key, object Value)[] fields) => new LlmToolCall(name, name, "{}",
+                fields.ToDictionary(field => field.Key, field => field.Value));
+            IReadOnlyDictionary<string, object> Step(string name, Dictionary<string, object> args) =>
+                new Dictionary<string, object> { ["operation"] = name, ["arguments"] = args };
+            string Submit(string prompt, params IReadOnlyDictionary<string, object>[] steps) =>
+                query(prompt, Tool("submit_task", ("title", "验证原版队友任务"), ("steps", steps.Cast<object>().ToArray())));
+            var initialItems = body.inventory.ToArray();
+            var ownerItems = human.inventory.ToArray();
+            var previousHuman = human.position;
+            int life = body.statLife, cap = body.statLifeMax, delay = body.potionDelay;
+            var buffTypes = body.buffType.ToArray();
+            var buffTimes = body.buffTime.ToArray();
+            var feet = body.Bottom.ToTileCoordinates();
+            int x = feet.X + 2, y = feet.Y - 1;
+            var previousTile = Main.tile[x, y];
+            var previousSupport = Main.tile[x, y + 1];
+            try
+            {
+                human.position = body.position;
+                human.inventory[46] = new Item(ItemID.StoneBlock) { stack = 3 };
+                // Give each pause case exactly one legal source, including
+                // the preparation potion deliberately put elsewhere upstream.
+                for (int i = 0; i < 50; i++)
+                    if (body.inventory[i].type == ItemID.LesserHealingPotion || body.inventory[i].type == ItemID.LifeCrystal)
+                        body.inventory[i] = new Item();
+                int actorStone = body.inventory.Where(item => item.type == ItemID.StoneBlock).Sum(item => item.stack);
+                Main.tile[x, y] = new Tile();
+                Main.tile[x, y + 1] = new Tile { type = TileID.Stone };
+                Main.tile[x, y + 1].active(true);
+                string observed = query("请查这里能放东西的空格。", Tool("observe_game", ("operation", "observe_tiles"),
+                    ("arguments", new Dictionary<string, object> { ["around"] = "here", ["radius"] = 3,
+                        ["empty"] = true, ["offset"] = 19 })));
+                string row = observed?.Split('；').FirstOrDefault(part => part.Contains("(" + x + "," + y + ")"));
+                Require(row != null, "chat receives an actual known empty-cell reference: " + observed);
+                string target = row.Substring(row.LastIndexOf("· ", StringComparison.Ordinal) + 2).Split(' ')[0];
+                var transfer = Step("transfer_item", new Dictionary<string, object> { ["item_type"] = (int)ItemID.StoneBlock,
+                    ["amount"] = 1, ["source"] = "owner_inventory", ["destination"] = "self_inventory" });
+                var place = Step("world_use", new Dictionary<string, object> { ["target"] = target,
+                    ["action"] = "place_tile", ["item_type"] = (int)ItemID.StoneBlock });
+                var anchor = Call(host, "CaptureTaskSendAnchor", human);
+                var prior = (CompanionTaskSnapshot)Call(host, "SubmitTask", identity, "继续先前任务",
+                    new[] { new CompanionTaskStep("stand_by", new Dictionary<string, object>()) }, anchor, Guid.NewGuid());
+                const string readOnly = "本条消息没有明确委托";
+                string denied = Submit("如果从我背包拿一块石头再放在这里，会怎么样？", transfer, place);
+                string noStop = query("你目前的任务会自己停止吗？", Tool("stop_task", ("task_id", prior.TaskId.ToString("N"))));
+                string noAppend = query("当前能追加哪些步骤？", Tool("append_task", ("task_id", prior.TaskId.ToString("N")),
+                    ("steps", new object[] { transfer })));
+                string noExecution = query("放置石块会花多少石头？", Tool("execute_operation", ("title", "放石块"),
+                    ("operation", "world_use"), ("arguments", place["arguments"])));
+                Require(new[] { denied, noStop, noAppend, noExecution }.All(result => result?.Contains(readOnly) == true) &&
+                    View().TaskId == prior.TaskId && View().StepCount == 1 && human.inventory[46].stack == 3 &&
+                    !Main.tile[x, y].active(), "ordinary queries cannot modify current tasks, owner inventory or the real tile");
+                string badBudget = query("买一支火把，最多1银币。", Tool("execute_operation", ("title", "购买"),
+                    ("operation", "buy_item"), ("arguments", new Dictionary<string, object>
+                        { ["item_type"] = (int)ItemID.Torch, ["amount"] = 1, ["budget_copper"] = 101 })));
+                Require(badBudget?.Contains(readOnly) == true && View().TaskId == prior.TaskId,
+                    "a scripted model cannot raise a direct player's native money cap");
+                const string ownerCommand = "从我的背包拿一块石块，放在刚看到的空格。";
+                var oversized = Step("transfer_item", new Dictionary<string, object> { ["item_type"] = (int)ItemID.StoneBlock,
+                    ["amount"] = 999, ["source"] = "owner_inventory", ["destination"] = "self_inventory" });
+                var different = Step("transfer_item", new Dictionary<string, object> { ["item_type"] = (int)ItemID.Wood,
+                    ["amount"] = 1, ["source"] = "owner_inventory", ["destination"] = "self_inventory" });
+                Require(Submit(ownerCommand, oversized, place)?.Contains(readOnly) == true &&
+                    Submit(ownerCommand, different, place)?.Contains(readOnly) == true && View().TaskId == prior.TaskId,
+                    "a real owner command authorizes only the named item and explicitly bounded quantity");
+                string accepted = Submit(ownerCommand, transfer, place);
+                Require(accepted?.Contains("accepted") == true, "explicit current-turn owner resource and world commands are accepted: " + accepted);
+                Finish();
+                Require(View().State == "succeeded" && View().Attempts.Count == 2 && Main.tile[x, y].active() &&
+                    human.inventory[46].stack == 2 && body.inventory.Where(item => item.type == ItemID.StoneBlock).Sum(item => item.stack) == actorStone,
+                    "the approved script performs both the true owner-inventory debit and native placement: " + View().Detail);
+
+                var prepare = Step("equip_item", new Dictionary<string, object> { ["item_type"] = (int)ItemID.GrapplingHook });
+                Require(Submit("帮我准备打骷髅王。", prepare)?.Contains("accepted") == true,
+                    "the direct boss-preparation request can select actual companion equipment");
+                var summon = Step("trigger_event", new Dictionary<string, object> { ["item_type"] = (int)ItemID.SuspiciousLookingEye });
+                Require(Submit("帮我准备打骷髅王。", summon)?.Contains(readOnly) == true,
+                    "preparing for one boss does not authorize a summoning operation");
+                var fish = Step("fish_at", new Dictionary<string, object> { ["destination"] = "right_ocean",
+                    ["quest_fish"] = true, ["quantity"] = 1 });
+                var back = Step("move_to", new Dictionary<string, object> { ["destination"] = "owner" });
+                var wait = Step("stand_by", new Dictionary<string, object>());
+                Require(Submit("去右海边钓任务鱼，完成后回来等我。", fish, back, wait)?.Contains("accepted") == true &&
+                    View().StepCount == 3, "the requested quest fishing and return compose into the existing typed task");
+                Require(Submit("如果去右海边钓任务鱼，完成后回来等我，会怎样？", fish, back, wait)?.Contains(readOnly) == true &&
+                    Submit("如果去右海边钓任务鱼，完成后回来等我。", wait)?.Contains(readOnly) == true &&
+                    Submit("不要去右海边钓任务鱼。", fish, back, wait)?.Contains(readOnly) == true,
+                    "conditional advice and negated fishing do not retire the existing itinerary");
+
+                body.statLife = 1;
+                // A prior real use carries the native Potion Sickness buff,
+                // which restores potionDelay during Player.Update.
+                body.ClearBuff(BuffID.PotionSickness);
+                body.potionDelay = 0;
+                body.inventory[49] = new Item(ItemID.LesserHealingPotion) { stack = 2 };
+                var quick = QueueUse("用一次治疗药水。", ItemID.LesserHealingPotion);
+                Pause(quick, true);
+                for (int i = 0; i < 8; i++) nativeStep();
+                Require(View().State == "paused" && body.statLife == 1 && body.inventory[49].stack == 2,
+                    "paused QuickHeal queue leaves native life and potion count unchanged");
+                Pause(quick, false);
+                Finish();
+                Require(View().State == "succeeded" && View().Attempts.Count == 1 &&
+                    body.statLife > 1 && body.inventory[49].stack == 1, "resume runs native QuickHeal once: " +
+                    View().Detail + " / " + String.Join(" | ", View().Attempts.Select(attempt => attempt.State + " " + attempt.Detail)) +
+                    " / life=" + body.statLife + " potion=" + body.inventory[49].stack + " delay=" + body.potionDelay);
+
+                body.statLifeMax = 100;
+                body.inventory[49] = new Item(ItemID.LifeCrystal) { stack = 2 };
+                var held = QueueUse("用一颗生命水晶。", ItemID.LifeCrystal);
+                Pause(held, true);
+                for (int i = 0; i < 8; i++) nativeStep();
+                Require(View().State == "paused" && body.statLifeMax == 100 && body.inventory[49].stack == 2,
+                    "paused held-item queue does not enter native ItemCheck");
+                Call(host, "StopTask", profile.OwnerId, profile.Id, held);
+                for (int i = 0; i < 4; i++) nativeStep();
+                Require(body.inventory[49].stack == 2 && body.statLifeMax == 100 &&
+                    GetOptional(Get(actor, "Supplies"), "Once") == null,
+                    "stopping a paused held queue withdraws it without native effects");
+                var resumed = QueueUse("用一颗生命水晶。", ItemID.LifeCrystal);
+                Pause(resumed, true);
+                Pause(resumed, false);
+                Finish();
+                Require(View().State == "succeeded" && View().Attempts.Count == 1 &&
+                    body.statLifeMax == 120 && body.inventory[49].stack == 1, "resumed held use enters native ItemCheck once");
+                Console.WriteLine("PASS chat authority: read-only model errors preserve task/assets, explicit transfer and native placement, pause/resume QuickHeal and held growth.");
+            }
+            finally
+            {
+                Call(host, "StopTask", profile.OwnerId, profile.Id, null);
+                Array.Copy(initialItems, body.inventory, initialItems.Length);
+                Array.Copy(ownerItems, human.inventory, ownerItems.Length);
+                human.position = previousHuman;
+                Main.tile[x, y] = previousTile;
+                Main.tile[x, y + 1] = previousSupport;
+                body.statLife = life;
+                body.statLifeMax = cap;
+                body.potionDelay = delay;
+                Array.Copy(buffTypes, body.buffType, buffTypes.Length);
+                Array.Copy(buffTimes, body.buffTime, buffTimes.Length);
+            }
+
+            Guid QueueUse(string prompt, int type)
+            {
+                string accepted = Submit(prompt, Step("use_item", new Dictionary<string, object> { ["item_type"] = type }));
+                Require(accepted?.Contains("accepted") == true, "native task action admitted for pause fixture: " + accepted);
+                Call(host, "PumpTask", actor);
+                var queued = GetOptional(Get(actor, "Supplies"), "Once");
+                Require(queued != null && !(bool)Get(Get(queued, "Task"), "Issued"),
+                    "staging a pending hand leaves the original attempt unsubmitted");
+                return View().TaskId;
+            }
+            void Pause(Guid id, bool paused)
+            {
+                var result = (CompanionTaskSnapshot)Call(host, "PauseTask", identity, id, paused);
+                Require(result.State != "rejected", "original pause/resume accepted against the same task: " + result.Detail);
+            }
+            void Finish()
+            {
+                for (int tick = 0; tick < 240 && View().IsActive; tick++) nativeStep();
             }
         }
 

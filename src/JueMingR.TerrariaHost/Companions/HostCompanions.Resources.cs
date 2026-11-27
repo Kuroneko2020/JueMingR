@@ -255,7 +255,7 @@ namespace JueMingR.TerrariaHost.Companions
                         catch (Exception) { failure = "装备已移动，原版成就通知未完成。"; }
                     }
                 }
-                if (Main.netMode == 1) QueueItemSync(change.Owner ? owner : actor.Body, change.Owner ? null : actor,
+                if (Main.netMode == 1 && (change.Owner || !actor.Closing)) QueueItemSync(change.Owner ? owner : actor.Body, change.Owner ? null : actor,
                     change.OwnerTrash ? PlayerItemSlotID.TrashItem : change.StoredLoadout >= 0 ?
                     StoredLoadoutNetworkSlot(change.Area, change.StoredLoadout, change.Slot) : NetworkSlot(change.Area, change.Slot));
             }
