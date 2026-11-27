@@ -592,6 +592,8 @@ try {
         (Get-WorkloadExpectedNativeLeaf 'native-CompanionEnvironmentCpu') -ceq 'companions-environment') 'environment changes invoke the actual companion ecology and protocol leaf'
     Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeInformationLocalizationChecks.cs') -join '|') -ceq 'native-InformationCpu') `
         'localization fixture changes require the existing full information consumer'
+    Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeInformationBiomeChecks.cs') -join '|') -ceq 'native-InformationCpu') `
+        'information biome fixture changes require the existing full information consumer'
     $packageRoute = Get-WorkloadRoute @('scripts/verify-existing-package.ps1')
     $packagePlan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog $packageRoute.groups)
     Assert-Route ($packagePlan.Count -eq 1 -and $packagePlan[0].name -ceq 'workload-PackageVerification' -and $packagePlan[0].project -ceq '' -and $packagePlan[0].arguments[-1] -ceq (Join-Path $repositoryRoot 'tests/Phase0S/Invoke-PackageVerificationChecks.ps1')) 'standalone package tool has exactly its actual PowerShell check'

@@ -28,6 +28,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionChatUiChecks.cs'=@('native-CompanionChatUiCpu','native-CompanionConfigVisual')
         'tests/NativeWorldTextProbe/NativeCompanionEnvironmentChecks.cs'=@('native-CompanionEnvironmentCpu')
         'tests/NativeWorldTextProbe/NativeInformationLocalizationChecks.cs'=@('native-InformationCpu')
+        'tests/NativeWorldTextProbe/NativeInformationBiomeChecks.cs'=@('native-InformationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFishingUiChecks.cs'=@('native-CompanionFishingUiCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFishingLineChecks.cs'=@('native-CompanionFishingLineCpu','native-CompanionWormholeCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFishingOpeningChecks.cs'=@('native-CompanionFishingLineCpu','native-CompanionWormholeCpu')
