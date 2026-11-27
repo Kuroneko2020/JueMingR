@@ -586,6 +586,10 @@ try {
         Assert-Route ($llmPlan.name -contains $name -and $all.name -contains $name) ('model consumer stays in Related and Full: '+$name)
     }
     Assert-Route ((Get-WorkloadExpectedNativeLeaf 'native-CompanionChatUiCpu') -ceq 'companions-chat-ui') 'chat UI requires the expected actual native leaf'
+    $environmentRoute = Get-WorkloadRoute @('src/JueMingR.TerrariaHost/Companions/HostCompanions.Environment.cs','tests/NativeWorldTextProbe/NativeCompanionEnvironmentChecks.cs')
+    $environmentPlan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog $environmentRoute.groups)
+    Assert-Route ($environmentRoute.unknown.Count -eq 0 -and $environmentPlan.name -contains 'native-CompanionEnvironmentCpu' -and
+        (Get-WorkloadExpectedNativeLeaf 'native-CompanionEnvironmentCpu') -ceq 'companions-environment') 'environment changes invoke the actual companion ecology and protocol leaf'
     $packageRoute = Get-WorkloadRoute @('scripts/verify-existing-package.ps1')
     $packagePlan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog $packageRoute.groups)
     Assert-Route ($packagePlan.Count -eq 1 -and $packagePlan[0].name -ceq 'workload-PackageVerification' -and $packagePlan[0].project -ceq '' -and $packagePlan[0].arguments[-1] -ceq (Join-Path $repositoryRoot 'tests/Phase0S/Invoke-PackageVerificationChecks.ps1')) 'standalone package tool has exactly its actual PowerShell check'

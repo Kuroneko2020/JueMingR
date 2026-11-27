@@ -301,6 +301,7 @@ namespace JueMingR.TerrariaHost.Companions
 
         private void WormholeFenceReceived(Actor actor, long marker)
         {
+            if (ChatItemTeleportFenceReceived(actor, marker)) return;
             if (!wormholeWindows.TryGetValue(actor, out var windows)) return;
             var attempt = windows[0];
             if (attempt.Before == marker) { attempt.Open = true; return; }

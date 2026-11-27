@@ -27,10 +27,6 @@ namespace JueMingR.TerrariaHost.Companions
             internal FishingCatalog Catalog;
             internal readonly CompanionFishingGear Gear = new CompanionFishingGear();
             internal CompanionFishStorage Storage;
-            internal SceneMetrics Scene;
-            internal Point SceneCenter;
-            internal uint NextScene;
-            internal bool SceneKnown;
             internal int Quest = -1;
             internal bool QuestFinished;
         }
@@ -49,7 +45,7 @@ namespace JueMingR.TerrariaHost.Companions
                 return FishingCandidates.Unknown("当前没有可用钓点。");
             var line = a.FishingLine;
             foreach (var b in line.Bobbers)
-                if (line.SceneKnown && b.Qualified && FishingObservation.Live(b.Body, a.Body) && b.Body.InLiquid)
+                if (a.Environment.Known && b.Qualified && FishingObservation.Live(b.Body, a.Body) && b.Body.InLiquid)
                 {
                     if (line.Catalog == null) line.Catalog = new FishingCatalog();
                     return line.Catalog.CurrentForActor(a.Body, b.Body.Projectile, !ActorQuestAvailable(a));
@@ -182,7 +178,7 @@ namespace JueMingR.TerrariaHost.Companions
             FishingNativeBait(p, out int baitPower, out _);
             FishingNeedsGear(a, !hasRod && liquid != 1, baitPower <= 0);
             if (!hasRod || baitPower <= 0 || !TryFishingAim(a, rod, out Vector2 aim) || !UpdateFishingGear(a, true, liquid) ||
-                !NativeActorCanFish(p, rod, liquid) || !FishingSceneReady(a) || !FishingHandFree(p))
+                !NativeActorCanFish(p, rod, liquid) || !RefreshActorEnvironment(a) || !FishingHandFree(p))
                 return false;
             line.Aim = aim;
             return StageFishingHand(a, FishingHand.Cast);
@@ -261,7 +257,7 @@ namespace JueMingR.TerrariaHost.Companions
                 line.SawWet = true;
                 // Pool edits or a newly selected target invalidate the last
                 // wet observation. Retire through the actual selection edge.
-                b.Qualified = (b.Qualified || RefreshFishingZones(a)) && FishingEnteredLiquid(a, b.Body.Projectile);
+                b.Qualified = (b.Qualified || RefreshActorEnvironment(a)) && FishingEnteredLiquid(a, b.Body.Projectile);
                 if (b.Qualified)
                 {
                     line.Confirmed = true;
@@ -297,8 +293,6 @@ namespace JueMingR.TerrariaHost.Companions
             line.RestoreGear |= !FishingActive(a);
             line.Staged = FishingHand.None;
             line.Catalog?.Clear();
-            line.SceneKnown = false;
-            line.NextScene = 0;
             if (retire || !FishingActive(a)) line.Storage?.ManualSources?.Clear();
             if (!retire) return;
             RestoreFishingGear(a, retiring: true);

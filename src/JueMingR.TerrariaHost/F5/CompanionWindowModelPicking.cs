@@ -20,6 +20,7 @@ namespace JueMingR.TerrariaHost.F5
 
         private void ReturnToModel()
         {
+            if (modelPicker == ModelPicker.None) return;
             modelPicker = ModelPicker.None;
             modelOffset = modelMainOffset;
             modelSearch = "";
@@ -63,36 +64,43 @@ namespace JueMingR.TerrariaHost.F5
                 return;
             }
 
+        }
+
+        private IEnumerable<ModelDropdownChoice> ModelPresetChoices(ModelPicker picker, string query)
+        {
             var presets = modelConnections.Presets;
-            switch (modelPicker)
+            bool Match(string text) => query.Length == 0 || text?.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+            switch (picker)
             {
                 case ModelPicker.Provider:
-                    foreach (var group in presets.Where(item => !item.Advanced).GroupBy(item => item.Provider))
+                    foreach (var group in presets.GroupBy(item => item.Provider).OrderBy(group => ProviderOrder(group.Key)))
                     {
                         var selectedPreset = PreferredPreset(group);
                         string label = ProviderName(selectedPreset);
-                        if (!ModelMatch(label) && !group.Any(item => ModelMatch(item.Label) || item.Aliases.Any(ModelMatch))) continue;
-                        ModelChoice("provider-" + group.Key, label, () => ChooseProvider(selectedPreset), modelPreset?.Provider == group.Key);
+                        if (!Match(label) && !group.Any(item => Match(item.Label) || item.Aliases.Any(Match))) continue;
+                        yield return new ModelDropdownChoice("provider-" + group.Key, label,
+                            () => { if (modelPreset?.Provider != group.Key) ApplyModelPreset(selectedPreset); }, modelPreset?.Provider == group.Key);
                     }
                     break;
                 case ModelPicker.Plan:
-                    foreach (var group in presets.Where(item => item.Provider == modelPreset?.Provider && !item.Advanced).GroupBy(item => item.PlanId))
+                    foreach (var group in presets.Where(item => item.Provider == modelPreset?.Provider).GroupBy(item => item.PlanId))
                     {
-                        var selectedPreset = PreferredPreset(group);
-                        ModelChoice("plan-" + group.Key, ModelPlanName(selectedPreset) + PolicyLabel(selectedPreset.Policy),
-                            () => ChoosePlan(selectedPreset), modelPreset?.PlanId == group.Key);
+                        var selectedPreset = PreferredPreset(group.OrderByDescending(item => item.Region == modelPreset.Region));
+                        yield return new ModelDropdownChoice("plan-" + group.Key, ModelPlanName(selectedPreset) + PolicyLabel(selectedPreset.Policy),
+                            () => { if (modelPreset.PlanId != group.Key) ApplyModelPreset(selectedPreset); }, modelPreset.PlanId == group.Key);
                     }
                     break;
                 case ModelPicker.Region:
-                    foreach (var group in presets.Where(item => modelPreset != null && SamePlan(item, modelPreset) && !item.Advanced).GroupBy(item => item.Region))
+                    foreach (var group in presets.Where(item => modelPreset != null && SamePlan(item, modelPreset)).GroupBy(item => item.Region))
                     {
                         var selectedPreset = PreferredPreset(group);
-                        ModelChoice("region-" + group.Key, selectedPreset.RegionLabel, () => ApplyModelPreset(selectedPreset), modelPreset.Region == group.Key);
+                        yield return new ModelDropdownChoice("region-" + group.Key, selectedPreset.RegionLabel,
+                            () => { if (modelPreset.Region != group.Key) ApplyModelPreset(selectedPreset); }, modelPreset.Region == group.Key);
                     }
                     break;
                 case ModelPicker.Credential:
                     foreach (string kind in modelPreset.CredentialKinds)
-                        ModelChoice("credential-" + kind, ModelCredentialKindName(kind), () =>
+                        yield return new ModelDropdownChoice("credential-" + kind, ModelCredentialKindName(kind), () =>
                         {
                             if (kind != modelDraft.CredentialKind)
                             {
@@ -100,20 +108,36 @@ namespace JueMingR.TerrariaHost.F5
                                 modelDraft.CredentialKind = kind;
                                 ModelDraftChanged(scope);
                             }
-                            ReturnToModel();
                         }, modelDraft.CredentialKind == kind);
                     break;
                 case ModelPicker.Protocol:
-                    foreach (var group in presets.Where(item => modelPreset != null && SameRegion(item, modelPreset) && item.Advanced == modelPreset.Advanced).GroupBy(item => item.Protocol))
+                    foreach (var group in presets.Where(item => modelPreset != null && SameRegion(item, modelPreset)).GroupBy(item => item.Protocol))
                     {
                         var selectedPreset = PreferredPreset(group);
-                        ModelChoice("protocol-" + group.Key, ProtocolName(group.Key), () => ApplyModelPreset(selectedPreset), modelPreset.Protocol == group.Key);
+                        yield return new ModelDropdownChoice("protocol-" + group.Key, ProtocolName(group.Key),
+                            () => { if (modelPreset.Protocol != group.Key) ApplyModelPreset(selectedPreset); }, modelPreset.Protocol == group.Key);
                     }
                     break;
                 case ModelPicker.Templates:
                     foreach (var entry in presets.Where(item => modelPreset != null && SameRegion(item, modelPreset) && item.Protocol == modelPreset.Protocol))
-                        ModelChoice("template-" + entry.Id, entry.Label, () => ApplyModelPreset(entry), modelPreset.Id == entry.Id);
+                        yield return new ModelDropdownChoice("template-" + entry.Id, entry.Label, () => ApplyModelPreset(entry), modelPreset.Id == entry.Id);
                     break;
+            }
+        }
+
+        private static int ProviderOrder(string provider)
+        {
+            switch (provider)
+            {
+                case "custom": return 0;
+                case "deepseek": return 1;
+                case "openai": return 2;
+                case "anthropic": return 3;
+                case "glm": return 4;
+                case "mimo": return 5;
+                case "kimi": return 6;
+                case "minimax": return 7;
+                default: return 8;
             }
         }
 
@@ -125,21 +149,6 @@ namespace JueMingR.TerrariaHost.F5
 
         private static string PolicyLabel(string policy) => policy == "reference_only" ? " · 参考" :
             policy == "interactive_tools_conditional" || policy == "personal_interactive_conditional" ? " · 有条件" : "";
-
-        private void ChooseProvider(LlmPreset preset)
-        {
-            if (modelPreset?.Provider != preset.Provider && !ApplyModelPreset(preset)) return;
-            if (modelConnections.Presets.Any(row => row.Provider == preset.Provider && row.PlanId != preset.PlanId && !row.Advanced))
-                OpenModelPicker(ModelPicker.Plan);
-            else ChoosePlan(preset);
-        }
-
-        private void ChoosePlan(LlmPreset preset)
-        {
-            if (modelPreset == null || !SamePlan(modelPreset, preset)) if (!ApplyModelPreset(preset)) return;
-            if (modelConnections.Presets.Any(row => SamePlan(row, preset) && row.Region != preset.Region && !row.Advanced)) OpenModelPicker(ModelPicker.Region);
-            else ReturnToModel();
-        }
 
         private bool ApplyModelPreset(LlmPreset preset, bool confirmAddress = false)
         {

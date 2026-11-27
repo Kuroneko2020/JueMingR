@@ -9,15 +9,13 @@ namespace JueMingR.TerrariaHost.F5
     {
         private void BuildModelAdvanced()
         {
-            ModelButtonRow(("test-tools", "测试工具调用", () => StartModelTest(true), modelRead == null && modelWrite == null));
-            BuildModelCancelRequest();
-            ModelParagraph("测试会请求服务商，工具只回填测试数据。");
-            if (!String.IsNullOrEmpty(modelStatus)) ModelParagraph(modelStatus);
-            ModelHeading("服务与网络");
-            ModelChoose("protocol", "协议", ProtocolName(modelDraft.Protocol), () => OpenModelPicker(ModelPicker.Protocol));
-            if (modelPreset != null && modelConnections.Presets.Any(item => SameRegion(item, modelPreset) && item.Protocol == modelPreset.Protocol && item.Advanced != modelPreset.Advanced))
-                ModelChoose("template", "服务入口", modelPreset.Label, () => OpenModelPicker(ModelPicker.Templates));
-            ModelField("base", "Base URL", modelDraft.BaseUrl, value => modelDraft.BaseUrl = value.Trim(), 1500);
+            ModelHeading("连接");
+            if (modelPreset?.Provider != "custom")
+                ModelDropdownField("protocol", "接口协议", ProtocolName(modelDraft.Protocol), ModelPicker.Protocol,
+                    modelPreset != null && modelConnections.Presets.Any(item => SameRegion(item, modelPreset) && item.Protocol != modelPreset.Protocol));
+            if (modelPreset != null && modelConnections.Presets.Any(item => SameRegion(item, modelPreset) && item.Protocol == modelPreset.Protocol && item.Id != modelPreset.Id))
+                ModelDropdownField("template", "服务入口", modelPreset.Label, ModelPicker.Templates);
+            if (modelPreset?.Policy == "reference_only") return;
             ModelField("path", "推理操作路径", modelDraft.InferencePath, value => modelDraft.InferencePath = value.Trim(), 1024);
             BuildEndpointPreview();
             if (modelPreset?.Provider == "custom")
@@ -41,7 +39,7 @@ namespace JueMingR.TerrariaHost.F5
             ModelField("reasoning", "推理强度 / 思考", modelDraft.Reasoning, value => modelDraft.Reasoning = value.Trim(), 32, "使用模型默认值");
             ModelParagraph(thinkingHint + "。模型支持的值以服务商为准。");
 
-            ModelHeading("上下文与活动");
+            ModelHeading("对话与行动");
             ModelInteger("input-budget", "上下文输入预算", modelDraft.InputBudget, 1024, 524288, value => modelDraft.InputBudget = value);
             ModelInteger("history-limit", "保留聊天条目数", modelDraft.HistoryLimit, 1, 500, value => modelDraft.HistoryLimit = value);
             ModelParagraph("输入接近预算时会用可见事实摘要续接。聊天页可以新开上下文，聊天记录仍可查看。");
@@ -49,17 +47,16 @@ namespace JueMingR.TerrariaHost.F5
             ModelToggle("event-notices", "活动事件通知", modelDraft.LocalNoticesEnabled, value => modelDraft.LocalNoticesEnabled = value);
             if (modelDraft.GameActionsEnabled)
             {
-                ModelInteger("rounds", "每轮模型往返上限", modelDraft.MaxModelTurns, 1, 16, value => modelDraft.MaxModelTurns = value);
-                ModelInteger("tool-steps", "每轮工具步数上限", modelDraft.MaxToolCalls, 1, 32, value => modelDraft.MaxToolCalls = value);
+                ModelInteger("rounds", "每条消息的模型往返", modelDraft.MaxModelTurns, 1, 16, value => modelDraft.MaxModelTurns = value);
+                ModelInteger("tool-steps", "每条消息的工具调用", modelDraft.MaxToolCalls, 1, 32, value => modelDraft.MaxToolCalls = value);
             }
 
-            ModelHeading("额外请求参数");
+            ModelHeading("自定义参数");
             ModelParagraph("使用单行 JSON 对象填写，内置消息、工具和鉴权字段由连接管理。带凭据的请求头请填在敏感请求头。");
             ModelField("extras", "额外参数（JSON）", modelDraft.ExtraParameters, value => modelDraft.ExtraParameters = value.Trim(), 8192, "使用默认参数");
             ModelField("headers", "普通请求头（JSON）", modelDraft.ExtraHeaders, value => modelDraft.ExtraHeaders = value.Trim(), 8192, "未设置");
             ModelSecretField("extra-secret-headers", "敏感请求头", "点击填写单行 JSON", modelDraft.SecretHeaders,
                 value => modelDraft.SecretHeaders = value, 8192, () => modelConnections.RevealSecretHeaders(modelDraft));
-            ModelButtonRow(("save-advanced", "保存连接", SaveModel, modelWrite == null && modelRead == null));
         }
 
         private void BuildEndpointPreview()

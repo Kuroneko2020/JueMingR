@@ -35,6 +35,7 @@ namespace JueMingR.TerrariaHost.F5
             internal bool IsSlot, Owner;
             internal bool WeaponCandidate, ActiveWeapon;
             internal bool ActorOverlay,ActorState,ManualRecall;
+            internal bool ModelSelector, TextOnly;
             internal int TeamIcon=-1;
             internal CompanionInventoryArea Area;
             internal int Slot;
@@ -113,11 +114,11 @@ namespace JueMingR.TerrariaHost.F5
         // acquire only its own masked buffer.
         TextEditBuffer ITextEditSession.Editor => editor;
         internal bool Visible { get; private set; }
-        internal bool Captured => dragging || armedKey != null || leftTail || rightTail || fishingPane?.Captured == true;
+        internal bool Captured => dragging || armedKey != null || leftTail || rightTail || ModelDropdownOpen || fishingPane?.Captured == true;
         // A retired auto-teleport click is already filtered by physical source.
         // Retain its pointer tail without blanking co-bound keyboard actions.
         internal bool ClaimsMappedPointer => dragging || armedKey != null || leftTail && !autoTeleportLeftTail ||
-            rightTail && !autoTeleportRightTail || fishingPane?.Captured == true;
+            rightTail && !autoTeleportRightTail || ModelDropdownOpen || fishingPane?.Captured == true;
         internal bool Independent { get; private set; }
         internal bool Dragging { get { return dragging; } }
         internal bool OwnsPointer { get; private set; }
@@ -492,10 +493,24 @@ namespace JueMingR.TerrariaHost.F5
             }
             host.ValidateItemGesture();
             if (!panel.Contains(point.X, point.Y)) host.CancelItemGesture();
+            bool hadModelDropdown = ModelDropdownOpen;
             if (!hadSupplyPopup) PrepareCore(transform, physical, resources);
             if (autoTeleportPopup.Process(keys, point, left, right, wheel)) return;
             if (ProcessFishingPane(keys, point, focused, wheel, left, right)) return;
-            if (!wasEditing && Editor == null && input.Hotkeys.IsNew((int)Keys.Escape)) { input.ConsumeCancellation((int)Keys.Escape); Close(); ReleaseTails(left, right, true); return; }
+            bool escape = !wasEditing && Editor == null && input.Hotkeys.IsNew((int)Keys.Escape);
+            if (ProcessModelDropdown(point, left, right, wheel, escape))
+            { if (Visible) PrepareCore(transform, physical, resources); return; }
+            if (hadModelDropdown)
+            {
+                // An invalidated anchor still owns the dismissal sample.
+                ConsumeWheel = wheel != 0;
+                OwnsPointer = true;
+                if (left) { leftTail = true; input.ClaimUiMousePress(256); }
+                if (right) { rightTail = true; input.ClaimUiMousePress(257); }
+                ReleaseTails(left, right, true); previousLeft = left; previousRight = right;
+                return;
+            }
+            if (escape) { input.ConsumeCancellation((int)Keys.Escape); Close(); ReleaseTails(left, right, true); return; }
             bool wasDragging = dragging;
             if (dragging)
             {
@@ -523,6 +538,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 if (hit != null && (ReferenceEquals(hit, autoTeleportAnchor) || hit.ManualRecall))
                     ClaimAutoTeleportClick(left, right);
+                if (hit?.ModelSelector == true) input.ClaimUiMousePress(256);
                 if (hit == null && ready && titleBar.Contains(point.X, point.Y))
                 {
                     dragStartPosition = requestedPosition; dragStartPositioned = userPositioned;
@@ -580,7 +596,7 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void PrepareHint()
         {
-            if (SupplyPopupVisible && supplyPanel.Contains(pointer.X, pointer.Y) ||
+            if (ModelDropdownOpen || SupplyPopupVisible && supplyPanel.Contains(pointer.X, pointer.Y) ||
                 autoTeleportPopup.Contains(pointer.X, pointer.Y)) { hint.Hide(); return; }
             string hintText = null; F5Rect target = default(F5Rect);
             if (fishingPane?.Visible == true) hintText = fishingPane.Hint(pointer.X, pointer.Y, out target);
@@ -613,6 +629,11 @@ namespace JueMingR.TerrariaHost.F5
                     if(c.ActorOverlay)continue;
                     bool hover = c.Rect.Contains(pointer.X, pointer.Y);
                     if (c.HotkeyId != null) DrawKeyboard?.Invoke(c.Rect);
+                    else if (c.TextOnly)
+                    {
+                        if (hover) Fill(c.Rect, Color.White * .10f);
+                        renderer.Text(c.Text, c.Rect, Color.White, .75f);
+                    }
                     else if (c.Element != null) renderer.Button(c.Element, c.Selected, c.Enabled, c.Off, hover,hover&&armedKey==c.Key);
                     else if (c.IsSlot)
                     {
@@ -669,6 +690,7 @@ namespace JueMingR.TerrariaHost.F5
             if (SupplyPopupVisible) DrawSupplyPopup();
             autoTeleportPopup.Draw();
             fishingPane?.DrawPopup(null);
+            if (page == ModelPage) DrawModelDropdown();
             if (hint.Visible && Editor == null && !Captured) renderer.Pass(matrix, hint.Panel, () => { renderer.Panel(hint.Panel); foreach (var line in hint.Lines) renderer.Label(new F5Element(F5ElementKind.Text,line.Rect.Offset(hint.Panel.X+8,hint.Panel.Y+8),line.Text,line.TextSize,line.TextScale,F5Command.None)); });
         }
         private void DrawEditor()

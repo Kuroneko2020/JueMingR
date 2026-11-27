@@ -37,8 +37,11 @@ namespace JueMingR.Infrastructure.Llm
             if (request.Instructions.Length != 0) body["system"] = request.Instructions;
             SetOptions(body, settings, "max_tokens", "stop_sequences", 4096);
             if (request.Tools.Count != 0)
+            {
                 body["tools"] = request.Tools.Select(tool => Obj("name", tool.Name,
                     "description", tool.Description, "input_schema", Schema(tool))).ToArray();
+                if (request.TextOnly && connection.Endpoint.IdnHost == "api.anthropic.com") body["tool_choice"] = Obj("type", "none");
+            }
             if (!string.IsNullOrWhiteSpace(settings.Reasoning))
             {
                 if (int.TryParse(settings.Reasoning, NumberStyles.None, CultureInfo.InvariantCulture, out int budget))

@@ -26,6 +26,7 @@ function Get-WorkloadLeafChecks {
         'tests/JueMingR.ArchitectureTests/Llm/LlmConnectionChecks.cs'=@('LlmConnections')
         'tests/NativeWorldTextProbe/NativeCompanionChatChecks.cs'=@('native-CompanionFishingLineCpu','native-CompanionWormholeCpu')
         'tests/NativeWorldTextProbe/NativeCompanionChatUiChecks.cs'=@('native-CompanionChatUiCpu','native-CompanionConfigVisual')
+        'tests/NativeWorldTextProbe/NativeCompanionEnvironmentChecks.cs'=@('native-CompanionEnvironmentCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFishingUiChecks.cs'=@('native-CompanionFishingUiCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFishingLineChecks.cs'=@('native-CompanionFishingLineCpu','native-CompanionWormholeCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFishingOpeningChecks.cs'=@('native-CompanionFishingLineCpu','native-CompanionWormholeCpu')
@@ -716,6 +717,7 @@ function Get-WorkloadNativeScopes {
         'CompanionConfigVisual'=@('llm-host','companion-host','shared-host');
         'CompanionFishingUiCpu'=@('companion-host','fishing-host','shared-host');
         'CompanionChatUiCpu'=@('llm-host','companion-host','shared-host');
+        'CompanionEnvironmentCpu'=@('companion-host','shared-host','biomes','combat-host');
         'CompanionFishingLineCpu'=@('llm-host','companion-host','fishing-host','items','recovery-host','shared-host');
         'CompanionFishingWorldCpu'=@('companion-host','fishing-host','shared-host');
         'CompanionExitVisual'=@('companion-host','shared-host');

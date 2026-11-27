@@ -640,8 +640,8 @@ namespace NativeWorldTextProbe
                 AdvanceClock();
                 Require(expected < staleQuote && Call(host, "TryCompanionNurse", actor).ToString() == "Treated" &&
                     total - NativeRecoveryServiceChecks.Total(human) - NativeRecoveryServiceChecks.Total(patient) == expected &&
-                    !patient.ZoneHallow && ReferenceEquals(mainScene, Main.PlayerSceneMetrics) && mainScene.Center == mainSceneCenter,
-                    "distant payer and stale zone flags still charge the native local Hallow quote and leave the human scene alone");
+                    patient.ZoneHallow && ReferenceEquals(mainScene, Main.PlayerSceneMetrics) && mainScene.Center == mainSceneCenter,
+                    "distant payer and stale zone flags still charge the native local Hallow quote, project the patient body, and leave the human scene alone");
                 patient.ZoneHallow = stale;
             }
             finally

@@ -1,7 +1,10 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using HarmonyLib;
+using ReLogic.Content.Sources;
 using JueMingR.Features.Information;
 using JueMingR.Platform.Information;
 using Terraria;
@@ -63,6 +66,7 @@ namespace NativeWorldTextProbe
                         "actual native exact location " + expected[0] + " / " + language);
                 }
             }
+            CheckTranslatedLocations(reader);
             var patch = new Harmony("JueMingR.Information.ResourceRevisionTests");
             MethodInfo load = typeof(LanguageManager).GetMethod("LoadFromContentSources", Flags), read = typeof(Language).GetMethod("GetText", Flags);
             Require(load != null && read != null, "fixed native resource completion/read targets");
@@ -83,10 +87,21 @@ namespace NativeWorldTextProbe
                 int reads = (int)Get(reader, "LocalizationReads"), parses = (int)Get(reader, "LocationParses");
                 Reload("（抓捕位置：更新地点）", "更新鱼名"); observe();
                 Require((int)Get(reader, "LocalizationReads") == reads + 1 && (int)Get(reader, "LocationParses") == parses, "unchanged resource reload does not reparse");
-                foreach (string text in new[] { "故事（天湖）", "(别的鱼，捕获位置：海洋)", "(Caught in Sky Lakes) trailing", "（抓捕位置：）" })
+                Reload("故事里曾提到（海洋）。\n捕获位置：洞穴（纯净地形）"); observe();
+                Require((string)Get(reader, "questLocation") == "洞穴（纯净地形）", "explicit terminal label with an unwrapped qualifier");
+                Reload("故事中提到了天空。\n（Caught in: Underground (Pure)）"); observe();
+                Require((string)Get(reader, "questLocation") == "Underground (Pure)", "qualified location and English colon spelling");
+                Reload("（抓捕位置：天湖）", "其它译名"); observe();
+                reads = (int)Get(reader, "LocalizationReads"); parses = (int)Get(reader, "LocationParses");
+                Reload("（抓捕位置：天湖）", "新的物品名"); observe();
+                Require((string)Get(reader, "questName") == "新的物品名" && (string)Get(reader, "questLocation") == "天湖" &&
+                    (int)Get(reader, "LocalizationReads") == reads + 1 && (int)Get(reader, "LocationParses") == parses,
+                    "changed item name refreshes the visible name without reparsing unchanged quest text");
+                foreach (string text in new[] { "故事（天湖）", "故事（捕获位置：海洋）", "（我在故事里谈到！捕获位置：海洋）",
+                    "(Caught in Sky Lakes) trailing", "（抓捕位置：）", "（捕获位置：洞穴（纯净地形）", "(Caught inside the story)" })
                 {
                     Reload(text); observe();
-                    Require(GetOptional(reader, "questLocation") == null && Get(reader, "LocationStatus").ToString() == "UnsupportedFormat", "unsupported story/foreign fish/invalid terminal stays unknown");
+                    Require(GetOptional(reader, "questLocation") == null && Get(reader, "LocationStatus").ToString() == "UnsupportedFormat", "unsupported story/invalid terminal stays unknown");
                     reads = (int)Get(reader, "LocalizationReads"); parses = (int)Get(reader, "LocationParses");
                     for (int i = 0; i < 500; i++) observe();
                     Require((int)Get(reader, "LocalizationReads") == reads && (int)Get(reader, "LocationParses") == parses, "stable unsupported resource never retries each update");
@@ -122,7 +137,47 @@ namespace NativeWorldTextProbe
                 patch.Unpatch(load, HarmonyPatchType.All, patch.Id); patch.Unpatch(read, HarmonyPatchType.All, patch.Id);
                 LanguageManager.Instance.SetLanguage("en-US"); Lang.InitializeLegacyLocalization();
             }
-            Console.WriteLine("PASS: 82 native exact locations, enabled-pack Angelfish input, real reload event, bounded failure recovery and Summary-to-HUD two-line layout.");
+            Console.WriteLine("PASS: 82 native exact locations, real miniature resource pack and reload event, bounded failure recovery and Summary-to-HUD two-line layout.");
+        }
+        private static void CheckTranslatedLocations(object reader)
+        {
+            // Minimal fixtures from the actual enabled pack's final annotations.
+            // The original resource loader selects the current culture and applies
+            // fallback. Ordinary check runs do not depend on the owner's pack files.
+            string root = Path.Combine(Terraria.Program.SavePath, "quest-location-content");
+            string culture = Path.Combine(root, "Localization", "zh-Hans");
+            Directory.CreateDirectory(culture);
+            File.WriteAllText(Path.Combine(culture, "Items.json"),
+                "{\"ItemName\":{\"Fishotron\":\"鱼骨队长\",\"Spiderfish\":\"蜘蛛鱼\",\"EaterofPlankton\":\"噬鱼者\",\"MirageFish\":\"幻象鱼\",\"ScarabFish\":\"甲虫鱼\"}}");
+            File.WriteAllText(Path.Combine(culture, "Town.json"),
+                "{\"AnglerQuestText\":{\"Quest_Fishotron\":\"(鱼骨队长，捕获位置：洞穴层及以下，纯净地形)\"," +
+                "\"Quest_Spiderfish\":\"(蜘蛛鱼，捕获位置：地下层及以下，纯净地形\\n（不需要蜘蛛洞）)\"," +
+                "\"Quest_EaterofPlankton\":\"(噬鱼怪，捕获位置：任意高度，腐化之地)\"," +
+                "\"Quest_MirageFish\":\"(幻影鱼，捕获位置：地下层及以下，神圣之地)\"," +
+                "\"Quest_ScarabFish\":\"(圣甲虫鱼，捕获位置：地表沙漠)\"}}");
+            var manager = LanguageManager.Instance;
+            Action<int, string, string> expect = (type, name, location) =>
+            {
+                Call(reader, "Localize", type);
+                Require((string)Get(reader, "questName") == name && (string)Get(reader, "questLocation") == location &&
+                    Get(reader, "LocationStatus").ToString() == "Ready", "native resource loader accepts final location for " + type);
+            };
+            try
+            {
+                manager.UseSources(new List<IContentSource> { new FileSystemContentSource(root) });
+                expect(ItemID.Fishotron, "鱼骨队长", "洞穴层及以下，纯净地形");
+                expect(ItemID.Spiderfish, "蜘蛛鱼", "地下层及以下，纯净地形（不需要蜘蛛洞）");
+                expect(ItemID.EaterofPlankton, "噬鱼者", "任意高度，腐化之地");
+                expect(ItemID.MirageFish, "幻象鱼", "地下层及以下，神圣之地");
+                expect(ItemID.ScarabFish, "甲虫鱼", "地表沙漠");
+                int reads = (int)Get(reader, "LocalizationReads"), parses = (int)Get(reader, "LocationParses");
+                for (int i = 0; i < 500; i++) expect(ItemID.ScarabFish, "甲虫鱼", "地表沙漠");
+                Require((int)Get(reader, "LocalizationReads") == reads && (int)Get(reader, "LocationParses") == parses,
+                    "stable known location is free of resource reads and reparses");
+            }
+            finally { manager.UseSources(new List<IContentSource>()); }
+            Call(reader, "Localize", ItemID.ScarabFish);
+            Require((string)Get(reader, "questLocation") == "沙漠", "same-culture pack removal restores original task location");
         }
         private static void CheckHud(object host)
         {

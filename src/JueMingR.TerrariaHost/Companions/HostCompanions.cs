@@ -36,6 +36,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal readonly CompanionSupplyState Supplies = new CompanionSupplyState();
             internal FishingActivity Fishing;
             internal readonly CompanionFishingLine FishingLine = new CompanionFishingLine();
+            internal readonly ActorEnvironment Environment = new ActorEnvironment();
             internal FurnitureRecovery Furniture;
             internal int DyeSwapCounter;
             internal CompanionConnection Connection;internal long Generation;
@@ -73,7 +74,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal int[] NetworkSlotIds;
             internal int ReservedSlot=-1;
             internal long PrimarySlotFence, PrimarySlotDeadline;
-            internal bool PrimarySlotConfirmed, PrimarySlotSawJoin, BirthSubmitted;
+            internal bool PrimarySlotConfirmed, PrimarySlotSawJoin, BirthSubmitted, ReservedBodySpawned;
             internal int SyncMana=-1;internal uint NextPublish;
             internal readonly SourceFlow WorldSource=new SourceFlow();
             internal readonly Queue<object> PendingStrikes=new Queue<object>();
@@ -210,6 +211,13 @@ namespace JueMingR.TerrariaHost.Companions
             if (QueueRecallForFishStorage(a)) return Result(true, "存鱼正在结算，确认后收回人物。");
             return CloseActor(a,null);
         }
+        internal void CloseFaultedBody(Actor actor,Exception failure)
+        {
+            actor.Faulted=true;
+            // Detach before vanilla's next NPC pass can select a body whose
+            // update has stopped. The ordinary close keeps save retry intact.
+            if(!actor.Closing)CloseActor(actor,"人物更新失败："+failure.Message);
+        }
         private bool CloseActor(Actor a,string failure)
         {
             InvalidateChatAction(a.Profile.Id, "队友已收回或停止活动，已撤回待执行的模型指令。");
@@ -243,6 +251,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             RetireJoinFeedback(a);
             a.AutoTeleport=null;
+            a.Environment.Tiles=null;
+            a.Environment.PublishedConnection=null;
             a.TeamPending=false;a.TeamConnection=null;
             CancelCompanionItemOnce(a);
             CancelItemGestureForActor(a);
@@ -429,7 +439,7 @@ namespace JueMingR.TerrariaHost.Companions
                 try
                 {
                     if(a.Closing)continue;
-                    if(a.Faulted && FishingActive(a)){CloseActor(a,a.Status);continue;}
+                    if(a.Faulted){CloseActor(a,a.Status);continue;}
                     if(a.Connection!=null){PumpConnection(a);if(a.Connection?.Finished==true){CloseActor(a,a.Connection.Error??"连接已结束");continue;}}
                     if(a.AutoTeleport?.HasCandidate==true)ConsumeAutoTeleport(a);
                     UpdatePasswordAttempt(a);

@@ -132,13 +132,19 @@ namespace NativeWorldTextProbe
                     "one local notice is published without another charged model round");
 
                 const string privateClosedTurn = "{\"reasoning_content\":\"closed-a-private-field\"}";
+                bool recoveredBait = false;
                 remote.Reply = request => Task.FromResult(request.Messages.Last().Kind == LlmMessageKind.ToolResults ?
                     new LlmTurn("跟随已设置。", Array.Empty<LlmToolCall>(), privateClosedTurn) :
-                    calls(tool("stop", "stop_activity", new KeyValuePair<string, object>("mode", "follow"))));
+                    ReadBaitAndStop(request));
+                LlmTurn ReadBaitAndStop(LlmRequest request)
+                {
+                    recoveredBait = request.Messages.Last().Text.Contains("缺少可用鱼饵");
+                    return calls(tool("stop", "stop_activity", new KeyValuePair<string, object>("mode", "follow")));
+                }
                 Sent("停止，跟我走。");
                 Ended();
-                Require(!isFishing() && ((CompanionProfile)Get(actor, "Profile")).Behavior.Follow,
-                    "model stops the real fishing activity before applying follow");
+                Require(recoveredBait && !isFishing() && ((CompanionProfile)Get(actor, "Profile")).Behavior.Follow,
+                    "next model request sees late bait and stops real fishing before applying follow");
 
                 var delayed = new TaskCompletionSource<LlmTurn>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var called = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -166,8 +172,26 @@ namespace NativeWorldTextProbe
                     resumed.Messages.Last().Text.Contains("手动行为"),
                     "closed provider-private history survives an interrupted next turn while latest public facts belong to the new user message");
 
+                var beforeDead = body.dead;
+                try
+                {
+                    body.dead = true;
+                    Require((string)Get(View(), "Lifecycle") == "死亡待复活" && !(bool)Get(View(), "CanAct"),
+                        "a joined dead body has lifecycle identity but no action capability");
+                    LlmRequest offline = null;
+                    remote.Reply = request => { offline = request; return Task.FromResult(calls(tool("unexpected", "query_inventory"))); };
+                    Sent("队友，还在吗？");
+                    Ended();
+                    Require(offline?.Tools.Count == 0 && offline.TextOnly && offline.Instructions.Contains("死亡待复活") &&
+                        !offline.Messages.Any(message => message.Turn?.WireJson == privateClosedTurn) &&
+                        Entries().Any(entry => entry.Kind == "status" && entry.Text.Contains("额外工具调用未执行")),
+                        "dead capability change retires old tool wire and blocks an unsolicited query");
+                }
+                finally { body.dead = beforeDead; }
+
                 int life = body.statLife;
                 Item prior = body.inventory[49], priorSecond = body.inventory[48];
+                Item priorThird = body.inventory[47];
                 var potion = new Item(ItemID.LesserHealingPotion) { stack = 2 };
                 try
                 {
@@ -212,6 +236,7 @@ namespace NativeWorldTextProbe
 
                     body.inventory[48] = new Item(ItemID.LesserHealingPotion) { stack = 2 };
                     body.inventory[49] = new Item(ItemID.LesserHealingPotion) { stack = 2 };
+                    body.inventory[47] = new Item(ItemID.MagicMirror);
                     var testBehavior = ((CompanionProfile)Get(actor, "Profile")).Behavior;
                     testBehavior.HealthRecoveryEnabled = false;
                     testBehavior.AllowNurse = false;
@@ -227,13 +252,15 @@ namespace NativeWorldTextProbe
                         var latest = request.Messages.Last();
                         if (latest.Kind != LlmMessageKind.ToolResults)
                             return Task.FromResult(calls(tool("read-48-49", "query_inventory",
-                                new KeyValuePair<string, object>("offset", 48))));
+                                new KeyValuePair<string, object>("offset", 47))));
                         if (latest.Results[0].Id == "read-48-49")
                         {
                             var rows = latest.Results[0].Output.Split('\n');
-                            var right = tool("use-other-slot", "use_item_once", new KeyValuePair<string, object>("source", SlotSource(rows[1])));
-                            var left = tool("use-first-slot", "use_item_once", new KeyValuePair<string, object>("source", SlotSource(rows[0])));
-                            return Task.FromResult(next ? calls(right) : calls(left, right));
+                            var right = tool("use-other-slot", "use_item_once", new KeyValuePair<string, object>("source", SlotSource(rows[2])));
+                            var left = tool("use-first-slot", "use_item_once", new KeyValuePair<string, object>("source", SlotSource(rows[1])));
+                            var mirror = tool("different-item", "use_item_once", new KeyValuePair<string, object>("source", SlotSource(rows[0])));
+                            var invalid = tool("invalid-source", "use_item_once", new KeyValuePair<string, object>("source", "invalid-source"));
+                            return Task.FromResult(next ? calls(right) : calls(left, right, mirror, invalid));
                         }
                         received = latest.Results.ToArray();
                         return Task.FromResult(textReply());
@@ -246,17 +273,47 @@ namespace NativeWorldTextProbe
                     });
                     Sent("用一次治疗药水。");
                     NativeUseUntilReply();
-                    Require(received?.Length == 2 && received[0].Output == received[1].Output &&
-                        body.inventory[48].stack == 1 && body.inventory[49].stack == 2,
-                        "different calls with two real eligible potion sources share one operation and one actual debit");
+                    Require(received?.Length == 4 && received[0].Output == received[1].Output && !received[0].IsError &&
+                        received[0].Output.Contains(body.inventory[48].Name) && received[2].IsError && received[3].IsError &&
+                        received[2].Output.Contains(body.inventory[47].Name) && body.inventory[48].stack == 1 && body.inventory[49].stack == 2,
+                        "only the matching potion intent shares one real debit; different and invalid sources are independently refused");
                     next = true;
                     body.statLife = 1;
                     Sent("再用一次治疗药水。");
                     NativeUseUntilReply();
                     Require(received?.Length == 1 && body.inventory[48].stack == 1 && body.inventory[49].stack == 1,
                         "a new explicit user message has independent one-use authority");
+
+                    var beforeTeleport = body.position;
+                    var beforeHuman = human.position;
+                    int originalSelection = body.selectedItem;
+                    float previousCameraX = Main.cameraX, previousCameraY = Main.cameraY;
+                    remote.Reply = request =>
+                    {
+                        var last = request.Messages.Last();
+                        if (last.Kind != LlmMessageKind.ToolResults)
+                            return Task.FromResult(calls(tool("query-mirror", "query_inventory", new KeyValuePair<string, object>("offset", 47))));
+                        if (last.Results.Single().Id == "query-mirror")
+                        {
+                            string row = last.Results.Single().Output.Split('\n')[0];
+                            Require(row.Contains("队友自身出生点"), "real mirror mode reports its native destination");
+                            return Task.FromResult(calls(tool("mirror-home", "use_item_once",
+                                new KeyValuePair<string, object>("source", SlotSource(row)),
+                                new KeyValuePair<string, object>("stay_after_teleport", true))));
+                        }
+                        received = last.Results.ToArray();
+                        return Task.FromResult(textReply());
+                    };
+                    Sent("用魔镜回自己的出生点，在那里等我。");
+                    NativeUseUntilReply();
+                    Require(received?.Length == 1 && !received[0].IsError && received[0].Output.Contains("已原地待命") &&
+                        received[0].Output.Contains("出生点") && body.position != beforeTeleport &&
+                        Math.Abs(body.Center.X - Main.spawnTileX * 16) < 64 && !((CompanionProfile)Get(actor, "Profile")).Behavior.Follow &&
+                        human.position == beforeHuman && Main.cameraX == previousCameraX && Main.cameraY == previousCameraY &&
+                        body.inventory[47].type == ItemID.MagicMirror && body.selectedItem == originalSelection,
+                        "real mirror reaches native spawn before confirmed stay, preserves owner and releases the original hand");
                 }
-                finally { body.statLife = life; body.inventory[49] = prior; body.inventory[48] = priorSecond; }
+                finally { body.statLife = life; body.inventory[49] = prior; body.inventory[48] = priorSecond; body.inventory[47] = priorThird; }
                 CheckClearAndDeletion(host, profile, fixture.Store, View, Entries, PumpUntil);
                 Console.WriteLine("PASS native companion chat anchor, real activity, notices, manual replacement, closed wire recovery, one debit per message, use settlement and retried deletion.");
             }

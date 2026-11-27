@@ -14,16 +14,17 @@ namespace JueMingR.TerrariaHost.F5
     internal sealed partial class CompanionWindow
     {
         private enum ModelPicker { None, Connections, Provider, Plan, Region, Credential, Protocol, Templates, Models }
-        private enum ModelPageView { Setup, Connections, Advanced, ProviderDetails }
+        private enum ModelPageView { Setup, Connections, ProviderDetails }
         private sealed class ModelFieldView
         {
             internal string Id, Value;
             internal F5Rect Rect;
-            internal bool Secret;
+            internal bool Secret, Dropdown;
         }
         private sealed class ModelReadResult
         {
             internal string Message;
+            internal string Detail;
             internal IReadOnlyList<LlmModelInfo> Models;
             internal bool Success;
         }
@@ -39,13 +40,14 @@ namespace JueMingR.TerrariaHost.F5
         private Action modelWriteCompleted;
         private ModelPicker modelPicker;
         private ModelPageView modelPageView;
-        private string modelSearch = "", modelStatus, modelChatTest, modelToolTest, modelReadKind, modelStorage;
+        private string modelSearch = "", modelStatus, modelReadKind, modelStorage;
         private string modelRevealedId, modelRevealedValue;
-        private bool modelConfirmDelete;
+        private bool modelConfirmDelete, modelAdvancedExpanded, modelTestDetailsExpanded;
+        private string modelTestDetails;
         private int modelCapabilityFilter, modelOffset, modelMaximum, modelMainOffset;
         private float modelY, modelRow, modelX, modelWidth, modelTextWidth;
         private int modelTextSkin = -1;
-        private F5Rect modelScrollView;
+        private F5Rect modelScrollView, modelFooterView;
         private readonly List<ModelFieldView> modelFields = new List<ModelFieldView>();
         private readonly Dictionary<string, F5Element[]> modelParagraphs = new Dictionary<string, F5Element[]>();
         private readonly List<F5Element> modelRevealLabels = new List<F5Element>();
@@ -80,7 +82,7 @@ namespace JueMingR.TerrariaHost.F5
                 if (modelDraft == null)
                 {
                     Guid? id = modelList.FirstOrDefault(row => row.Id == connections.DefaultId)?.Id ?? modelList.FirstOrDefault()?.Id;
-                    LoadModelDraft(connections.Edit(id));
+                    LoadModelDraft(id.HasValue ? connections.Edit(id) : NewModelDraft());
                 }
                 contentInvalidated = true;
             }
@@ -97,18 +99,29 @@ namespace JueMingR.TerrariaHost.F5
             modelDraft = value;
             modelPreset = modelConnections.Presets.FirstOrDefault(preset => preset.Id == value.PresetId);
             string probes = modelConnections.GetProbeSummary(value);
-            modelStatus = String.IsNullOrEmpty(probes) ? null : ModelTestSubject(value, modelPreset) + " · " + probes;
+            modelStatus = String.IsNullOrEmpty(probes) ? null : probes.Split(new[] { " · " }, StringSplitOptions.None)[0];
+            modelTestDetails = String.IsNullOrEmpty(probes) ? null : ModelTestSubject(value, modelPreset) + "\n" + probes;
+            modelTestDetailsExpanded = false;
             modelConfirmDelete = false;
             pendingModelPreset = null;
             Invalidate();
         }
 
+        private LlmConnectionDraft NewModelDraft()
+        {
+            var draft = modelConnections.Edit();
+            modelConnections.ApplyPreset(draft, "custom_openai_chat");
+            return draft;
+        }
+
         private void BuildModel(float row)
         {
-            modelScrollView = new F5Rect(bodyView.X + 4, bodyView.Y, bodyView.Width - 12, bodyView.Height);
-            modelX = modelScrollView.X + 4;
-            modelWidth = modelScrollView.Width - 10;
             modelRow = row;
+            modelWidth = Math.Min(720, bodyView.Width - 28);
+            modelX = bodyView.X + (bodyView.Width - modelWidth) / 2;
+            float footerHeight = modelConnections != null && modelDraft != null && modelPicker == ModelPicker.None && modelPageView == ModelPageView.Setup ? ModelFooterHeight(row) : 0;
+            modelScrollView = new F5Rect(modelX - 5, bodyView.Y, modelWidth + 10, Math.Max(1, bodyView.Height - footerHeight));
+            modelFooterView = footerHeight > 0 ? new F5Rect(modelX - 5, modelScrollView.Bottom + 3, modelWidth + 10, footerHeight - 3) : default(F5Rect);
             if (modelTextWidth != modelWidth || modelTextSkin != skin)
             {
                 modelTextWidth = modelWidth; modelTextSkin = skin;
@@ -120,13 +133,16 @@ namespace JueMingR.TerrariaHost.F5
             modelRevealLabels.Clear();
             BuildModelRows();
             modelMaximum = Math.Max(0, (int)Math.Ceiling(modelY + modelOffset - modelScrollView.Bottom));
-            if (modelOffset <= modelMaximum) return;
-            modelOffset = modelMaximum;
-            controls.RemoveRange(firstControl, controls.Count - firstControl);
-            labels.RemoveRange(firstLabel, labels.Count - firstLabel);
-            modelFields.Clear();
-            modelRevealLabels.Clear();
-            BuildModelRows();
+            if (modelOffset > modelMaximum)
+            {
+                modelOffset = modelMaximum;
+                controls.RemoveRange(firstControl, controls.Count - firstControl);
+                labels.RemoveRange(firstLabel, labels.Count - firstLabel);
+                modelFields.Clear();
+                modelRevealLabels.Clear();
+                BuildModelRows();
+            }
+            if (footerHeight > 0) BuildModelFooter();
         }
 
         private void BuildModelRows()
@@ -142,7 +158,6 @@ namespace JueMingR.TerrariaHost.F5
             {
                 ModelButtonRow(("back-to-setup", "返回模型", () => OpenModelPage(ModelPageView.Setup), true));
                 if (modelPageView == ModelPageView.Connections) BuildModelManagement();
-                else if (modelPageView == ModelPageView.Advanced) BuildModelAdvanced();
                 else BuildPresetNotes();
                 return;
             }
@@ -151,6 +166,7 @@ namespace JueMingR.TerrariaHost.F5
 
         private void OpenModelPage(ModelPageView view)
         {
+            CloseModelDropdown();
             modelPageView = view;
             modelPicker = ModelPicker.None;
             modelSearch = "";
@@ -169,7 +185,7 @@ namespace JueMingR.TerrariaHost.F5
             var stored = StoredModel();
             var actions = new List<(string, string, Action, bool)>();
             if (modelList.Count > 0) actions.Add(("connections", "切换连接", () => OpenModelPicker(ModelPicker.Connections), !saving));
-            actions.Add(("create", "新增连接", () => { LoadModelDraft(modelConnections.Edit()); OpenModelPage(ModelPageView.Setup); }, !saving));
+            actions.Add(("create", "新增连接", () => { LoadModelDraft(NewModelDraft()); OpenModelPage(ModelPageView.Setup); }, !saving));
             if (stored != null)
             {
                 actions.Add(("copy", "复制配置", () => { LoadModelDraft(modelConnections.Copy(stored.Id)); OpenModelPage(ModelPageView.Setup); }, !saving));
@@ -181,7 +197,7 @@ namespace JueMingR.TerrariaHost.F5
                 int count = modelConnections.GetAffectedBindingCount(stored.Id);
                 ModelParagraph("删除「" + stored.DisplayName + "」？明确绑定此连接的 " + count + " 名队友会变为未配置。" +
                     (modelConnections.DefaultId == stored.Id ? "继承此默认连接的队友也会变为未配置。" : ""));
-                ModelButtonRow(("confirm-delete", "确认删除", () => StartModelWrite(() => modelConnections.DeleteAsync(stored.Id), "已删除连接。", () => LoadModelDraft(modelConnections.Edit())), !saving),
+                ModelButtonRow(("confirm-delete", "确认删除", () => StartModelWrite(() => modelConnections.DeleteAsync(stored.Id), "已删除连接。", () => LoadModelDraft(NewModelDraft())), !saving),
                     ("cancel-delete", "取消", () => { modelConfirmDelete = false; Invalidate(); }, true));
             }
             ModelField("name", "连接名称", modelDraft.DisplayName, value => modelDraft.DisplayName = value, 80);
@@ -205,15 +221,25 @@ namespace JueMingR.TerrariaHost.F5
 
         private void BuildModelSetup()
         {
-            bool readyToUse = modelWrite == null && modelRead == null;
-            ModelChoose("provider", "服务商", ProviderName(modelPreset), () => OpenModelPicker(ModelPicker.Provider));
+            ModelHeading("模型连接");
+            var stored = StoredModel();
+            ModelParagraph((stored == null ? "新连接 · 尚未保存" : stored.DisplayName) +
+                (stored != null && modelConnections.DefaultId == stored.Id ? " · 默认" : ""));
+            ModelDropdownField("provider", "服务商", ProviderName(modelPreset), ModelPicker.Provider);
             if (modelPreset != null)
             {
-                bool planChoice = modelConnections.Presets.Any(item => item.Provider == modelPreset.Provider && item.PlanId != modelPreset.PlanId && !item.Advanced);
-                bool regionChoice = modelConnections.Presets.Any(item => SamePlan(item, modelPreset) && item.Region != modelPreset.Region && !item.Advanced);
-                if (planChoice) ModelChoose("plan", "计费", ModelPlanName(modelPreset), () => OpenModelPicker(ModelPicker.Plan));
-                if (regionChoice) ModelChoose("region", "地区", modelPreset.RegionLabel, () => OpenModelPicker(ModelPicker.Region));
+                bool planChoice = modelConnections.Presets.Any(item => item.Provider == modelPreset.Provider && item.PlanId != modelPreset.PlanId);
+                bool regionChoice = modelConnections.Presets.Any(item => SamePlan(item, modelPreset) && item.Region != modelPreset.Region);
+                if (modelPreset.Provider != "custom")
+                {
+                    ModelDropdownField("plan", "计费方式", ModelPlanName(modelPreset), ModelPicker.Plan, planChoice);
+                    ModelDropdownField("region", "地区", modelPreset.RegionLabel, ModelPicker.Region, regionChoice);
+                }
+                else ModelDropdownField("protocol", "接口协议", ProtocolName(modelDraft.Protocol), ModelPicker.Protocol);
             }
+            if (modelPreset?.Policy == "reference_only")
+                ModelDropdownField("reference-base", "Base URL", modelDraft.BaseUrl, ModelPicker.None, false);
+            else ModelField("base-setup", "Base URL", modelDraft.BaseUrl, value => modelDraft.BaseUrl = value.Trim(), 1500);
             if (pendingModelPreset != null)
             {
                 ModelParagraph("你修改过服务地址。应用其他预设会替换地址、模型和凭据。是否继续？");
@@ -226,42 +252,70 @@ namespace JueMingR.TerrariaHost.F5
                 ModelParagraph("这项套餐仅供参考。可切换到按量 API 继续连接。");
                 if (modelPreset.CredentialKinds?.Count > 0)
                     ModelParagraph("适用凭据 · " + String.Join("、", modelPreset.CredentialKinds.Select(ModelCredentialKindName)));
-                BuildModelFooter(false);
+                BuildModelSecondary();
+                if (modelAdvancedExpanded) BuildModelAdvanced();
                 return;
             }
             if (modelPreset?.CredentialKinds?.Count > 1)
-                ModelChoose("credential", "凭据类型", ModelCredentialKindName(modelDraft.CredentialKind), () => OpenModelPicker(ModelPicker.Credential));
-            if (modelPreset?.Provider == "custom" && String.IsNullOrWhiteSpace(modelDraft.BaseUrl))
-                ModelField("base-setup", "服务地址", modelDraft.BaseUrl, value => modelDraft.BaseUrl = value.Trim(), 1500);
+                ModelDropdownField("credential", "凭据类型", ModelCredentialKindName(modelDraft.CredentialKind), ModelPicker.Credential);
             BuildApiKey();
             BuildModelInput();
-            ModelButtonRow(("test-chat", "测试连接", () => StartModelTest(false), readyToUse),
-                ("save-use", "保存并使用", SaveModelAndUse, readyToUse));
-            ModelParagraph("保存后设为队友默认连接。测试可能产生费用。");
+            var profile = CurrentProfile();
+            if (profile != null) ModelParagraph(profile.Name + " · " + ModelBindingLabel(profile.OwnerId, profile.Id));
+            else if (modelConnections.DefaultId.HasValue && modelConnections.DefaultId != Guid.Empty)
+                ModelParagraph("默认连接 · " + (modelList.FirstOrDefault(item => item.Id == modelConnections.DefaultId)?.DisplayName ?? "未配置"));
             if (modelPreset?.Policy == "interactive_tools_conditional" || modelPreset?.Policy == "personal_interactive_conditional")
                 ModelParagraph("套餐有使用限制，请核对服务商的适用范围和额度。");
-            if (!String.IsNullOrEmpty(modelChatTest)) ModelParagraph(modelChatTest);
-            if (!String.IsNullOrEmpty(modelToolTest)) ModelParagraph(modelToolTest);
-            if (!String.IsNullOrEmpty(modelStatus)) ModelParagraph(modelStatus);
-            BuildModelCancelRequest();
-            BuildModelFooter(true);
+            if (modelTestDetailsExpanded) ModelParagraph(modelTestDetails);
+            BuildModelSecondary();
+            if (modelAdvancedExpanded) BuildModelAdvanced();
         }
 
-        private void BuildModelCancelRequest()
+        private void BuildModelSecondary()
         {
-            if (modelRead != null)
-                ModelButtonRow(("cancel-read", "取消请求", () => { CancelModelRequest(); ModelMessage("已取消请求。"); }, true));
+            var options = new List<(string, string, Action, bool)>();
+            options.Add(("manage", "管理连接", () => OpenModelPage(ModelPageView.Connections), modelWrite == null));
+            if (modelPreset != null) options.Add(("details", "使用说明", () => OpenModelPage(ModelPageView.ProviderDetails), true));
+            if (!String.IsNullOrEmpty(modelTestDetails))
+                options.Add(("test-details", modelTestDetailsExpanded ? "收起测试详情" : "测试详情", () => { modelTestDetailsExpanded = !modelTestDetailsExpanded; Invalidate(); }, true));
+            ModelButtonRow(options.ToArray());
+            ModelDisclosure("advanced", "高级设置", modelAdvancedExpanded, () => { modelAdvancedExpanded = !modelAdvancedExpanded; HideModelSecrets(); Invalidate(); });
         }
 
-        private void BuildModelFooter(bool advanced)
+        private void BuildModelFooter()
         {
-            var actions = new List<(string, string, Action, bool)>
+            bool callable = modelPreset?.Policy != "reference_only";
+            bool idle = modelWrite == null && modelRead == null;
+            string status = modelStatus ?? (callable ? "尚未测试当前配置 · 测试可能产生费用" : "该方案仅供参考");
+            Text(status, new F5Rect(modelX, modelFooterView.Y + 3, modelWidth, modelRow - 8), .7f);
+            if (!callable) return;
+            modelY = modelFooterView.Y + modelRow;
+            ModelActions(new (string, string, Action, bool)[]
             {
-                ("manage", "管理连接", () => OpenModelPage(ModelPageView.Connections), modelWrite == null)
-            };
-            if (advanced) actions.Add(("advanced", "高级设置", () => OpenModelPage(ModelPageView.Advanced), true));
-            if (modelPreset != null) actions.Add(("details", "使用说明", () => OpenModelPage(ModelPageView.ProviderDetails), true));
-            ModelButtonRow(actions.ToArray());
+                modelRead == null ? ("test-chat", "测试连接", (Action)(() => StartModelTest(false)), idle) :
+                    ("cancel-read", "取消请求", () => { CancelModelRequest(); ModelMessage("已取消请求。"); }, true),
+                ("test-tools", "测试工具", () => StartModelTest(true), idle),
+                ("save-use", "保存为默认", SaveModelAndUse, idle)
+            }, modelFooterView, alignLastRight: true);
+        }
+
+        private float ModelFooterHeight(float row)
+        {
+            float buttons = ConfigurationWidth("测试连接") + ConfigurationWidth("测试工具") + ConfigurationWidth("保存为默认") + 8;
+            return row * (buttons > modelWidth ? 3 : 2) + 10;
+        }
+
+        private string ModelBindingLabel(Guid owner, Guid profile)
+        {
+            Guid? binding = modelConnections.GetBinding(owner, profile);
+            if (!binding.HasValue)
+            {
+                string defaultName = modelList.FirstOrDefault(row => row.Id == modelConnections.DefaultId)?.DisplayName;
+                return defaultName == null ? "尚未设置默认连接" : "默认连接「" + defaultName + "」";
+            }
+            if (binding.Value == Guid.Empty) return "已停用模型连接";
+            string label = modelList.FirstOrDefault(row => row.Id == binding.Value)?.DisplayName;
+            return label == null ? "原连接已删除" : "使用「" + label + "」";
         }
 
         private void BuildModelBinding(LlmConnectionInfo stored, bool saving)
@@ -269,8 +323,7 @@ namespace JueMingR.TerrariaHost.F5
             var profile = CurrentProfile();
             if (profile == null) return;
             Guid? binding = modelConnections.GetBinding(profile.OwnerId, profile.Id);
-            string label = binding.HasValue ? modelList.FirstOrDefault(row => row.Id == binding.Value)?.DisplayName ?? "未配置" : "继承默认连接";
-            ModelParagraph(profile.Name + " · " + label);
+            ModelParagraph(profile.Name + " · " + ModelBindingLabel(profile.OwnerId, profile.Id));
             ModelButtonRow(("bind", "绑定当前连接", () => StartModelWrite(() => modelConnections.SetBindingAsync(profile.OwnerId, profile.Id, stored.Id), "已为该队友设置连接。"), stored != null && !saving && binding != stored.Id),
                 ("inherit", "继承默认", () => StartModelWrite(() => modelConnections.SetBindingAsync(profile.OwnerId, profile.Id, null), "该队友现在继承默认连接。"), binding.HasValue && !saving),
                 ("unbind", "停止使用连接", () => StartModelWrite(() => modelConnections.SetBindingAsync(profile.OwnerId, profile.Id, Guid.Empty), "该队友暂时不使用模型连接。"), binding != Guid.Empty && !saving));
@@ -321,15 +374,17 @@ namespace JueMingR.TerrariaHost.F5
             bool hasList = discoveredModels?.Count > 0;
             bool hasCandidates = discoveredModels == null && modelPreset?.Candidates?.Count > 0;
             float y = modelY, right = modelX + modelWidth;
-            float reserve = (canRead ? 66 : 0) + (hasList || hasCandidates ? 66 : 0);
+            string pickLabel = hasList ? "选择" : "候选";
+            float pickWidth = ConfigurationWidth(pickLabel), readWidth = ConfigurationWidth("获取");
+            float reserve = (canRead ? readWidth + 6 : 0) + (hasList || hasCandidates ? pickWidth + 6 : 0);
             ModelField("model-id", "模型", modelDraft.Model, value => modelDraft.Model = value.Trim(), 200,
                 "填写模型 ID", trailing: reserve);
             if (hasList || hasCandidates)
             {
-                ModelRowAction("view-models", hasList ? "选择" : "候选", right - 60, y, 60, () => OpenModelPicker(ModelPicker.Models), true);
-                right -= 66;
+                ModelRowAction("view-models", pickLabel, right - pickWidth, y, pickWidth, () => OpenModelPicker(ModelPicker.Models), true);
+                right -= pickWidth + 6;
             }
-            if (canRead) ModelRowAction("discover", "获取", right - 60, y, 60, StartModelDiscovery, modelRead == null && modelWrite == null);
+            if (canRead) ModelRowAction("discover", "获取", right - readWidth, y, readWidth, StartModelDiscovery, modelRead == null && modelWrite == null);
         }
 
         private static string ModelTestSubject(LlmConnectionDraft draft, LlmPreset preset) =>

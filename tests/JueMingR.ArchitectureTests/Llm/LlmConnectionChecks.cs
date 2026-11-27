@@ -25,6 +25,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "selected credential kind persists independently", CredentialKinds);
             Run(failures, "streaming and non-streaming tool round trips", ProtocolRoundTrips);
             Run(failures, "cross-turn wire fields, tool groups and fragmented UTF-8", AcrossUserTurns);
+            Run(failures, "local tool eligibility, budgets and closed protocol recovery", LocalToolBoundaries);
             Run(failures, "bad completion, cancellation and redaction", FailuresAndRedaction);
             Run(failures, "DPAPI, prepared replacement, references and public history", PersistentConfiguration);
             Run(failures, "save and use commits exactly the requested scope", SaveAndUse);
@@ -383,6 +384,76 @@ namespace JueMingR.ArchitectureTests
             }
         }
 
+        private static async Task LocalToolBoundaries()
+        {
+            var tools = new[] { new LlmToolDefinition("check_connection", "Fixture", "{\"type\":\"object\"}") };
+            int executed = 0, requests = 0;
+            Task<LlmToolResult> Execute(LlmToolCall call, CancellationToken token)
+            {
+                executed++;
+                return Task.FromResult(new LlmToolResult(call.Id, "verified game fact"));
+            }
+            using (var transport = new LlmHttpTransport(_ => new Fixture(request =>
+            {
+                string body = request.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                switch (++requests)
+                {
+                    case 1:
+                        Require(!body.Contains("\"tools\"") && !body.Contains("\"tool_choice\""), "offline request offers no schema");
+                        return Sample("openai_chat", false, false);
+                    case 2:
+                        Require(!body.Contains("\"tools\""), "single-exchange connection offers no schema");
+                        return Sample("openai_chat", false, true);
+                    case 3:
+                        return Json("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\"," +
+                            "\"reasoning_content\":\"earlier-real-reasoning\",\"content\":\"earlier reply\"}}]}");
+                    case 4:
+                        Require(body.Contains("earlier-real-reasoning") && !body.Contains("\"tool_choice\""), "new run retains prior private reasoning");
+                        return Sample("openai_chat", false, true);
+                    case 5:
+                        Require(body.Contains("\"tool_choice\":\"none\"") && body.Contains("\"tools\"") &&
+                            body.Contains("deep-wire") && body.Contains("verified game fact"), "known text-only route retains complete native result pair");
+                        return Sample("openai_chat", false, true);
+                    case 6:
+                        Require(body.Contains("earlier-real-reasoning") && !body.Contains("deep-wire") &&
+                            !body.Contains("\"role\":\"tool\"") && !body.Contains("\"content\":\"已达到"),
+                            "unclosed exchanges and client status are absent from assistant/tool history");
+                        return Sample("openai_chat", false, true);
+                    case 7:
+                        Require(body.Contains("verified game fact"), "new message receives an independent tool budget");
+                        return Sample("openai_chat", false, false);
+                    default:
+                        return new HttpResponseMessage((HttpStatusCode)402) { Content = new StringContent("{\"error\":{\"code\":\"insufficient_balance\"}}") };
+                }
+            })))
+            {
+                var one = Connection("deepseek_official_chat", false, modelTurns: 1);
+                var normal = Connection("deepseek_official_chat", false, modelTurns: 2);
+                var limited = Connection("deepseek_official_chat", false, modelTurns: 2, toolCalls: 1);
+                var tested = await CompanionChat.TestToolsAsync(transport, one, CancellationToken.None).ConfigureAwait(false);
+                Require(!tested.Success && tested.Description.Contains("仅聊天") && requests == 0,
+                    "tool test does not buy a hidden extra model exchange");
+                var offline = await CompanionChat.RunAsync(transport, normal, "", new List<LlmMessage> { LlmMessage.User("offline") },
+                    Array.Empty<LlmToolDefinition>(), Execute, null, CancellationToken.None, "队友尚未加入世界。").ConfigureAwait(false);
+                Require(offline.Text == "已完成", "regular chat works without game tools");
+                var unexpected = await CompanionChat.RunAsync(transport, one, "", new List<LlmMessage> { LlmMessage.User("text only") },
+                    tools, Execute, null, CancellationToken.None).ConfigureAwait(false);
+                Require(unexpected.LocalNotice.Contains("仅聊天") && executed == 0, "unsolicited calls are never executed");
+                var wire = new List<LlmMessage> { LlmMessage.User("earlier") };
+                await CompanionChat.RunAsync(transport, normal, "", wire, tools, Execute, null, CancellationToken.None).ConfigureAwait(false);
+                wire.Add(LlmMessage.User("acted"));
+                var stopped = await CompanionChat.RunAsync(transport, limited, "", wire, tools, Execute, null, CancellationToken.None).ConfigureAwait(false);
+                Require(executed == 1 && stopped.LocalNotice.Contains("工具调用次数上限") && wire.Count == 2,
+                    "final extra call refused with local action-limit notice and closed wire");
+                wire.Add(LlmMessage.User("try again"));
+                var resumed = await CompanionChat.RunAsync(transport, normal, "", wire, tools, Execute, null, CancellationToken.None).ConfigureAwait(false);
+                Require(executed == 2 && resumed.Text == "已完成", "second turn independently completes after tool call");
+                await Failure(() => CompanionChat.RunAsync(transport, normal, "",
+                    new List<LlmMessage> { LlmMessage.User("provider failure") }, tools, Execute, null, CancellationToken.None),
+                    LlmFailure.Balance).ConfigureAwait(false);
+            }
+        }
+
         private static async Task SaveAndUse()
         {
             string root = Path.Combine(Path.GetTempPath(), "JueMingR-Llm-" + Guid.NewGuid().ToString("N"));
@@ -517,13 +588,15 @@ namespace JueMingR.ArchitectureTests
             return draft;
         }
 
-        private static LlmConnectionSnapshot Connection(string presetId, bool stream, int firstByteSeconds = 25)
+        private static LlmConnectionSnapshot Connection(string presetId, bool stream, int firstByteSeconds = 25,
+            int modelTurns = 4, int toolCalls = 8)
         {
             LlmPreset preset = Presets.Single(p => p.Id == presetId);
             var options = new LlmConnectionSettings
             {
                 PresetId = preset.Id, DisplayName = "fixture", Protocol = preset.Protocol, AuthMode = preset.AuthMode,
-                Stream = stream, Model = "fixture-model", FirstByteSeconds = firstByteSeconds
+                Stream = stream, Model = "fixture-model", FirstByteSeconds = firstByteSeconds,
+                MaxModelTurns = modelTurns, MaxToolCalls = toolCalls
             };
             return new LlmConnectionSnapshot(Guid.NewGuid(), "fixture", options, preset, new LlmConnectionSecrets(TestKey, null, null),
                 new Uri(preset.BaseUrl + preset.InferencePath), null);

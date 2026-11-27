@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal uint NextBuffScan, NextGrowthScan, NextNurseAttempt, NextLifeScan, NextManaScan;
         internal CompanionBehavior LastPreferences;
         internal RecoverySource Quick, HeldSource, PlannedBuff;
-        internal HostCompanions.ItemOnce Once, HeldOnce, ChatFinishingOnce;
+        internal HostCompanions.ItemOnce Once, HeldOnce, ChatFinishingOnce, ChatTeleportPending, ChatTeleportArrival;
         internal int RestoreSelection = -1;
         internal CompanionSupplyKind QuickKind;
         internal int GrowthValue, QuickBuffType, LifeDeficit, ManaCost;
@@ -27,10 +27,6 @@ namespace JueMingR.TerrariaHost.Companions
         internal int NurseSlot = -1;
         internal byte NurseGeneration;
         internal Microsoft.Xna.Framework.Rectangle NurseRegion;
-        internal Microsoft.Xna.Framework.Point NurseBiomeCenter;
-        internal long NurseBiomeGeneration = -1;
-        internal uint NextNurseBiomeScan;
-        internal HostCompanions.NurseBiome NurseBiomes;
         internal readonly SupplyFailure[] Refusals = new SupplyFailure[4];
 #if DEBUG
         internal long SourceReads, GrowthReads, NurseReads, WalletPlans;
@@ -472,7 +468,7 @@ namespace JueMingR.TerrariaHost.Companions
                 // An accepted native start can finish later (a phone, burst,
                 // charged throw or server request). Never claim that the
                 // destination, impact or server result has already happened.
-                bool started = actor.Body.ItemAnimationJustStarted || actor.Body.itemTime > 0;
+                bool started = command.ChatTeleportObserved || actor.Body.ItemAnimationJustStarted || actor.Body.itemTime > 0;
                 var remaining = source.Items[source.Slot];
                 bool changed = remaining.type != source.Type || remaining.stack != source.Stack;
                 if (started || changed) RecordSupplyChange(actor, source, changed);

@@ -52,7 +52,9 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player),"KillMe",nameof(DeathBefore),finalizer:nameof(DeathFinal));
             Patch(typeof(Player),"KillMeForGood",nameof(PermanentDeath));
             Patch(typeof(Player),"Spawn",nameof(ItemRecallBefore),postfix:nameof(OwnerSpawnAfter),transpiler:nameof(SpawnLocals));
-            Patch(typeof(Player),"Teleport",transpiler:nameof(TeleportPresentation));
+            Patch(typeof(Player),nameof(Player.Teleport),nameof(ActorTeleportBefore),nameof(ActorTeleportAfter),transpiler:nameof(TeleportPresentation));
+            Patch(typeof(Player),nameof(Player.UpdateSceneMetrics),nameof(ActorSceneMetricsBefore));
+            Patch(typeof(Player),nameof(Player.UpdateBiomes),nameof(ActorBiomesBefore),finalizer:nameof(ActorBiomesAfter));
             Patch(typeof(Player),"PickupItem",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Player),"GrabItems",nameof(UseBefore),finalizer:nameof(ScopeFinal));
             Patch(typeof(Player),"PurgeDD2EnergyCrystals",transpiler:nameof(TrackEnergyPurge));
@@ -128,6 +130,7 @@ namespace JueMingR.TerrariaHost.Companions
             private readonly NPC[] npcTable;
             private readonly uint[,] staticHits;
             private readonly IDisposable personalView;
+            private readonly BiomeScope scene;
             internal int HumanIndex => previous == null ? oldPlayer : previous.HumanIndex;
             internal List<ShieldImpact> HumanShieldHits;
             internal Scope Root => previous == null ? this : previous.Root;
@@ -150,6 +153,9 @@ namespace JueMingR.TerrariaHost.Companions
                 TileInteractionReady=Main.tile!=null && tx>=0 && ty>=0 && tx<Main.tile.GetLength(0) && ty<Main.tile.GetLength(1) && Main.tile[tx,ty]!=null &&
                     (Main.netMode!=1 || Main.sectionManager!=null && Main.sectionManager.TileLoaded(tx,ty));
                 if(personalItems)personalView=host.EnterPersonalItems(actor);
+                // Scoped native effects (for example campfires, banners and
+                // candles) must see the same actor as the borrowed player ID.
+                scene=new BiomeScope(actor.Environment.Scene);
             }
             public void Dispose()
             {
@@ -165,6 +171,7 @@ namespace JueMingR.TerrariaHost.Companions
                     try{try{personalView?.Dispose();}finally{try{host.LeaveNpcObservation(npcTable);}finally{host.LeaveObservedNpcHitState(staticHits);}}}
                     finally
                     {
+                        scene.Dispose();
                         Main.myPlayer=oldPlayer;Main.mouseX=x;Main.mouseY=y;Player.tileTargetX=tileX;Player.tileTargetY=tileY;Main.mapFullscreen=map;Main.mouseItem=mouse;current=previous;
                         ApplyHumanShieldHits(HumanShieldHits);
                     }
@@ -191,12 +198,16 @@ namespace JueMingR.TerrariaHost.Companions
             playerStep=__state;
             a.LastUpdate=Main.GameUpdateCount;
             a.Mobility.WingRunSampled=false;
+            host.RefreshActorEnvironment(a);
             PurgeCompanionEnergy(__instance);
             host.Control(a);
             return true;
         }
         private static void PlayerAfter(Player __instance,PlayerStep __state)
         {var a=host?.Owned(__instance);if(__state!=null && a!=null && a.Ready && !a.Closing){
+            // The native player pass precedes spawning and NPC AI. Refresh
+            // again at the actual destination if native movement crossed out.
+            host.RefreshActorEnvironment(a);
             host.AfterBody(a);}}
         private static void NpcWorldAfter(){host?.AdvanceNpcObservation();}
         private static void PersonalItemsAfter(){host?.AdvancePersonalItems();}
@@ -210,7 +221,7 @@ namespace JueMingR.TerrariaHost.Companions
                 ApplyHumanShieldHits(__state.HumanShieldHits);
             }
             if(__exception!=null){var a=host?.Owned(__instance);if(a!=null){
-                HostCompanions.RetireMobilityHand(a);a.Status="人物更新失败："+__exception.Message;a.Faulted=true;a.Body.controlUseItem=false;a.Body.channel=false;return null;}}return __exception;
+                HostCompanions.RetireMobilityHand(a);host.CloseFaultedBody(a,__exception);return null;}}return __exception;
         }
         private static void UseBefore(Player __instance,MethodBase __originalMethod,ref Scope __state)
         {
@@ -364,6 +375,7 @@ namespace JueMingR.TerrariaHost.Companions
             var connection = current.Actor.Connection;
             bool teleport = copy[2] == 65;
             if (teleport) host.ObserveWormholeSend(current.Actor, copy, null);
+            if (copy.Length == 4 && copy[2] == 73) host.PrepareChatItemTeleportRequest(current.Actor, copy[3]);
             try { current.PacketAccepted = connection.TrySend(copy); }
             catch (CompanionConnection.SendQueueFullException) when (teleport && !connection.IsRelay)
             {
@@ -471,6 +483,13 @@ namespace JueMingR.TerrariaHost.Companions
             else p.GrappleMovement();
         }
         private static Player SpawnLocal(){return Spawning??Main.LocalPlayer;}
+        private static void ActorTeleportBefore(Player __instance,out Vector2 __state) => __state=__instance.position;
+        private static void ActorTeleportAfter(Player __instance,Vector2 __state,int Style,int extraInfo,bool __runOriginal)
+        {
+            if (!__runOriginal || !(host?.Owned(__instance) is HostCompanions.Actor actor)) return;
+            if (__instance.position != __state) host.RefreshTeleportedEnvironment(actor);
+            if (ReferenceEquals(CurrentActor,actor)) host.ObserveChatItemTeleport(actor,__state,Style,extraInfo);
+        }
         private static void OwnerSpawnAfter(Player __instance, PlayerSpawnContext context, bool __runOriginal)
         {
             // An original recall/revival may place the owner at the very

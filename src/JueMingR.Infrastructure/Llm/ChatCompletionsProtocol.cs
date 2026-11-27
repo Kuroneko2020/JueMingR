@@ -36,8 +36,12 @@ namespace JueMingR.Infrastructure.Llm
             string maxName = connection.Preset.Provider == "openai" ? "max_completion_tokens" : "max_tokens";
             SetOptions(body, settings, maxName, "stop");
             if (request.Tools.Count != 0)
+            {
                 body["tools"] = request.Tools.Select(tool => Obj("type", "function", "function",
                     Obj("name", tool.Name, "description", tool.Description, "parameters", Schema(tool)))).ToArray();
+                if (request.TextOnly && (connection.Endpoint.IdnHost == "api.openai.com" ||
+                    connection.Endpoint.IdnHost == "api.deepseek.com")) body["tool_choice"] = "none";
+            }
             if (!string.IsNullOrWhiteSpace(settings.Reasoning))
             {
                 if (connection.Preset.Provider == "deepseek" || connection.Preset.Provider == "glm")

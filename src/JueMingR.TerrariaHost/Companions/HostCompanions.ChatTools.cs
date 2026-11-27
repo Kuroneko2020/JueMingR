@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Companions
         private static readonly LlmToolDefinition[] ChatTools =
         {
             ChatTool("get_companion_state", "Read the companion's current status and activity."),
-            ChatTool("query_inventory", "List a page of items and source references in the companion's usable inventory.",
+            ChatTool("query_inventory", "List a page of items and source references. Teleport items report their native destination in their current form.",
                 "\"area\":{\"type\":\"string\",\"enum\":[\"inventory\",\"piggy_bank\",\"safe\",\"defender_forge\",\"void_vault\"]}," +
                 "\"filter\":{\"type\":\"string\",\"maxLength\":64},\"offset\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":58}"),
             ChatTool("set_behavior", "Set following or staying and/or change whether the companion attacks.",
@@ -22,9 +22,11 @@ namespace JueMingR.TerrariaHost.Companions
                 "\"notify_no_bait\":{\"type\":\"boolean\"}"),
             ChatTool("stop_activity", "Stop fishing and optionally set the subsequent movement mode.",
                 "\"mode\":{\"type\":\"string\",\"enum\":[\"follow\",\"stay\"]}"),
-            ChatTool("use_item_once", "Use one item from the current companion's main inventory using a source from query_inventory.",
-                "\"source\":{\"type\":\"string\"}", ",\"required\":[\"source\"]"),
-            ChatTool("manual_recall", "Use the existing manual wormhole recall. May consume one wormhole potion."),
+            ChatTool("use_item_once", "Use one item from the companion's main inventory using a source from query_inventory. " +
+                "For returning to the companion's own spawn, use a suitable mirror, phone or recall potion reported by inventory. " +
+                "Set stay_after_teleport only when the player asks to wait after arriving; it applies after native confirmation.",
+                "\"source\":{\"type\":\"string\"},\"stay_after_teleport\":{\"type\":\"boolean\"}", ",\"required\":[\"source\"]"),
+            ChatTool("manual_recall", "Use the existing manual wormhole recall to the owner, not to the companion's spawn. May consume one wormhole potion."),
             ChatTool("get_action_status", "Read a recent game operation or fishing activity by its returned identifier.",
                 "\"id\":{\"type\":\"string\"}", ",\"required\":[\"id\"]")
         };
@@ -36,10 +38,11 @@ namespace JueMingR.TerrariaHost.Companions
         private readonly struct ChatSource
         {
             internal ChatSource(int slot, Item item)
-            { Slot = slot; Item = item; Type = item.type; Prefix = item.prefix; Stack = item.stack; }
+            { Slot = slot; Item = item; Type = item.type; Name = item.Name; Prefix = item.prefix; Stack = item.stack; }
             internal int Slot { get; }
             internal Item Item { get; }
             internal int Type { get; }
+            internal string Name { get; }
             internal byte Prefix { get; }
             internal int Stack { get; }
             internal bool Matches(Item current) => ReferenceEquals(Item, current) &&
@@ -49,10 +52,15 @@ namespace JueMingR.TerrariaHost.Companions
         private sealed class ChatResult
         {
             internal string Id, Title, State, Text, TaskId;
+            internal int ItemType;
+            internal string ItemName, SourceToken;
+            internal bool StayAfterTeleport;
             internal bool Settled, AwaitingNativeSettlement;
             internal bool IsError => State == "failed" || State == "rejected" || State == "cancelled" ||
                 State == "superseded" || State == "unconfirmed";
-            internal string Output() => State + " · 操作 " + Id + (TaskId == null ? "" : " · 活动 " + TaskId) + " · " + Text;
+            internal string Output() => State + " · 操作 " + Id +
+                (ItemType == 0 ? "" : " · " + ItemName + "（类型 " + ItemType + "）") +
+                (TaskId == null ? "" : " · 活动 " + TaskId) + " · " + Text;
             internal string Label()
             {
                 string status;
@@ -76,7 +84,7 @@ namespace JueMingR.TerrariaHost.Companions
             var chat = run.Conversation;
             var call = command.Call;
             var args = call.Arguments;
-            if (!run.Connection.GameActionsEnabled || !TryFishingActor(chat.Owner, chat.Profile, out var actor))
+            if (!run.Boundary.CanAct || !TryFishingActor(chat.Owner, chat.Profile, out var actor))
             {
                 RejectChatTool(command, "队友当前无法执行游戏操作。");
                 return;
@@ -100,7 +108,7 @@ namespace JueMingR.TerrariaHost.Companions
                             "，自动攻击：" + (actor.Preferences.AttackEnabled ? "开" : "关") +
                             "，生命 " + actor.Body.statLife + "/" + actor.Body.statLifeMax2 +
                             "，魔力 " + actor.Body.statMana + "/" + actor.Body.statManaMax2 +
-                            "，观察时间（UTC）" + time);
+                            "。可查询背包内的原版传送物品及其目的地。观察时间（UTC）" + time);
                         return;
                     case "query_inventory":
                         if (!ChatFields(args, "area", "filter", "offset") ||
@@ -121,8 +129,9 @@ namespace JueMingR.TerrariaHost.Companions
                         StartChatFishing(command, actor, notify == true);
                         return;
                     case "use_item_once":
-                        if (!ChatFields(args, "source") || !ChatString(args, "source", 32, out var source) || source == null) break;
-                        UseChatItem(command, actor, source);
+                        if (!ChatFields(args, "source", "stay_after_teleport") || !ChatString(args, "source", 32, out var source) ||
+                            source == null || !ChatBool(args, "stay_after_teleport", out var stay)) break;
+                        UseChatItem(command, actor, source, stay == true);
                         return;
                     case "manual_recall":
                         if (!ChatFields(args)) break;
@@ -134,7 +143,7 @@ namespace JueMingR.TerrariaHost.Companions
                             CompleteChatQuery(command, "running · 活动 " + id + " · " + (actor.Fishing.Status ?? "正在前往钓位"));
                         else if (chat.Actions.TryGetValue(id, out var operation) ||
                             (operation = chat.Actions.Values.FirstOrDefault(candidate => candidate.TaskId == id)) != null)
-                            command.Reply.TrySetResult(new LlmToolResult(call.Id, operation.Output(), operation.IsError));
+                            CompleteChatQuery(command, operation.Output(), error: operation.IsError);
                         else RejectChatTool(command, "本会话中没有这项操作。");
                         return;
                 }
@@ -181,8 +190,11 @@ namespace JueMingR.TerrariaHost.Companions
             return true;
         }
 
-        private static void CompleteChatQuery(ChatCommand command, string text) =>
-            command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, text, false));
+        private void CompleteChatQuery(ChatCommand command, string text, string publicText = null, bool error = false)
+        {
+            AddChatEntry(command.Run.Conversation, "query", publicText ?? text);
+            command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, text, error));
+        }
 
         private static void RejectChatTool(ChatCommand command, string text) =>
             command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, "rejected：" + text, true));
@@ -227,14 +239,14 @@ namespace JueMingR.TerrariaHost.Companions
             command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, result.Output(), result.IsError));
         }
 
-        private void UpdateChatAction(ChatRun run, ChatResult result, string state, string text)
+        private void UpdateChatAction(ChatRun run, ChatResult result, string state, string text, bool recover = false)
         {
             result.State = state;
             result.Text = text;
             if (run.Conversation.HistoryEpoch == run.HistoryEpoch)
             {
-                AddChatEntry(run.Conversation, "action", result.Label(), Guid.ParseExact(result.Id, "N"));
-                if (run.Conversation.Current != run) run.Conversation.NeedsRecoverySummary = true;
+                AddChatEntry(run.Conversation, "action", result.Label(), Guid.ParseExact(result.Id, "N"),
+                    recover || run.Conversation.Current != run);
             }
         }
 
@@ -263,11 +275,16 @@ namespace JueMingR.TerrariaHost.Companions
             if (ChatProfile(ownerId, profileId) == null || !TryFishingActor(ownerId, profileId, out var actor))
                 return false;
             InvalidateChatAction(profileId, "已停止当前活动的待执行模型指令。");
-            if (actor.Fishing != null && !EndFishingActivity(actor)) return false;
+            bool fishing = actor.Fishing != null;
+            if (fishing && !EndFishingActivity(actor)) return false;
             var behavior = actor.Profile.Behavior;
-            if (!behavior.Follow) return true;
+            bool following = behavior.Follow;
             behavior.Follow = false;
-            return ApplyBehavior(profileId, behavior, manual: false);
+            if (following && !ApplyBehavior(profileId, behavior, manual: false)) return false;
+            if ((fishing || following) && chats.TryGetValue((ownerId, profileId), out var chat))
+                AddChatEntry(chat, "status", fishing ? "玩家已停止钓鱼，队友原地待命。" : "玩家已让队友原地待命。",
+                    recover: true);
+            return true;
         }
 
         private void InvalidateChatAction(Guid profileId, string reason)
@@ -299,32 +316,26 @@ namespace JueMingR.TerrariaHost.Companions
             var activity = BeginFishingActivity(actor, run.Anchor);
             activity.ChatTaskId = action.TaskId;
             var conversation = run.Conversation;
-            long historyEpoch = run.HistoryEpoch;
             conversation.FishingTracked = true;
-            var entryId = Guid.ParseExact(action.Id, "N");
             activity.ChatCastConfirmed = () =>
-            {
-                action.Text = "钓线已进入可用水域。";
-                if (conversation.HistoryEpoch == historyEpoch) AddChatEntry(conversation, "action", action.Label(), entryId);
-            };
+                UpdateChatAction(run, action, "running", "钓线已进入可用水域。", recover: true);
             activity.ChatEnded = () =>
             {
-                action.State = "succeeded";
-                action.Text = "钓鱼活动已停止。";
                 conversation.FishingTracked = false;
-                if (conversation.HistoryEpoch == historyEpoch) AddChatEntry(conversation, "action", action.Label(), entryId);
+                UpdateChatAction(run, action, "succeeded", "钓鱼活动已停止。", recover: true);
             };
-            if (notify && run.Connection.LocalNoticesEnabled)
+            string name = actor.Body.name;
+            activity.ChatNeedsBait = () =>
             {
-                string name = actor.Body.name;
-                activity.ChatNeedsBait = () =>
+                if (conversation.HistoryEpoch != run.HistoryEpoch || conversation.Deleted) return;
+                string message = name + " · 缺少可用鱼饵。";
+                if (notify && run.Connection.LocalNoticesEnabled)
                 {
-                    if (conversation.HistoryEpoch != historyEpoch || conversation.Deleted) return;
-                    string message = name + " · 缺少可用鱼饵。";
-                    AddChatEntry(conversation, "notice", message);
+                    AddChatEntry(conversation, "notice", message, recover: true);
                     Main.NewText(message);
-                };
-            }
+                }
+                else UpdateChatAction(run, action, "running", message, recover: true);
+            };
             var tile = run.Anchor.Feet.ToTileCoordinates();
             CompleteChatAction(command, action, "running", "已开始前往发送时的钓位（" + tile.X + "，" + tile.Y + "）。");
         }
@@ -354,6 +365,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             var items = CompanionResources.Items(actor.Body, inventory);
             var rows = new List<string>();
+            var observed = new List<string>();
             int length = inventory == CompanionInventoryArea.Inventory ? Math.Min(58, items.Length) : items.Length;
             for (int slot = offset; slot < length; slot++)
             {
@@ -362,6 +374,9 @@ namespace JueMingR.TerrariaHost.Companions
                     item.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) continue;
                 if (rows.Count == 12) { rows.Add("下一页 offset=" + slot); break; }
                 string line = "槽 " + slot + " · " + item.Name + "（类型 " + item.type + "，前缀 " + item.prefix + "）×" + item.stack;
+                observed.Add(item.Name + " ×" + item.stack);
+                var destination = ItemTeleportDestination(ItemTeleportKind(item.type));
+                if (destination != null) line += " · 原版传送：" + destination;
                 if (inventory == CompanionInventoryArea.Inventory && slot < CompanionBehavior.MainInventorySlots &&
                     command.Run.Sources.Count < 128)
                 {
@@ -371,22 +386,35 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 rows.Add(line);
             }
-            CompleteChatQuery(command, rows.Count == 0 ? "这一页没有匹配的物品。" : String.Join("\n", rows));
+            CompleteChatQuery(command, rows.Count == 0 ? "这一页没有匹配的物品。" : String.Join("\n", rows),
+                "查看物品 · " + (observed.Count == 0 ? "这一页没有匹配的物品。" : String.Join("、", observed)));
         }
 
-        private void UseChatItem(ChatCommand command, Actor actor, string source)
+        private void UseChatItem(ChatCommand command, Actor actor, string source, bool stayAfterTeleport)
         {
             const string useIntent = "item-once";
-            if (command.Run.Consumed.TryGetValue(useIntent, out var existing))
-            {
-                command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, existing.Output(), existing.IsError));
-                return;
-            }
             if (!command.Run.Sources.TryGetValue(source, out var recorded))
             { RejectChatTool(command, "请先查询背包并使用本轮返回的物品来源。"); return; }
-            var action = NewChatAction(command, "使用一次");
+            if (command.Run.Consumed.TryGetValue(useIntent, out var existing))
+            {
+                if (existing.ItemType == recorded.Type && existing.StayAfterTeleport == stayAfterTeleport &&
+                    (existing.SourceToken == source || recorded.Matches(actor.Body.inventory[recorded.Slot])))
+                    command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, existing.Output(), existing.IsError));
+                else RejectChatTool(command, "本条消息只受理一次用物。未执行本次请求（" + recorded.Name +
+                    "，类型 " + recorded.Type + "）。已受理的是 " + existing.Output());
+                return;
+            }
+            var action = NewChatAction(command, "使用 " + recorded.Name);
+            action.ItemType = recorded.Type;
+            action.ItemName = recorded.Name;
+            action.SourceToken = source;
+            action.StayAfterTeleport = stayAfterTeleport;
             if (!recorded.Matches(actor.Body.inventory[recorded.Slot]))
             { CompleteChatAction(command, action, "rejected", "物品来源已变化，本次请求未执行。"); return; }
+            if (stayAfterTeleport && ItemTeleportKind(recorded.Type) == ChatItemTeleport.None)
+            { CompleteChatAction(command, action, "rejected", "该物品没有可确认的传送目的地，本次请求未执行。"); return; }
+            if (actor.Supplies.ChatTeleportPending != null && ItemTeleportStyle(ItemTeleportKind(recorded.Type)) >= 0)
+            { CompleteChatAction(command, action, "rejected", "上一次原版传送尚未结束同步，本次请求未执行。"); return; }
             if (!CanUseItemOnce(actor.Profile.Id, CompanionInventoryArea.Inventory, recorded.Slot, out var reason) ||
                 !TryQueueItemOnce(actor, recorded.Slot, false, out reason))
             { CompleteChatAction(command, action, "rejected", reason); return; }
@@ -397,8 +425,24 @@ namespace JueMingR.TerrariaHost.Companions
             var once = actor.Supplies.Once;
             once.ChatRunId = command.Run.Id;
             once.ChatCancellation = command.Cancellation;
+            once.ChatActivation = command.Run.Boundary.Activation;
+            once.ChatDataEpoch = command.Run.Boundary.DataEpoch;
+            once.ChatStayAfterTeleport = stayAfterTeleport;
+            once.ChatCanStay = () => command.Run.Conversation.Current == command.Run && ChatIdentityCurrent(command.Run);
             once.ChatStarted = message => UpdateChatAction(command.Run, action, "running", message);
-            once.ChatComplete = (state, message) => CompleteChatAction(command, action, state, message);
+            once.ChatComplete = (state, message) =>
+            {
+                if (!action.Settled)
+                    CompleteChatAction(command, action, state, message, waitForNative:
+                        state == "unconfirmed" && ReferenceEquals(actor.Supplies.ChatTeleportPending, once));
+                else if (action.AwaitingNativeSettlement)
+                {
+                    action.AwaitingNativeSettlement = false;
+                    command.Run.Conversation.PendingActions--;
+                    if (action.State == "unconfirmed" && (state == "succeeded" || state == "failed"))
+                        UpdateChatAction(command.Run, action, state, message, recover: true);
+                }
+            };
         }
 
         private void RecallChatActor(ChatCommand command, Actor actor)
@@ -418,7 +462,7 @@ namespace JueMingR.TerrariaHost.Companions
                             command.Run.Conversation.PendingActions--;
                         }
                         if (action.State == "unconfirmed" && state == "succeeded")
-                            UpdateChatAction(command.Run, action, state, message);
+                            UpdateChatAction(command.Run, action, state, message, recover: true);
                     }
                     else if (state == "running")
                         UpdateChatAction(command.Run, action, state, message);

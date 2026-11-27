@@ -34,16 +34,20 @@ namespace JueMingR.Platform.Llm
 
     public sealed class LlmRequest
     {
-        public LlmRequest(string instructions, IReadOnlyList<LlmMessage> messages, IReadOnlyList<LlmToolDefinition> tools)
+        public LlmRequest(string instructions, IReadOnlyList<LlmMessage> messages, IReadOnlyList<LlmToolDefinition> tools,
+            bool textOnly = false)
         {
             Instructions = instructions ?? "";
             Messages = Array.AsReadOnly(messages.ToArray());
             Tools = Array.AsReadOnly(tools.ToArray());
+            TextOnly = textOnly;
         }
 
         public string Instructions { get; }
         public IReadOnlyList<LlmMessage> Messages { get; }
         public IReadOnlyList<LlmToolDefinition> Tools { get; }
+        // A provider may still emit tools. The runner always enforces this intent locally.
+        public bool TextOnly { get; }
     }
 
     public enum LlmMessageKind { User, Assistant, ToolResults }
@@ -70,17 +74,19 @@ namespace JueMingR.Platform.Llm
 
     public sealed class LlmTurn
     {
-        public LlmTurn(string text, IReadOnlyList<LlmToolCall> toolCalls, string wireJson)
+        public LlmTurn(string text, IReadOnlyList<LlmToolCall> toolCalls, string wireJson, string localNotice = null)
         {
             Text = text;
             ToolCalls = Array.AsReadOnly(toolCalls.ToArray());
             WireJson = wireJson;
+            LocalNotice = localNotice;
         }
 
         public string Text { get; }
         public IReadOnlyList<LlmToolCall> ToolCalls { get; }
         // Only the transport reads this content. Keep it inside the model's current in-memory wire segment.
         public string WireJson { get; }
+        public string LocalNotice { get; }
     }
 
     public sealed class LlmToolDefinition

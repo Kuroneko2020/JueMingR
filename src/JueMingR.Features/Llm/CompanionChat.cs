@@ -19,48 +19,92 @@ namespace JueMingR.Features.Llm
         public static async Task<LlmTurn> RunAsync(ILlmTransport transport, LlmConnectionSnapshot connection,
             string instructions, List<LlmMessage> wire, IReadOnlyList<LlmToolDefinition> tools,
             Func<LlmToolCall, CancellationToken, Task<LlmToolResult>> execute, Action<string> text,
-            CancellationToken cancellation, int minimumTurns = 1)
+            CancellationToken cancellation, string unavailableReason = null)
         {
             int remaining = Math.Max(0, connection.MaxToolCalls);
-            int maxTurns = Math.Max(minimumTurns, connection.MaxModelTurns);
+            int maxTurns = connection.MaxModelTurns;
+            tools = CanOfferGameTools(connection) ? tools : Array.Empty<LlmToolDefinition>();
+            int closedCount = wire.Count != 0 && wire[wire.Count - 1].Kind == LlmMessageKind.User ? wire.Count - 1 : wire.Count;
+            int dispatched = 0;
+            string notice = null;
             var seen = new HashSet<string>(StringComparer.Ordinal);
             for (int round = 0; round < maxTurns; round++)
             {
                 cancellation.ThrowIfCancellationRequested();
                 if (MeasureWire(wire) > connection.InputBudget)
-                    throw new InvalidOperationException("本轮上下文已达到设定上限，已保留可见聊天记录。");
-                // Preserve the existing schema across all exchanges. Some
-                // providers change how they replay reasoning when tools vanish.
-                var turn = await transport.CompleteAsync(connection, new LlmRequest(instructions, wire, tools),
+                    return FinishLocally(wire, closedCount, dispatched, "本轮上下文已达到设定上限。");
+                string limit = tools.Count == 0
+                    ? unavailableReason ?? GameToolsUnavailable(connection) ?? "本轮没有可用的游戏工具。"
+                    : remaining == 0 ? "已达到本轮工具调用次数上限。"
+                    : round + 1 == maxTurns ? "已达到本轮模型往返次数上限。" : null;
+                // Preserve the schema and completed tool pairs for private
+                // reasoning replay. Text-only intent never grants execution.
+                var request = new LlmRequest(limit == null ? instructions : instructions +
+                    "\n请只用文字回复。当前不接受工具调用。" + limit, wire, tools, textOnly: limit != null);
+                var turn = await transport.CompleteAsync(connection, request,
                     text, cancellation).ConfigureAwait(false);
                 cancellation.ThrowIfCancellationRequested();
                 if (turn.ToolCalls.Count == 0)
                 {
                     wire.Add(LlmMessage.Assistant(turn));
-                    return turn;
+                    return notice == null ? turn : new LlmTurn(turn.Text, turn.ToolCalls, turn.WireJson, notice);
                 }
+                if (limit != null)
+                    return FinishLocally(wire, closedCount, dispatched, limit + "模型提出的额外工具调用未执行。");
                 foreach (var call in turn.ToolCalls)
                     if (String.IsNullOrEmpty(call.Id) || !seen.Add(call.Id))
-                        throw new InvalidOperationException("模型返回了无法关联的重复工具调用。");
-                if (round + 1 >= maxTurns || remaining == 0 || tools.Count == 0)
-                    throw new InvalidOperationException("本轮工具额度已用完，未派发额外动作。");
+                        throw new LlmException(LlmFailure.Protocol, "模型返回了无法关联的工具调用。");
 
                 var results = new List<LlmToolResult>(turn.ToolCalls.Count);
                 foreach (var call in turn.ToolCalls)
                 {
                     cancellation.ThrowIfCancellationRequested();
                     if (remaining == 0)
-                        results.Add(new LlmToolResult(call.Id, "rejected：本轮工具额度已用完。", true));
+                    {
+                        notice = "已达到本轮工具调用次数上限。超出的调用未执行。";
+                        results.Add(new LlmToolResult(call.Id, "rejected：" + notice, true));
+                    }
                     else
                     {
                         remaining--;
-                        results.Add(await execute(call, cancellation).ConfigureAwait(false));
+                        if (Offered(tools, call.Name))
+                        {
+                            dispatched++;
+                            results.Add(await execute(call, cancellation).ConfigureAwait(false));
+                        }
+                        else results.Add(new LlmToolResult(call.Id, "rejected：模型请求了本轮未提供的工具。", true));
                     }
                 }
                 wire.Add(LlmMessage.Assistant(turn));
                 wire.Add(LlmMessage.ToolResults(results));
             }
-            throw new InvalidOperationException("本轮模型回复次数已用完。");
+            return FinishLocally(wire, closedCount, dispatched, "已达到本轮模型往返次数上限。");
+        }
+
+        private static bool Offered(IReadOnlyList<LlmToolDefinition> tools, string name)
+        {
+            foreach (var tool in tools)
+                if (String.Equals(tool.Name, name, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        private static LlmTurn FinishLocally(List<LlmMessage> wire, int closedCount, int dispatched, string reason)
+        {
+            if (dispatched != 0) reason += "已处理的游戏请求以聊天中的查询和操作回执为准。";
+            // Local text cannot impersonate a provider assistant block or its
+            // private fields. Resume from earlier closed turns and public facts.
+            wire.RemoveRange(closedCount, wire.Count - closedCount);
+            return new LlmTurn("", Array.Empty<LlmToolCall>(), null, reason);
+        }
+
+        public static bool CanOfferGameTools(LlmConnectionSnapshot connection) => GameToolsUnavailable(connection) == null;
+
+        public static string GameToolsUnavailable(LlmConnectionSnapshot connection)
+        {
+            if (!connection.GameActionsEnabled) return "当前模型连接已关闭游戏行动。";
+            if (connection.MaxModelTurns < 2) return "模型往返次数设为 1，本轮仅聊天。";
+            if (connection.MaxToolCalls < 1) return "工具调用次数设为 0，本轮仅聊天。";
+            return null;
         }
 
         public static long MeasureWire(IEnumerable<LlmMessage> messages)
@@ -85,6 +129,8 @@ namespace JueMingR.Features.Llm
         public static async Task<LlmConnectionTest> TestToolsAsync(ILlmTransport transport,
             LlmConnectionSnapshot connection, CancellationToken token)
         {
+            string unavailable = GameToolsUnavailable(connection);
+            if (unavailable != null) return new LlmConnectionTest(unavailable, false);
             int executed = 0;
             var wire = new List<LlmMessage> { LlmMessage.User("Call check_connection once, then report its returned marker.") };
             var final = await RunAsync(transport, connection, "This is a connection test. Use the supplied test tool once.",
@@ -94,8 +140,8 @@ namespace JueMingR.Features.Llm
                         return Task.FromResult(new LlmToolResult(call.Id, "invalid test call", true));
                     executed++;
                     return Task.FromResult(new LlmToolResult(call.Id, "JMR_LOCAL_TOOL_OK", false));
-                }, null, token, minimumTurns: 2).ConfigureAwait(false);
-            bool succeeded = executed == 1 && !String.IsNullOrWhiteSpace(final.Text);
+                }, null, token).ConfigureAwait(false);
+            bool succeeded = executed == 1 && final.LocalNotice == null && !String.IsNullOrWhiteSpace(final.Text);
             return new LlmConnectionTest(succeeded ? "工具调用、回填和最终回复均已完成。" : "模型未完成测试工具闭环。", succeeded);
         }
     }

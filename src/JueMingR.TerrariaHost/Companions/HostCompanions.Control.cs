@@ -28,6 +28,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal void Control(Actor a)
         {
             var p=a.Body;
+            ApplyConfirmedChatStay(a);
             bool mobilityHand=FinishMobilityHand(a);
             if((p.selectedItem<0 || p.selectedItem>=CompanionBehavior.MainInventorySlots) && FreeHand(p))p.selectedItemState.Select(0);
             p.controlLeft=p.controlRight=p.controlJump=p.controlDown=p.controlUp=p.controlUseItem=p.controlUseTile=p.controlHook=p.controlThrow=false;

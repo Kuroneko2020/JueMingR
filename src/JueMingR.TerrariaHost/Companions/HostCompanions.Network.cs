@@ -21,6 +21,7 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal void RecordActorPacket(Actor a, byte[] frame)
         {
+            if (frame.Length == 4 && frame[2] == 73) ObserveChatItemTeleportRequest(a, frame[3]);
             if (frame.Length >= 8 && frame[2] == 16 && frame[3] == a.Body.whoAmI)
             {
                 a.SyncLife = BitConverter.ToInt16(frame, 4);
@@ -291,6 +292,9 @@ namespace JueMingR.TerrariaHost.Companions
             // sender connection. They cannot overwrite a later local team intent.
             // Portal 96 is also a client-owned echo: the actual player's local
             // portal consumer already applied it and submitted its movement.
+            // The original server relays this body's 36 to other clients,
+            // including the primary. That relay is not a local biome sample.
+            if(id==MessageID.SyncPlayerZone && (a!=null || joiningSlots.TryGetValue(slot,out var joining) && joining.BirthSubmitted))return false;
             if(a!=null && (id==4 || id==5 || id==12 || id==13 || id==16 || id==42 || id==45 || id==96 || id==157 || id==50 || id==117 || id==118 || id==135 || id==147))return false;
             if((id==27 || id==29) && length>=5)
             {var key=(ProjectileKey)BitConverter.ToInt32(data,start+1);Projectile projectile;if(key.TryGetActive(out projectile) && ProjectileActor(projectile)!=null)return false;if(key.Spawner!=owner?.whoAmI && (HasActors || projectileSources.Count!=0))return RouteProjectile(null,data,start,length);}
@@ -334,7 +338,7 @@ namespace JueMingR.TerrariaHost.Companions
             // A fresh native 3 on another socket is already proof that the
             // server reassigned this numeric slot.
             if (previous != null) CloseActor(previous, "队友连接已断开。");
-            a.ReservedSlot=slot;a.Body.whoAmI=slot;a.NetworkSlotIds=NetworkSlots(a.Body);
+            a.ReservedSlot=slot;a.Body.whoAmI=slot;a.NetworkSlotIds=NetworkSlots(a.Body);a.ReservedBodySpawned=false;
             joiningSlots.Add(slot,a);
         }
         private void ReleaseReservedSlot(Actor a)
@@ -372,14 +376,26 @@ namespace JueMingR.TerrariaHost.Companions
             Main.player[slot]=a.Body;
             try
             {
-                a.Body.active=true;a.Body.ghost=false;
-                SpawnBody(a,PlayerSpawnContext.SpawningIntoWorld);
+                if(!a.ReservedBodySpawned)
+                {
+                    a.Body.active=true;a.Body.ghost=false;
+                    SpawnBody(a,PlayerSpawnContext.SpawningIntoWorld);
+                    a.ReservedBodySpawned=true;
+                    a.PrimarySlotDeadline=Stopwatch.GetTimestamp()+15*Stopwatch.Frequency;
+                }
+                if(!a.Body.dead && !RefreshActorEnvironment(a))
+                {
+                    if(Stopwatch.GetTimestamp()>=a.PrimarySlotDeadline)throw new IOException("等待队友出生点地形加载超时。");
+                    return;
+                }
                 using(var scope=CompanionHooks.Enter(a,a.Body.Center))
                 {
                     NetMessage.SendData(12,-1,-1,null,slot,(byte)PlayerSpawnContext.SpawningIntoWorld);
                     if(!scope.PacketAccepted)throw new IOException("队友连接已结束。");
                     a.BirthSubmitted=true;
                 }
+                // The server admits ordinary 36 only after its native 12.
+                PublishActorEnvironment(a);
             }
             finally{Main.player[slot]=previous;}
         }
@@ -399,12 +415,15 @@ namespace JueMingR.TerrariaHost.Companions
             try { SpawnBody(actor,PlayerSpawnContext.RecallFromItem); }
             finally { Main.myPlayer=previous; }
             if(actor.Connection!=null)NetMessage.SendData(12,-1,-1,null,actor.Body.whoAmI,(byte)PlayerSpawnContext.RecallFromItem);
+            ObserveChatRecall(actor);
             RestoreMinions(actor);
         }
         private void SpawnBody(Actor a,PlayerSpawnContext context)
         {
             var p=a.Body;p.FindSpawn();if(!Player.CheckSpawn(p.SpawnX,p.SpawnY)){p.SpawnX=p.SpawnY=-1;}
             CompanionHooks.Spawning=p;try{p.Spawn(context);}finally{CompanionHooks.Spawning=null;}
+            InvalidateActorEnvironment(a);
+            RefreshActorEnvironment(a);
             // Native Spawn chooses the real position for joins and revivals.
             // The deserialized body's pre-spawn center is not a world cursor.
             a.Mobility.Reset(a.Generation);
@@ -419,6 +438,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal void Publish(Actor a)
         {
             if(a.Connection==null || !a.Ready || a.Closing)return;
+            PublishActorEnvironment(a);
             if(Main.GameUpdateCount<a.NextPublish)return;a.NextPublish=Main.GameUpdateCount+6;
             if(a.SyncBuffType==null){a.SyncBuffType=new int[a.Body.buffType.Length];a.SyncBuffTime=new int[a.Body.buffTime.Length];}
             using(CompanionHooks.Enter(a,a.Aim))

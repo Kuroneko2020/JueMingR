@@ -15,7 +15,7 @@ namespace JueMingR.TerrariaHost.F5
 {
     internal sealed partial class CompanionWindow
     {
-        private const float ChatScale = .65f;
+        private const float ChatScale = .76f, ChatStatusScale = .65f;
         private sealed class ChatDraft
         {
             internal TextEditBuffer Text = NewChatDraft();
@@ -66,7 +66,7 @@ namespace JueMingR.TerrariaHost.F5
             var updated = host.GetChat(chatOwner, chatProfile);
             if (chatView == null || updated == null || updated.IsRunning != chatView.IsRunning || updated.CanSend != chatView.CanSend ||
                 updated.CanStopActivity != chatView.CanStopActivity || updated.Connection != chatView.Connection ||
-                updated.IsActive != chatView.IsActive || updated.Status != chatView.Status ||
+                updated.Lifecycle != chatView.Lifecycle || updated.ActionReason != chatView.ActionReason || updated.Status != chatView.Status ||
                 (updated.Entries.Count == 0) != (chatView.Entries.Count == 0)) contentInvalidated = true;
             chatView = updated;
         }
@@ -98,28 +98,31 @@ namespace JueMingR.TerrariaHost.F5
         {
             ObserveChat();
             chatHistoryView = chatDraftRect = default(F5Rect);
+            float width = Math.Min(760, bodyView.Width - 24);
+            float x = bodyView.X + (bodyView.Width - width) / 2, top = bodyView.Y;
             var profile = CurrentProfile();
             if (profile == null)
             {
-                Text("选择或创建队友后即可聊天。", new F5Rect(bodyView.X + 8, bodyView.Y, bodyView.Width - 16, row));
-                Button("chat-open-model", "去设置模型", new F5Rect(bodyView.X + 8, bodyView.Y + row + 4, ConfigurationWidth("去设置模型"), row), OpenModelSetupFromChat);
+                Text("选择或创建队友后即可聊天。", new F5Rect(x, top, width, row));
+                BuildAiActions(x, top + row + 4, width, bodyView, new[] { ChatAction("open-model", "去设置模型", OpenModelSetupFromChat) });
                 return;
             }
 
-            float x = bodyView.X + 8, width = bodyView.Width - 16, top = bodyView.Y;
             float line = Math.Max(20, row - 10);
-            string role = chatView?.IsActive == true ? "已激活" : "未激活 · 仅聊天";
-            Text(profile.Name + " · " + role, new F5Rect(x, top, width, line));
+            string role = chatView?.Lifecycle ?? "正在读取状态";
+            Text(profile.Name + " · " + role + (chatView?.CanAct == false ? " · 仅聊天" : ""), new F5Rect(x, top, width, line));
             top += line;
             bool connected = !String.IsNullOrWhiteSpace(chatView?.Connection);
-            Text(connected ? chatView.Connection : "模型连接当前不可用", new F5Rect(x, top, width, line), ChatScale);
+            Text(connected ? chatView.Connection : "模型连接当前不可用", new F5Rect(x, top, width, line), ChatStatusScale);
             top += line;
-            Text(chatView?.Status ?? "可以在模型页配置直连。", new F5Rect(x, top, width, line), ChatScale);
-            top += line + 3;
-            BuildChatActions(x, top, width, row);
-            top += row + 3;
+            var status = String.IsNullOrWhiteSpace(chatView?.Status) ? chatView?.ActionReason : chatView.Status;
+            if (!String.IsNullOrWhiteSpace(status))
+            {
+                Text(status, new F5Rect(x, top, width, line), ChatStatusScale);
+                top += line;
+            }
+            top = BuildChatActions(x, top + 3, width) + 3;
 
-            float sendWidth = ConfigurationWidth("回到最新");
             float bottom = bodyView.Bottom - 3;
             float fieldHeight = Math.Max(line + 6, Math.Min(72, (bottom - top) * .38f));
             float editTop = bottom - fieldHeight - row - 4;
@@ -128,45 +131,45 @@ namespace JueMingR.TerrariaHost.F5
             var fieldButton = Button("chat-draft", "", chatDraftRect, FocusChatDraft);
             fieldButton.Element = null;
             float actionTop = bottom - row;
-            ChatButton("latest", "回到最新", x, actionTop, sendWidth, row, () => { followChat = true; chatOffset = chatMaximum; });
-            if (!String.IsNullOrWhiteSpace(chatView?.Status))
-                ChatButton("copy-status", "复制状态", x + sendWidth + 6, actionTop, sendWidth, row, () =>
-                {
-                    if (!String.IsNullOrWhiteSpace(chatView?.Status))
-                        ShowNotice(aiInput.TryCopy(chatView.Status) ? "已复制当前状态。" : "无法复制当前状态。");
-                });
-            if (connected)
-                ChatButton("send", "发送", x + width - sendWidth, actionTop, sendWidth, row, () => SendChat(), chatView.CanSend, blur: false);
-            else
-            {
-                float configureWidth = ConfigurationWidth("去设置模型");
-                ChatButton("configure", "去设置模型", x + width - configureWidth, actionTop, configureWidth, row, OpenModelSetupFromChat);
-            }
+            var actions = new List<(string, string, Action, bool)>(3);
+            if (!followChat) actions.Add(ChatAction("latest", "回到最新", () => { followChat = true; chatOffset = chatMaximum; Invalidate(); }));
+            if (!String.IsNullOrWhiteSpace(status)) actions.Add(ChatAction("copy-status", "复制状态", () =>
+                ShowNotice(aiInput.TryCopy(status) ? "已复制当前状态。" : "无法复制当前状态。")));
+            actions.Add(connected ? ChatAction("send", "发送", () => SendChat(), chatView.CanSend, blur: false)
+                : ChatAction("configure", "去设置模型", OpenModelSetupFromChat));
+            BuildAiActions(x, actionTop, width, bodyView, actions.ToArray(), alignLastRight: true);
         }
 
-        private void BuildChatActions(float x, float top, float width, float row)
+        private float BuildChatActions(float x, float top, float width)
         {
             if (chatConfirmation != 0)
             {
                 string question = chatConfirmation == 1 ? "清空聊天记录？队友会继续当前活动。" : "另起一段对话？聊天记录会保留。";
-                Text(question, new F5Rect(x, top, width - 116, row), ChatScale);
-                ChatButton("confirm", "确认", x + width - 112, top, 52, row, () =>
+                Text(question, new F5Rect(x, top, width, rowHeight), ChatStatusScale);
+                return BuildAiActions(x, top + rowHeight, width, bodyView, new[]
                 {
-                    bool done = chatConfirmation == 1 ? host.ClearChat(chatOwner, chatProfile) : host.RestartChatContext(chatOwner, chatProfile);
-                    ConfirmChat(0);
-                    if (!done) ShowNotice("队友状态已变化，请重新选择。");
+                    ChatAction("confirm", "确认", () =>
+                    {
+                        bool done = chatConfirmation == 1 ? host.ClearChat(chatOwner, chatProfile) : host.RestartChatContext(chatOwner, chatProfile);
+                        ConfirmChat(0);
+                        if (!done) ShowNotice("队友状态已变化，请重新选择。");
+                    }),
+                    ChatAction("cancel", "取消", () => ConfirmChat(0))
                 });
-                ChatButton("cancel", "取消", x + width - 54, top, 54, row, () => ConfirmChat(0));
-                return;
             }
-            float buttonWidth = (width - 24) / 5;
-            ChatButton("copy", "复制", x, top, buttonWidth, row, CopyChat, chatView?.Entries.Count > 0);
-            ChatButton("clear", "清空", x + buttonWidth + 6, top, buttonWidth, row, () => ConfirmChat(1), chatView?.Entries.Count > 0);
-            ChatButton("restart", "另起对话", x + 2 * (buttonWidth + 6), top, buttonWidth, row, () => ConfirmChat(2), chatView != null);
-            ChatButton("stop-reply", "停止回复", x + 3 * (buttonWidth + 6), top, buttonWidth, row,
-                () => host.StopChatReply(chatOwner, chatProfile), chatView?.IsRunning == true);
-            ChatButton("stop-activity", "停止活动", x + 4 * (buttonWidth + 6), top, buttonWidth, row,
-                () => { if (!host.StopChatActivity(chatOwner, chatProfile)) ShowNotice("当前没有可停止的活动。"); }, chatView?.CanStopActivity == true);
+            bool hasHistory = chatView?.Entries.Count > 0;
+            var actions = new List<(string, string, Action, bool)>(5)
+            {
+                ChatAction("copy", "复制", CopyChat, hasHistory),
+                ChatAction("clear", "清空", () => ConfirmChat(1), hasHistory),
+                ChatAction("restart", "另起对话", () => ConfirmChat(2), hasHistory)
+            };
+            if (chatView?.IsRunning == true) actions.Add(ChatAction("stop-reply", "停止回复", () => host.StopChatReply(chatOwner, chatProfile)));
+            if (chatView?.CanStopActivity == true) actions.Add(ChatAction("stop-activity", "停止活动", () =>
+            {
+                if (!host.StopChatActivity(chatOwner, chatProfile)) ShowNotice("当前没有可停止的活动。");
+            }));
+            return BuildAiActions(x, top, width, bodyView, actions.ToArray());
         }
 
         private void OpenModelSetupFromChat()
@@ -175,11 +178,8 @@ namespace JueMingR.TerrariaHost.F5
             OpenModelPage(ModelPageView.Setup);
         }
 
-        private void ChatButton(string key, string text, float x, float top, float width, float row, Action action,
-            bool enabled = true, bool blur = true)
-        {
-            Button("chat-" + key, text, new F5Rect(x, top, width, row), () => { if (!blur || BlurAiInput()) action(); }, enabled);
-        }
+        private (string Key, string Label, Action Run, bool Enabled) ChatAction(string key, string text, Action action,
+            bool enabled = true, bool blur = true) => ("chat-" + key, text, () => { if (!blur || BlurAiInput()) action(); }, enabled);
 
         private void ConfirmChat(int operation)
         {
@@ -235,6 +235,7 @@ namespace JueMingR.TerrariaHost.F5
                 case "user": return "你";
                 case "assistant": return "队友";
                 case "action": return "游戏动作";
+                case "query": return "查询结果";
                 case "status": return "活动状态";
                 default: return "消息";
             }
@@ -264,9 +265,11 @@ namespace JueMingR.TerrariaHost.F5
             {
                 // The completed cards keep their layout. A stream normally only
                 // lengthens its last lines, so keep the previous metrics prefix.
-                int prefix = chatStream != null && stream.StartsWith(chatStream, StringComparison.Ordinal) ? chatStream.Length : 0;
-                chatStreamLayout = stream.Length == 0 ? null : new NotesTextLayout(stream, historyWidth, ChatGlyphWidth,
-                    Array.AsReadOnly(TextElements.Boundaries(stream)), chatStreamLayout, prefix);
+                string display = FormatChatReply(stream);
+                string previous = chatStreamLayout?.Text;
+                int prefix = previous != null && display.StartsWith(previous, StringComparison.Ordinal) ? previous.Length : 0;
+                chatStreamLayout = display.Length == 0 ? null : new NotesTextLayout(display, historyWidth, ChatGlyphWidth,
+                    Array.AsReadOnly(TextElements.Boundaries(display)), chatStreamLayout, prefix);
                 chatStream = stream;
                 if (chatStreamLayout != null) while (!chatStreamLayout.Complete) chatStreamLayout.Continue(8192);
                 chatStreamLines = ChatLines(chatStreamLayout, chatLineHeight, chatStreamLines);
@@ -308,9 +311,11 @@ namespace JueMingR.TerrariaHost.F5
                 // An oldest-row trim or an activity update changes offsets,
                 // but only changed public text needs fresh glyph work.
                 F5Element[] lines = block?.Lines;
-                if (block == null || block.Entry.Text != entry.Text)
+                if (block == null || block.Entry.Text != entry.Text || block.Entry.Kind != entry.Kind)
                 {
-                    var layout = new NotesTextLayout(entry.Text ?? "", chatHistoryWidth, ChatGlyphWidth);
+                    string display = entry.Text ?? "";
+                    if (entry.Kind == "assistant") display = FormatChatReply(display);
+                    var layout = new NotesTextLayout(display, chatHistoryWidth, ChatGlyphWidth);
                     lines = ChatLines(layout, chatLineHeight, lines);
                 }
                 block = block ?? new ChatBlock();
@@ -327,6 +332,55 @@ namespace JueMingR.TerrariaHost.F5
             }
             if (anchor != null && !restoredAnchor) chatOffset = 0;
             chatEntries = entries;
+        }
+
+        // Display simple prose formatting. Raw history and clipboard text retain
+        // the original Markdown, including content in fenced code and long replies.
+        private static string FormatChatReply(string value)
+        {
+            if (value.IndexOf('*') < 0 && value.IndexOf('-') < 0 && value.IndexOf('`') < 0 && value.IndexOf('#') < 0) return value;
+            var result = new StringBuilder(value.Length);
+            bool fenced = false;
+            string[] lines = value.Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (i > 0) result.Append('\n');
+                string line = lines[i].TrimEnd('\r');
+                if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+                {
+                    fenced = !fenced;
+                    result.Append(line);
+                    continue;
+                }
+                if (fenced) { result.Append(line); continue; }
+                int at = 0;
+                if (line.StartsWith("- ", StringComparison.Ordinal)) { result.Append("• "); at = 2; }
+                else
+                {
+                    int marks = 0;
+                    while (marks < line.Length && line[marks] == '#') marks++;
+                    if (marks > 0 && marks <= 6 && marks < line.Length && line[marks] == ' ') at = marks + 1;
+                }
+                while (at < line.Length)
+                {
+                    char marker = line[at];
+                    int markerLength = marker == '`' ? 1 : marker == '*' && at + 1 < line.Length && line[at + 1] == '*' ? 2 : 0;
+                    if (markerLength > 0 && (at == 0 || line[at - 1] != '\\'))
+                    {
+                        int content = at + markerLength;
+                        int end = line.IndexOf(markerLength == 1 ? "`" : "**", content, StringComparison.Ordinal);
+                        if (end > content && !Char.IsWhiteSpace(line[content]) && !Char.IsWhiteSpace(line[end - 1]))
+                        {
+                            result.Append(line, content, end - content);
+                            at = end + markerLength;
+                            continue;
+                        }
+                    }
+                    result.Append(marker);
+                    at++;
+                }
+            }
+            return result.ToString();
         }
 
         private F5Element[] ChatLines(NotesTextLayout layout, float lineHeight, F5Element[] previous = null)
@@ -367,8 +421,11 @@ namespace JueMingR.TerrariaHost.F5
             {
                 var block = chatBlocks[i];
                 bool action = block.Entry.Kind == "action" || block.Entry.Kind == "status";
+                Color tint = action ? new Color(70, 66, 48, 210) : new Color(41, 55, 80, 205);
+                if (block.Entry.Kind == "user") tint = new Color(52, 72, 111, 225);
+                if (block.Entry.Kind == "query") tint = new Color(40, 70, 74, 215);
                 DrawChatBlock(block.Top, block.Bottom, ChatEntryName(block.Entry.Kind) + " · " + block.Entry.Time.ToLocalTime().ToString("HH:mm"), block.Lines,
-                    action ? new Color(70, 66, 48, 210) : new Color(50, 66, 99, 205));
+                    tint);
             }
             if (chatStreamLines.Length == 0) return;
             float top = chatBlocks.Count == 0 ? 5 : chatBlocks[chatBlocks.Count - 1].Bottom;
@@ -393,7 +450,7 @@ namespace JueMingR.TerrariaHost.F5
             float x = chatHistoryView.X + 10;
             Fill(new F5Rect(x - 5, y, chatHistoryView.Width - 10, bottom - top - 5), tint);
             if (y + chatLineHeight >= chatHistoryView.Y)
-                renderer.Text(header, new F5Rect(x, y, chatHistoryView.Width - 20, chatLineHeight), Color.LightSteelBlue, ChatScale);
+                renderer.Text(header, new F5Rect(x, y, chatHistoryView.Width - 20, chatLineHeight), Color.LightSteelBlue, ChatStatusScale);
             y += chatLineHeight;
             int start = Math.Max(0, (int)((chatHistoryView.Y - y) / chatLineHeight));
             for (int i = start; i < lines.Length && y + i * chatLineHeight < chatHistoryView.Bottom; i++)

@@ -10,8 +10,14 @@ namespace JueMingR.TerrariaHost.F5
         private void ModelMessage(string value)
         {
             modelStatus = value;
-            ShowNotice(value);
             contentInvalidated = true;
+        }
+
+        private void ModelFailure(string summary, string details)
+        {
+            modelTestDetails = details;
+            modelTestDetailsExpanded = true;
+            ModelMessage(summary);
         }
 
         private void StartModelWrite(Func<Task> write, string message, Action completed = null)
@@ -64,8 +70,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (modelRead != null || modelWrite != null) return;
             if (kind == "models") discoveredModels = null;
-            if (kind == "chat") modelChatTest = null;
-            if (kind == "tools") modelToolTest = null;
+            modelTestDetails = null;
+            modelTestDetailsExpanded = false;
             modelCancellation = new CancellationTokenSource();
             modelReadKind = kind;
             modelRead = FinishModelRead(read, modelCancellation.Token, testSubject);
@@ -80,7 +86,12 @@ namespace JueMingR.TerrariaHost.F5
             catch (OperationCanceledException) { result = new ModelReadResult { Message = "请求已取消。" }; }
             catch (LlmException exception) { result = new ModelReadResult { Message = exception.Message }; }
             catch (Exception) { result = new ModelReadResult { Message = "暂时无法取得服务结果。" }; }
-            if (testSubject != null) result.Message = testSubject + " · " + DateTimeOffset.Now.ToString("MM-dd HH:mm") + " · " + result.Message;
+            if (testSubject != null)
+            {
+                string time = DateTimeOffset.Now.ToString("MM-dd HH:mm");
+                result.Detail = testSubject + "\n" + time + "\n" + result.Message;
+                result.Message = (result.Success ? "测试通过 · " : "未通过 · ") + time;
+            }
             return result;
         }
 
@@ -97,7 +108,8 @@ namespace JueMingR.TerrariaHost.F5
                     RefreshModelList();
                     completed?.Invoke();
                 }
-                ModelMessage(error ?? modelWriteSuccess);
+                if (error == null) ModelMessage(modelWriteSuccess);
+                else ModelFailure("保存未完成", error);
                 modelWriteSuccess = null;
             }
             if (modelRead?.IsCompleted != true) return;
@@ -110,9 +122,13 @@ namespace JueMingR.TerrariaHost.F5
             // profile selection, newer request or credential edit retires the
             // captured task, even where the transport finished concurrently.
             if (kind == "models" && result.Success && modelConnections.HasValidDiscovery(modelDraft)) discoveredModels = result.Models;
-            if (kind == "chat" && result.Success && modelConnections.HasValidChatTest(modelDraft)) modelChatTest = result.Message;
-            if (kind == "tools" && result.Success && modelConnections.HasValidToolTest(modelDraft)) modelToolTest = result.Message;
-            ModelMessage(result.Message);
+            if (result.Detail != null)
+            {
+                modelTestDetails = result.Detail;
+                modelTestDetailsExpanded = !result.Success;
+            }
+            if (kind == "models" && !result.Success) ModelFailure("未能获取模型", result.Message);
+            else ModelMessage(result.Message);
         }
 
         private void CancelModelRequest()
@@ -132,8 +148,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             CancelModelRequest();
             discoveredModels = null;
-            modelChatTest = null;
-            modelToolTest = null;
+            modelTestDetails = null;
+            modelTestDetailsExpanded = false;
         }
     }
 }

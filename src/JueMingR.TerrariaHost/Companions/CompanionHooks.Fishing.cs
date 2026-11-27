@@ -12,7 +12,6 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal static partial class CompanionHooks
     {
-        private static AccessTools.FieldRef<SceneMetrics> playerScene;
         private static readonly Harmony fishingHarmony = new Harmony("JueMingR.Companions.Fishing");
         internal static Exception FishingUnavailable { get; private set; }
         internal static ItemNearbyStorage.NativeChestStack FishingChestStack { get; private set; }
@@ -21,11 +20,9 @@ namespace JueMingR.TerrariaHost.Companions
         {
             try
             {
-                playerScene = AccessTools.StaticFieldRefAccess<SceneMetrics>(AccessTools.Field(typeof(Main), "_playerSceneMetrics"));
                 FishingChestStack = new ItemNearbyStorage.NativeChestStack();
                 PatchFishing(typeof(Player), "Fishing_GetBait", transpiler: nameof(FishingBaitReads));
                 PatchFishing(typeof(Player), "ItemCheck_CheckFishingBobber_ConsumeBait", nameof(FishingBaitDebit));
-                PatchFishing(typeof(Player), nameof(Player.UpdateBiomes), nameof(FishingBiomesBefore), finalizer: nameof(FishingBiomesAfter));
                 PatchFishing(typeof(Projectile), nameof(Projectile.FishingCheck), nameof(FishingCheckBefore));
                 PatchFishing(typeof(Projectile), "FishingCheck_ProbeForQuestFish", transpiler: nameof(FishingQuestRead));
                 PatchFishing(typeof(PopupText), nameof(PopupText.AssignAsSonarText), nameof(HumanSonarCursor));
@@ -127,23 +124,6 @@ namespace JueMingR.TerrariaHost.Companions
             return false;
         }
 
-        private static bool FishingBiomesBefore(Player __instance, out SceneMetrics __state)
-        {
-            __state = null;
-            var a = host?.Owned(__instance);
-            if (a == null || !host.FishingActorActive(a)) return true;
-            if (!host.FishingSceneReady(a)) return false;
-            __state = playerScene();
-            playerScene() = a.FishingLine.Scene;
-            return true;
-        }
-
-        private static Exception FishingBiomesAfter(SceneMetrics __state, Exception __exception)
-        {
-            if (__state != null) playerScene() = __state;
-            return __exception;
-        }
-
         private static bool FishingCheckBefore(Projectile __instance)
         {
             var a = host?.ProjectileActor(__instance);
@@ -199,35 +179,12 @@ namespace JueMingR.TerrariaHost.Companions
             power = type = 0;
         }
 
-        internal bool FishingSceneReady(Actor a)
-        {
-            var line = a.FishingLine;
-            var center = a.Body.Center.ToTileCoordinates();
-            if (line.SceneCenter == center && Main.GameUpdateCount < line.NextScene) return line.SceneKnown;
-            line.SceneCenter = center;
-            line.SceneKnown = NurseBiomeTerrainKnown(a.Body, request: true);
-            line.NextScene = Main.GameUpdateCount + (line.SceneKnown ? 60u : 12u);
-            if (!line.SceneKnown) return false;
-            if (line.Scene == null) line.Scene = new SceneMetrics();
-            line.Scene.Scan(new SceneMetricsScanSettings { BiomeScanCenterPositionInWorld = a.Body.Center, PerspectivePlayer = a.Body });
-            return true;
-        }
-
-        private bool RefreshFishingZones(Actor a)
-        {
-            if (!FishingSceneReady(a)) return false;
-            if (ReferenceEquals(CompanionHooks.CurrentActor, a)) a.Body.UpdateBiomes();
-            else using (CompanionHooks.Enter(a, a.Aim)) a.Body.UpdateBiomes();
-            return true;
-        }
-
         internal bool FishingCheckAllowed(Actor a, Projectile b)
         {
             if (FishingActivityOwns(a, b, out var tracked))
             {
-                // UpdateBiomes consumes the actor scene and refreshes the
-                // actual body's Zones before native fishing conditions read.
-                return !a.FishingLine.Ending && tracked.Qualified && RefreshFishingZones(a) && FishingEnteredLiquid(a, b);
+                // A qualifying bobber uses the same body Zones as NPC AI.
+                return !a.FishingLine.Ending && tracked.Qualified && RefreshActorEnvironment(a) && FishingEnteredLiquid(a, b);
             }
             return !a.FishingLine.Ending;
         }

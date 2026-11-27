@@ -5,6 +5,7 @@ using JueMingR.TerrariaHost.Combat;
 using JueMingR.TerrariaHost.Recovery;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.GameContent;
 using Terraria.ID;
 
 namespace JueMingR.TerrariaHost.Companions
@@ -29,6 +30,55 @@ namespace JueMingR.TerrariaHost.Companions
             internal Action<string, string> ChatComplete;
             internal uint ChatFinishBy;
             internal int ChatDebit;
+            internal long ChatActivation, ChatDataEpoch;
+            internal bool ChatStayAfterTeleport, ChatTeleportObserved, ChatFinishWasReported;
+            internal Func<bool> ChatCanStay;
+            internal string ChatTeleportState, ChatTeleportEffect;
+            internal CompanionConnection ChatTeleportConnection;
+            internal long ChatTeleportBefore, ChatTeleportAfter;
+            internal uint ChatTeleportRetry;
+            internal bool ChatTeleportOpen, ChatTeleportSubmitted, ChatTeleportEndQueued;
+        }
+
+        private enum ChatItemTeleport { None, Home, WorldSpawn, Ocean, Underworld, Random }
+
+        private static ChatItemTeleport ItemTeleportKind(int type)
+        {
+            switch (type)
+            {
+                case ItemID.MagicMirror: case ItemID.IceMirror: case ItemID.CellPhone: case ItemID.Shellphone:
+                case ItemID.RecallPotion: case ItemID.PotionOfReturn: return ChatItemTeleport.Home;
+                case ItemID.ShellphoneSpawn: return ChatItemTeleport.WorldSpawn;
+                case ItemID.MagicConch: case ItemID.ShellphoneOcean: return ChatItemTeleport.Ocean;
+                case ItemID.DemonConch: case ItemID.ShellphoneHell: return ChatItemTeleport.Underworld;
+                case ItemID.TeleportationPotion: return ChatItemTeleport.Random;
+                default: return ChatItemTeleport.None;
+            }
+        }
+
+        private static string ItemTeleportDestination(ChatItemTeleport kind)
+        {
+            switch (kind)
+            {
+                case ChatItemTeleport.Home: return "队友自身出生点（有效床位或原版默认出生点）";
+                case ChatItemTeleport.WorldSpawn: return "世界出生点";
+                case ChatItemTeleport.Ocean: return "海边";
+                case ChatItemTeleport.Underworld: return "地狱";
+                case ChatItemTeleport.Random: return "原版随机地点";
+                default: return null;
+            }
+        }
+
+        private static int ItemTeleportStyle(ChatItemTeleport kind)
+        {
+            switch (kind)
+            {
+                case ChatItemTeleport.Random: return 2;
+                case ChatItemTeleport.Ocean: return 5;
+                case ChatItemTeleport.Underworld: return 7;
+                case ChatItemTeleport.WorldSpawn: return 11;
+                default: return -1;
+            }
         }
 
         internal bool CanUseItemOnce(Guid id, CompanionInventoryArea area, int slot, out string reason)
@@ -69,7 +119,8 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool ManualHandBusy(Actor actor)
         {
             var state = actor.Supplies;
-            return state.Once != null || state.HeldSource.Found || state.Quick.Found || state.RestoreSelection >= 0;
+            return state.Once != null || state.HeldSource.Found || state.Quick.Found || state.RestoreSelection >= 0 ||
+                state.ChatFinishingOnce != null;
         }
 
         private bool ItemOnceEligible(Actor actor, int slot, bool portable, out CompanionSupplyKind? kind, out string reason, bool alreadyAccepted = false)
@@ -240,22 +291,22 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool RunCompanionItemOnce(Actor actor)
         {
             var state = actor.Supplies;
+            var teleport = state.ChatTeleportPending;
+            if (teleport != null && !teleport.ChatTeleportEndQueued &&
+                unchecked((int)(Main.GameUpdateCount - teleport.ChatTeleportRetry)) >= 0)
+                QueueChatItemTeleportEnd(actor, teleport);
             if (state.RestoreSelection >= 0)
             {
                 // Native phones act halfway through the animation. Keep this
                 // selection, release the button and prevent combat from
                 // repeating an auto-reuse weapon before the native tail ends.
                 bool released = FreeHand(actor.Body);
-                var finishing = state.ChatFinishingOnce;
-                if (finishing != null && (released || unchecked((int)(Main.GameUpdateCount - finishing.ChatFinishBy)) >= 0))
-                {
-                    state.ChatFinishingOnce = null;
-                    FinishChatHeldItem(actor, finishing, released);
-                }
+                FinishChatHeldItemIfReady(actor, released);
                 if (!released) return true;
                 actor.Body.selectedItemState.Select(state.RestoreSelection);
                 state.RestoreSelection = -1;
             }
+            else if (state.ChatFinishingOnce != null) FinishChatHeldItemIfReady(actor, true);
             var command = state.Once;
             if (command == null) return false;
             if (command.ChatCancellation.IsCancellationRequested)
@@ -296,14 +347,25 @@ namespace JueMingR.TerrariaHost.Companions
             var pending = state.Once;
             var started = state.HeldOnce;
             var finishing = state.ChatFinishingOnce;
+            var teleport = state.ChatTeleportPending;
+            var arrival = state.ChatTeleportArrival;
             if (state.Once != null) Feedback = "队友状态已变化，本次使用已取消。";
             if (state.HeldOnce != null) state.HeldSource = default(RecoverySource);
             state.Once = state.HeldOnce = null;
             state.ChatFinishingOnce = null;
+            state.ChatTeleportPending = null;
+            state.ChatTeleportArrival = null;
             state.RestoreSelection = -1;
+            if (arrival != null) arrival.ChatTeleportEffect += "待命指令已失效。";
             pending?.ChatComplete?.Invoke("cancelled", "队友状态已变化，本次使用已取消。");
-            started?.ChatComplete?.Invoke("unconfirmed", "队友状态已变化，本次原版用物结果未确认。");
+            if (started?.ChatTeleportObserved == true) FinishChatHeldItem(actor, started, false);
+            else started?.ChatComplete?.Invoke("unconfirmed", "队友状态已变化，本次原版用物结果未确认。");
             if (finishing != null) FinishChatHeldItem(actor, finishing, false);
+            if (teleport?.ChatFinishWasReported == true && !ReferenceEquals(finishing, teleport))
+                teleport.ChatComplete(teleport.ChatTeleportState ?? "unconfirmed",
+                    teleport.ChatTeleportEffect ?? "队友状态已变化，原版传送结果未确认。");
+            if (arrival?.ChatFinishWasReported == true && !ReferenceEquals(arrival, teleport) && !ReferenceEquals(arrival, finishing))
+                arrival.ChatComplete(arrival.ChatTeleportState, arrival.ChatTeleportEffect);
         }
 
         private void WaitForChatHeldItem(Actor actor, ItemOnce command, int debit)
@@ -318,8 +380,30 @@ namespace JueMingR.TerrariaHost.Companions
             command.ChatStarted?.Invoke("队友已开始原版用物，正在等待动作结束。");
         }
 
+        private void FinishChatHeldItemIfReady(Actor actor, bool released)
+        {
+            var state = actor.Supplies;
+            var finishing = state.ChatFinishingOnce;
+            if (finishing == null) return;
+            bool timedOut = unchecked((int)(Main.GameUpdateCount - finishing.ChatFinishBy)) >= 0;
+            if (!timedOut && (!released || ReferenceEquals(state.ChatTeleportPending, finishing) &&
+                !finishing.ChatTeleportObserved)) return;
+            state.ChatFinishingOnce = null;
+            FinishChatHeldItem(actor, finishing, released);
+        }
+
         private void FinishChatHeldItem(Actor actor, ItemOnce command, bool released)
         {
+            if (command.ChatTeleportObserved)
+            {
+                var item = actor.Body.inventory[command.Source.Slot];
+                int debitCount = ReferenceEquals(item, command.Source.Item) && (item.IsAir || item.type == command.Source.Type)
+                    ? command.Source.Stack - item.stack : command.ChatDebit;
+                string effect = command.ChatTeleportEffect;
+                if (debitCount > 0) effect += "实际消耗 " + debitCount + " 件。";
+                command.ChatComplete(command.ChatTeleportState, effect);
+                return;
+            }
             if (released && IsPortableBankItem(command.Source.Type))
             {
                 var area = command.Source.Type == ItemID.MoneyTrough ? CompanionInventoryArea.PiggyBank : CompanionInventoryArea.VoidVault;
@@ -330,8 +414,141 @@ namespace JueMingR.TerrariaHost.Companions
                 }
             }
             string debit = command.ChatDebit == 0 ? "" : "，首次原版检查确认扣减 " + command.ChatDebit + " 件物品";
+            command.ChatFinishWasReported = true;
             command.ChatComplete("unconfirmed", (released ? "原版用物动作已结束" : "原版用物动作已开始") +
                 debit + "，后续效果未确认。");
+        }
+
+        private bool ChatItemActivationCurrent(Actor actor, ItemOnce command) => command?.ChatComplete != null &&
+            command.Session == session && ReferenceEquals(command.World, world) && command.ChatActivation == actor.Generation &&
+            command.ChatDataEpoch == actor.Profile.DataEpoch && ReferenceEquals(command.Source.Player, actor.Body) &&
+            SupplyActorReady(actor);
+
+        private ItemOnce CurrentChatTeleportItem(Actor actor)
+        {
+            var command = actor.Supplies.HeldOnce ?? actor.Supplies.ChatFinishingOnce;
+            // The animator, not UI intent, holds the actual source until the
+            // native effect frame. Never match another hand's teleport.
+            return ChatItemActivationCurrent(actor, command) && actor.Body.selectedItem == command.Source.Slot &&
+                actor.Body.inventory[command.Source.Slot]?.type == command.Source.Type ? command : null;
+        }
+
+        internal void ObserveChatRecall(Actor actor)
+        {
+            var command = CurrentChatTeleportItem(actor);
+            if (command == null || ItemTeleportKind(command.Source.Type) != ChatItemTeleport.Home) return;
+            bool bed = actor.Body.SpawnX >= 0 && actor.Body.SpawnY >= 0;
+            if (!bed && Main.teamBasedSpawnsSeed &&
+                !ExtraSpawnPointManager.TryGetExtraSpawnPointForTeam(actor.Body.team, out _))
+            {
+                RecordChatItemTeleport(actor, command, false, null);
+                return;
+            }
+            RecordChatItemTeleport(actor, command, true,
+                bed ? "队友的床位出生点" : Main.teamBasedSpawnsSeed ? "队伍出生点" : "世界出生点");
+        }
+
+        internal void ObserveChatItemTeleport(Actor actor, Vector2 previous, int style, int extraInfo)
+        {
+            if (style != 2 && style != 5 && style != 7 && style != 11) return;
+            var command = Main.netMode == 0 ? CurrentChatTeleportItem(actor) : actor.Supplies.ChatTeleportPending;
+            if (!ChatItemActivationCurrent(actor, command) || command.ChatTeleportObserved) return;
+            var kind = ItemTeleportKind(command.Source.Type);
+            if (style != ItemTeleportStyle(kind)) return;
+            if (Main.netMode != 0 && (!ReferenceEquals(Decoding, actor) || !command.ChatTeleportOpen || !command.ChatTeleportSubmitted ||
+                !ReferenceEquals(command.ChatTeleportConnection, actor.Connection))) return;
+            // .1 conches and random potions animate an in-place failure
+            // (extraInfo=1 over the server socket). Style 11 is always the
+            // native world-spawn route, including a player already there.
+            bool arrived = Main.netMode == 0 ? style == 11 || actor.Body.position != previous : extraInfo == 0;
+            RecordChatItemTeleport(actor, command, arrived, ItemTeleportDestination(kind));
+        }
+
+        private void RecordChatItemTeleport(Actor actor, ItemOnce command, bool arrived, string destination)
+        {
+            if (command.ChatTeleportObserved) return;
+            command.ChatTeleportObserved = true;
+            command.ChatTeleportState = arrived ? "succeeded" : "failed";
+            command.ChatTeleportEffect = arrived ? "原版用物已传送到" + destination + "。" : "原版未能传送队友。";
+            if (arrived && command.ChatStayAfterTeleport)
+            {
+                // Recall potions debit the stack after Spawn returns. Wait
+                // until the next body control step to save the stay order.
+                actor.Supplies.ChatTeleportArrival = command;
+            }
+            else if (command.ChatFinishWasReported)
+                command.ChatComplete(command.ChatTeleportState, command.ChatTeleportEffect);
+        }
+
+        private void ApplyConfirmedChatStay(Actor actor)
+        {
+            var command = actor.Supplies.ChatTeleportArrival;
+            if (command == null) return;
+            actor.Supplies.ChatTeleportArrival = null;
+            if (ChatItemActivationCurrent(actor, command) && command.ChatCanStay())
+            {
+                var behavior = actor.Profile.Behavior;
+                bool fishingStopped = actor.Fishing == null || EndFishingActivity(actor);
+                behavior.Follow = false;
+                bool stayed = fishingStopped && ApplyBehavior(actor.Profile.Id, behavior, manual: false);
+                command.ChatTeleportEffect += stayed ? "队友已原地待命。" : "未能切换到待命。";
+            }
+            else command.ChatTeleportEffect += "待命指令已失效。";
+            if (command.ChatFinishWasReported) command.ChatComplete(command.ChatTeleportState, command.ChatTeleportEffect);
+        }
+
+        internal void PrepareChatItemTeleportRequest(Actor actor, int nativeRequest)
+        {
+            if (actor.Supplies.ChatTeleportPending != null) return;
+            var command = CurrentChatTeleportItem(actor);
+            if (command == null) return;
+            if (!ChatItemTeleportRequestMatches(command, nativeRequest)) return;
+            long marker = -(++wormholeSequence * 2);
+            try { if (!SendWormholeFence(actor, marker)) return; }
+            catch (System.IO.IOException) { return; }
+            // Packet 73 has no operation ID. Two native ordered ping echoes
+            // isolate its actual response on this body connection.
+            command.ChatTeleportConnection = actor.Connection;
+            command.ChatTeleportBefore = marker;
+            command.ChatTeleportAfter = marker - 1;
+            command.ChatTeleportRetry = Main.GameUpdateCount;
+            actor.Supplies.ChatTeleportPending = command;
+        }
+
+        internal void ObserveChatItemTeleportRequest(Actor actor, int nativeRequest)
+        {
+            var command = actor.Supplies.ChatTeleportPending;
+            if (command == null || !ChatItemTeleportRequestMatches(command, nativeRequest)) return;
+            command.ChatTeleportSubmitted = true;
+            QueueChatItemTeleportEnd(actor, command);
+        }
+
+        private static bool ChatItemTeleportRequestMatches(ItemOnce command, int request)
+        {
+            int style = ItemTeleportStyle(ItemTeleportKind(command.Source.Type));
+            return style >= 0 && style == (request == 0 ? 2 : request == 1 ? 5 : request == 2 ? 7 : request == 3 ? 11 : -1);
+        }
+
+        private static void QueueChatItemTeleportEnd(Actor actor, ItemOnce command)
+        {
+            if (command.ChatTeleportEndQueued || !ReferenceEquals(command.ChatTeleportConnection, actor.Connection) ||
+                actor.Connection.Finished) return;
+            command.ChatTeleportRetry = Main.GameUpdateCount + 60;
+            try { command.ChatTeleportEndQueued = SendWormholeFence(actor, command.ChatTeleportAfter); }
+            catch (System.IO.IOException) { }
+        }
+
+        private bool ChatItemTeleportFenceReceived(Actor actor, long marker)
+        {
+            var command = actor.Supplies.ChatTeleportPending;
+            if (command == null) return false;
+            if (command.ChatTeleportBefore == marker) { command.ChatTeleportOpen = true; return true; }
+            if (command.ChatTeleportAfter != marker) return false;
+            actor.Supplies.ChatTeleportPending = null;
+            if (command.ChatFinishWasReported && !ReferenceEquals(actor.Supplies.ChatTeleportArrival, command))
+                command.ChatComplete(command.ChatTeleportState ?? "unconfirmed",
+                    command.ChatTeleportEffect ?? "原版未返回可确认的传送结果。");
+            return true;
         }
 
         private void CancelChatItemOnce(Actor actor, string reason)

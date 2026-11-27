@@ -6,8 +6,10 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Threading.Tasks;
 using HarmonyLib;
 using JueMingR.Platform.Companions;
+using JueMingR.Platform.Llm;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
@@ -53,6 +55,7 @@ namespace NativeWorldTextProbe
             var listener = new TcpListener(IPAddress.Loopback, 0);
             TcpClient humanClient = null, humanPeer = null, actorPeer = null;
             object connection = null;
+            Action restoreChat = null;
             listener.Start();
             try
             {
@@ -158,6 +161,11 @@ namespace NativeWorldTextProbe
                             "actual shared primary request loads the neighbouring missing biome section even though the actor section is loaded");
                     }
                     Main.sectionManager.SetSectionLoaded(1, 0);
+                    NativeQuickItemChecks.Until(() =>
+                    {
+                        NativeQuickItemChecks.BeginWorldStep();
+                        return (bool)Call(host, "RefreshActorEnvironment", actor);
+                    });
                     var originalSettings = body.currentShoppingSettings;
                     var hooks = host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Companions.CompanionHooks", true);
                     using ((IDisposable)hooks.GetMethod("Enter", Flags).Invoke(null, new[] { actor, (object)body.Center, false }))
@@ -206,7 +214,9 @@ namespace NativeWorldTextProbe
                     actorSlot, false, body.bank4.item[bankItemSlot]));
                 actorFrames.Add(NativeCompanionFurnitureChecks.SendToServer(host, actor, actorPeer));
                 VerifyPrimaryRoomHandoff(host, actor, human, nurse);
-                var phoneRequest = UseShellphone(host, actor, body, actorPeer);
+                var chat = NativeCompanionChatChecks.Attach(host);
+                restoreChat = chat.Restore;
+                var phoneRequest = UseShellphone(host, actor, body, actorPeer, chat.Remote, out string operation);
 
                 Main.netMode = 2;
                 Main.dedServ = true;
@@ -235,11 +245,29 @@ namespace NativeWorldTextProbe
                 Require(!serverHuman.bank4.item[bankItemSlot].IsNetStateDifferent(ownerBankBeforeTransfer),
                     "original server keeps the human's corresponding Bank4 cell at its post-nurse value");
                 VerifyShellphoneResponse(host, actor, primaryPlayers, body, human, serverBody, actorPeer, humanPeer, humanClient, phoneRequest);
+                Main.netMode = 1; Main.dedServ = false; Main.myPlayer = humanSlot; Main.player = primaryPlayers;
+                var profile = (CompanionProfile)Get(actor, "Profile");
+                object View() => Call(host, "GetChat", profile.OwnerId, profile.Id);
+                var entries = (IReadOnlyList<LlmHistoryEntry>)Get(View(), "Entries");
+                Require(entries.Single(entry => entry.Id.ToString("N") == operation).Text.Contains("已传送到世界出生点"),
+                    "late original phone arrival updates the previously unconfirmed operation");
+                LlmRequest recovered = null;
+                chat.Remote.Reply = request =>
+                {
+                    recovered = request;
+                    return Task.FromResult(new LlmTurn("看到了原版传送结果。", Array.Empty<LlmToolCall>(), "{}"));
+                };
+                SendChat(host, profile, "几点前的手机传送完成了吗？");
+                NativeQuickItemChecks.Until(() => { Call(host, "PumpChat"); return !(bool)Get(View(), "IsRunning"); });
+                Require(recovered?.Messages.Last().Text.Contains("已传送到世界出生点") == true,
+                    "only the next explicit player message includes the late original phone arrival");
+                Console.WriteLine("PASS chat Shellphone original socket request, ordered native 154/73/154, original server 65 and ACK, late correction to the same action, and next-user recovery.");
                 Console.WriteLine("PASS split nurse actual owner and AI TCP send streams -> original server 5/16/35/50; no 66; pre-admitted links.");
                 Console.WriteLine("PASS panel void transfer uses separate original TCP player-slot 5 send and receive, with no chest 32.");
             }
             finally
             {
+                restoreChat?.Invoke();
                 Main.player = primaryPlayers;
                 Array.Copy(originalNpcSlots, primaryNpcs, originalNpcSlots.Length);
                 Main.npc = primaryNpcs;
@@ -268,32 +296,83 @@ namespace NativeWorldTextProbe
             }
         }
 
-        private static byte[] UseShellphone(object host, object actor, Player body, TcpClient peer)
+        private static void SendChat(object host, CompanionProfile profile, string message)
+        {
+            var args = new object[] { profile.OwnerId, profile.Id, message, null };
+            Require((bool)Call(host, "SendChat", args), "socket fixture chat admitted: " + args[3]);
+        }
+
+        private static byte[][] UseShellphone(object host, object actor, Player body, TcpClient peer,
+            NativeCompanionChatChecks.Transport transport, out string operation)
         {
             const int slot = 35;
             var originalItem = body.inventory[slot];
             try
             {
                 body.inventory[slot] = new Item(ItemID.ShellphoneSpawn);
-                var id = ((CompanionProfile)Get(actor, "Profile")).Id;
-                Require((bool)Call(host, "UseItemOnce", id, CompanionInventoryArea.Inventory, slot),
+                var profile = (CompanionProfile)Get(actor, "Profile");
+                Require((bool)Call(host, "CanUseItemOnce", new object[] { profile.Id, CompanionInventoryArea.Inventory, slot, null }),
                     "actual Shellphone accepts world-spawn mode in multiplayer: " + Get(host, "Feedback"));
+                object View() => Call(host, "GetChat", profile.OwnerId, profile.Id);
+                NativeQuickItemChecks.Until(() => { Call(host, "PumpChat"); return (bool)Get(View(), "CanSend"); });
+                LlmToolResult receipt = null;
+                int replies = 0;
+                transport.Reply = exchange =>
+                {
+                    LlmToolCall call;
+                    switch (++replies)
+                    {
+                        case 1:
+                            call = new LlmToolCall("native-find-phone", "query_inventory", "{}",
+                                new Dictionary<string, object> { ["offset"] = slot });
+                            break;
+                        case 2:
+                            string row = exchange.Messages.Last().Results.Single().Output.Split('\n')[0];
+                            int token = row.IndexOf("source=", StringComparison.Ordinal);
+                            Require(row.Contains("世界出生点") && token >= 0, "original shellphone form was observed");
+                            call = new LlmToolCall("native-use-phone", "use_item_once", "{}",
+                                new Dictionary<string, object> { ["source"] = row.Substring(token + 7) });
+                            break;
+                        default:
+                            receipt = exchange.Messages.Last().Results.Single();
+                            return Task.FromResult(new LlmTurn("等待原版传送结果。", Array.Empty<LlmToolCall>(), "{}"));
+                    }
+                    return Task.FromResult(new LlmTurn("", new[] { call }, "{}"));
+                };
+                SendChat(host, profile, "用背包里的贝壳手机传送到世界出生点。");
+                NativeQuickItemChecks.Until(() =>
+                {
+                    Call(host, "PumpChat");
+                    return GetOptional(Get(actor, "Supplies"), "Once") != null;
+                });
                 for (int i = 0; i < 115; i++)
                 {
                     NativeQuickItemChecks.BeginWorldStep();
                     Call(host, "Control", actor);
                     body.ItemCheck();
                 }
-                var request = NativeCompanionTeamChecks.ReadKind(peer.GetStream(), 73);
+                var stream = peer.GetStream();
+                var before = NativeCompanionTeamChecks.ReadKind(stream, 154);
+                var request = NativeCompanionTeamChecks.ReadKind(stream, 73);
+                var after = NativeCompanionTeamChecks.ReadKind(stream, 154);
                 Require(request.Length == 4 && request[3] == 3 && body.inventory[slot].type == ItemID.ShellphoneSpawn,
                     "the original current-mode phone requests only world spawn on the companion TCP connection");
-                return request;
+                // Retain the native frame at the server until the chat action
+                // has timed out locally. The real server then processes it.
+                for (int i = 0; i < 370; i++) NativeQuickItemChecks.BeginWorldStep();
+                Call(host, "Control", actor);
+                NativeQuickItemChecks.Until(() => { Call(host, "PumpChat"); return !(bool)Get(View(), "IsRunning"); });
+                var pending = (IReadOnlyList<LlmHistoryEntry>)Get(View(), "Entries");
+                operation = pending.Single(entry => entry.Kind == "action" && entry.Text.Contains("结果未确认")).Id.ToString("N");
+                Require(receipt?.IsError == true && receipt.Output.Contains(operation) && replies == 3,
+                    "the originally accepted phone reports unconfirmed with its actual operation identity");
+                return new[] { before, request, after };
             }
             finally { body.inventory[slot] = originalItem; }
         }
 
         private static void VerifyShellphoneResponse(object host, object actor, Player[] primaryPlayers, Player body, Player human,
-            Player serverBody, TcpClient actorPeer, TcpClient humanPeer, TcpClient humanClient, byte[] request)
+            Player serverBody, TcpClient actorPeer, TcpClient humanPeer, TcpClient humanClient, byte[][] request)
         {
             int slot = body.whoAmI;
             var serverPlayers = Main.player;
@@ -316,7 +395,7 @@ namespace NativeWorldTextProbe
                     { client.TileSections[x, y] = true; client.TileSectionsCheckTime[x, y] = Main.GameUpdateCount; }
             }
             serverBody.position = before;
-            Apply(request, slot);
+            foreach (byte[] frame in request) Apply(frame, slot);
             var destination = serverBody.position;
             Require(destination != before && serverBody.unacknowledgedTeleports == 1,
                 "actual server executes 73 on the socket owner and starts its original teleport acknowledgment");

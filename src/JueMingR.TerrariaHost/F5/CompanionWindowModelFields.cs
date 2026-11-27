@@ -6,7 +6,6 @@ using JueMingR.Platform.Llm;
 using JueMingR.TerrariaHost.Input;
 using Microsoft.Xna.Framework;
 using Terraria;
-using TextElements = JueMingR.Features.Text.TextElements;
 
 namespace JueMingR.TerrariaHost.F5
 {
@@ -20,6 +19,14 @@ namespace JueMingR.TerrariaHost.F5
             var rect = new F5Rect(modelX, modelY, modelWidth, modelRow - 4);
             if (ModelVisible(rect)) Text(title, rect, .75f);
             modelY += modelRow;
+        }
+
+        private void ModelDisclosure(string key, string title, bool expanded, Action toggle)
+        {
+            string label = (expanded ? "▾  " : "›  ") + title;
+            var rect = new F5Rect(modelX, modelY, ConfigurationWidth(label), modelRow);
+            if (ModelVisible(rect)) Button("model-" + key, label, rect, () => RunModelAction(toggle)).TextOnly = true;
+            modelY += modelRow + 3;
         }
 
         private void ModelParagraph(string value)
@@ -42,14 +49,18 @@ namespace JueMingR.TerrariaHost.F5
 
         private void ModelButtonRow(params (string Key, string Label, Action Run, bool Enabled)[] options)
         {
-            float buttonWidth = (modelWidth - 6 * (options.Length - 1)) / options.Length;
+            ModelActions(options, modelScrollView);
+        }
+
+        private void ModelActions((string Key, string Label, Action Run, bool Enabled)[] options, F5Rect clip, bool alignLastRight = false)
+        {
+            var commands = new (string, string, Action, bool)[options.Length];
             for (int i = 0; i < options.Length; i++)
             {
                 var option = options[i];
-                var rect = new F5Rect(modelX + i * (buttonWidth + 6), modelY, buttonWidth, modelRow);
-                if (ModelVisible(rect)) Button("model-" + option.Key, option.Label, rect, () => RunModelAction(option.Run), option.Enabled);
+                commands[i] = ("model-" + option.Key, option.Label, () => RunModelAction(option.Run), option.Enabled);
             }
-            modelY += modelRow + 5;
+            modelY = BuildAiActions(modelX, modelY, modelWidth, clip, commands, alignLastRight) + 3;
         }
 
         private void ModelRowAction(string key, string text, float x, float y, float width, Action run, bool enabled)
@@ -60,10 +71,13 @@ namespace JueMingR.TerrariaHost.F5
 
         private void ModelChoice(string id, string value, Action run, bool selectedValue)
         {
-            var rect = new F5Rect(modelX, modelY, modelWidth, modelRow);
+            float width = Math.Min(modelWidth, Math.Max(160, ConfigurationWidth(value)));
+            var rect = new F5Rect(modelX, modelY, width, modelRow);
             if (ModelVisible(rect))
             {
-                var c = Button("model-" + id, FitModelText(value, modelWidth - 20), rect, () => RunModelAction(run), modelWrite == null, selectedValue);
+                var c = Button("model-" + id, "", rect, () => RunModelAction(run), modelWrite == null, selectedValue);
+                c.Element = null;
+                Text(value, new F5Rect(rect.X + 8, rect.Y, rect.Width - 16, rect.Height), .7f);
                 c.Hint = value;
             }
             modelY += modelRow + 4;
@@ -74,35 +88,46 @@ namespace JueMingR.TerrariaHost.F5
             var rect = new F5Rect(modelX, modelY, modelWidth, modelRow);
             if (ModelVisible(rect))
             {
-                float left = Math.Min(138, modelWidth * .36f);
-                Text(label, new F5Rect(modelX, modelY, left, modelRow), .65f);
-                var c = Button("model-" + id, FitModelText(value, modelWidth - left - 20), new F5Rect(modelX + left, modelY, modelWidth - left, modelRow),
-                    () => RunModelAction(run), enabled && modelWrite == null);
+                float left = ModelLabelWidth;
+                Text(label, new F5Rect(modelX, modelY, left, modelRow), .7f);
+                F5Rect field = new F5Rect(modelX + left, modelY, Math.Min(330, modelWidth - left), modelRow);
+                var c = Button("model-" + id, "", field, () => RunModelAction(run), enabled && modelWrite == null);
+                c.Element = null;
+                modelFields.Add(new ModelFieldView { Id = id, Rect = field, Value = value });
                 c.Hint = value;
             }
             modelY += modelRow + 4;
         }
 
-        private string FitModelText(string value, float width)
+        private float ModelLabelWidth => Math.Min(146, modelWidth * .35f);
+
+        private void ModelDropdownField(string id, string label, string value, ModelPicker picker, bool hasChoices = true)
         {
-            value = value ?? "选择";
-            if (MeasureOutlined(value, .7f).Width <= width) return value;
-            var boundaries = TextElements.Boundaries(value);
-            int low = 0, high = boundaries.Length - 1;
-            while (low < high)
+            if (!hasChoices)
             {
-                int mid = (low + high + 1) / 2;
-                if (MeasureOutlined(value.Substring(0, boundaries[mid]) + "…", .7f).Width <= width) low = mid;
-                else high = mid - 1;
+                var rect = new F5Rect(modelX, modelY, modelWidth, modelRow - 4);
+                if (ModelVisible(rect))
+                {
+                    Text(label, new F5Rect(modelX, modelY, ModelLabelWidth, rect.Height), .7f);
+                    Text(value, new F5Rect(modelX + ModelLabelWidth + 7, modelY, modelWidth - ModelLabelWidth - 7, rect.Height), .7f);
+                }
+                modelY += modelRow;
+                return;
             }
-            return value.Substring(0, boundaries[low]) + "…";
+            int count = controls.Count;
+            ModelChoose(id, label, value, () => OpenModelDropdown(id, picker));
+            if (controls.Count != count)
+            {
+                controls[count].ModelSelector = true;
+                modelFields[modelFields.Count - 1].Dropdown = true;
+            }
         }
 
         private void RunModelAction(Action run)
         {
             if (!BlurAiInput()) return;
             try { run(); }
-            catch (LlmException error) { ModelMessage(error.Message); }
+            catch (LlmException error) { ModelFailure("操作未完成", error.Message); }
         }
 
         private void ModelField(string id, string label, string value, Action<string> setter, int maximum,
@@ -117,8 +142,8 @@ namespace JueMingR.TerrariaHost.F5
             var rect = new F5Rect(modelX, modelY, modelWidth, modelRow);
             if (ModelVisible(rect))
             {
-                float left = Math.Min(138, modelWidth * .36f);
-                Text(label, new F5Rect(modelX, modelY, left - 4, modelRow), .65f);
+                float left = ModelLabelWidth;
+                Text(label, new F5Rect(modelX, modelY, left - 4, modelRow), .7f);
                 var fieldView = new ModelFieldView { Id = id, Value = display, Rect = new F5Rect(modelX + left, modelY, modelWidth - left - trailing, modelRow), Secret = secret };
                 var c = Button("model-field-" + id, "", fieldView.Rect, () =>
                 {
@@ -135,7 +160,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             string oldScope = modelDraft.CredentialScope();
             try { write(value); }
-            catch (LlmException error) { ModelMessage(error.Message); return false; }
+            catch (LlmException error) { ModelFailure("字段尚未保存", error.Message); return false; }
             if (invalidatesProbe) ModelDraftChanged(oldScope, id == "api-key" || id == "proxy-secret" || id == "extra-secret-headers");
             else contentInvalidated = true;
             return true;
@@ -165,8 +190,9 @@ namespace JueMingR.TerrariaHost.F5
         {
             bool hasSecret = !String.IsNullOrEmpty(value) || value == null && modelDraft.HasStoredKey;
             float y = modelY;
-            AddModelField(id, label, status, value, setter, maximum, true, true, compact && hasSecret ? 124 : 0);
             string revealLabel = modelRevealedId == id ? "隐藏" : "显示";
+            float revealWidth = ConfigurationWidth(revealLabel), clearWidth = ConfigurationWidth("清除");
+            AddModelField(id, label, status, value, setter, maximum, true, true, compact && hasSecret ? revealWidth + clearWidth + 12 : 0);
             void Reveal()
             {
                 if (modelRevealedId == id) HideModelSecrets();
@@ -191,8 +217,8 @@ namespace JueMingR.TerrariaHost.F5
                 if (hasSecret)
                 {
                     float right = modelX + modelWidth;
-                    ModelRowAction(id + "-reveal", revealLabel, right - 118, y, 56, Reveal, modelWrite == null);
-                    ModelRowAction(id + "-clear", "清除", right - 56, y, 56, Clear, modelWrite == null);
+                    ModelRowAction(id + "-reveal", revealLabel, right - clearWidth - revealWidth - 6, y, revealWidth, Reveal, modelWrite == null);
+                    ModelRowAction(id + "-clear", "清除", right - clearWidth, y, clearWidth, Clear, modelWrite == null);
                 }
             }
             else ModelButtonRow((id + "-reveal", revealLabel + label, Reveal, modelWrite == null),
@@ -274,7 +300,11 @@ namespace JueMingR.TerrariaHost.F5
                 foreach (var fieldView in modelFields) DrawModelField(fieldView);
                 foreach (var item in modelRevealLabels) renderer.Label(item, Color.Gold);
             });
-            renderer.Pass(matrix, panel, () => ScrollIndicator(modelScrollView, modelOffset, modelMaximum));
+            renderer.Pass(matrix, panel, () =>
+            {
+                ScrollIndicator(modelScrollView, modelOffset, modelMaximum);
+                if (modelFooterView.Width > 0) renderer.Divider(new F5Rect(modelFooterView.X + 5, modelFooterView.Y, modelFooterView.Width - 10, 1));
+            });
         }
 
         private void DrawModelField(ModelFieldView fieldView)
@@ -292,7 +322,10 @@ namespace JueMingR.TerrariaHost.F5
                     new F5Rect(rect.X + 7, rect.Bottom - 15, rect.Width - 14, 15), Color.Gold, .56f);
             }
             else
-                renderer.Text(fieldView.Value, new F5Rect(rect.X + 7, rect.Y, rect.Width - 14, rect.Height), Color.White, .65f);
+            {
+                renderer.Text(fieldView.Value, new F5Rect(rect.X + 7, rect.Y, rect.Width - (fieldView.Dropdown ? 34 : 14), rect.Height), Color.White, .7f);
+                if (fieldView.Dropdown) renderer.Text("▾", new F5Rect(rect.Right - 23, rect.Y, 20, rect.Height), Color.LightSteelBlue, .7f);
+            }
         }
 
         private static F5Element ModelEditElement(string text, F5Size size, float row) => new F5Element(F5ElementKind.Text,

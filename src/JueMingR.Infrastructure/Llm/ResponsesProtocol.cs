@@ -36,8 +36,11 @@ namespace JueMingR.Infrastructure.Llm
             SetOptions(body, settings, "max_output_tokens", null);
             if (!string.IsNullOrWhiteSpace(settings.Reasoning)) body["reasoning"] = Obj("effort", settings.Reasoning);
             if (request.Tools.Count != 0)
+            {
                 body["tools"] = request.Tools.Select(tool => Obj("type", "function", "name", tool.Name,
                     "description", tool.Description, "parameters", Schema(tool), "strict", false)).ToArray();
+                if (request.TextOnly && connection.Endpoint.IdnHost == "api.openai.com") body["tool_choice"] = "none";
+            }
             return body;
         }
 

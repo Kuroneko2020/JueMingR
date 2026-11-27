@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using JueMingR.Features.Notes;
 using JueMingR.Features.Text;
 using JueMingR.TerrariaHost.Input;
@@ -13,6 +15,24 @@ namespace JueMingR.TerrariaHost.F5
     {
         private const int ChatPage = 2, ModelPage = 3;
         private readonly CompanionAiInput aiInput;
+        private readonly List<F5Element> aiActionLayout = new List<F5Element>();
+
+        private float BuildAiActions(float x, float y, float width, F5Rect clip,
+            (string Key, string Label, Action Run, bool Enabled)[] actions, bool alignLastRight = false)
+        {
+            aiActionLayout.Clear();
+            var layout = new F5RowLayout(aiActionLayout, measure);
+            layout.Buttons(ref y, x, width, actions.Select(item => item.Label).ToArray());
+            for (int i = 0; i < actions.Length; i++)
+            {
+                var action = actions[i];
+                F5Rect rect = aiActionLayout[i].Rect;
+                if (alignLastRight && i == actions.Length - 1) rect = rect.Offset(x + width - rect.Right, 0);
+                if (rect.Y >= clip.Y && rect.Bottom <= clip.Bottom)
+                    Button(action.Key, action.Label, rect, action.Run, action.Enabled);
+            }
+            return y;
+        }
 
         private void DrawPageButtons(float row)
         {
@@ -34,6 +54,7 @@ namespace JueMingR.TerrariaHost.F5
             if (page == ChatPage) { RetireChatInput(); chatConfirmation = 0; }
             if (page == ModelPage)
             {
+                CloseModelDropdown();
                 if (!BlurAiInput()) aiInput.End(true);
                 CancelModelRequest();
                 HideModelSecrets();
@@ -76,6 +97,7 @@ namespace JueMingR.TerrariaHost.F5
             else
             {
                 modelScrollView = modelScrollView.Offset(x, y);
+                modelFooterView = modelFooterView.Offset(x, y);
                 foreach (var fieldView in modelFields) fieldView.Rect = fieldView.Rect.Offset(x, y);
                 for (int i = 0; i < modelRevealLabels.Count; i++) modelRevealLabels[i] = Move(modelRevealLabels[i], x, y);
             }
@@ -86,7 +108,9 @@ namespace JueMingR.TerrariaHost.F5
             if (page == ChatPage && chatHistoryView.Contains(point.X, point.Y))
             {
                 chatOffset = Math.Max(0, Math.Min(chatMaximum, chatOffset - Math.Sign(wheel) * 48));
-                followChat = chatOffset >= chatMaximum;
+                bool atLatest = chatOffset >= chatMaximum;
+                if (followChat != atLatest) Invalidate();
+                followChat = atLatest;
             }
             else if (page == ModelPage && modelScrollView.Contains(point.X, point.Y))
             {
@@ -98,7 +122,7 @@ namespace JueMingR.TerrariaHost.F5
         private void PrepareAiInput()
         {
             if (page == ChatPage) PrepareChatPresentation();
-            else PrepareModelInput();
+            else { PrepareModelInput(); PrepareModelDropdown(); }
         }
 
         private void DrawAiPage()
