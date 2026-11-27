@@ -106,11 +106,11 @@ namespace JueMingR.TerrariaHost.Input
                 previousComposition = composing;
                 // Raw shortcuts earlier in the next Update consume this cached state.
                 // Never restore consumed keys after Update and replay them there.
-                Main.keyState = default(KeyboardState); keyboardTail = sample.GetPressedKeys().Length != 0;
+                Main.keyState = default(KeyboardState); keyboardTail = HostKeyboardActions.HasHeldOperationKey(sample);
             }
             else if (keyboardTail && !OtherTextOwner)
             {
-                keyboardTail = sample.GetPressedKeys().Length != 0;
+                keyboardTail = HostKeyboardActions.HasHeldOperationKey(sample);
                 Main.keyState = default(KeyboardState);
             }
             previous = sample;

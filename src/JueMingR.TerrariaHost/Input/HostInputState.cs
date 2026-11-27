@@ -328,8 +328,17 @@ namespace JueMingR.TerrariaHost.Input
         internal void AfterKeyboardRefresh()
         {
             finalized = mapped;
+            // Freeze before any consumer clears vanilla input. Keep the raw
+            // sample for text/IME and give hotkeys only native operation keys.
             KeyboardSample = Main.keyState;
-            for (int key = 0; key < 256; key++) physical[key] = KeyboardSample.IsKeyDown((Keys)key);
+            bool heldOperationKey = false;
+            for (int code = 0; code < 256; code++)
+            {
+                var key = (Keys)code;
+                bool held = HostKeyboardActions.IsOperationKey(key) && KeyboardSample.IsKeyDown(key);
+                physical[code] = held;
+                heldOperationKey |= held;
+            }
             MouseState physicalMouse = PlayerInput.MouseInfo;
             physical[256] = physicalMouse.LeftButton == ButtonState.Pressed; physical[257] = physicalMouse.RightButton == ButtonState.Pressed;
             physical[258] = physicalMouse.MiddleButton == ButtonState.Pressed; physical[259] = physicalMouse.XButton1 == ButtonState.Pressed; physical[260] = physicalMouse.XButton2 == ButtonState.Pressed;
@@ -347,14 +356,13 @@ namespace JueMingR.TerrariaHost.Input
 #endif
                 return;
             }
-            KeyboardState sample = KeyboardSample;
             Main.keyState = default(KeyboardState);
             // A native synthesized release is never neutral proof. The complete
             // activating chord must genuinely end; this is not a timed cooldown.
             MouseState mouse = PlayerInput.MouseInfo;
             if (SampleFocused && mouse.LeftButton == ButtonState.Released && mouse.RightButton == ButtonState.Released &&
                 mouse.MiddleButton == ButtonState.Released && mouse.XButton1 == ButtonState.Released && mouse.XButton2 == ButtonState.Released &&
-                sample.GetPressedKeys().Length == 0 && ExternalModalState != ExternalModalPhase.ModalOwned)
+                !heldOperationKey && ExternalModalState != ExternalModalPhase.ModalOwned)
             {
                 rearming = false;
                 if (ExternalModalState == ExternalModalPhase.AwaitFocusedNeutral)

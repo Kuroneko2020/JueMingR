@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using JueMingR.Features.Blueprint;
+using JueMingR.TerrariaHost.Input;
 
 namespace JueMingR.TerrariaHost.Blueprint
 {
@@ -339,7 +340,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             { candidateProjection.OriginX = projectionBaseX + x - projectionMouseX; candidateProjection.OriginY = projectionBaseY + y - projectionMouseY; }
             if (projectionNeedsNeutral)
             {
-                if (!left && !right && Input.KeyboardSample.GetPressedKeys().Length == 0) { projectionNeedsNeutral = false; projectionLeft = projectionRight = false; if (ProjectionMode == BlueprintProjectionMode.Moving && !projectionBaseline) SetProjectionBaseline(x, y); }
+                if (!left && !right && !HostKeyboardActions.HasHeldOperationKey(Input.KeyboardSample))
+                { projectionNeedsNeutral = false; projectionLeft = projectionRight = false; if (ProjectionMode == BlueprintProjectionMode.Moving && !projectionBaseline) SetProjectionBaseline(x, y); }
                 return;
             }
             bool confirm = left && !projectionLeft, cancel = right && !projectionRight, released = !left && projectionLeft; projectionLeft = left; projectionRight = right;

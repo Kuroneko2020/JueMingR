@@ -98,7 +98,7 @@ namespace Terraria
                 Check(workspace.Editor.Text.StartsWith("A", StringComparison.Ordinal), "old half pair cannot poison another draft");
                 input.Release(true); workspace.CancelEdit();
                 workspace.Request(new NotesAction(NotesActionKind.BeginEdit, id, false, 0)); input.PrepareEditor();
-                input.BeforeSample(true); Main.keyState = new KeyboardState(Keys.End); Main.NotesText(""); input.AfterSample(true, null);
+                input.BeforeSample(true); Main.keyState = new KeyboardState(Keys.End); Main.NotesText(""); input.AfterSample(true, null, Main.keyState, true);
                 workspace.Request(new NotesAction(NotesActionKind.BeginEdit, workspace.Feature.Saved.Notes[1].Id, false, 0)); input.PrepareEditor();
                 Frame(input, workspace, ""); Check(workspace.Editor.Caret == 0, "deferred navigation never transfers to same-numbered revision in another draft");
                 input.Release(true); workspace.CancelEdit();
@@ -297,7 +297,7 @@ namespace Terraria
         {
             input.BeforeSample(true); GameInput.PlayerInput.WritingText = false; Main.keyState = new KeyboardState(keys); Main.NotesText(text);
             var editor = workspace.Editor;
-            input.AfterSample(true, editor == null ? null : new NotesTextLayout(editor.Text, 10, s => 1));
+            input.AfterSample(true, editor == null ? null : new NotesTextLayout(editor.Text, 10, s => 1), Main.keyState, true);
             if (input.Owned) Check(Main.keyState.GetPressedKeys().Length == 0 && GameInput.PlayerInput.WritingText, "consumed raw keys not replayed");
         }
         private static void CheckCardsAndPins(NotesWorkspace workspace, NotesRenderer renderer, F5FixtureGraphics graphics)

@@ -77,18 +77,17 @@ namespace JueMingR.TerrariaHost.Notes
         { input.BeforeSample(ready && active && shell.Visible && shell.Page == 4); }
         internal bool Wheel(float x, float y, int wheel)
         { return ready && cards.Wheel(shell, x, y, wheel); }
-        internal void ProcessInput(bool active, Matrix transform, Vector2 dimensions, Vector2 raw, bool focused = true, bool blockButtons = false, KeyboardState? physicalSample = null)
+        internal void ProcessInput(bool active, Matrix transform, Vector2 dimensions, Vector2 raw, bool focused, bool blockButtons, KeyboardState physicalSample)
         {
             matrix = transform; screen = dimensions;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
-            // NotesInput consumes the sampled keyboard. Freeze modifiers first,
-            // then honor the editor/F5 capture before considering any screen pin.
-            KeyboardState modifiers = physicalSample ?? Main.keyState;
-            bool shift = modifiers.IsKeyDown(Keys.LeftShift) || modifiers.IsKeyDown(Keys.RightShift);
-            bool control = modifiers.IsKeyDown(Keys.LeftControl) || modifiers.IsKeyDown(Keys.RightControl);
+            // The shell may already have consumed Main.keyState. The editor's
+            // release proof and pointer modifiers share the frozen host sample.
+            bool shift = physicalSample.IsKeyDown(Keys.LeftShift) || physicalSample.IsKeyDown(Keys.RightShift);
+            bool control = physicalSample.IsKeyDown(Keys.LeftControl) || physicalSample.IsKeyDown(Keys.RightControl);
             bool enabled = ready && active && !input.OtherTextOwner;
             if (input.Owned) { textLeftTail |= left; textRightTail |= right; }
-            input.AfterSample(enabled && shell.Visible && shell.Page == 4, cards.EditingLayout);
+            input.AfterSample(enabled && shell.Visible && shell.Page == 4, cards.EditingLayout, physicalSample, focused);
             if (enabled && focused && !blockButtons && shell.Visible && shell.Page == 4)
                 cards.Pointer(shell, left && !previousLeft, !left && previousLeft, left, shift);
             if (input.Owned || cards.Selecting) { textLeftTail |= left; textRightTail |= right; }

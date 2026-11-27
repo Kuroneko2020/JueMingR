@@ -99,7 +99,7 @@ namespace NativeWorldTextProbe
                         NativeBlueprintLibraryVisualChecks.DrawInput(ui, graphics);
                         Require(Anchor(ui) != null, "sampled real Draw initially submits anchor");
                         int on = enabled, off = disabled, queueClears = clears; long command = library.AcceptedCommandId, builds = (long)Get(ui, "LayoutBuilds"), uploads = (long)Get(Get(ui, "previews"), "Uploads");
-                        int diskReads = reads; int queued = Main.keyCount; Main.keyInt[queued] = 90; Main.keyString[queued] = "Z"; Main.keyCount = queued + 1;
+                        int diskReads = reads; int queued = Main.keyCount; Main.keyInt[queued] = '中'; Main.keyString[queued] = "中"; Main.keyCount = queued + 1;
                         for (int i = 0; i < 3; i++)
                         {
                             // .8 DoUpdate clears this field before FrameSkip.Off
@@ -113,8 +113,8 @@ namespace NativeWorldTextProbe
                         Require(enabled == on && disabled == off && clears == queueClears && reads == diskReads && library.AcceptedCommandId == command && (long)Get(ui, "LayoutBuilds") == builds && (long)Get(Get(ui, "previews"), "Uploads") == uploads,
                             "stable actual Draw does not toggle/finish/clear/read/build/upload/submit");
                         Console.WriteLine("BlueprintInput page=" + (capture ? "Capture" : "Library") + " empty-draws=3 anchors=3 token=null composition=pinyin delta-toggle/clear/read/command/build/upload=0");
-                        Frame(input, ui, state, Array.Empty<Keys>()); prepare();
-                        Require(editor.Text == "名字Z" && ReferenceEquals(editor, Get(ui, "Editor")), "next trusted sample consumes queued character once into same editor");
+                        Frame(input, ui, state, new[] { Keys.Kanji, Keys.Enter }); prepare();
+                        Require(editor.Text == "名字中" && ReferenceEquals(editor, Get(ui, "Editor")), "trusted IME confirmation commits the queued Chinese character to the same editor");
                         ScrollAndProjection(input, ui, state, prepare, graphics, library, editor);
                         ExitGates(input, ui, state, prepare, graphics);
                         Call(shell, "CloseAndSubmitPosition");
@@ -215,12 +215,12 @@ namespace NativeWorldTextProbe
                 Call(ui, "BeginEdit", capture ? Guid.Empty : library.Snapshot.Page.Entries[0].AssetId, "编辑优先"); prepare();
                 composition = "pin"; Frame(input, ui, state, Array.Empty<Keys>()); prepare();
                 Main.keyInt[0] = 27; Main.keyString[0] = "\u001b"; Main.keyCount = 1;
-                Frame(input, ui, state, new[] { Keys.Escape }); Require(GetOptional(ui, "Editor") != null && (bool)Get(ui, "Visible"), "first composing Escape stays in actual editor");
-                composition = ""; Frame(input, ui, state, Array.Empty<Keys>()); Frame(input, ui, state, Array.Empty<Keys>());
+                Frame(input, ui, state, new[] { Keys.Kanji, Keys.Escape }); Require(GetOptional(ui, "Editor") != null && (bool)Get(ui, "Visible"), "first composing Escape stays in actual editor");
+                composition = ""; Frame(input, ui, state, new[] { Keys.Kanji }); Frame(input, ui, state, new[] { Keys.Kanji });
                 Main.keyInt[0] = 27; Main.keyString[0] = "\u001b"; Main.keyCount = 1;
-                Frame(input, ui, state, new[] { Keys.Escape }); Require(GetOptional(ui, "Editor") == null && (bool)Get(ui, "Visible"), "independent noncomposition Escape cancels edit only");
-                prepare(); Frame(input, ui, state, new[] { Keys.Escape }); Require((bool)Get(ui, "Visible"), "held edit Escape cannot navigate");
-                Frame(input, ui, state, Array.Empty<Keys>()); Frame(input, ui, state, new[] { Keys.Escape });
+                Frame(input, ui, state, new[] { Keys.Kanji, Keys.Escape }); Require(GetOptional(ui, "Editor") == null && (bool)Get(ui, "Visible"), "independent noncomposition Escape cancels edit only");
+                prepare(); Frame(input, ui, state, new[] { Keys.Kanji, Keys.Escape }); Require((bool)Get(ui, "Visible"), "held edit Escape cannot navigate");
+                Frame(input, ui, state, new[] { Keys.Kanji }); Frame(input, ui, state, new[] { Keys.Kanji, Keys.Escape });
                 Require(!(bool)Get(ui, "Submenu") && (bool)Get(state, "Visible") == !capture, "later independent Escape agrees with Capture/Library Back");
                 NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy && !(bool)Get(host, "discardPending"); });
                 // A fresh pointer sequence goes through the actual consumer.
