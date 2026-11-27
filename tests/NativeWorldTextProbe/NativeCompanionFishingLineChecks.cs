@@ -481,6 +481,31 @@ namespace NativeWorldTextProbe
                 for (int i = 0; i < 70; i++) Step(context, input, first, second);
                 Require(first.inventory.Count(x => x.type == type) == 1 && Stored() == 2,
                     "the periodic quest scan respects the actual manual handoff while unchanged ordinary actor stock was storable");
+                int bankX = (int)(first.Center.X / 16) - 4, bankY = (int)(first.Center.Y / 16);
+                var previous = new[] { Main.tile[bankX, bankY], Main.tile[bankX+1, bankY] };
+                try
+                {
+                    for (int dx = 0; dx < 2; dx++)
+                    {
+                        Main.tile[bankX+dx, bankY] = new Tile { type = TileID.PiggyBank, frameX = (short)(dx*18) };
+                        Main.tile[bankX+dx, bankY].active(true);
+                    }
+                    first.bank.item[0].SetDefaults(type);
+                    human.bank.item[0].SetDefaults(type);
+                    second.bank.item[0].SetDefaults(type);
+                    first.inventory[26].SetDefaults(type);first.inventory[26].stack=3;
+                    for (int i = 0; i < 165 && !first.inventory[26].IsAir; i++) Step(context, input, first, second);
+                    int BankFish(Player player) => player.bank.item.Where(item=>item.type==type).Sum(item=>item.stack);
+                    Require(first.inventory[26].IsAir && BankFish(first)==4 && BankFish(human)==1 && BankFish(second)==1 &&
+                        first.inventory.Count(item=>item.type==type)==1 && Stored()==2,
+                        "nearby Piggy Bank stores the actor's eligible rest in its own account and leaves the owner's, the other actor's and manual fish intact");
+                }
+                finally
+                {
+                    for (int dx = 0; dx < 2; dx++) Main.tile[bankX+dx, bankY] = previous[dx];
+                    foreach (var player in new[]{first, human,second})
+                        foreach (var item in player.bank.item.Where(item=>item.type==type)) item.TurnToAir();
+                }
             }
             finally
             {

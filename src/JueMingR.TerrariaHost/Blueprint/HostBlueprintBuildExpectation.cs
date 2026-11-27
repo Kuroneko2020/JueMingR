@@ -280,6 +280,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             {fact.ObservedNativeRetry=retry.EligibilityRetryAt;BuildEligibilityRetryWakes++;}
 #endif
             BlueprintBuildTarget target;BuildOperationPlan plan;bool pending;
+            if(OrnamentOperation(fact.Operation) || OrnamentOperation(fact.CapabilityOperation))
+            {
+                fact.Operation=null;fact.Type=fact.Supply=0;fact.Consumer=default;
+            }
             ReleaseNearCapabilityDependency(fact.Capability);fact.Capability=null;fact.CapabilitySerial=-1;
             fact.Wait=BlueprintBuildWait.None;fact.Dependencies=0;fact.ContinuationType=0;fact.CapabilityOperation=null;nearWaitingFact=fact;
             fact.RestoreTilePaint=fact.RestoreWallPaint=fact.RestoreFullbright=fact.RestoreInvisible=0;
@@ -511,7 +515,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(HoikOperation(group.Operation))return lane==(int)BlueprintBuildLane.TileBody || lane==(int)BlueprintBuildLane.Shape;
             if(kind==null || kind==BlueprintBuildOperationKind.PlaceBase || kind==BlueprintBuildOperationKind.ConvertSubstrate)
                 return lane==(int)(group.Consumer==Tools.ToolBuildConsumer.Walls?BlueprintBuildLane.WallBody:BlueprintBuildLane.TileBody);
-            if(kind==BlueprintBuildOperationKind.Hammer)return lane==(int)BlueprintBuildLane.Shape;
+            if(kind==BlueprintBuildOperationKind.Hammer || OrnamentOperation(group.Operation))return lane==(int)BlueprintBuildLane.Shape;
             if(kind==BlueprintBuildOperationKind.Scrape || kind==BlueprintBuildOperationKind.PaintTile || kind==BlueprintBuildOperationKind.PaintWall)return lane==(int)BlueprintBuildLane.Appearance;
             if(kind==BlueprintBuildOperationKind.AddWire)return lane==(int)BlueprintBuildLane.Wire;
             return lane==(int)BlueprintBuildLane.Actuation || lane==(int)BlueprintBuildLane.TileBody;
@@ -579,7 +583,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             nearVisitDependencies|=fact.Dependencies;
             if(fact.Capability!=null)
             {
-                nearVisitCapabilities[fact.Capability]=fact.CapabilitySerial;
+                long old;nearVisitCapabilities[fact.Capability]=nearVisitCapabilities.TryGetValue(fact.Capability,out old)?Math.Min(old,fact.CapabilitySerial):fact.CapabilitySerial;
 #if DEBUG
                 nearVisitCapabilityHighWater=Math.Max(nearVisitCapabilityHighWater,nearVisitCapabilities.Count);
 #endif
@@ -805,6 +809,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 switch(group.Operation.Kind)
                 {
                     case BlueprintBuildOperationKind.Hammer:return lane==BlueprintBuildLane.Shape;
+                    case BlueprintBuildOperationKind.ChristmasTreeOrnament:return lane==BlueprintBuildLane.Shape && BlueprintChristmasTreeMembers.IsAnchor(seed.Cell) &&
+                        BlueprintChristmasTreeMembers.OrnamentItem(seed.Cell.FrameY,group.Operation.Cycle)==group.Operation.Mode;
                     case BlueprintBuildOperationKind.Scrape:case BlueprintBuildOperationKind.PaintTile:case BlueprintBuildOperationKind.PaintWall:return lane==BlueprintBuildLane.Appearance;
                     case BlueprintBuildOperationKind.AddWire:return lane==BlueprintBuildLane.Wire && (seed.Cell.Wires&group.Operation.Mode)!=0;
                     case BlueprintBuildOperationKind.AddActuator:case BlueprintBuildOperationKind.SetInactive:case BlueprintBuildOperationKind.RemoveOwnedActuator:return lane==BlueprintBuildLane.Actuation;

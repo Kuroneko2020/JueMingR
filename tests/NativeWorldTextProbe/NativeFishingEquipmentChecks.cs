@@ -22,7 +22,7 @@ namespace NativeWorldTextProbe
         {
             context=value;host=Get(value,"Fishing");owner=Get(host,"Equipment");tools=Get(value,"Tools");input=Get(value,"Input");
             bool hint=Player.Settings.ShowLoadoutShareHint;Player.Settings.ShowLoadoutShareHint=false;
-            try{NoBorrowNotice();ReturnOnlyObservation();F5Equipment();PendingLoadoutTakeover();Clothing();Social();Loadout();Void();ManualGroup();Favorites();MovedOriginal();LaterIntent();StackSource();WaterHook();UpgradeChain();Lifecycle();NativeFishingNetworkChecks.Equipment(context,Reset,Cast,Stop);}
+            try{NoBorrowNotice();ReturnOnlyObservation();F5Equipment();PendingLoadoutTakeover();Clothing();Social();Loadout();Void();VoidReturnCell();ManualGroup();Favorites();MovedOriginal();LaterIntent();StackSource();WaterHook();UpgradeChain();Lifecycle();NativeFishingNetworkChecks.Equipment(context,Reset,Cast,Stop);}
             finally{Player.Settings.ShowLoadoutShareHint=hint;}
             NativeFishingChecks.Save(host,new FishingOptions());Frames(25);
             Console.WriteLine("PASS G10 real wet-bobber equipment admission, strict clothing upgrade, exact-reference return, social sources, shared loadout projection, usable void and manual group handoff.");
@@ -166,6 +166,40 @@ namespace NativeWorldTextProbe
             Require(p.CurrentLoadoutIndex==1 && ReferenceEquals(p.armor[0],other) && ReferenceEquals(p.Loadouts[0].Armor[0],hat) && ReferenceEquals(p.inventory[12],old) && (int)Get(owner,"Count")>0,"per-item journal waits for its inactive logical group and never writes the player's new group");
             p.TrySwitchingLoadout(0);Frames(25);
             Require(ReferenceEquals(p.armor[0],old) && ReferenceEquals(p.inventory[12],hat) && (int)Get(owner,"Count")==0,"voluntary return to the recorded group completes its exact inverse");
+        }
+        private static void VoidReturnCell()
+        {
+            var p=Reset();
+            int questBefore=Main.anglerQuest;bool finishedBefore=Main.anglerQuestFinished;
+            var original=p.armor[0];var hat=Put(p.bank4.item,2,5591);
+            Put(p.inventory,13,ItemID.VoidLens);
+            Main.anglerQuest=0;Main.anglerQuestFinished=false;
+            int quest=Main.anglerQuestItemNetIDs[0];
+            try
+            {
+                var target=Put(p.bank4.item,0,quest);target.stack=target.maxStack;
+                for(int slot=1;slot<p.bank4.item.Length;slot++)if(slot!=2)Put(p.bank4.item,slot,ItemID.StoneBlock);
+                for(int x=0;x<3;x++)for(int y=0;y<3;y++)
+                {
+                    var tile=Main.tile[36+x,40+y];tile.active(true);tile.type=TileID.VoidVault;
+                    tile.frameX=(short)(x*18);tile.frameY=(short)(y*18);
+                }
+                Cast(new FishingOptions(equipment:true,storeMode:2));
+                Require(ReferenceEquals(p.armor[0],hat) && ReferenceEquals(p.bank4.item[2],original) && original.IsAir,
+                    "native equipment exchange holds this exact empty void return cell");
+                Put(p.inventory,12,quest);Frames(30);
+                Require(p.inventory[12].type==quest && ReferenceEquals(p.bank4.item[2],original),
+                    "fish storage leaves the active void return cell to fishing equipment");
+                NativeFishingChecks.Save(host,new FishingOptions(storeMode:2));Frames(30);
+                Require(ReferenceEquals(p.bank4.item[2],hat) && ReferenceEquals(p.armor[0],original),
+                    "equipment returns to the original cell before retiring its loan");
+                Utils.Swap(ref p.bank4.item[2],ref p.inventory[22]);
+                Call(Get(Get(tools,"Items"),"Storage"),"InvalidateCapacity");Frames(30);
+                Require(ReferenceEquals(p.inventory[22],hat) && p.inventory[12].IsAir && p.bank4.item[2].type==quest,
+                    "an ordinary empty cell in the same void bank becomes available after the loan retires");
+                Console.WriteLine("PASS G10 fish stack honors a real void equipment return cell until the loan completes.");
+            }
+            finally { Main.anglerQuest=questBefore;Main.anglerQuestFinished=finishedBefore; }
         }
         private static Player Reset()
         {

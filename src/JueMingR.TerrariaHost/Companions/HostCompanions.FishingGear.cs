@@ -148,11 +148,17 @@ namespace JueMingR.TerrariaHost.Companions
             return !a.TileReachPending;
         }
 
+        private static bool FishingGearSourceHeld(Actor a, Item[] array, int slot)
+        {
+            foreach (var loan in a.FishingLine.Gear.Loans)
+                if (ReferenceEquals(array, loan.Source) && slot == loan.SourceSlot) return true;
+            return false;
+        }
+
         private bool FishingGearSource(Actor a, Item[] array, int slot)
         {
             var p = a.Body;
-            foreach (var loan in a.FishingLine.Gear.Loans)
-                if (ReferenceEquals(array, loan.Source) && slot == loan.SourceSlot) return false;
+            if (FishingGearSourceHeld(a, array, slot)) return false;
             if (ReferenceEquals(array, p.armor))
                 return slot >= 10 && p.IsItemSlotUnlockedAndUsable(slot) && SupplyAdmitted(a, array, -1, slot);
             if (ReferenceEquals(array, p.inventory)) return slot < 50 && SupplyAdmitted(a, array, 0, slot);

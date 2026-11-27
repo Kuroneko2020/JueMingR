@@ -325,7 +325,7 @@ namespace JueMingR.TerrariaHost.F5
             bool textActive = active && Visible && Editable && !blocked && !secondaryOnly;
             // This continuation owns this edit sample and its actual action.
             // Leaving it returns movement even if a movement key stayed held.
-            if (importNameRequest != Guid.Empty) TextInput.AfterSampleForImportName(textActive, keys, focused);
+            if (importNameRequest != Guid.Empty) TextInput.AfterSampleForImportName(textActive, keys, focused, host.Input);
             else TextInput.AfterSample(textActive, null, keys, focused);
             bool inside = hitClip.Contains(point.X, point.Y);
             OwnsPointer = pointerOn && (inside || leftTail || rightTail);
@@ -362,7 +362,7 @@ namespace JueMingR.TerrariaHost.F5
                     else if (!wasEditing && editor == null)
                     { host.Input.Hotkeys.SuppressKey((int)Keys.Escape); Back(); }
                     else if (importNameRequest != Guid.Empty && !TextInput.Owned && !TextInput.OtherTextOwner)
-                    { host.Input.Hotkeys.SuppressKey((int)Keys.Escape); CancelImportName(); }
+                    { host.Input.ConsumeImportNameKey(Keys.Escape); CancelImportName(); }
                 }
             }
             ConsumeLeft = leftTail; ConsumeRight = rightTail;

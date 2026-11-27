@@ -19,6 +19,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintBuildOperationKind Kind;
         internal ToolBuildConsumer Consumer;
         internal int Mode, SupplyType, Cycle, BucketType;
+        internal int OrnamentSlots; // Live add/replace alternatives for a tree; Mode/Cycle identify the actual selected use.
         internal int SupplyDestination = -1, PrimaryMaximum = 1, HeldMaximum;
         internal bool Structure;
         internal bool Hoik;
@@ -55,7 +56,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private static BlueprintBuildOperation CopyBuildOperation(BlueprintBuildOperation value)
         {
             return value == null ? null : new BlueprintBuildOperation { Kind = value.Kind, Consumer = value.Consumer,
-                Mode = value.Mode, SupplyType = value.SupplyType, Cycle = value.Cycle, BucketType = value.BucketType,
+                Mode = value.Mode, SupplyType = value.SupplyType, Cycle = value.Cycle, BucketType = value.BucketType, OrnamentSlots = value.OrnamentSlots,
                 SupplyDestination = value.SupplyDestination, PrimaryMaximum = value.PrimaryMaximum,
                 HeldMaximum = value.HeldMaximum, NativePlacement = value.NativePlacement, HoikPlatform=value.HoikPlatform, DoorForm = value.DoorForm, DoorProof = value.DoorProof, Structure = value.Structure, Hoik = value.Hoik, HoikWaitTool = value.HoikWaitTool };
         }
@@ -116,11 +117,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             int tool = -1, primary = -1;
             if (OrnamentOperation(operation))
             {
-                tool = ConstructionItemSlot(p, operation.Mode);
-                if (tool < 0) { wait = BlueprintBuildWait.Material; return false; }
-                if (!p.IsInTileInteractionRange(target.WorldX, target.WorldY, TileReachCheckSettings.Simple, p.inventory[tool].tileBoost + p.blockRange))
-                { wait = BlueprintBuildWait.Player; return false; }
-                operation = CopyBuildOperation(operation);
+                tool = PlanChristmasTreeSource(target, p, intent == BuildPlanningIntent.ContinuationProbe ? preferred : null, ref operation, out wait);
+                if (tool < 0) return false;
             }
             else if (AppearanceOperation(operation))
             {
@@ -222,7 +220,17 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (WiringOperation(target.Operation)) return TryPrepareWiringBuild(target, p, out flight, plan);
             if (OrnamentOperation(target.Operation))
             {
-                int slot = plan == null ? ConstructionItemSlot(p, target.Operation.Mode) : PlannedBuildToolSlot(p, plan);
+                flight = null;
+                if (plan == null)
+                {
+                    if (!TryPlanBuild(target, p, null, out plan, out var wait, out ulong slots))
+                    { RegisterPlannedBuildWait(target, wait, slots); return false; }
+                    target.Operation = CopyBuildOperation(plan.Operation);
+                }
+                int slot = PlannedBuildToolSlot(p, plan);
+                // A source lost after classification needs a fresh fact and
+                // freshly signed restock set from the next normal visit.
+                if (slot < 0) return DeferBuildTarget(target);
                 return TryCreateOperationFlight(target, p, slot, -1, 1, 0, out flight);
             }
             return TryPrepareSpecialBuild(target, p, out flight, plan);

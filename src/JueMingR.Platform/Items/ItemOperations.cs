@@ -26,7 +26,10 @@ namespace JueMingR.Platform.Items
         public long Session { get; }
         public ReadOnlyCollection<ItemSlotObservation> Sources { get; }
         public bool RequireStackable {get;}
+        public ulong PersonalBankSlots { get; }
         public StoreItemsRequest(long session, IEnumerable<ItemSlotObservation> sources,bool requireStackable=true)
+            : this(session,sources,requireStackable,0) { }
+        public StoreItemsRequest(long session, IEnumerable<ItemSlotObservation> sources,bool requireStackable,ulong personalBankSlots)
         {
             if (sources == null) throw new ArgumentNullException(nameof(sources));
             var copy = new List<ItemSlotObservation>();
@@ -38,7 +41,10 @@ namespace JueMingR.Platform.Items
                 copy.Add(source);
             }
             if (copy.Count == 0) throw new ArgumentException("empty-store-input");
-            Session = session; Sources = copy.AsReadOnly();RequireStackable=requireStackable;
+            ulong sourceSlots = 0;
+            foreach (ItemSlotObservation source in copy) sourceSlots |= 1UL << source.Slot;
+            if ((personalBankSlots & ~sourceSlots) != 0) throw new ArgumentException("invalid-bank-source");
+            Session = session; Sources = copy.AsReadOnly();RequireStackable=requireStackable;PersonalBankSlots=personalBankSlots;
         }
     }
     public sealed class ItemOperationResult

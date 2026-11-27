@@ -68,15 +68,26 @@ namespace NativeWorldTextProbe
             var ownership=(ItemOperationOwnership)Get(items,"Ownership");var connection=Netplay.Connection;var buffer=NetMessage.buffer[256];var baseline=Main.clientPlayer;var sections=Main.sectionManager;
             try
             {
-                foreach(int scenario in new[]{0,1,2})
+                foreach(int scenario in new[]{0,1,2,3})
                 {
                     Call(state,"Close");Main.netMode=0;Call(context,"UpdateRuntime");var p=reset();
                     Netplay.Connection=new RemoteServer{PendingTermination=true};NetMessage.buffer[256]=new MessageBuffer();Main.clientPlayer=new Player();Main.sectionManager=new WorldSections(1,1);Main.sectionManager.SetAllSectionsLoaded();Main.netMode=1;Call(context,"UpdateRuntime");
                     Main.anglerQuest=0;Main.anglerQuestFinished=false;int type=Main.anglerQuestItemNetIDs[0];
                     p.inventory[12].SetDefaults(type);p.inventory[12].stack=3;p.inventory[14].SetDefaults(type);p.inventory[14].stack=2;p.inventory[13].SetDefaults(type);p.inventory[13].favorited=true;
-                    var target=chest(type);packets.Clear();NativeFishingChecks.Save(host,new FishingOptions(storeMode:2));cast();
+                    var target=chest(type);
+                    if(scenario==3)
+                    {
+                        for(int x=0;x<2;x++)
+                        {
+                            var tile=Main.tile[36+x,40];tile.active(true);tile.type=TileID.PiggyBank;tile.frameX=(short)(x*18);
+                        }
+                        p.bank.item[0].SetDefaults(type);p.bank.item[0].stack=p.bank.item[0].maxStack-4;
+                        for(int i=1;i<p.bank.item.Length;i++)p.bank.item[i].SetDefaults(ItemID.StoneBlock);
+                        Sync();
+                    }
+                    packets.Clear();NativeFishingChecks.Save(host,new FishingOptions(storeMode:2));cast();
                     ulong mask=(1UL<<12)|(1UL<<14);
-                    Require(packets.Count(b=>b[2]==85)==1 && p.inventoryChestStack[12] && p.inventoryChestStack[14] && !p.inventoryChestStack[13] && ownership.ProtectedSlots==mask && ownership.StoreResult.State==ItemOperationState.Executing && target.item[0].stack==1,"real fish-only client request locks exactly two nonfavorite members without claiming server movement");
+                    Require(packets.Count(b=>b[2]==85)==1 && p.inventoryChestStack[12]==(scenario!=3) && p.inventoryChestStack[14] && !p.inventoryChestStack[13] && ownership.ProtectedSlots==mask && ownership.StoreResult.State==ItemOperationState.Executing && target.item[0].stack==1,"real fish-only client request locks only the remaining nonfavorite members without claiming server movement");
                     var receive=new MessageBuffer{whoAmI=256};
                     void Reply(int slot,int id,int quantity)
                     {NativeChestLocatorChecks.Receive(receive,5,w=>{w.Write((byte)p.whoAmI);w.Write((short)slot);w.Write((short)quantity);w.Write((byte)0);w.Write((short)id);w.Write((byte)0);});Call(context,"UpdateRuntime");}
@@ -94,11 +105,26 @@ namespace NativeWorldTextProbe
                         Require(ownership.StoreResult.State==ItemOperationState.TimedOut && ownership.ProtectedSlots==mask && p.inventoryChestStack[12] && p.inventoryChestStack[14],"timeout keeps exact real locks and group protection");
                         Reply(12,0,0);Reply(14,0,0);Require(ownership.StoreResult.State==ItemOperationState.Completed && ownership.StoreResult.ConfirmedQuantity==5 && !ownership.StoreBlocked,"legal late original source packets settle the timed-out group");
                     }
-                    else
+                    else if(scenario==2)
                     {
                         Reply(12,ItemID.Wood,1);Reply(14,0,0);p.inventory[16].SetDefaults(type);Call(Get(items,"World"),"InvalidateObservation");
                         for(int i=0;i<30;i++)Call(context,"UpdateRuntime");NativeFishingChecks.Save(host,new FishingOptions());NativeFishingChecks.Save(host,new FishingOptions(storeMode:2));Call(state,"RestoreVisible");Call(state,"Close");
                         Require(ownership.StoreResult.State==ItemOperationState.Unconfirmed && ownership.ProtectedSlots==mask && ownership.StoreBlocked && p.inventory[12].type==ItemID.Wood && !p.inventoryChestStack[12],"unknown source reply preserves actual slots and owner protection even after native locks clear and switches change");
+                    }
+                    else
+                    {
+                        byte[] world=packets.Single(b=>b[2]==85);
+                        Require(BitConverter.ToInt32(world,3)==1 && BitConverter.ToInt16(world,7)==PlayerItemSlotID.Inventory0+14 &&
+                            p.inventory[12].IsAir && p.inventory[14].stack==1 &&
+                            p.bank.item[0].stack==p.bank.item[0].maxStack,
+                            "native world request serializes exactly one remainder after the private deposit");
+                        Slot(14,p.inventory[14]);Sync();Slot(PlayerItemSlotID.Bank1_0,p.bank.item[0]);
+                        NativeFishingChecks.Save(host,new FishingOptions());
+                        Reply(14,0,0);Reply(14,0,0);
+                        Require(ownership.StoreResult.State==ItemOperationState.Completed && ownership.StoreResult.ConfirmedQuantity==5 &&
+                            p.inventory[14].IsAir && !ownership.StoreBlocked,
+                            "bank contribution and one authoritative world remainder settle exactly once");
+                        Console.WriteLine("PASS G10 original private-bank item5, one world remainder in message85, combined quantity after original source receipt.");
                     }
                     Require(packets.Count(b=>b[2]==85)==1,"paused, duplicate, timed-out or unknown fish storage never blindly resends the batch");
                 }

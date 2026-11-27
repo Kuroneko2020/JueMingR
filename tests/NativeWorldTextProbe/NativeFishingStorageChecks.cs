@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using JueMingR.Features.Fishing;
 using JueMingR.Features.Items;
 using Microsoft.Xna.Framework;
@@ -31,6 +32,7 @@ namespace NativeWorldTextProbe
         {
             object host=Get(context,"Fishing"),tools=Get(context,"Tools"),input=Get(context,"Input"),items=Get(tools,"Items");
             ItemSorting.SetupWhiteLists();
+            PersonalQuestStorage(context,host,tools,input);
             foreach(int type in new[]{(int)ItemID.Bass,(int)ItemID.ReaverShark})
             {
                 var p=Reset(context,host,tools,input);p.inventory[12].SetDefaults(type);p.inventory[12].stack=type==ItemID.Bass?12:1;
@@ -114,6 +116,66 @@ namespace NativeWorldTextProbe
             NativeFishingNetworkChecks.Storage(context,()=>Reset(context,host,tools,input),Chest,()=>Cast(context,input));
             NativeFishingChecks.Save(host,new FishingOptions());Main.chest[0]=null;
             Console.WriteLine("PASS G10 actual auto Give/GetItem -> same-type old inventory -> native nearby chest; Bass/ReaverShark/favorite protection, finite member retirement, Quest-only old stock and manual-pull exclusion.");
+        }
+        private static void PersonalQuestStorage(object context,object host,object tools,object input)
+        {
+            foreach(ushort tileType in new[]{TileID.PiggyBank,TileID.Safes,TileID.DefendersForge,TileID.VoidVault})
+            {
+                var p=Reset(context,host,tools,input);
+                Main.chest[0]=null;Main.anglerQuest=0;Main.anglerQuestFinished=false;
+                int type=Main.anglerQuestItemNetIDs[0];
+                var bank=tileType==TileID.PiggyBank?p.bank:tileType==TileID.Safes?p.bank2:tileType==TileID.DefendersForge?p.bank3:p.bank4;
+                bank.item[0].SetDefaults(type);
+                p.inventory[12].SetDefaults(type);p.inventory[12].stack=3;
+                p.inventory[13].SetDefaults(type);p.inventory[13].favorited=true;
+                for(int x=0;x<(tileType==TileID.PiggyBank || tileType==TileID.Safes?2:3);x++)
+                    for(int y=0;y<(tileType==TileID.PiggyBank?1:tileType==TileID.Safes?2:tileType==TileID.VoidVault?3:4);y++)
+                    {
+                        var tile=Main.tile[36+x,40+y];
+                        tile.active(true);tile.type=tileType;tile.frameX=(short)(x*18);tile.frameY=(short)(y*18);
+                    }
+                NativeFishingChecks.Save(host,new FishingOptions(storeMode:2));
+                if(tileType==TileID.PiggyBank)
+                {
+                    var saveLock=typeof(Player).GetField("IOLock",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null);
+                    using(var held=new ManualResetEvent(false))
+                    using(var release=new ManualResetEvent(false))
+                    {
+                        var save=new Thread(()=>{lock(saveLock){held.Set();release.WaitOne();}});
+                        save.Start();
+                        try
+                        {
+                            Require(held.WaitOne(5000),"the original player save lock is held off the game thread");
+                            Cast(context,input);
+                            Require(p.inventory[12].stack==3 && bank.item[0].stack==1,
+                                "a busy autosave keeps both real slots unchanged");
+                        }
+                        finally { release.Set(); save.Join(); }
+                    }
+                    for(int i=0;i<24 && !p.inventory[12].IsAir;i++)NativeFishingChecks.Step(context,input,new Vector2(850,718),false,0);
+                }
+                else Cast(context,input);
+                Require(p.chest==-1 && p.inventory[12].IsAir && bank.item.Where(x=>x.type==type).Sum(x=>x.stack)==4 &&
+                    p.inventory[13].type==type && p.inventory[13].favorited,
+                    "nearby personal storage piles the eligible task fish into the closed bank while keeping the favorite: tile="+tileType);
+            }
+            var withoutAccess=Reset(context,host,tools,input);
+            Main.chest[0]=null;Main.anglerQuest=0;Main.anglerQuestFinished=false;
+            int quest=Main.anglerQuestItemNetIDs[0];
+            withoutAccess.inventory[12].SetDefaults(quest);withoutAccess.inventory[12].stack=3;
+            withoutAccess.inventory[20].SetDefaults(ItemID.ClosedVoidBag);
+            withoutAccess.bank.item[0].SetDefaults(quest);
+            withoutAccess.bank2.item[0].SetDefaults(quest);
+            withoutAccess.bank4.item[0].SetDefaults(quest);
+            Main.tile[36,40].type=TileID.PiggyBank;Main.tile[36,40].active(false);
+            Main.tile[110,40].type=TileID.Safes;Main.tile[110,40].active(true);
+            Main.tile[37,40].type=TileID.VoidVault;Main.tile[37,40].active(true);
+            NativeFishingChecks.Save(host,new FishingOptions(storeMode:2));
+            Cast(context,input);
+            Require(withoutAccess.inventory[12].type==quest && withoutAccess.inventory[12].stack==3 &&
+                withoutAccess.bank.item[0].stack==1 && withoutAccess.bank2.item[0].stack==1 && withoutAccess.bank4.item[0].stack==1,
+                "an inactive remnant, a distant safe, and a closed void bag give no personal fish destination");
+            Console.WriteLine("PASS G10 task fish uses four nearby personal banks, preserves favorites, and excludes stale, distant and closed access.");
         }
         private static void Background(object context,object host,object tools,object input,object items)
         {

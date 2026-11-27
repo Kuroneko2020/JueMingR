@@ -316,6 +316,128 @@ namespace NativeWorldTextProbe
                 Until(context, input, () => Scene(host).Length == 0 && !(bool)Get(Get(tools, "Use"), "Active"));
             }
             finally { SetAutomatic(host, input, false); Call(host, "SetMaterialViewDemand", false); }
+            ChristmasTreeRestock(context, host, tools, input, entry, 1, 62);
+            ChristmasTreeRestock(context, host, tools, input, entry, 3, 86);
+            ChristmasTreeShapeContinuation(context, host, tools, input, entry);
+        }
+
+        private static Player PrepareTreeConstruction(object context, object host, object tools, object input, int x, int y)
+        {
+            var player = Reset(context, host, tools, input);
+            for (int column = x - 3; column <= x + 12; column++)
+            {
+                Main.tile[column, y + 8].type = TileID.Stone;
+                Main.tile[column, y + 8].active(true);
+            }
+            player.position = new Vector2(x * 16, (y + 8) * 16 - player.height);
+            player.velocity = Vector2.Zero;
+            return player;
+        }
+
+        private static void ChristmasTreeRestock(object context, object host, object tools, object input, LibraryEntry entry, int first, int y)
+        {
+            const int x = 44;
+            int[] types = { 1877, 1883, 1894, 1905 };
+            int[] variants = { 4, 6, 11, 11 };
+            int[] shifts = { 0, 3, 6, 10 };
+            var player = PrepareTreeConstruction(context, host, tools, input, x, y);
+            NativeBlueprintMirrorProfileChecks.NativeTree(x, y, false);
+            Place(context, host, input, entry, x, y);
+            SetAutomatic(host, input, true);
+            try
+            {
+                WaitForQuietTree(context, host, tools, input);
+                var position = player.position;
+                long selection = (long)Get(tools, "SelectionIntent");
+                long uses = (long)Get(host, "BuildUsesStarted");
+                long classifications = (long)Get(host, "NearBuildClassifications");
+                player.inventory[30].SetDefaults(ItemID.DirtBlock);
+                for (int i = 0; i < 24; i++) Step(context, input);
+                Require((long)Get(host, "NearBuildClassifications") == classifications && Main.tile[x, y].frameY == 0,
+                    "stable bare tree ignores unrelated inventory publication without reclassification");
+
+                int packed = 0;
+                foreach (int slot in new[] { first }.Concat(Enumerable.Range(0, 4).Where(slot => slot != first)))
+                {
+                    player.inventory[12 + slot].SetDefaults(types[slot]);
+                    Console.WriteLine("Ornament recovery: refill slot=" + (slot + 1) + ", preceding classifications=" + Get(host, "NearBuildClassifications"));
+                    packed |= variants[slot] << shifts[slot];
+                    for (int i = 0; i < 64 && !(Main.tile[x, y].frameY == packed && player.inventory[12 + slot].IsAir); i++)
+                        Step(context, input);
+                    Require(Main.tile[x, y].frameY == packed && player.inventory[12 + slot].IsAir,
+                        "restock of ornament slot " + (slot + 1) + " must update the native packed frame and debit its one item: actual frame=" +
+                        Main.tile[x, y].frameY + ", stack=" + player.inventory[12 + slot].stack + ", classifications=" + Get(host, "NearBuildClassifications"));
+                    if (packed == (4 | 6 << 3 | 11 << 6 | 11 << 10)) break;
+                    WaitForQuietTree(context, host, tools, input);
+                    // Refill an already fulfilled slot while the partial tree
+                    // still waits. It must neither wake it nor consume again.
+                    classifications = (long)Get(host, "NearBuildClassifications");
+                    player.inventory[12 + slot].SetDefaults(types[slot]);
+                    for (int i = 0; i < 24; i++) Step(context, input);
+                    Require((long)Get(host, "NearBuildClassifications") == classifications && player.inventory[12 + slot].stack == 1,
+                        "completed ornament retires its wait from the partial tree");
+                }
+                Until(context, input, () => Scene(host).Length == 0 && !(bool)Get(Get(tools, "Use"), "Active"));
+                long consumedUses = (long)Get(host, "BuildUsesStarted") - uses;
+                Require(consumedUses == 4 && player.position == position && (long)Get(tools, "SelectionIntent") == selection &&
+                    (bool)Get(host, "AutoBuildEnabled"), "restock alone advances all four native uses without moving or a manual selection gesture");
+                Console.WriteLine("PASS ornament restock, first slot=" + (first + 1) + ", packed frame=" + packed + ", uses=" + consumedUses);
+            }
+            finally { SetAutomatic(host, input, false); }
+        }
+
+        private static void WaitForQuietTree(object context, object host, object tools, object input)
+        {
+            long classifications = -1;
+            int quietTicks = 0;
+            Until(context, input, () =>
+            {
+                long now = (long)Get(host, "NearBuildClassifications");
+                quietTicks = now > 0 && now == classifications && !(bool)Get(Get(tools, "Use"), "Active") &&
+                    !(bool)Get(host, "nearVisitNeeded") ? quietTicks + 1 : 0;
+                classifications = now;
+                return quietTicks == 24;
+            });
+        }
+
+        private static void ChristmasTreeShapeContinuation(object context, object host, object tools, object input, LibraryEntry entry)
+        {
+            const int x = 44, y = 110, second = x + 5;
+            var player = PrepareTreeConstruction(context, host, tools, input, x + 4, y);
+            NativeBlueprintMirrorProfileChecks.NativeTree(x, y, false);
+            NativeBlueprintMirrorProfileChecks.NativeTree(second, y, false);
+            Place(context, host, input, entry, x, y);
+            Place(context, host, input, entry, second, y);
+            player.inventory[12].SetDefaults(1905);
+            player.inventory[12].stack = 2;
+            long initialUses = (long)Get(host, "BuildUsesStarted");
+            SetAutomatic(host, input, true);
+            try
+            {
+                Until(context, input, () => player.inventory[12].stack == 1 &&
+                    (WorldGen.checkXmasTreeDrop(x, y, 3) == 11 || WorldGen.checkXmasTreeDrop(second, y, 3) == 11));
+                var group = Get(host, "buildContinuation");
+                // A lower slot on both trees is now runnable. The current
+                // ornament still has one real use on the second Shape fact.
+                player.inventory[13].SetDefaults(1877);
+                Until(context, input, () => player.inventory[12].IsAir && WorldGen.checkXmasTreeDrop(x, y, 3) == 11 &&
+                    WorldGen.checkXmasTreeDrop(second, y, 3) == 11);
+                bool sameGroup = ReferenceEquals(Get(host, "buildContinuation"), group);
+                long starts = (long)Get(host, "BuildUsesStarted") - initialUses;
+                // The two native debits above belong to one continuous use.
+                // Count independent starts separately from world receipts.
+                Require(sameGroup && player.inventory[13].stack == 1 && starts == 1,
+                    "same ornament continues across two tree Shape facts before a different runnable ornament: continued=" + sameGroup +
+                    ", other stack=" + player.inventory[13].stack + ", starts=" + starts);
+                Until(context, input, () => player.inventory[13].IsAir);
+                WaitForQuietTree(context, host, tools, input);
+                player.inventory[14].SetDefaults(1883);
+                Until(context, input, () => player.inventory[14].IsAir &&
+                    (WorldGen.checkXmasTreeDrop(x, y, 1) == 6 || WorldGen.checkXmasTreeDrop(second, y, 1) == 6));
+                Require((long)Get(host, "BuildUsesStarted") == initialUses + 3, "depleted partial trees keep their remaining real restock eligibility");
+                Console.WriteLine("PASS ornament Shape continuation: two native debits in one use, stable shortage and another exact refill.");
+            }
+            finally { SetAutomatic(host, input, false); }
         }
     }
 }

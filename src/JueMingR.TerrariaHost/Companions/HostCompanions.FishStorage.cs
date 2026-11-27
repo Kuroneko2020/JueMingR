@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using JueMingR.Platform.Items;
 using JueMingR.TerrariaHost.Fishing;
 using JueMingR.TerrariaHost.Items;
 using Microsoft.Xna.Framework;
@@ -155,9 +156,7 @@ namespace JueMingR.TerrariaHost.Companions
                     item.prefix == touched.Prefix && item.stack == touched.Stack) return false;
                 manual.Remove(slot);
             }
-            foreach (var loan in a.FishingLine.Gear.Loans)
-                if (ReferenceEquals(loan.Source, p.inventory) && loan.SourceSlot == slot) return false;
-            return true;
+            return !FishingGearSourceHeld(a, p.inventory, slot);
         }
 
         private static void FishingManualItemCommitted(Actor a, int slot, Item actual)
@@ -224,11 +223,6 @@ namespace JueMingR.TerrariaHost.Companions
             // singleton still has a legal same-type destination.
             if (batch.Count == 0) batch.Add(first);
             foreach (var source in batch) state.Queued.Remove(source);
-            if (Main.netMode == 0 && !HasLocalFishChest(p, first.Type))
-            {
-                RememberFullFishChests(state, first, p.position);
-                return;
-            }
             var items = new Item[batch.Count];
             var slots = new PlayerItemSlotID.SlotReference[batch.Count];
             for (int i = 0; i < slots.Length; i++)
@@ -239,19 +233,47 @@ namespace JueMingR.TerrariaHost.Companions
             }
             var native = CompanionHooks.FishingChestStack;
             if (native == null) return;
-            var request = native.Prepare(p, items, slots);
-            if (Main.netMode == 1)
-            {
-                state.Pending = batch.ToArray();
-                state.Connection = a.Connection;
-                state.RequestPosition = p.position;
-                state.RequestedAt = Main.GameUpdateCount;
-                state.Moved = 0;
-            }
             try
             {
                 using (var scope = CompanionHooks.Enter(a, a.Aim, inventory: true))
                 {
+                    var identity = new ItemIdentity(first.Type, (byte)first.Prefix);
+                    int bankMoved = native.ExecuteBanks(p, identity, items, slots, ulong.MaxValue,
+                        bank => FishBankAdmitted(a, bank, first.Type)).GetValueOrDefault();
+                    if (bankMoved != 0)
+                    {
+                        // Private slots are saved and synchronized by this
+                        // actor. Only a remaining stack belongs to message 85.
+                        a.Dirty = true;
+                        int remaining = 0;
+                        for (int i = 0; i < batch.Count; i++)
+                        {
+                            FishSource previous = batch[i];
+                            RememberTaskSlot(state, p, previous.Slot);
+                            Item item = slots[i].Item;
+                            if (item.IsAir) continue;
+                            items[remaining] = item; slots[remaining] = slots[i];
+                            batch[remaining++] = new FishSource
+                            { Slot = previous.Slot, Item = item, Type = item.type, Prefix = item.prefix, Stack = item.stack };
+                        }
+                        if (remaining == 0) return;
+                        batch.RemoveRange(remaining, batch.Count - remaining);
+                        Array.Resize(ref items, remaining); Array.Resize(ref slots, remaining);
+                    }
+                    if (Main.netMode == 0 && !HasLocalFishChest(p, first.Type))
+                    {
+                        if (bankMoved == 0) RememberFullFishChests(state, first, p.position);
+                        return;
+                    }
+                    var request = native.Prepare(p, items, slots);
+                    if (Main.netMode == 1)
+                    {
+                        state.Pending = batch.ToArray();
+                        state.Connection = a.Connection;
+                        state.RequestPosition = p.position;
+                        state.RequestedAt = Main.GameUpdateCount;
+                        state.Moved = 0;
+                    }
                     native.Execute(p, request);
                     // Original QuickStack ends with exactly one 85 after the
                     // source frames. A normal return with no accepted 85
@@ -282,6 +304,20 @@ namespace JueMingR.TerrariaHost.Companions
                 // original expected slots for late replies, never retry.
                 if (state.Pending != null) state.UnknownReply = true;
             }
+        }
+
+        private bool FishBankAdmitted(Actor actor, Chest bank, int type)
+        {
+            // A loan's empty return cell has the same owner as a held
+            // supply or draft cell. Native Transfer can also fill partial stacks.
+            int account = -bank.index - 1;
+            for (int slot = 0; slot < bank.item.Length; slot++)
+            {
+                Item item = bank.item[slot];
+                if ((item.IsAir || item.type == type && item.stack < item.maxStack) &&
+                    (!SupplyAdmitted(actor, bank.item, account, slot) || FishingGearSourceHeld(actor, bank.item, slot))) return false;
+            }
+            return true;
         }
 
         private static void CancelUnsentFishStorage(Actor a)

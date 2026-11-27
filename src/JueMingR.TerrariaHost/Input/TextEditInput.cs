@@ -85,10 +85,10 @@ namespace JueMingR.TerrariaHost.Input
             Error = null;
         }
         internal void AfterSample(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused)
-        { ProcessSample(active, layout, physicalSample, focused, retainKeyboardTail: true); }
-        internal void AfterSampleForImportName(bool active, KeyboardState physicalSample, bool focused)
-        { ProcessSample(active, null, physicalSample, focused, retainKeyboardTail: false); }
-        private void ProcessSample(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused, bool retainKeyboardTail)
+        { ProcessSample(active, layout, physicalSample, focused, null); }
+        internal void AfterSampleForImportName(bool active, KeyboardState physicalSample, bool focused, HostInputState input)
+        { ProcessSample(active, null, physicalSample, focused, input); }
+        private void ProcessSample(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused, HostInputState importNameInput)
         {
             sample = physicalSample;
             if (!focused) { Release(false); return; }
@@ -103,14 +103,14 @@ namespace JueMingR.TerrariaHost.Input
                 if (imePriority && sample.IsKeyDown(Keys.Escape)) escapeTail = true;
                 if (sample.IsKeyUp(Keys.Enter)) enterTail = false;
                 if (sample.IsKeyUp(Keys.Escape)) escapeTail = false;
-                ProcessText(imePriority || enterTail, imePriority || escapeTail);
+                ProcessText(imePriority || enterTail, imePriority || escapeTail, importNameInput);
                 if (HasComposition) workspace.PreserveUncommittedInput(bound);
                 if (workspace.Editor != null && !imePriority) ProcessKeys(layout);
                 if (leased && workspace.Editor != null) PlayerInput.WritingText = true;
                 previousComposition = composing;
                 // Raw shortcuts earlier in the next Update consume this cached state.
                 // Never restore consumed keys after Update and replay them there.
-                Main.keyState = default(KeyboardState); keyboardTail = retainKeyboardTail && HostKeyboardActions.HasHeldOperationKey(sample);
+                Main.keyState = default(KeyboardState); keyboardTail = importNameInput == null && HostKeyboardActions.HasHeldOperationKey(sample);
             }
             else if (keyboardTail && !OtherTextOwner)
             {
@@ -119,7 +119,7 @@ namespace JueMingR.TerrariaHost.Input
             }
             previous = sample;
         }
-        private void ProcessText(bool suppressEnter, bool suppressEscape)
+        private void ProcessText(bool suppressEnter, bool suppressEscape, HostInputState importNameInput)
         {
             committed.Clear(); bool enter = false, escape = false;
             int count = Math.Min(Main.keyCount, Math.Min(Main.keyInt.Length, Main.keyString.Length));
@@ -133,12 +133,19 @@ namespace JueMingR.TerrariaHost.Input
             Main.clrInput();
             if (bound == null) return;
             InsertCommitted();
-            if (escape && !suppressEscape) { Release(true); workspace.CancelEdit(); return; }
-            if (enter && !suppressEnter)
+            // The queue identifies the text gesture. Mouse confirmations and
+            // generic lease disposal never infer a keyboard press from state.
+            // A queued IME confirmation/cancel stays with the same text owner.
+            if (escape)
             {
-                if (bound.SingleLine) { FinishComposition(false); if (!HasComposition) workspace.RequestFinish(); }
-                else bound.Insert("\n");
+                importNameInput?.ConsumeImportNameKey(Keys.Escape);
+                if (!suppressEscape) { Release(true); workspace.CancelEdit(); return; }
             }
+            if (!enter) return;
+            importNameInput?.ConsumeImportNameKey(Keys.Enter);
+            if (suppressEnter) return;
+            if (bound.SingleLine) { FinishComposition(false); if (!HasComposition) workspace.RequestFinish(); }
+            else bound.Insert("\n");
         }
         private void ProcessKeys(NotesTextLayout layout)
         {

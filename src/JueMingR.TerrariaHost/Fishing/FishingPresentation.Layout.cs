@@ -32,7 +32,7 @@ namespace JueMingR.TerrariaHost.Fishing
         private int presetSkin=-1;
         internal long PresetScans {get;private set;}
         internal long PresetDescriptions {get;private set;}
-        private static readonly string[] help={"收竿后自动在原位抛竿；f5菜单开启时不生效","进入钓鱼后自动将保存的套装换成适合钓鱼的","进入钓鱼后自动将当前套装饰品换成适合钓鱼的","钓上的鱼获尝试放进附近箱子","有可用过滤模式下，尝试跳过不要的鱼获"};
+        private static readonly string[] help={"收竿后自动在原位抛竿；f5菜单开启时不生效","进入钓鱼后自动将保存的套装换成适合钓鱼的","进入钓鱼后自动将当前套装饰品换成适合钓鱼的","把鱼获堆叠到附近已有同类的容器","有可用过滤模式下，尝试跳过不要的鱼获"};
         internal long LayoutBuilds {get;private set;}
         internal void Prepare(bool active,Matrix transform,Vector2 viewport)
         {
@@ -97,7 +97,7 @@ namespace JueMingR.TerrariaHost.Fishing
                 {
                     var p=Make(e,e.Kind==F5ElementKind.Hotkey?Command.Hotkey:e.Kind==F5ElementKind.Button?Command.Feature:Command.None);
                     p.Feature=feature;p.Value=e.Text=="关闭"?0:e.Text=="任务鱼"?2:1;p.Selected=p.Command==Command.Feature && Value.State(feature)==p.Value;p.Hint=e.Description!=null?help[feature]:null;pageParts.Add(p);
-                    if(feature==3 && p.Command==Command.Feature && p.Value!=0)p.Hint=p.Value==1?"会尝试把所有鱼获放进箱子":"仅会尝试把任务鱼获放进箱子";
+                    if(feature==3 && p.Command==Command.Feature && p.Value!=0)p.Hint=p.Value==1?"把自动收竿的鱼获堆叠到附近已有同类的容器":"把当前任务鱼堆叠到附近已有同类的容器";
                 }
             }
             var nameRow=new List<F5Element>();new F5RowLayout(nameRow,Measure).Row(ref y,0,view.Width,"快捷改名",new[]{null,editing==Edit.Rename?"确定":"快捷改名"});
