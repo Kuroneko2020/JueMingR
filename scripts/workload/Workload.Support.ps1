@@ -82,6 +82,7 @@ function Get-WorkloadRoute {
             continue
         }
         switch -Regex ($path) {
+            '^src/JueMingR\.(Features|Infrastructure|Platform)/Llm/' { [void]$groups.Add('llm-host'); continue }
             '^src/[^/]+/Companions/|^src/JueMingR.TerrariaHost/F5/Companion|^tests/Companions/|^tests/NativeWorldTextProbe/NativeCompanion' { [void]$groups.Add('companion-host'); continue }
             # Deployment changes select package/tool consumers, not every game
             # feature. The production CLR/Setup mechanisms have explicit fixture

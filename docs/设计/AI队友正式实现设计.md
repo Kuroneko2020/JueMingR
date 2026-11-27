@@ -106,6 +106,18 @@ Join、Attach 和 manager.TryReserve 均尊重终局。原版 KillMe 的 DropIte
 
 人物深色展示区按原版选人页展示 miscEquips[0]／hideMisc[0] 的普通宠物，不扩为光宠页面。人物与宠物的实际可见 union 锚定最终展示框中心并整体 fit，不能沿用已被姓名行夹取改变的旧 header 中心；只在外观／框尺寸失效时从原生 DrawPlayer 的 DrawData 与精确 dummy EntitySpriteDraw 取得边界，复用现有弱纹理／frame alpha 缓存，稳定帧不采集或读回。CompanionPreview 的独立显示 Player 与 CompanionPetPreview 私有 Projectile dummy 使用原版 CharacterPreviewAnimations 设置和公开 Main.DrawProjDirect(dummy, displayOverride)，不世界 Spawn、不执行完整 Player／Projectile.Update、不替换真实玩家或投射物数组，创建草稿仍保持空 misc。仅在该 dummy 同线程绘制栈内分流 PrepareDrawnProjectileDrawing，沿显示副本的 cPet 和 UI 矩阵；五个精确 Lighting 色彩出口只复现选人菜单的白光／原 tint 返回，不切 gameMenu 或世界光照引擎，无活跃 dummy 立即常量早退。私有 RNG、临时显示位置、CurrentDrawnEntity／shader、Mount shader 和批次状态均 finally 归还。宠物类型／可见性随外观指纹更新，稳定绘制复用 dummy，隐藏或关窗清引用；工作量计数只在 Debug，普通 Release 不含采集。
 
+### 聊天的游戏动作与会话
+
+模型协议与本机连接在独立模块装配。模型回复和聊天历史的写入在后台运行，聊天视图只读取公开文本与动作回执。完整 assistant 工具组和对应结果按协议保存在内存当前段。连接、模型、上下文或身份变化后按新的段恢复必要公开语义，旧段的私有协议字段不写入聊天文件。明确新建上下文时跳过原聊天摘要。后台保存合并最新公开快照，并将清空作为顺序写入边界。
+
+每轮发送绑定主人、人物、世界会话、身体 activation 和档案 DataEpoch，并采样主人的脚部位置、重力和当前座椅。窗口切换只改变显示目标。后台收到完整工具组后，每次向游戏线程交付一个工具命令。宿主在现有更新周期内检查身份、运行有效性、来源与参数，随后调用现有原版条件和实际动作。普通档案 Revision、走动和无关物品变化不退休整轮。手控相关行为、停止或切换身份时作废旧派发，已提交事务由原账本回收回执。
+
+钓鱼工具以冻结的锚点进入同一 FishingActivity，仍由原路径确认座椅和水域、前往钓位并施放。开始、钓线抵达水域、缺饵和停止由活动状态更新。玩家启用的缺饵本地提醒只在缺饵状态进入时发出，此通知不会新开推理请求。停止工具先结束钓鱼再合并最新跟随和攻击设置。
+
+背包查询返回本轮限定的物品源引用。一次用物准入复核原来源和原生要求，进入原手部等待状态，停止前尚未开始时撤销。实际快捷用物、持物或虫洞提交沿自己的原生回执出口返回结果。前一次未确认的操作不因同一命令改用另一个供应商调用 ID 而重做。换档、退出、停回复后得到的实效仍归原聊天身份和相应操作。多人真实体验、模型账号与延迟以及用户验收另行留证。
+
+本地参考 Numen 源码的已核基线为 Dwinovo/minecraft-numen 的 `1.21.1` 分支、提交 `bb54fa5167996355c74564fd2a48005c75b9bf8a`。本轮研究了串行工具续答、运行作废、单一身体动作与区分协议和公开历史的设计。决明R沿现有 Terraria 动作路径独立实现。[参考源码](https://github.com/Dwinovo/minecraft-numen/tree/bb54fa5167996355c74564fd2a48005c75b9bf8a)
+
 ## 原生执行与输入
 
 原版 Player.Update 循环负责每具身体每游戏步唯一一次物理推进；Host 在该身体实际消费者前合成移动、跳跃、选物、瞄准和用物，返回后读取真实结果。不会从常规 Tick 再调用一遍完整 Update，也不为每名队友重跑 NPC/射弹世界。

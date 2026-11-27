@@ -35,6 +35,7 @@ namespace JueMingR.TerrariaHost.Companions
                 !ArchiveIdentityCurrent() || ownerId != profiles.OwnerId || !profiles.RequestDeletion(ownerId, id))
                 return Result(false, "人物或世界已变化，请重新确认删除。");
 
+            DeleteChat(ownerId, id);
             string warning = null;
             if (actors.TryGetValue(id, out var actor))
             {

@@ -212,6 +212,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private bool CloseActor(Actor a,string failure)
         {
+            InvalidateChatAction(a.Profile.Id, "队友已收回或停止活动，已撤回待执行的模型指令。");
             if(failure!=null)a.TerminalFailure=failure;
             a.Closing=true;a.Body.controlUseItem=false;a.Body.channel=false;
             try
@@ -280,6 +281,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool Reset(Guid id)
         {
             if(Find(id)==null)return false;
+            InvalidateChatAction(id, "队友数据正在清空，已撤回待执行的模型指令。");
             if(actors.TryGetValue(id,out var actor))
             {
                 resetAfterRecall.Add(id);
@@ -291,13 +293,19 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool RestoreBehavior(Guid id){return SetBehavior(id,new CompanionBehavior());}
         internal bool SaveFailed(Guid id){Actor a;return Find(id)!=null && (HasPendingItemCapture(id) || profiles.SaveFailed(id) || actors.TryGetValue(id,out a) && (a.TeamSavePending || a.Closing && !a.CloseCaptured));}
         internal bool RetrySave(Guid id){if(Find(id)==null)return false;try{Actor a;if(actors.TryGetValue(id,out a) && a.Closing && !a.CloseCaptured)return CloseActor(a,a.TerminalFailure);if(HasPendingItemCapture(id))return RetryItemCapture(id);if(a!=null && a.TeamSavePending)return SaveTeam(a);profiles.RetrySave(id);return Result(true,"正在重试保存。");}catch(Exception e){return Result(false,e.Message);}}
-        internal bool SetBehavior(Guid id,CompanionBehavior behavior)
+        internal bool SetBehavior(Guid id,CompanionBehavior behavior) => ApplyBehavior(id, behavior, manual: true);
+        private bool ApplyBehavior(Guid id,CompanionBehavior behavior,bool manual)
         {
-            if (System.Threading.Thread.CurrentThread.ManagedThreadId != itemThread || Find(id) == null) return false;
+            if (System.Threading.Thread.CurrentThread.ManagedThreadId != itemThread) return false;
+            var profile = Find(id);
+            if (profile == null) return false;
             try
             {
                 if (actors.TryGetValue(id, out var fishingActor) && FishingActive(fishingActor) && behavior.Follow != fishingActor.Preferences.Follow)
                     return Result(false, "正在钓鱼");
+                if (manual && (behavior.Follow != (profile.SettingValue(CompanionSetting.Follow) != 0) ||
+                    behavior.AttackEnabled != (profile.SettingValue(CompanionSetting.Attack) != 0)))
+                    InvalidateChatAction(id, "已采用手动行为设置，撤回待执行的模型指令。");
                 if (actors.TryGetValue(id, out var a) && !a.Closing)
                 {
                     CaptureActorState(a, behavior);
@@ -320,6 +328,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void RetireArchiveIdentity()
         {
+            RetireChatIdentity();
             ownerTrail?.BreakSegment();
             ownerTrail=null;
             F5.CompanionCreationSession.DisposeFor(this);
@@ -365,6 +374,7 @@ namespace JueMingR.TerrariaHost.Companions
             foreach(var closing in actors.Values.Where(a=>a.Closing && a.CloseCaptured).ToArray())if(profiles.IsSaved(closing.Profile.Id))Release(closing,true);if(failed)return;
             steam.Pump();
             PumpRetiringConnections();
+            PumpChat();
             if(!ArchiveIdentityCurrent())return;
             FlushItemSync();
             FlushSourceRequests();RequestSharedTerrain();
@@ -440,10 +450,10 @@ namespace JueMingR.TerrariaHost.Companions
         internal void ObserveOwnerWarp(Player player)
         { if (ReferenceEquals(owner, player)) ownerTrail?.BreakSegment(); }
         public void FailClosed(){OnSessionEnded();failed=true;}
-        private void Exit(object sender,EventArgs args){Dispose();}
+        private void Exit(object sender,EventArgs args){DisposeChat(processExit:true);Dispose();}
         // CLR shutdown never reads native objects. Normal game-thread leaving
         // captures characters first; disposal only drains accepted bytes/locks.
-        public void Dispose(){AppDomain.CurrentDomain.ProcessExit-=Exit;ClearRetiringConnections();steam.Dispose();profiles.Dispose();}
+        public void Dispose(){AppDomain.CurrentDomain.ProcessExit-=Exit;DisposeChat();ClearRetiringConnections();steam.Dispose();profiles.Dispose();}
         internal Actor Owned(Player p){Actor a;return p!=null && bodies.TryGetValue(p,out a) && p.whoAmI>=0 && p.whoAmI<Main.maxPlayers && ReferenceEquals(Main.player[p.whoAmI],p)?a:null;}
         internal Actor OwnedSlot(int slot){Actor a;return slots.TryGetValue(slot,out a) && ReferenceEquals(Owned(a.Body),a)?a:null;}
     }

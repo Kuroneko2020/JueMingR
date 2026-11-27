@@ -22,6 +22,7 @@ namespace JueMingR.TerrariaHost.Input
         private TextEditBuffer bound;
         private TextEditBuffer prepared;
         private bool leased, priorBlock, previousComposition, enterTail, escapeTail, keyboardTail;
+        private bool chatEnterTaken;
         private int repeatTicks;
         private Keys pendingNavigation;
         private long navigationRevision;
@@ -88,7 +89,11 @@ namespace JueMingR.TerrariaHost.Input
         { ProcessSample(active, layout, physicalSample, focused, null); }
         internal void AfterSampleForImportName(bool active, KeyboardState physicalSample, bool focused, HostInputState input)
         { ProcessSample(active, null, physicalSample, focused, input); }
-        private void ProcessSample(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused, HostInputState importNameInput)
+        internal void AfterSampleForCompanion(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused,
+            HostInputState input, bool sendOnEnter)
+        { ProcessSample(active, layout, physicalSample, focused, input, sendOnEnter); }
+        private void ProcessSample(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused,
+            HostInputState textCommandInput, bool sendOnEnter = false)
         {
             sample = physicalSample;
             if (!focused) { Release(false); return; }
@@ -103,23 +108,25 @@ namespace JueMingR.TerrariaHost.Input
                 if (imePriority && sample.IsKeyDown(Keys.Escape)) escapeTail = true;
                 if (sample.IsKeyUp(Keys.Enter)) enterTail = false;
                 if (sample.IsKeyUp(Keys.Escape)) escapeTail = false;
-                ProcessText(imePriority || enterTail, imePriority || escapeTail, importNameInput);
+                ProcessText(imePriority || enterTail, imePriority || escapeTail, textCommandInput, sendOnEnter);
                 if (HasComposition) workspace.PreserveUncommittedInput(bound);
                 if (workspace.Editor != null && !imePriority) ProcessKeys(layout);
                 if (leased && workspace.Editor != null) PlayerInput.WritingText = true;
                 previousComposition = composing;
                 // Raw shortcuts earlier in the next Update consume this cached state.
                 // Never restore consumed keys after Update and replay them there.
-                Main.keyState = default(KeyboardState); keyboardTail = importNameInput == null && HostKeyboardActions.HasHeldOperationKey(sample);
+                Main.keyState = default(KeyboardState); keyboardTail = textCommandInput == null && HostKeyboardActions.HasHeldOperationKey(sample);
             }
             else if (keyboardTail && !OtherTextOwner)
             {
                 keyboardTail = HostKeyboardActions.HasHeldOperationKey(sample);
                 Main.keyState = default(KeyboardState);
             }
+            if (!leased && sample.IsKeyDown(Keys.Enter)) chatEnterTaken = true;
+            if (sample.IsKeyUp(Keys.Enter)) chatEnterTaken = false;
             previous = sample;
         }
-        private void ProcessText(bool suppressEnter, bool suppressEscape, HostInputState importNameInput)
+        private void ProcessText(bool suppressEnter, bool suppressEscape, HostInputState textCommandInput, bool sendOnEnter)
         {
             committed.Clear(); bool enter = false, escape = false;
             int count = Math.Min(Main.keyCount, Math.Min(Main.keyInt.Length, Main.keyString.Length));
@@ -138,11 +145,22 @@ namespace JueMingR.TerrariaHost.Input
             // A queued IME confirmation/cancel stays with the same text owner.
             if (escape)
             {
-                importNameInput?.ConsumeImportNameKey(Keys.Escape);
+                textCommandInput?.ConsumeTextCommandKey(Keys.Escape);
                 if (!suppressEscape) { Release(true); workspace.CancelEdit(); return; }
             }
             if (!enter) return;
-            importNameInput?.ConsumeImportNameKey(Keys.Enter);
+            textCommandInput?.ConsumeTextCommandKey(Keys.Enter);
+            // A held Enter may queue repeated characters, including after an
+            // IME confirmation. Admit at most one command until physical release.
+            if (sendOnEnter)
+            {
+                bool taken = chatEnterTaken;
+                chatEnterTaken = true;
+                if (suppressEnter || taken || previous.IsKeyDown(Keys.Enter) && !sample.IsKeyDown(Keys.Enter)) return;
+                if (sample.IsKeyDown(Keys.LeftShift) || sample.IsKeyDown(Keys.RightShift)) bound.Insert("\n");
+                else if (!HasComposition) workspace.RequestFinish();
+                return;
+            }
             if (suppressEnter) return;
             if (bound.SingleLine) { FinishComposition(false); if (!HasComposition) workspace.RequestFinish(); }
             else bound.Insert("\n");

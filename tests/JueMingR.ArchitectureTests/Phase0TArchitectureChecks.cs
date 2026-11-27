@@ -161,7 +161,8 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Notes.NoteEditor", "JueMingR.Features.Notes.NotesTextLayout",
                 "JueMingR.Features.Notes.NotesTextLine", "JueMingR.Features.Notes.NotesFeature",
                 "JueMingR.Features.Notes.NotesWorkspace", "JueMingR.Features.Notes.NotesAction",
-                "JueMingR.Features.Notes.NotesActionKind"
+                "JueMingR.Features.Notes.NotesActionKind",
+                "JueMingR.Features.Llm.LlmConnections", "JueMingR.Features.Llm.CompanionChat"
             };
             if (!expected.SetEquals(features.GetExportedTypes().Select(type => type.FullName)))
             {

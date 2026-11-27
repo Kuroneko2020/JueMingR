@@ -398,7 +398,8 @@ namespace JueMingR.TerrariaHost.Input
             ObserveDiagnostics(2);
 #endif
         }
-        internal void ConsumeImportNameKey(Keys key)
+        internal void ConsumeImportNameKey(Keys key) => ConsumeTextCommandKey(key);
+        internal void ConsumeTextCommandKey(Keys key)
         {
             if (!CanUseInput) return;
             // Text can return its lease before Shell dispatch in this frame.

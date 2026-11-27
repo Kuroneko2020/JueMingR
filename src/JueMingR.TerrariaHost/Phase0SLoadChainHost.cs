@@ -9,6 +9,8 @@ using System.Text;
 using System.Threading;
 using HarmonyLib;
 using JueMingR.Features.Biomes;
+using JueMingR.Features.Llm;
+using JueMingR.Infrastructure.Llm;
 using JueMingR.TerrariaHost.F5;
 using JueMingR.TerrariaHost.Settings;
 using Microsoft.Xna.Framework;
@@ -977,6 +979,20 @@ namespace JueMingR.TerrariaHost
                     Combat.Handoff.Attach(Processing,QuickItems);
                     Afk=new AfkMode.HostAfkMode(gameDirectory,Tools);Afk.Attach(QuickItems,Processing);runtime.SharedRuntime.AddFeature(Afk);
                     Companions=new Companions.HostCompanions(gameDirectory){OwnerOperations=items.Ownership,OwnerItems=items};runtime.SharedRuntime.AddFeature(Companions);
+                    try
+                    {
+                        var presets = LlmPresetCatalog.Load();
+                        var store = new LlmFileStore(gameDirectory);
+                        var transport = new LlmHttpTransport();
+                        var connections = new LlmConnections(presets, store, transport,
+                            (connection, token) => CompanionChat.TestToolsAsync(transport, connection, token));
+                        Companions.ConfigureChat(connections, transport, store);
+                    }
+                    catch (Exception)
+                    {
+                        // Model configuration is optional. A local model
+                        // dependency failure must leave manual companions available.
+                    }
                     var humanFishingBackground = Tools.FishingBackgroundDemand;
                     Tools.FishingBackgroundDemand = () => humanFishingBackground?.Invoke() == true || Companions.WantsFishingBackground;
                     CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory),PackageId,exactPredictionComparison,hiddenAccess){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);

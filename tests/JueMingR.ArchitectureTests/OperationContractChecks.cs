@@ -35,6 +35,14 @@ namespace JueMingR.ArchitectureTests
         {
             var expected = new HashSet<string>(StringComparer.Ordinal)
             {
+                "JueMingR.Platform.Llm.ILlmConnectionValidator", "JueMingR.Platform.Llm.ILlmStore", "JueMingR.Platform.Llm.ILlmTransport",
+                "JueMingR.Platform.Llm.LlmConnectionDraft", "JueMingR.Platform.Llm.LlmConnectionInfo", "JueMingR.Platform.Llm.LlmConnectionSecrets",
+                "JueMingR.Platform.Llm.LlmConnectionSettings", "JueMingR.Platform.Llm.LlmConnectionSnapshot", "JueMingR.Platform.Llm.LlmConnectionTest",
+                "JueMingR.Platform.Llm.LlmException", "JueMingR.Platform.Llm.LlmFailure", "JueMingR.Platform.Llm.LlmHistoryEntry",
+                "JueMingR.Platform.Llm.LlmMessage", "JueMingR.Platform.Llm.LlmMessageKind", "JueMingR.Platform.Llm.LlmModelInfo",
+                "JueMingR.Platform.Llm.LlmPreset", "JueMingR.Platform.Llm.LlmProbeRecord", "JueMingR.Platform.Llm.LlmRequest",
+                "JueMingR.Platform.Llm.LlmStoredConfiguration", "JueMingR.Platform.Llm.LlmStoredConnection", "JueMingR.Platform.Llm.LlmToolCall",
+                "JueMingR.Platform.Llm.LlmToolDefinition", "JueMingR.Platform.Llm.LlmToolResult", "JueMingR.Platform.Llm.LlmTurn",
                 "JueMingR.Platform.Blueprint.IBlueprintLibraryFiles",
                 "JueMingR.Platform.Blueprint.IBlueprintLibraryLayoutSteps",
                 "JueMingR.Platform.Blueprint.IBlueprintLibraryExchangeSteps",

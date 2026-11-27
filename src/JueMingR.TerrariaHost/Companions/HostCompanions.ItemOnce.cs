@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using JueMingR.Platform.Companions;
 using JueMingR.TerrariaHost.Combat;
 using JueMingR.TerrariaHost.Recovery;
@@ -22,6 +23,12 @@ namespace JueMingR.TerrariaHost.Companions
             internal uint Expires;
             internal int PreviousSelection;
             internal byte Prefix;
+            internal Guid ChatRunId;
+            internal CancellationToken ChatCancellation;
+            internal Action<string> ChatStarted;
+            internal Action<string, string> ChatComplete;
+            internal uint ChatFinishBy;
+            internal int ChatDebit;
         }
 
         internal bool CanUseItemOnce(Guid id, CompanionInventoryArea area, int slot, out string reason)
@@ -40,6 +47,7 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal bool UseItemOnce(Guid id, CompanionInventoryArea area, int slot)
         {
+            if (Find(id) != null) InvalidateChatAction(id, "已采用手动用物指令。");
             if (!CanUseItemOnce(id, area, slot, out string reason)) return Result(false, reason);
             return Result(TryQueueItemOnce(actors[id], slot, false, out reason), reason);
         }
@@ -237,16 +245,29 @@ namespace JueMingR.TerrariaHost.Companions
                 // Native phones act halfway through the animation. Keep this
                 // selection, release the button and prevent combat from
                 // repeating an auto-reuse weapon before the native tail ends.
-                if (!FreeHand(actor.Body)) return true;
+                bool released = FreeHand(actor.Body);
+                var finishing = state.ChatFinishingOnce;
+                if (finishing != null && (released || unchecked((int)(Main.GameUpdateCount - finishing.ChatFinishBy)) >= 0))
+                {
+                    state.ChatFinishingOnce = null;
+                    FinishChatHeldItem(actor, finishing, released);
+                }
+                if (!released) return true;
                 actor.Body.selectedItemState.Select(state.RestoreSelection);
                 state.RestoreSelection = -1;
             }
             var command = state.Once;
             if (command == null) return false;
+            if (command.ChatCancellation.IsCancellationRequested)
+            {
+                CancelChatItemOnce(actor, "已撤回尚未开始的用物请求。");
+                return false;
+            }
             if (unchecked((int)(Main.GameUpdateCount - command.Expires)) >= 0)
             {
                 state.Once = null;
                 Feedback = "队友一直忙于当前动作，本次使用已取消。";
+                command.ChatComplete?.Invoke("cancelled", Feedback);
                 return false;
             }
             string reason = null;
@@ -256,6 +277,7 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 state.Once = null;
                 Feedback = reason ?? "物品或队友状态已变化，本次使用已取消。";
+                command.ChatComplete?.Invoke("cancelled", Feedback);
                 return false;
             }
             // Keep the exact source until the movement scheduler makes room.
@@ -264,17 +286,60 @@ namespace JueMingR.TerrariaHost.Companions
             if (HandlessShape(actor.Body)) return true;
             if (!admittedKind.HasValue || admittedKind == CompanionSupplyKind.Growth) return true;
             state.Once = null;
-            UseQuick(actor, admittedKind.Value, command.Source, manual: true);
+            UseQuick(actor, admittedKind.Value, command.Source, manual: true, chatComplete: command.ChatComplete);
             return true;
         }
 
         internal void CancelCompanionItemOnce(Actor actor)
         {
             var state = actor.Supplies;
+            var pending = state.Once;
+            var started = state.HeldOnce;
+            var finishing = state.ChatFinishingOnce;
             if (state.Once != null) Feedback = "队友状态已变化，本次使用已取消。";
             if (state.HeldOnce != null) state.HeldSource = default(RecoverySource);
             state.Once = state.HeldOnce = null;
+            state.ChatFinishingOnce = null;
             state.RestoreSelection = -1;
+            pending?.ChatComplete?.Invoke("cancelled", "队友状态已变化，本次使用已取消。");
+            started?.ChatComplete?.Invoke("unconfirmed", "队友状态已变化，本次原版用物结果未确认。");
+            if (finishing != null) FinishChatHeldItem(actor, finishing, false);
+        }
+
+        private void WaitForChatHeldItem(Actor actor, ItemOnce command, int debit)
+        {
+            if (command.ChatComplete == null) return;
+            command.ChatDebit = debit;
+            // Ordinary held items may commit later than the first ItemCheck.
+            // Observe the original restore-selection boundary once; the
+            // model never supplies another use input to probe completion.
+            command.ChatFinishBy = Main.GameUpdateCount + 360;
+            actor.Supplies.ChatFinishingOnce = command;
+            command.ChatStarted?.Invoke("队友已开始原版用物，正在等待动作结束。");
+        }
+
+        private void FinishChatHeldItem(Actor actor, ItemOnce command, bool released)
+        {
+            if (released && IsPortableBankItem(command.Source.Type))
+            {
+                var area = command.Source.Type == ItemID.MoneyTrough ? CompanionInventoryArea.PiggyBank : CompanionInventoryArea.VoidVault;
+                if (ActorTileReachReady(actor.Body) && SearchBank(actor, area) != null)
+                {
+                    command.ChatComplete("succeeded", "队友附近已有可用的储存入口。");
+                    return;
+                }
+            }
+            string debit = command.ChatDebit == 0 ? "" : "，首次原版检查确认扣减 " + command.ChatDebit + " 件物品";
+            command.ChatComplete("unconfirmed", (released ? "原版用物动作已结束" : "原版用物动作已开始") +
+                debit + "，后续效果未确认。");
+        }
+
+        private void CancelChatItemOnce(Actor actor, string reason)
+        {
+            var pending = actor.Supplies.Once;
+            if (pending?.ChatComplete == null) return;
+            actor.Supplies.Once = null;
+            pending.ChatComplete("cancelled", reason);
         }
     }
 }

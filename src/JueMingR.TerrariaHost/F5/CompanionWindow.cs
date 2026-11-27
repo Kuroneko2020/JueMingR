@@ -108,7 +108,7 @@ namespace JueMingR.TerrariaHost.F5
         private bool archiveRetry, archiveCreate;
         private int page, listOffset, bodyOffset, listMaximum, bodyMaximum, generation, armedGeneration, skin;
         private bool previousLeft, leftTail, rightTail, ready, confirmingReset;
-        public TextEditBuffer Editor => editor ?? autoTeleportPopup.Editor ?? fishingPane?.Editor;
+        public TextEditBuffer Editor => editor ?? aiInput.Editor ?? autoTeleportPopup.Editor ?? fishingPane?.Editor;
         // The shell sees any child editor. The password input adapter can
         // acquire only its own masked buffer.
         TextEditBuffer ITextEditSession.Editor => editor;
@@ -124,7 +124,7 @@ namespace JueMingR.TerrariaHost.F5
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
         internal bool ConsumeWheel { get; private set; }
-        internal bool OwnsTextToken => textInput.OwnsTextToken || autoTeleportPopup.OwnsTextToken || fishingPane?.OwnsTextToken == true;
+        internal bool OwnsTextToken => textInput.OwnsTextToken || aiInput.OwnsTextToken || autoTeleportPopup.OwnsTextToken || fishingPane?.OwnsTextToken == true;
         internal int LayoutBuilds { get; private set; }
         internal int ItemPresentationUpdates { get; private set; }
         internal Action<string, F5Rect> HotkeyClicked;
@@ -149,6 +149,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             this.host = host; this.input = input; measureSource = measure; this.measure = MeasureCached;
             textInput = new TextEditInput(this, new PasswordClipboard());
+            aiInput = new CompanionAiInput(this);
             autoTeleportPopup = new AutoTeleportPopup(this);
         }
         internal void Toggle(F5Rect anchor)
@@ -178,8 +179,9 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (!active && editor != null) Close();
             RetireInvalidPasswordOwner();
-            if (active && (!textInput.OtherTextOwner || autoTeleportPopup.OwnsTextToken)) SyncPasswordPrompt();
+            if (active && (!textInput.OtherTextOwner || aiInput.OwnsTextToken || autoTeleportPopup.OwnsTextToken)) SyncPasswordPrompt();
             textInput.BeforeSample(active && Visible);
+            aiInput.BeforeSample(active && Visible && !PasswordPromptVisible);
             autoTeleportPopup.BeforeInput(active && Visible && !PasswordPromptVisible);
             fishingPane?.BeforeInput(active && FishingPageVisible);
         }
@@ -195,6 +197,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (!Visible && !ready && editor == null) return;
             CancelDrag();
+            CloseAiPresentation();
             RetireFishingPane();
             autoTeleportPopup.Close();
             Visible = false; ready = false; armedKey = null; confirmingReset = false; deletionTarget = null; CloseSupplyPopup();
@@ -210,6 +213,7 @@ namespace JueMingR.TerrariaHost.F5
         private void PrepareCore(Matrix transform, Vector2 physical, bool resources)
         {
             PrepareWindow(transform, physical, resources);
+            if (Visible && ready && !PasswordPromptVisible && page >= ChatPage) PrepareAiInput();
             if (SupplyPopupVisible) PrepareSupplyPopup(resources);
             autoTeleportPopup.Prepare();
             PrepareFishingPane(transform, physical, resources);
@@ -227,6 +231,7 @@ namespace JueMingR.TerrariaHost.F5
             UpdateOnceSelection();
             if(page==1&&ready&&(CurrentProfile()==null||(CurrentProfile()?.DataEpoch??0)!=viewDataEpoch))RetireConfigurationInput();
             if (resources && !renderer.Refresh() || transform.M11 <= 0 || transform.M22 <= 0) { Close(); return; }
+            if (page >= ChatPage) ObserveAiPage();
             Vector2 logical = physical / transform.M11;
             if (skin != renderer.Generation) { sizes70.Clear(); sizes65.Clear(); hint.Clear(); editRevision = -1; }
             if (skin != renderer.Generation || rowHeight == 0) rowHeight = Math.Max(34, measure("选择主要武器", .7f).Height + 14);
@@ -273,8 +278,7 @@ namespace JueMingR.TerrariaHost.F5
             BuildList(row);
             viewDataEpoch = CurrentProfile()?.DataEpoch ?? 0;
             Button("create", "＋", new F5Rect(listView.X, panel.Bottom - AvatarSize - 12, AvatarSize, AvatarSize), StartCreation, host.CanCreate);
-            Button("inventory", "背包", new F5Rect(panel.Right-198,panel.Y+4,72,row), () => SelectPage(0), true, page == 0);
-            Button("configuration", "配置", new F5Rect(panel.Right-120,panel.Y+4,72,row), () => SelectPage(1), true, page == 1);
+            DrawPageButtons(row);
             var retiredHeads=new List<Guid>();foreach(var id in railPreviews.Keys)if(!controls.Exists(c=>c.ProfileId==id))retiredHeads.Add(id);foreach(var id in retiredHeads)railPreviews.Remove(id);
             int bodyControlStart = controls.Count, bodyLabelStart = labels.Count;
             bodyOffsetClamped = false;
@@ -294,7 +298,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 const string retryText="重试读取";
                 float retryWidth=ConfigurationWidth(retryText);
-                var retry = Button("retry-archive",retryText,new F5Rect(panel.Right-204-retryWidth,panel.Y+4,retryWidth,row),
+                var retry = Button("retry-archive",retryText,new F5Rect(panel.X+102,panel.Y+4,retryWidth,row),
                     host.RetryArchive);
                 retry.Hint = host.ArchiveNotice;
             }
@@ -314,7 +318,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 if (pendingCreatedId == Guid.Empty && selected != Guid.Empty)
                 {
-                    RetireConfigurationInput(); CancelSelectionModes();
+                    RetireConfigurationInput(); CancelSelectionModes(); RetireChatTarget();
                     selected = Guid.Empty; SelectStorage(CompanionInventoryArea.Inventory, false);
                 }
                 return;
@@ -322,7 +326,7 @@ namespace JueMingR.TerrariaHost.F5
             bool found = false; for (int i = 0; i < profiles.Count; i++) if (profiles[i].Id == selected) found = true;
             if (!found && pendingCreatedId==Guid.Empty)
             {
-                RetireConfigurationInput(); CancelSelectionModes();
+                RetireConfigurationInput(); CancelSelectionModes(); RetireChatTarget();
                 selected = profiles[0].Id; SelectStorage(CompanionInventoryArea.Inventory, false);
             }
             for (int i = listOffset; i < Math.Min(profiles.Count, listOffset + visible); i++)
@@ -337,9 +341,9 @@ namespace JueMingR.TerrariaHost.F5
             }
         }
         private void SelectProfile(Guid id)
-        { host.CancelItemGesture(); CancelSelectionModes(); RetireConfigurationInput(); pendingCreatedId=Guid.Empty;pendingCreatedName=null; selected = id; SelectStorage(CompanionInventoryArea.Inventory, false); bodyOffset = 0; notice = null; Invalidate(); }
+        { host.CancelItemGesture(); CancelSelectionModes(); RetireConfigurationInput(); RetireChatTarget(); pendingCreatedId=Guid.Empty;pendingCreatedName=null; selected = id; SelectStorage(CompanionInventoryArea.Inventory, false); bodyOffset = 0; notice = null; Invalidate(); }
         private void SelectPage(int value)
-        { host.CancelItemGesture(); CancelSelectionModes(); RetireConfigurationInput(); page = value; bodyOffset = 0; notice = null; Invalidate(); }
+        { if (page == value) return; host.CancelItemGesture(); CancelSelectionModes(); RetireConfigurationInput(); LeaveAiPage(); page = value; bodyOffset = 0; notice = null; Invalidate(); }
         private void Invalidate() { armedKey = null; generation++; }
         private void Translate(float x, float y)
         {
@@ -350,6 +354,7 @@ namespace JueMingR.TerrariaHost.F5
             ownerShowcasePanel=ownerShowcasePanel.Offset(x,y);companionShowcasePanel=companionShowcasePanel.Offset(x,y);
             configurationViewport=configurationViewport.Offset(x,y);
             configurationNameRect=configurationNameRect.Offset(x,y);
+            if (page >= ChatPage) TranslateAiPage(x, y);
             ownerToolbarView=ownerToolbarView.Offset(x,y);companionToolbarView=companionToolbarView.Offset(x,y);
             for(int i=0;i<actorHeaders.Count;i++)actorHeaders[i]=actorHeaders[i].Offset(x,y);
             for(int i=0;i<groups.Count;i++) groups[i]=groups[i].Offset(x,y);
@@ -461,9 +466,11 @@ namespace JueMingR.TerrariaHost.F5
             pointer = point; OwnsPointer = ConsumeWheel = false;
             bool left = PlayerInput.MouseInfo.LeftButton == ButtonState.Pressed, right = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed;
             ConsumeLeft = leftTail; ConsumeRight = rightTail;
-            bool wasEditing = editor != null;
-            if ((!active || !focused) && wasEditing) CancelEdit();
+            bool wasEditing = editor != null || aiInput.Editor != null;
+            if (page == ChatPage) chatInputShift = keys.IsKeyDown(Keys.LeftShift) || keys.IsKeyDown(Keys.RightShift);
+            if ((!active || !focused) && editor != null) CancelEdit();
             textInput.AfterSample(active && Visible && focused, null, keys, focused);
+            aiInput.AfterSample(active && Visible && focused && !PasswordPromptVisible, keys, focused);
             if (!active || !focused)
             {
                 if (!focused) CancelForFocusLoss(); else Close();
@@ -504,6 +511,7 @@ namespace JueMingR.TerrariaHost.F5
                 {
                     if (listView.Contains(point.X, point.Y)) listOffset = Math.Max(0, Math.Min(listMaximum, listOffset - Math.Sign(wheel)));
                     else if (page == 0 && ownerView.Contains(point.X, point.Y)) ownerOffset = Math.Max(0, Math.Min(ownerMaximum, ownerOffset - Math.Sign(wheel) * 48));
+                    else if (page >= ChatPage) ScrollAiPage(point, wheel);
                     else if ((page==0?bodyView:ConfigurationScrollView).Contains(point.X, point.Y)) bodyOffset = Math.Max(0, Math.Min(bodyMaximum, bodyOffset - Math.Sign(wheel) * 48));
                 }
                 ConsumeWheel = true; Invalidate(); PrepareCore(transform, physical, resources);
@@ -522,6 +530,7 @@ namespace JueMingR.TerrariaHost.F5
                     dragging = userPositioned = true; armedKey = null;
                 }
                 else { armedKey = hit?.Key; armedGeneration = generation; }
+                if (hit == null && aiInput.Editor != null) BlurAiInput();
             }
             if (!wasDragging && !left && previousLeft && armedKey != null && armedGeneration == generation && hit?.Key == armedKey)
             {
@@ -636,8 +645,9 @@ namespace JueMingR.TerrariaHost.F5
                 if (editor != null && field.Width > 0) DrawEditor();
                 ScrollIndicator(listView, listOffset, listMaximum);
                 if (page == 0) { ScrollIndicator(ownerView, ownerOffset, ownerMaximum); ScrollIndicator(companionView, bodyOffset, bodyMaximum); }
-                else ScrollIndicator(ConfigurationScrollView, bodyOffset, bodyMaximum);
+                else if (page == 1) ScrollIndicator(ConfigurationScrollView, bodyOffset, bodyMaximum);
             });
+            if (page >= ChatPage) DrawAiPage();
             if (page == 0)
             {
                 DrawHero(ownerView, ownerHero,ownerShowcase,ownerShowcasePanel, ownerPreview, Main.LocalPlayer);

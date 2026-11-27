@@ -14,7 +14,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal uint NextBuffScan, NextGrowthScan, NextNurseAttempt, NextLifeScan, NextManaScan;
         internal CompanionBehavior LastPreferences;
         internal RecoverySource Quick, HeldSource, PlannedBuff;
-        internal HostCompanions.ItemOnce Once, HeldOnce;
+        internal HostCompanions.ItemOnce Once, HeldOnce, ChatFinishingOnce;
         internal int RestoreSelection = -1;
         internal CompanionSupplyKind QuickKind;
         internal int GrowthValue, QuickBuffType, LifeDeficit, ManaCost;
@@ -277,10 +277,15 @@ namespace JueMingR.TerrariaHost.Companions
             }
         }
 
-        private void UseQuick(Actor actor, CompanionSupplyKind kind, RecoverySource source, bool manual = false)
+        private void UseQuick(Actor actor, CompanionSupplyKind kind, RecoverySource source, bool manual = false,
+            Action<string, string> chatComplete = null)
         {
             var state = actor.Supplies;
-            if (!source.Found || state.Quick.Found || !SourceCurrent(actor, source)) return;
+            if (!source.Found || state.Quick.Found || !SourceCurrent(actor, source))
+            {
+                chatComplete?.Invoke("rejected", "物品来源已变化或正在使用。");
+                return;
+            }
             state.Quick = source;
             state.QuickKind = kind;
             state.ManualQuick = manual;
@@ -302,7 +307,7 @@ namespace JueMingR.TerrariaHost.Companions
                 returned = true;
             }
             catch (Exception) { Feedback = "队友使用补给的结果未确认。"; }
-            finally { FinishQuick(actor, returned); }
+            finally { FinishQuick(actor, returned, chatComplete); }
         }
 
         internal static Item QuickSupply(Actor actor, CompanionSupplyKind kind)
@@ -311,7 +316,7 @@ namespace JueMingR.TerrariaHost.Companions
             return state.QuickKind == kind && SourceCurrent(actor, state.Quick) ? state.Quick.Item : null;
         }
 
-        internal void FinishQuick(Actor actor, bool returned)
+        internal void FinishQuick(Actor actor, bool returned, Action<string, string> chatComplete = null)
         {
             var state = actor.Supplies;
             var source = state.Quick;
@@ -329,8 +334,12 @@ namespace JueMingR.TerrariaHost.Companions
             else if (!state.QuickObserved)
                 state.Refusals[(int)kind] = new SupplyFailure { Source = source, Until = Main.GameUpdateCount + 120 };
             if (manual)
+            {
                 Feedback = !returned || changed && !state.QuickObserved ? "本次使用结果未确认。" :
                     state.QuickObserved ? "队友已使用一次。" : "原版用物条件未满足，本次未使用。";
+                chatComplete?.Invoke(!returned || changed && !state.QuickObserved ? "unconfirmed" :
+                    state.QuickObserved ? "succeeded" : "failed", Feedback);
+            }
         }
 
         internal int CompanionHeldSlot(Actor actor, bool includeAutomatic = true)
@@ -364,6 +373,13 @@ namespace JueMingR.TerrariaHost.Companions
             var state = actor.Supplies;
             if (state.HeldSource.Found || slot < 0 || slot >= 50) return;
             var command = state.Once;
+            if (command?.ChatCancellation.IsCancellationRequested == true)
+            {
+                CancelChatItemOnce(actor, "已撤回尚未开始的用物请求。");
+                actor.Body.controlUseItem = false;
+                actor.Body.selectedItemState.Select(command.PreviousSelection);
+                return;
+            }
             var source = command?.Source ?? SupplySource(actor, actor.Body.inventory, 0, slot);
             if (source.Slot != slot || !SourceCurrent(actor, source) ||
                 (command == null || command.Kind == CompanionSupplyKind.Growth) && !CompanionSupplyCatalog.GrowthEligible(actor.Body, source.Type) ||
@@ -381,6 +397,7 @@ namespace JueMingR.TerrariaHost.Companions
                     actor.Body.controlUseItem = false;
                     actor.Body.selectedItemState.Select(command.PreviousSelection);
                     Feedback = reason;
+                    command.ChatComplete?.Invoke("failed", Feedback);
                     return;
                 }
                 actor.Aim = aim;
@@ -414,6 +431,7 @@ namespace JueMingR.TerrariaHost.Companions
             state.HeldSource = default(RecoverySource);
             state.HeldOnce = null;
             if (command != null) Feedback = reason ?? "物品或队友状态已变化，本次使用已取消。";
+            command?.ChatComplete?.Invoke("cancelled", Feedback);
         }
 
         private static int GrowthValue(Player body, int type)
@@ -440,6 +458,13 @@ namespace JueMingR.TerrariaHost.Companions
                 Feedback = !returned ? "储存道具的使用结果未确认。" :
                     SearchBank(actor, area) != null ? "队友附近的储存入口已就绪。" :
                     actor.Body.ItemAnimationJustStarted ? "正在等待可用的储存入口出现。" : "原版用物条件未满足，未召出储存入口。";
+                if (command.ChatComplete != null)
+                {
+                    bool ready = returned && SearchBank(actor, area) != null;
+                    if (ready) command.ChatComplete("succeeded", Feedback);
+                    else if (returned && actor.Body.ItemAnimationJustStarted) WaitForChatHeldItem(actor, command, 0);
+                    else command.ChatComplete(returned ? "failed" : "unconfirmed", Feedback);
+                }
                 return;
             }
             if (command != null && !command.Kind.HasValue)
@@ -454,6 +479,10 @@ namespace JueMingR.TerrariaHost.Companions
                 if (!returned) state.Unconfirmed[0] |= 1UL << source.Slot;
                 Feedback = !returned ? "本次使用结果未确认。" :
                     started ? "队友已开始使用一次。" : "原版用物条件未满足，本次未使用。";
+                if (returned && started)
+                    WaitForChatHeldItem(actor, command, Math.Max(0, source.Stack - (remaining.type == source.Type ? remaining.stack : 0)));
+                else command.ChatComplete?.Invoke(!returned || changed ? "unconfirmed" : "failed",
+                    changed ? "观察到物品变化，原版用物效果未确认。" : Feedback);
                 return;
             }
             bool effect = GrowthValue(actor.Body, source.Type) != state.GrowthValue;
@@ -465,8 +494,11 @@ namespace JueMingR.TerrariaHost.Companions
             else if (!effect)
                 state.Refusals[(int)CompanionSupplyKind.Growth] = new SupplyFailure { Source = source, Until = Main.GameUpdateCount + 60 };
             if (command != null)
+            {
                 Feedback = !returned || debit != effect ? "本次使用结果未确认。" :
                     effect ? "队友已使用一次。" : "原版用物条件未满足，本次未使用。";
+                command.ChatComplete?.Invoke(!returned || debit != effect ? "unconfirmed" : effect ? "succeeded" : "failed", Feedback);
+            }
         }
 
         internal void AbandonCompanionHeldItem(Actor actor, Exception failure)
@@ -474,7 +506,11 @@ namespace JueMingR.TerrariaHost.Companions
             if (failure != null) { EndCompanionHeldItem(actor, returned: false); return; }
             // No ItemCheck ran in this normal update; no source was used
             // and an accepted manual command is not eligible for replay.
-            if (actor.Supplies.HeldOnce != null) Feedback = "原版没有开始本次用物。";
+            if (actor.Supplies.HeldOnce != null)
+            {
+                Feedback = "原版没有开始本次用物。";
+                actor.Supplies.HeldOnce.ChatComplete?.Invoke("failed", Feedback);
+            }
             actor.Supplies.HeldOnce = null;
             actor.Supplies.HeldSource = default(RecoverySource);
         }

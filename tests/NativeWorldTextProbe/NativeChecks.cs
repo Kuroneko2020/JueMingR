@@ -14,6 +14,15 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "CompanionChatUiCpu")
+            {
+                Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user");
+                Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(NativeCompanionChatUiChecks.Run, processing: true, shortFeedback: true);
+                NativeScopeDispatch.Enter("companions-chat-ui");
+                return 0;
+            }
             if (scope == "CompanionFishingUiCpu" || scope == "CompanionFishingWorldCpu" || scope == "CompanionFishingLineCpu" || scope == "CompanionFishingLineRelease")
             {
                 Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user");
@@ -54,7 +63,15 @@ namespace NativeWorldTextProbe
                 string comparison=Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_WORMHOLE_COMPARISON");
                 if(comparison!=null && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT")!=null)
                     throw new InvalidOperationException("Explicit configuration comparisons have no formal scope qualification.");
-                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionConfigurationChecks.Run(context,graphics,output);NativeScopeDispatch.Enter("companions-config");},processing:true,shortFeedback:true,candidateAssembly:comparison);return 0;
+                NativeQuickItemChecks.Run(context =>
+                {
+                    using (var graphics = new ProbeGraphics(content))
+                    {
+                        NativeCompanionConfigurationChecks.Run(context, graphics, output);
+                        if (comparison == null) NativeCompanionChatUiChecks.Draw(context, graphics, output);
+                    }
+                    NativeScopeDispatch.Enter("companions-config");
+                }, processing: true, shortFeedback: true, candidateAssembly: comparison); return 0;
             }
             if(scope=="CompanionExitVisual")
             {

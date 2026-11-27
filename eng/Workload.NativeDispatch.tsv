@@ -432,6 +432,7 @@ leaf	CompanionShowcaseVisual	companions-showcase
 leaf	CompanionResourceBarsVisual	companions-resource-bars
 leaf	CompanionCreationInputVisual	companions-creation-input
 leaf	CompanionConfigVisual	companions-config
+leaf	CompanionChatUiCpu	companions-chat-ui
 leaf	CompanionFishingUiCpu	companions-fishing-ui
 leaf	CompanionFishingLineCpu	companions-fishing-line
 leaf	CompanionFishingWorldCpu	companions-fishing-world
