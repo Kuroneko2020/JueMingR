@@ -9,6 +9,7 @@ namespace JueMingR.TerrariaHost.F5
     {
         private void OpenModelPicker(ModelPicker picker)
         {
+            if (picker == ModelPicker.Models) modelDiscoveryPickerPending = false;
             if (modelPicker == ModelPicker.None) modelMainOffset = modelOffset;
             modelPicker = picker;
             modelSearch = "";
@@ -214,8 +215,17 @@ namespace JueMingR.TerrariaHost.F5
 
         private void PickModel(string id)
         {
-            if (modelDraft.Model != id) { modelDraft.Model = id; RetireModelRead(); modelStatus = null; }
+            SetModelId(id);
             ReturnToModel();
+        }
+
+        private void SetModelId(string id)
+        {
+            if (modelDraft.Model == id) return;
+            modelDraft.Model = id;
+            InvalidateModelTests();
+            modelStatus = null;
+            contentInvalidated = true;
         }
     }
 }

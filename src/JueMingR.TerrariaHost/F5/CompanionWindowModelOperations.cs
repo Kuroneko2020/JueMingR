@@ -7,6 +7,8 @@ namespace JueMingR.TerrariaHost.F5
 {
     internal sealed partial class CompanionWindow
     {
+        private bool modelDiscoveryPickerPending;
+
         private void ModelMessage(string value)
         {
             modelStatus = value;
@@ -69,7 +71,6 @@ namespace JueMingR.TerrariaHost.F5
         private void StartModelRead(string kind, string message, Func<CancellationToken, Task<ModelReadResult>> read, string testSubject = null)
         {
             if (modelRead != null || modelWrite != null) return;
-            if (kind == "models") discoveredModels = null;
             modelTestDetails = null;
             modelTestDetailsExpanded = false;
             modelCancellation = new CancellationTokenSource();
@@ -112,7 +113,11 @@ namespace JueMingR.TerrariaHost.F5
                 else ModelFailure("保存未完成", error);
                 modelWriteSuccess = null;
             }
-            if (modelRead?.IsCompleted != true) return;
+            if (modelRead?.IsCompleted != true)
+            {
+                ShowDiscoveredModels();
+                return;
+            }
             ModelReadResult result = modelRead.GetAwaiter().GetResult();
             string kind = modelReadKind;
             modelRead = null;
@@ -121,7 +126,16 @@ namespace JueMingR.TerrariaHost.F5
             // Only the currently shown draft can receive these results. A
             // profile selection, newer request or credential edit retires the
             // captured task, even where the transport finished concurrently.
-            if (kind == "models" && result.Success && modelConnections.HasValidDiscovery(modelDraft)) discoveredModels = result.Models;
+            if (kind == "models" && result.Success)
+            {
+                if (!modelConnections.HasValidDiscovery(modelDraft))
+                {
+                    ModelMessage("连接已变化，请重新获取模型。");
+                    return;
+                }
+                discoveredModels = result.Models;
+                modelDiscoveryPickerPending = discoveredModels.Count > 0;
+            }
             if (result.Detail != null)
             {
                 modelTestDetails = result.Detail;
@@ -129,6 +143,21 @@ namespace JueMingR.TerrariaHost.F5
             }
             if (kind == "models" && !result.Success) ModelFailure("未能获取模型", result.Message);
             else ModelMessage(result.Message);
+            ShowDiscoveredModels();
+        }
+
+        private void ShowDiscoveredModels()
+        {
+            // Let the existing editor or dropdown finish before switching views.
+            // Connections retire their own list; merely choosing a model never
+            // changes the endpoint, credential or account that returned it.
+            if (!modelDiscoveryPickerPending || modelRead != null || page != ModelPage || modelPageView != ModelPageView.Setup ||
+                modelPicker != ModelPicker.None || ModelDropdownOpen || aiInput.Editor != null) return;
+            modelDiscoveryPickerPending = false;
+            var only = discoveredModels.Count == 1 ? discoveredModels[0] : null;
+            if (only != null && HasModelCapability(only.Capability, "文字") && String.IsNullOrWhiteSpace(modelDraft.Model))
+                modelDraft.Model = only.Id;
+            OpenModelPicker(ModelPicker.Models);
         }
 
         private void CancelModelRequest()
@@ -146,8 +175,14 @@ namespace JueMingR.TerrariaHost.F5
 
         private void RetireModelRead()
         {
-            CancelModelRequest();
+            InvalidateModelTests();
             discoveredModels = null;
+            modelDiscoveryPickerPending = false;
+        }
+
+        private void InvalidateModelTests()
+        {
+            CancelModelRequest();
             modelTestDetails = null;
             modelTestDetailsExpanded = false;
         }

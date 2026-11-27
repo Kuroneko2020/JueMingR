@@ -20,8 +20,14 @@ namespace NativeWorldTextProbe
             string[] oldActions = NativeInformationConfigurationChecks.SeedOldBindings(worker, root);
             object context = Activator.CreateInstance(worker.GetNestedType("PostfixContext", Flags), Flags, null,
                 new object[] { "information-summary-" + new string('7', 40), Path.Combine(root, "evidence.txt"), root }, null);
+            var previousPlayerFile = Main.ActivePlayerFileData;
+            bool previousSavedAngler = NPC.savedAngler;
             try
             {
+                // The complete profile derives its human session identity from the active
+                // player file. Publish the dispatcher-owned player before running updates.
+                Main.ActivePlayerFileData = new Terraria.IO.PlayerFileData(Path.Combine(root, "fixture.plr"), false)
+                { Player = Main.LocalPlayer };
                 Call(context, "InstallInformationSources");
                 object readiness = Get(context, "InformationReadiness");
                 Require((bool)Get(readiness, "Installed"), "native success observer must install: " + GetOptional(readiness, "Failure"));
@@ -57,8 +63,12 @@ namespace NativeWorldTextProbe
             }
             finally
             {
-                StopContext(context);
-                Main.netMode = 0; Main.gameMenu = false;
+                try { StopContext(context); }
+                finally
+                {
+                    Main.ActivePlayerFileData = previousPlayerFile; NPC.savedAngler = previousSavedAngler;
+                    Main.netMode = 0; Main.gameMenu = false;
+                }
             }
         }
         internal static void StopContext(object context)

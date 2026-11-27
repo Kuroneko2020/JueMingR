@@ -167,6 +167,7 @@ namespace JueMingR.TerrariaHost.F5
         private void OpenModelPage(ModelPageView view)
         {
             CloseModelDropdown();
+            modelDiscoveryPickerPending = false;
             modelPageView = view;
             modelPicker = ModelPicker.None;
             modelSearch = "";
@@ -377,8 +378,8 @@ namespace JueMingR.TerrariaHost.F5
             string pickLabel = hasList ? "选择" : "候选";
             float pickWidth = ConfigurationWidth(pickLabel), readWidth = ConfigurationWidth("获取");
             float reserve = (canRead ? readWidth + 6 : 0) + (hasList || hasCandidates ? pickWidth + 6 : 0);
-            ModelField("model-id", "模型", modelDraft.Model, value => modelDraft.Model = value.Trim(), 200,
-                "填写模型 ID", trailing: reserve);
+            ModelField("model-id", "模型", modelDraft.Model, value => SetModelId(value.Trim()), 200,
+                "填写模型 ID", invalidatesProbe: false, trailing: reserve);
             if (hasList || hasCandidates)
             {
                 ModelRowAction("view-models", pickLabel, right - pickWidth, y, pickWidth, () => OpenModelPicker(ModelPicker.Models), true);

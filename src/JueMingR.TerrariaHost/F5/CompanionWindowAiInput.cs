@@ -57,6 +57,7 @@ namespace JueMingR.TerrariaHost.F5
                 CloseModelDropdown();
                 if (!BlurAiInput()) aiInput.End(true);
                 CancelModelRequest();
+                modelDiscoveryPickerPending = false;
                 HideModelSecrets();
                 modelConfirmDelete = false;
             }

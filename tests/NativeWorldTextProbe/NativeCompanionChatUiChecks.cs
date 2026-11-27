@@ -1,10 +1,13 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Remoting.Messaging;
 using System.Runtime.Remoting.Proxies;
+using System.Threading;
+using System.Threading.Tasks;
 using JueMingR.Platform.Hotkeys;
 using JueMingR.Platform.Llm;
 using Microsoft.Xna.Framework;
@@ -129,6 +132,22 @@ namespace NativeWorldTextProbe
                 var call = (IMethodCallMessage)message;
                 object result = call.MethodName == "get_Composition" ? (object)Composition : call.MethodName == "get_Candidates" ? Candidate : (object)null;
                 return new ReturnMessage(result, null, 0, call.LogicalCallContext, call);
+            }
+        }
+
+        private sealed class DiscoveryTransport : ILlmTransport
+        {
+            internal Task<IReadOnlyList<LlmModelInfo>> Next;
+            internal int Reads, Inference;
+            public Task<IReadOnlyList<LlmModelInfo>> DiscoverAsync(LlmConnectionSnapshot connection, CancellationToken cancellation)
+            {
+                Reads++;
+                return Next;
+            }
+            public Task<LlmTurn> CompleteAsync(LlmConnectionSnapshot connection, LlmRequest request, Action<string> stream, CancellationToken cancellation)
+            {
+                Inference++;
+                throw new InvalidOperationException("Model discovery did not request inference.");
             }
         }
 
@@ -355,8 +374,51 @@ namespace NativeWorldTextProbe
 
                 ToTop();
                 Pick("model-provider", "provider-ollama");
-                Click("model-field-model-id");
-                Sample(At("model-field-model-id"), queue: "fixture-local-model");
+                var liveTransport = Get(connections, "transport");
+                var discovery = new DiscoveryTransport();
+                Set(connections, "transport", discovery);
+                try
+                {
+                    void PollDiscovery() => NativeQuickItemChecks.Until(() => { Prepare(); return GetOptional(window, "modelRead") == null; });
+                    string ModelId() => ((LlmConnectionDraft)Get(window, "modelDraft")).Model;
+                    void Read(params LlmModelInfo[] models)
+                    {
+                        discovery.Next = Task.FromResult<IReadOnlyList<LlmModelInfo>>(models);
+                        Click("model-discover"); PollDiscovery();
+                    }
+                    Read(new LlmModelInfo("text-one", "支持文字"), new LlmModelInfo("text-two", "支持文字"));
+                    Require(Control("model-found-text-one") != null && Control("model-found-text-two") != null && ModelId() == "",
+                        "getting multiple live models fills and opens the picker without choosing one");
+                    Click("model-found-text-two");
+                    Require(ModelId() == "text-two" && Control("model-view-models") != null, "selecting a model returns to the configuration and keeps the fetched list");
+                    Click("model-view-models");
+                    Require(Control("model-found-text-one") != null && Control("model-found-text-two") != null && discovery.Reads == 1,
+                        "reopening a fetched list does not make another discovery request");
+                    Click("model-return");
+                    Read(new LlmModelInfo("only-text", "支持文字"));
+                    Require(ModelId() == "text-two" && Control("model-found-only-text") != null, "a populated draft keeps its model when discovery returns one other model");
+                    Click("model-return");
+                    Read();
+                    Require(ModelId() == "text-two" && Control("model-found-only-text") == null && Control("model-field-model-id") != null,
+                        "an empty list keeps the entered model and stays on the form");
+                    discovery.Next = Task.FromException<IReadOnlyList<LlmModelInfo>>(new LlmException(LlmFailure.DiscoveryUnavailable, "fixture failure"));
+                    Click("model-discover"); PollDiscovery();
+                    Require(ModelId() == "text-two" && Control("model-field-model-id") != null, "a failed lookup leaves the typed model and form available");
+                    var late = new TaskCompletionSource<IReadOnlyList<LlmModelInfo>>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    discovery.Next = late.Task;
+                    Click("model-discover");
+                    Pick("model-provider", "provider-custom");
+                    late.SetResult(new[] { new LlmModelInfo("wrong-provider", "支持文字") });
+                    PollDiscovery();
+                    Require(Control("model-field-base-setup") != null && GetOptional(window, "discoveredModels") == null,
+                        "changing connection identity prevents a late model list from reopening the picker");
+                    Pick("model-provider", "provider-ollama");
+                    Read(new LlmModelInfo("fixture-local-model", "支持文字"));
+                    Require(ModelId() == "fixture-local-model" && Control("model-found-fixture-local-model") != null && discovery.Inference == 0,
+                        "a single known text model fills an empty draft and opens its list without an inference request");
+                    Click("model-return");
+                }
+                finally { Set(connections, "transport", liveTransport); }
                 Click("model-save-use");
                 NativeQuickItemChecks.Until(() => { Prepare(); return GetOptional(window, "modelWrite") == null; });
                 var used = Get(window, "modelDraft");

@@ -25,6 +25,7 @@ namespace NativeWorldTextProbe
             object source = Get(feature, "observationSource"), shell = Get(context, "Shell"), renderer = Get(shell, "renderer"), preferences = Get(context, "preferences");
             var registry = (HotkeyRegistry)Get(Get(shell, "hotkeys"), "Registry"); var action = registry.Find("biome-display.toggle");
             var player = Main.LocalPlayer; var other = Main.player[1]; var world = Main.ActiveWorldFileData; var socket = Netplay.Connection.Socket;
+            var playerFile = Main.ActivePlayerFileData;
             int mode = Main.netMode; var patch = new Harmony("JueMingR.Information.BiomeClientTests");
             MethodInfo observe = source.GetType().GetMethod("TryObserve", Flags), draw = renderer.GetType().GetMethod("Draw", Flags);
             patch.Patch(observe, prefix: new HarmonyMethod(typeof(NativeInformationBiomeChecks).GetMethod(nameof(Observed), Flags)));
@@ -52,14 +53,21 @@ namespace NativeWorldTextProbe
                 Require((long)Get(runtime, "Generation") > generation && ((string)Call(host, "Text", InformationKind.Biome)).Contains("丛林"), "world replacement clears cadence and old model in the shared Session");
                 generation = (long)Get(runtime, "Generation"); Netplay.Connection.Socket = new Terraria.Net.Sockets.TcpSocket(); update();
                 Require((long)Get(runtime, "Generation") > generation, "ordinary reconnect socket retires the shared Session");
-                generation = (long)Get(runtime, "Generation"); Main.player[0] = new Player { active = true, ZoneSnow = true }; update();
+                generation = (long)Get(runtime, "Generation");
+                Main.player[0] = new Player { active = true, ZoneSnow = true };
+                // A real character change publishes both the player slot and the active file identity.
+                Main.ActivePlayerFileData = new Terraria.IO.PlayerFileData(System.IO.Path.Combine(Terraria.Program.SavePath, "replacement.plr"), false)
+                { Player = Main.LocalPlayer };
+                update();
                 Require((long)Get(runtime, "Generation") > generation && ((string)Call(host, "Text", InformationKind.Biome)).Contains("雪原"), "local player replacement cannot retain previous player's biome");
-                Main.player[0] = player;
-                foreach (Action invalid in new Action[] { () => Main.gameMenu = true, () => Main.dedServ = true, () => Main.netMode = 2, () => player.active = false, () => Main.player[0] = null })
+                Main.player[0] = player; Main.ActivePlayerFileData = playerFile;
+                foreach (Action invalid in new Action[] { () => Main.gameMenu = true, () => Main.dedServ = true, () => Main.netMode = 2,
+                    () => player.active = false, () => { Main.player[0] = null; Main.ActivePlayerFileData = null; } })
                 {
                     invalid(); update();
                     Require(Call(host, "Text", InformationKind.Biome) == null && !action.Invoke(HotkeyContext.Gameplay), "menu/server/missing/inactive local player rejects HUD and registered action");
-                    Main.gameMenu = Main.dedServ = false; Main.netMode = 1; Main.player[0] = player; player.active = true; update();
+                    Main.gameMenu = Main.dedServ = false; Main.netMode = 1; Main.player[0] = player; Main.ActivePlayerFileData = playerFile;
+                    player.active = true; update();
                     Require(Call(host, "Text", InformationKind.Biome) != null, "normal reentry restores local biome immediately");
                 }
                 // Direct adapter rejection must also be safe for malformed native
@@ -73,7 +81,7 @@ namespace NativeWorldTextProbe
             {
                 patch.Unpatch(observe, HarmonyPatchType.All, patch.Id); patch.Unpatch(draw, HarmonyPatchType.All, patch.Id);
                 Main.player[0] = player; Main.player[1] = other; player.ZoneDesert = player.ZoneJungle = false; player.active = true;
-                Main.ActiveWorldFileData = world; Netplay.Connection.Socket = socket; Main.netMode = mode; Main.gameMenu = Main.dedServ = false;
+                Main.ActivePlayerFileData = playerFile; Main.ActiveWorldFileData = world; Netplay.Connection.Socket = socket; Main.netMode = mode; Main.gameMenu = Main.dedServ = false;
                 Call(preferences, "SetBiomeEnabled", false); update();
             }
             Console.WriteLine("PASS: actual biome local adapters, 0/1 Session lifecycle, 30-tick/off work, F5 commands/render availability and saved physical shortcut; live server play remains unverified.");
