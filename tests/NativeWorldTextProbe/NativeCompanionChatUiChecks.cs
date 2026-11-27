@@ -116,6 +116,7 @@ namespace NativeWorldTextProbe
                 Click("model");
                 Require(GetOptional(window, "modelDraft") != null && Control("model-create") != null && Control("model-provider") != null,
                     "model configuration is projected and actionable without a selected profile");
+                CheckModelResultSubject(window, Get(host, "ChatConnections"));
                 Click("model-provider");
                 Click("model-field-search");
                 Sample(At("model-field-search"), queue: "Claude");
@@ -206,6 +207,21 @@ namespace NativeWorldTextProbe
                 NativeToolsUiChecks.Mouse(Vector2.Zero, false);
                 Main.clrInput();
             }
+        }
+
+        private static void CheckModelResultSubject(object window, object connections)
+        {
+            var presets = ((IEnumerable)Get(connections, "Presets")).Cast<LlmPreset>().ToArray();
+            string model = "fixture-model";
+            var meter = presets.Single(preset => preset.Id == "minimax_china_anthropic");
+            var subscription = presets.Single(preset => preset.Id == "minimax_china_subscription_anthropic");
+            var draft = new LlmConnectionDraft(Guid.NewGuid()) { DisplayName = "测试连接", BaseUrl = meter.BaseUrl, Model = model };
+            string regular = (string)Call(window, "ModelTestSubject", draft, meter);
+            string plan = (string)Call(window, "ModelTestSubject", draft, subscription);
+            Require(meter.BaseUrl == subscription.BaseUrl && regular.Contains(meter.PlanLabel) && plan.Contains(subscription.PlanLabel) &&
+                regular.Contains(meter.RegionLabel) && plan.Contains(subscription.RegionLabel) && regular != plan &&
+                regular.Contains("api.minimax.cn / " + model) && plan.Contains("api.minimax.cn / " + model),
+                "connection tests identify plan, region, final host and selected model even where different plans share one host");
         }
 
         private static void CheckHistoryMeasurement(object window, object layout)

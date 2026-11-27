@@ -95,7 +95,7 @@ namespace JueMingR.TerrariaHost.F5
             modelDraft = value;
             modelPreset = modelConnections.Presets.FirstOrDefault(preset => preset.Id == value.PresetId);
             string probes = modelConnections.GetProbeSummary(value);
-            modelStatus = String.IsNullOrEmpty(probes) ? null : ModelAddressSummary() + " / " + value.Model + " · " + probes;
+            modelStatus = String.IsNullOrEmpty(probes) ? null : ModelTestSubject(value, modelPreset) + " · " + probes;
             modelConfirmDelete = false;
             pendingModelPreset = null;
             Invalidate();
@@ -193,7 +193,7 @@ namespace JueMingR.TerrariaHost.F5
             BuildApiKey();
             ModelField("model-id", "模型 ID", modelDraft.Model, value => modelDraft.Model = value.Trim(), 200);
             BuildModelDiscovery();
-            ModelParagraph(ProtocolName(modelDraft.Protocol) + " · " + ModelAddressSummary());
+            ModelParagraph(ProtocolName(modelDraft.Protocol) + " · " + ModelAddressSummary(modelDraft));
             ModelParagraph("测试会实际请求模型，费用按服务商的用量规则计算。工具测试只在本地回填测试数据。");
             ModelButtonRow(("test-chat", "测试连接", () => StartModelTest(false), !saving && modelRead == null),
                 ("test-tools", "测试工具调用", () => StartModelTest(true), !saving && modelRead == null),
@@ -259,10 +259,14 @@ namespace JueMingR.TerrariaHost.F5
                 ("view-models", "选择模型", () => OpenModelPicker(ModelPicker.Models), discoveredModels?.Count > 0));
         }
 
-        private string ModelAddressSummary()
+        private static string ModelTestSubject(LlmConnectionDraft draft, LlmPreset preset) =>
+            String.Join(" · ", new[] { draft.DisplayName, preset?.PlanLabel, preset?.RegionLabel, ModelAddressSummary(draft) + " / " + draft.Model }
+                .Where(text => !String.IsNullOrWhiteSpace(text)));
+
+        private static string ModelAddressSummary(LlmConnectionDraft draft)
         {
-            string raw = modelDraft.BaseUrl ?? "";
-            if (raw.Contains("{workspaceId}") && !String.IsNullOrEmpty(modelDraft.Workspace)) raw = raw.Replace("{workspaceId}", modelDraft.Workspace);
+            string raw = draft.BaseUrl ?? "";
+            if (raw.Contains("{workspaceId}") && !String.IsNullOrEmpty(draft.Workspace)) raw = raw.Replace("{workspaceId}", draft.Workspace);
             return Uri.TryCreate(raw, UriKind.Absolute, out Uri address) && address.UserInfo.Length == 0 ? address.Authority : "请在高级设置填写服务地址";
         }
 

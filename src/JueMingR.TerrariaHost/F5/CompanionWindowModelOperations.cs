@@ -51,16 +51,16 @@ namespace JueMingR.TerrariaHost.F5
         {
             var draft = modelDraft;
             var connections = modelConnections;
-            string label = draft.DisplayName + " · " + ModelAddressSummary() + " / " + draft.Model;
+            string label = ModelTestSubject(draft, modelPreset);
             StartModelRead(tools ? "tools" : "chat", tools ? "正在测试工具调用…" : "正在测试连接…", async token =>
             {
                 LlmConnectionTest result = tools ? await connections.TestToolsAsync(draft, token).ConfigureAwait(false) :
                     await connections.TestChatAsync(draft, token).ConfigureAwait(false);
-                return new ModelReadResult { Success = result.Success, Message = label + " · " + DateTimeOffset.Now.ToString("MM-dd HH:mm") + " · " + result.Description };
-            });
+                return new ModelReadResult { Success = result.Success, Message = result.Description };
+            }, label);
         }
 
-        private void StartModelRead(string kind, string message, Func<CancellationToken, Task<ModelReadResult>> read)
+        private void StartModelRead(string kind, string message, Func<CancellationToken, Task<ModelReadResult>> read, string testSubject = null)
         {
             if (modelRead != null || modelWrite != null) return;
             if (kind == "models") discoveredModels = null;
@@ -68,16 +68,20 @@ namespace JueMingR.TerrariaHost.F5
             if (kind == "tools") modelToolTest = null;
             modelCancellation = new CancellationTokenSource();
             modelReadKind = kind;
-            modelRead = FinishModelRead(read, modelCancellation.Token);
+            modelRead = FinishModelRead(read, modelCancellation.Token, testSubject);
             ModelMessage(message);
         }
 
-        private static async Task<ModelReadResult> FinishModelRead(Func<CancellationToken, Task<ModelReadResult>> read, CancellationToken token)
+        private static async Task<ModelReadResult> FinishModelRead(Func<CancellationToken, Task<ModelReadResult>> read,
+            CancellationToken token, string testSubject)
         {
-            try { return await read(token).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return new ModelReadResult { Message = "请求已取消。" }; }
-            catch (LlmException exception) { return new ModelReadResult { Message = exception.Message }; }
-            catch (Exception) { return new ModelReadResult { Message = "暂时无法取得服务结果。" }; }
+            ModelReadResult result;
+            try { result = await read(token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { result = new ModelReadResult { Message = "请求已取消。" }; }
+            catch (LlmException exception) { result = new ModelReadResult { Message = exception.Message }; }
+            catch (Exception) { result = new ModelReadResult { Message = "暂时无法取得服务结果。" }; }
+            if (testSubject != null) result.Message = testSubject + " · " + DateTimeOffset.Now.ToString("MM-dd HH:mm") + " · " + result.Message;
+            return result;
         }
 
         private void PollModelOperations()
