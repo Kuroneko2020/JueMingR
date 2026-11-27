@@ -14,6 +14,7 @@ namespace JueMingR.TerrariaHost.F5
     internal sealed partial class CompanionWindow
     {
         private enum ModelPicker { None, Connections, Provider, Plan, Region, Credential, Protocol, Templates, Models }
+        private enum ModelPageView { Setup, Connections, Advanced, ProviderDetails }
         private sealed class ModelFieldView
         {
             internal string Id, Value;
@@ -37,9 +38,10 @@ namespace JueMingR.TerrariaHost.F5
         private CancellationTokenSource modelCancellation;
         private Action modelWriteCompleted;
         private ModelPicker modelPicker;
+        private ModelPageView modelPageView;
         private string modelSearch = "", modelStatus, modelChatTest, modelToolTest, modelReadKind, modelStorage;
         private string modelRevealedId, modelRevealedValue;
-        private bool modelAdvanced, modelExplain, modelConfirmDelete;
+        private bool modelConfirmDelete;
         private int modelCapabilityFilter, modelOffset, modelMaximum, modelMainOffset;
         private float modelY, modelRow, modelX, modelWidth, modelTextWidth;
         private int modelTextSkin = -1;
@@ -136,15 +138,39 @@ namespace JueMingR.TerrariaHost.F5
                 return;
             }
             if (modelPicker != ModelPicker.None) { BuildModelPicker(); return; }
+            if (modelPageView != ModelPageView.Setup)
+            {
+                ModelButtonRow(("back-to-setup", "返回模型", () => OpenModelPage(ModelPageView.Setup), true));
+                if (modelPageView == ModelPageView.Connections) BuildModelManagement();
+                else if (modelPageView == ModelPageView.Advanced) BuildModelAdvanced();
+                else BuildPresetNotes();
+                return;
+            }
+            BuildModelSetup();
+        }
 
+        private void OpenModelPage(ModelPageView view)
+        {
+            modelPageView = view;
+            modelOffset = 0;
+            modelConfirmDelete = false;
+            HideModelSecrets();
+            Invalidate();
+        }
+
+        private void BuildModelManagement()
+        {
             bool saving = modelWrite != null;
             var stored = StoredModel();
-            ModelHeading("连接档案");
-            ModelButtonRow(
-                ("connections", stored == null ? "连接列表" : "切换连接", () => OpenModelPicker(ModelPicker.Connections), !saving),
-                ("create", "新增", () => LoadModelDraft(modelConnections.Edit()), !saving),
-                ("copy", "复制配置", () => LoadModelDraft(modelConnections.Copy(stored.Id)), stored != null && !saving),
-                ("delete", "删除", () => { modelConfirmDelete = true; Invalidate(); }, stored != null && !saving));
+            var actions = new List<(string, string, Action, bool)>();
+            if (modelList.Count > 0) actions.Add(("connections", "切换连接", () => OpenModelPicker(ModelPicker.Connections), !saving));
+            actions.Add(("create", "新增连接", () => { LoadModelDraft(modelConnections.Edit()); OpenModelPage(ModelPageView.Setup); }, !saving));
+            if (stored != null)
+            {
+                actions.Add(("copy", "复制配置", () => { LoadModelDraft(modelConnections.Copy(stored.Id)); OpenModelPage(ModelPageView.Setup); }, !saving));
+                actions.Add(("delete", "删除", () => { modelConfirmDelete = true; Invalidate(); }, !saving));
+            }
+            ModelButtonRow(actions.ToArray());
             if (modelConfirmDelete && stored != null)
             {
                 int count = modelConnections.GetAffectedBindingCount(stored.Id);
@@ -154,24 +180,34 @@ namespace JueMingR.TerrariaHost.F5
                     ("cancel-delete", "取消", () => { modelConfirmDelete = false; Invalidate(); }, true));
             }
             ModelField("name", "连接名称", modelDraft.DisplayName, value => modelDraft.DisplayName = value, 80);
+            ModelButtonRow(("save-name", "保存连接", SaveModel, !saving && modelRead == null));
             bool enabled = modelConnections.Enabled;
-            string defaultText = modelConnections.DefaultId == stored?.Id && stored != null ? "取消默认连接" : "设为默认连接";
-            ModelButtonRow(("enabled", enabled ? "关闭直连" : "启用直连",
-                    () => StartModelWrite(() => modelConnections.SetEnabledAsync(!enabled), enabled ? "已关闭直连。" : "已启用直连。"), !saving),
-                ("default", defaultText, () => StartModelWrite(() => modelConnections.SetDefaultAsync(modelConnections.DefaultId == stored.Id ? (Guid?)null : stored.Id),
-                    defaultText == "取消默认连接" ? "已取消默认连接。" : "已设置默认连接。"), stored != null && !saving));
+            if (stored == null)
+                ModelButtonRow(("enabled", enabled ? "关闭直连" : "启用直连",
+                    () => StartModelWrite(() => modelConnections.SetEnabledAsync(!enabled), enabled ? "已关闭直连。" : "已启用直连。"), !saving && enabled));
+            else
+            {
+                bool isDefault = modelConnections.DefaultId == stored.Id;
+                ModelButtonRow(("enabled", enabled ? "关闭直连" : "启用直连",
+                        () => StartModelWrite(() => modelConnections.SetEnabledAsync(!enabled), enabled ? "已关闭直连。" : "已启用直连。"), !saving),
+                    ("default", isDefault ? "取消默认" : "设为默认", () => StartModelWrite(() => modelConnections.SetDefaultAsync(isDefault ? (Guid?)null : stored.Id),
+                        isDefault ? "已取消默认连接。" : "已设置默认连接。"), !saving));
+            }
             BuildModelBinding(stored, saving);
             if (!String.IsNullOrEmpty(modelStorage)) ModelParagraph(modelStorage);
+            if (!String.IsNullOrEmpty(modelStatus)) ModelParagraph(modelStatus);
+        }
 
-            ModelHeading("厂商与计费方案");
-            ModelChoose("provider", "厂商", ProviderName(modelPreset), () => OpenModelPicker(ModelPicker.Provider));
-            ModelChoose("plan", "计费方案", modelPreset?.PlanLabel, () => OpenModelPicker(ModelPicker.Plan), modelPreset != null);
+        private void BuildModelSetup()
+        {
+            bool readyToUse = modelWrite == null && modelRead == null;
+            ModelChoose("provider", "服务商", ProviderName(modelPreset), () => OpenModelPicker(ModelPicker.Provider));
             if (modelPreset != null)
             {
+                bool planChoice = modelConnections.Presets.Any(item => item.Provider == modelPreset.Provider && item.PlanId != modelPreset.PlanId && !item.Advanced);
                 bool regionChoice = modelConnections.Presets.Any(item => SamePlan(item, modelPreset) && item.Region != modelPreset.Region && !item.Advanced);
+                if (planChoice) ModelChoose("plan", "计费", ModelPlanName(modelPreset), () => OpenModelPicker(ModelPicker.Plan));
                 if (regionChoice) ModelChoose("region", "地区", modelPreset.RegionLabel, () => OpenModelPicker(ModelPicker.Region));
-                ModelParagraph(PlanScope(modelPreset.Policy));
-                BuildPresetNotes();
             }
             if (pendingModelPreset != null)
             {
@@ -182,29 +218,40 @@ namespace JueMingR.TerrariaHost.F5
 
             if (modelPreset?.Policy == "reference_only")
             {
+                ModelParagraph("这项套餐仅供参考。可切换到按量 API 继续连接。");
                 if (modelPreset.CredentialKinds?.Count > 0)
                     ModelParagraph("适用凭据 · " + String.Join("、", modelPreset.CredentialKinds.Select(ModelCredentialKindName)));
-                ModelParagraph("请选择能在游戏内使用的计费方案，以继续设置密钥和模型。");
+                BuildModelFooter(false);
                 return;
             }
-            ModelHeading("连接与模型");
             if (modelPreset?.CredentialKinds?.Count > 1)
                 ModelChoose("credential", "凭据类型", ModelCredentialKindName(modelDraft.CredentialKind), () => OpenModelPicker(ModelPicker.Credential));
+            if (modelPreset?.Provider == "custom" && String.IsNullOrWhiteSpace(modelDraft.BaseUrl))
+                ModelField("base-setup", "服务地址", modelDraft.BaseUrl, value => modelDraft.BaseUrl = value.Trim(), 1500);
             BuildApiKey();
-            ModelField("model-id", "模型 ID", modelDraft.Model, value => modelDraft.Model = value.Trim(), 200);
-            BuildModelDiscovery();
-            ModelParagraph(ProtocolName(modelDraft.Protocol) + " · " + ModelAddressSummary(modelDraft));
-            ModelParagraph("测试会实际请求模型，费用按服务商的用量规则计算。工具测试只在本地回填测试数据。");
-            ModelButtonRow(("test-chat", "测试连接", () => StartModelTest(false), !saving && modelRead == null),
-                ("test-tools", "测试工具调用", () => StartModelTest(true), !saving && modelRead == null),
-                ("save", "保存连接", SaveModel, !saving && modelRead == null));
+            BuildModelInput();
+            ModelButtonRow(("test-chat", "测试连接", () => StartModelTest(false), readyToUse),
+                ("save-use", "保存并使用", SaveModelAndUse, readyToUse));
+            ModelParagraph("保存后设为队友默认连接。测试可能产生费用。");
+            if (modelPreset?.Policy == "interactive_tools_conditional" || modelPreset?.Policy == "personal_interactive_conditional")
+                ModelParagraph("套餐有使用限制，请核对服务商的适用范围和额度。");
             if (!String.IsNullOrEmpty(modelChatTest)) ModelParagraph(modelChatTest);
             if (!String.IsNullOrEmpty(modelToolTest)) ModelParagraph(modelToolTest);
             if (!String.IsNullOrEmpty(modelStatus)) ModelParagraph(modelStatus);
             if (modelRead != null)
-                ModelButtonRow(("cancel-read", "取消本次请求", () => { CancelModelRequest(); ModelMessage("已取消请求。"); }, true));
-            ModelButtonRow(("advanced", modelAdvanced ? "收起高级设置" : "展开高级设置", () => { modelAdvanced = !modelAdvanced; HideModelSecrets(); Invalidate(); }, true));
-            if (modelAdvanced) BuildModelAdvanced();
+                ModelButtonRow(("cancel-read", "取消请求", () => { CancelModelRequest(); ModelMessage("已取消请求。"); }, true));
+            BuildModelFooter(true);
+        }
+
+        private void BuildModelFooter(bool advanced)
+        {
+            var actions = new List<(string, string, Action, bool)>
+            {
+                ("manage", "管理连接", () => OpenModelPage(ModelPageView.Connections), modelWrite == null)
+            };
+            if (advanced) actions.Add(("advanced", "高级设置", () => OpenModelPage(ModelPageView.Advanced), true));
+            if (modelPreset != null) actions.Add(("details", "使用说明", () => OpenModelPage(ModelPageView.ProviderDetails), true));
+            ModelButtonRow(actions.ToArray());
         }
 
         private void BuildModelBinding(LlmConnectionInfo stored, bool saving)
@@ -219,10 +266,22 @@ namespace JueMingR.TerrariaHost.F5
                 ("unbind", "停止使用连接", () => StartModelWrite(() => modelConnections.SetBindingAsync(profile.OwnerId, profile.Id, Guid.Empty), "该队友暂时不使用模型连接。"), binding != Guid.Empty && !saving));
         }
 
-        private void SaveModel()
+        private void SaveModel() => SaveModel(false);
+
+        private void SaveModelAndUse() => SaveModel(true);
+
+        private void SaveModel(bool use)
         {
             var draft = modelDraft;
-            StartModelWrite(() => modelConnections.SaveAsync(draft), "连接已保存。", () =>
+            if (use && StoredModel() == null && draft.DisplayName == "新连接" && !String.IsNullOrWhiteSpace(draft.Model))
+            {
+                string name = ProviderName(modelPreset) + " · " + draft.Model;
+                var boundaries = TextElements.Boundaries(name);
+                int length = boundaries.Last(offset => offset <= 80);
+                draft.DisplayName = name.Substring(0, length);
+            }
+            string message = use ? "队友默认使用「" + draft.DisplayName + "」。" : "连接已保存。";
+            StartModelWrite(() => use ? modelConnections.SaveAndUseAsync(draft) : modelConnections.SaveAsync(draft), message, () =>
             {
                 // Keep successful probes on the very draft they tested until
                 // the player changes a request field. Reload only secret state.
@@ -238,25 +297,29 @@ namespace JueMingR.TerrariaHost.F5
 
         private void BuildApiKey()
         {
-            string status = modelDraft.ApiKey == null ? (modelDraft.HasStoredKey ? "已保存 · 点击替换" : "粘贴当前方案的 API Key") :
-                (modelDraft.ApiKey.Length == 0 ? "待清除 · 保存后生效" : "已替换 · 保存后生效");
+            bool optional = modelDraft.AuthMode == "none" || modelDraft.AuthMode == "optional_bearer";
+            string status = modelDraft.ApiKey == null ? (modelDraft.HasStoredKey ? "已保存 · 点击替换" : optional ? "可留空" : "点击粘贴 API Key") :
+                (modelDraft.ApiKey.Length == 0 ? "保存后清除" : "已填写");
             ModelSecretField("api-key", "API Key", status, modelDraft.ApiKey, value => modelDraft.ApiKey = value, 4096,
-                () => modelConnections.RevealApiKey(modelDraft));
+                () => modelConnections.RevealApiKey(modelDraft), compact: true);
         }
 
-        private void BuildModelDiscovery()
+        private void BuildModelInput()
         {
             bool canRead = modelPreset?.DiscoveryStatus == "provider_specific" || modelPreset?.DiscoveryStatus == "documented" ||
                 modelPreset?.Provider == "custom" && !String.IsNullOrWhiteSpace(modelDraft.DiscoveryPath);
-            if (!canRead) ModelParagraph("此入口可手动填写模型 ID。模型权限以该账号的控制台为准。");
-            var candidates = modelPreset?.Candidates;
-            if (candidates?.Count > 0 && discoveredModels == null)
+            bool hasList = discoveredModels?.Count > 0;
+            bool hasCandidates = discoveredModels == null && modelPreset?.Candidates?.Count > 0;
+            float y = modelY, right = modelX + modelWidth;
+            float reserve = (canRead ? 66 : 0) + (hasList || hasCandidates ? 66 : 0);
+            ModelField("model-id", "模型", modelDraft.Model, value => modelDraft.Model = value.Trim(), 200,
+                "填写模型 ID", trailing: reserve);
+            if (hasList || hasCandidates)
             {
-                ModelParagraph("官方候选 · 核对日期 " + modelPreset.VerifiedAt + "。账号是否可用以实际测试为准。");
-                ModelButtonRow(("candidates", "查看官方候选", () => OpenModelPicker(ModelPicker.Models), true));
+                ModelRowAction("view-models", hasList ? "选择" : "候选", right - 60, y, 60, () => OpenModelPicker(ModelPicker.Models), true);
+                right -= 66;
             }
-            if (canRead) ModelButtonRow(("discover", "获取模型", StartModelDiscovery, modelRead == null && modelWrite == null),
-                ("view-models", "选择模型", () => OpenModelPicker(ModelPicker.Models), discoveredModels?.Count > 0));
+            if (canRead) ModelRowAction("discover", "获取", right - 60, y, 60, StartModelDiscovery, modelRead == null && modelWrite == null);
         }
 
         private static string ModelTestSubject(LlmConnectionDraft draft, LlmPreset preset) =>
@@ -272,17 +335,13 @@ namespace JueMingR.TerrariaHost.F5
 
         private void BuildPresetNotes()
         {
-            if (!modelExplain)
-            {
-                string text = modelPreset.Policy == "reference_only" ? "查看使用范围与官方说明" : "查看凭据与模型权益";
-                ModelButtonRow(("details", text, () => { modelExplain = true; Invalidate(); }, true));
-                return;
-            }
+            if (modelPreset == null) return;
+            ModelHeading(ProviderName(modelPreset) + " · " + ModelPlanName(modelPreset));
+            ModelParagraph(PlanScope(modelPreset.Policy));
             ModelParagraph(modelPreset.Note);
             ModelParagraph("公开接入说明核对于 " + modelPreset.VerifiedAt + "。尚无本连接的实测结果时，以测试和控制台为准。");
             if (modelPreset.Sources?.Count > 0)
-                ModelButtonRow(("official", "复制官方链接", () => ModelMessage(aiInput.TryCopy(String.Join(Environment.NewLine, modelPreset.Sources)) ? "已复制官方链接。" : "无法复制官方链接。"), true),
-                    ("hide-details", "收起说明", () => { modelExplain = false; Invalidate(); }, true));
+                ModelButtonRow(("official", "复制官方链接", () => ModelMessage(aiInput.TryCopy(String.Join(Environment.NewLine, modelPreset.Sources)) ? "已复制官方链接。" : "无法复制官方链接。"), true));
         }
 
         private static string PlanScope(string policy)
@@ -299,6 +358,19 @@ namespace JueMingR.TerrariaHost.F5
 
         private static bool SamePlan(LlmPreset a, LlmPreset b) => a.Provider == b.Provider && a.PlanId == b.PlanId;
         private static bool SameRegion(LlmPreset a, LlmPreset b) => SamePlan(a, b) && a.Region == b.Region;
+        private static string ModelPlanName(LlmPreset preset)
+        {
+            switch (preset.PlanId)
+            {
+                case "standard_api": return "按量 API";
+                case "subscription": return "M Plan";
+                case "coding_plan": return "Coding Plan";
+                case "token_plan": return "Token Plan";
+                case "agent_plan": return "Agent Plan";
+                case "kimi_code": return "Kimi Code";
+                default: return preset.PlanLabel;
+            }
+        }
         private static string ProtocolName(string id)
         {
             switch (id)

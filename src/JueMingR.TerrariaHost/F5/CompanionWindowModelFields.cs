@@ -47,9 +47,16 @@ namespace JueMingR.TerrariaHost.F5
             {
                 var option = options[i];
                 var rect = new F5Rect(modelX + i * (buttonWidth + 6), modelY, buttonWidth, modelRow);
-                if (ModelVisible(rect)) Button("model-" + option.Key, option.Label, rect, () => RunModelAction(option.Run), option.Enabled);
+                if (ModelVisible(rect)) Button("model-" + option.Key, option.Label, rect, () => RunModelAction(option.Run), option.Enabled,
+                    selectedValue: option.Key == "save-use" && option.Enabled);
             }
             modelY += modelRow + 5;
+        }
+
+        private void ModelRowAction(string key, string text, float x, float y, float width, Action run, bool enabled)
+        {
+            var rect = new F5Rect(x, y, width, modelRow);
+            if (ModelVisible(rect)) Button("model-" + key, text, rect, () => RunModelAction(run), enabled);
         }
 
         private void ModelChoice(string id, string value, Action run, bool selectedValue)
@@ -68,7 +75,7 @@ namespace JueMingR.TerrariaHost.F5
             var rect = new F5Rect(modelX, modelY, modelWidth, modelRow);
             if (ModelVisible(rect))
             {
-                float left = modelWidth * .39f;
+                float left = Math.Min(138, modelWidth * .36f);
                 Text(label, new F5Rect(modelX, modelY, left, modelRow), .65f);
                 var c = Button("model-" + id, FitModelText(value, modelWidth - left - 20), new F5Rect(modelX + left, modelY, modelWidth - left, modelRow),
                     () => RunModelAction(run), enabled && modelWrite == null);
@@ -100,20 +107,20 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         private void ModelField(string id, string label, string value, Action<string> setter, int maximum,
-            string empty = "点击填写", bool invalidatesProbe = true)
+            string empty = "点击填写", bool invalidatesProbe = true, float trailing = 0)
         {
-            AddModelField(id, label, String.IsNullOrEmpty(value) ? empty : value, value, setter, maximum, false, invalidatesProbe);
+            AddModelField(id, label, String.IsNullOrEmpty(value) ? empty : value, value, setter, maximum, false, invalidatesProbe, trailing);
         }
 
         private void AddModelField(string id, string label, string display, string value, Action<string> write,
-            int maximum, bool secret, bool invalidatesProbe)
+            int maximum, bool secret, bool invalidatesProbe, float trailing = 0)
         {
             var rect = new F5Rect(modelX, modelY, modelWidth, modelRow);
             if (ModelVisible(rect))
             {
-                float left = modelWidth * .39f;
+                float left = Math.Min(138, modelWidth * .36f);
                 Text(label, new F5Rect(modelX, modelY, left - 4, modelRow), .65f);
-                var fieldView = new ModelFieldView { Id = id, Value = display, Rect = new F5Rect(modelX + left, modelY, modelWidth - left, modelRow), Secret = secret };
+                var fieldView = new ModelFieldView { Id = id, Value = display, Rect = new F5Rect(modelX + left, modelY, modelWidth - left - trailing, modelRow), Secret = secret };
                 var c = Button("model-field-" + id, "", fieldView.Rect, () =>
                 {
                     HideModelSecrets();
@@ -155,11 +162,13 @@ namespace JueMingR.TerrariaHost.F5
         }
 
         private void ModelSecretField(string id, string label, string status, string value, Action<string> setter,
-            int maximum, Func<string> reveal)
+            int maximum, Func<string> reveal, bool compact = false)
         {
-            AddModelField(id, label, status, value, setter, maximum, true, true);
+            bool hasSecret = !String.IsNullOrEmpty(value) || value == null && modelDraft.HasStoredKey;
+            float y = modelY;
+            AddModelField(id, label, status, value, setter, maximum, true, true, compact && hasSecret ? 124 : 0);
             string revealLabel = modelRevealedId == id ? "隐藏" : "显示";
-            ModelButtonRow((id + "-reveal", revealLabel + label, () =>
+            void Reveal()
             {
                 if (modelRevealedId == id) HideModelSecrets();
                 else
@@ -171,12 +180,24 @@ namespace JueMingR.TerrariaHost.F5
                     modelRevealedValue = raw;
                 }
                 Invalidate();
-            }, modelWrite == null), (id + "-clear", "清除" + label, () =>
+            }
+            void Clear()
             {
                 setter("");
                 ModelDraftChanged(modelDraft.CredentialScope(), true);
                 ModelMessage("保存连接后将清除" + label + "。");
-            }, modelWrite == null));
+            }
+            if (compact)
+            {
+                if (hasSecret)
+                {
+                    float right = modelX + modelWidth;
+                    ModelRowAction(id + "-reveal", revealLabel, right - 118, y, 56, Reveal, modelWrite == null);
+                    ModelRowAction(id + "-clear", "清除", right - 56, y, 56, Clear, modelWrite == null);
+                }
+            }
+            else ModelButtonRow((id + "-reveal", revealLabel + label, Reveal, modelWrite == null),
+                (id + "-clear", "清除" + label, Clear, modelWrite == null));
             if (modelRevealedId == id) BuildModelRevealedValue();
         }
 

@@ -39,6 +39,10 @@ namespace NativeWorldTextProbe
                 Call(window, "Toggle", Get(layout, "Viewport"));
                 Call(window, "Prepare", Matrix.Identity, screen);
                 Open("model");
+                var firstScreen = ((IEnumerable)Get(window, "controls")).Cast<object>().Select(c => (string)Get(c, "Key")).ToArray();
+                Require(new[] { "model-provider/", "model-field-api-key/", "model-field-model-id/", "model-discover/", "model-test-chat/", "model-save-use/" }
+                    .All(key => firstScreen.Any(candidate => candidate.StartsWith(key, StringComparison.Ordinal))),
+                    "the real 700 by 500 model page draws all first-use controls without scrolling");
                 graphics.Image(Path.Combine(output, "companion-model-narrow.png"), () => Call(window, "Draw"), Matrix.Identity, (int)screen.X, (int)screen.Y);
                 Open("chat");
                 graphics.Image(Path.Combine(output, "companion-chat-narrow.png"), () => Call(window, "Draw"), Matrix.Identity, (int)screen.X, (int)screen.Y);
@@ -74,7 +78,7 @@ namespace NativeWorldTextProbe
             var imeField = input.GetType().GetField("ime", BindingFlags.Instance | BindingFlags.NonPublic);
             object originalIme = imeField.GetValue(input);
             var ime = new TextCandidate(imeField.FieldType);
-            var screen = new Vector2(1280, 900);
+            var screen = new Vector2(700, 500);
             Call(renderer, "RefreshResources");
             Call(renderer, "Prepare", state, screen.X, screen.Y, 1f);
             NativeQuickItemChecks.Until(() => { Call(context, "UpdateRuntime"); return (bool)Get(archive, "Ready"); });
@@ -114,9 +118,14 @@ namespace NativeWorldTextProbe
                 Require(((IEnumerable)Get(host, "Profiles")).Cast<object>().Count() == 0, "the model page starts without any owned companion");
                 Require(new[] { "inventory", "configuration", "chat", "model" }.All(key => Control(key) != null), "all four top-level controls are real hit targets");
                 Click("model");
-                Require(GetOptional(window, "modelDraft") != null && Control("model-create") != null && Control("model-provider") != null,
-                    "model configuration is projected and actionable without a selected profile");
-                CheckModelResultSubject(window, Get(host, "ChatConnections"));
+                Require(GetOptional(window, "modelDraft") != null &&
+                    new[] { "model-provider", "model-field-api-key", "model-field-model-id", "model-discover", "model-test-chat", "model-save-use" }
+                        .All(key => Control(key) != null && (bool)Get(Control(key), "Enabled")) &&
+                    new[] { "model-create", "model-copy", "model-delete", "model-field-name", "model-enabled", "model-default", "model-plan", "model-region", "model-test-tools" }
+                        .All(key => Control(key) == null),
+                    "the zero-profile narrow page immediately exposes first use and keeps single-plan and connection management controls off the page");
+                var connections = Get(host, "ChatConnections");
+                CheckModelResultSubject(window, connections);
                 Click("model-provider");
                 Click("model-field-search");
                 Sample(At("model-field-search"), queue: "Claude");
@@ -128,12 +137,16 @@ namespace NativeWorldTextProbe
                 for (int frame = 0; frame < 120; frame++) Prepare();
                 Require((int)Get(window, "LayoutBuilds") == builds, "stable model path reuses filtered layout for 120 prepares");
                 Click("model-return");
+                Click("model-advanced");
+                Require(Control("model-test-tools") != null, "advanced settings retains the safe tool test");
                 var modelPoint = NativeToolsUiChecks.Point(Get(window, "modelScrollView"));
                 Sample(modelPoint, wheel: -120);
                 int scroll = (int)Get(window, "modelOffset");
                 Require(scroll > 0, "model rows have a real independent scroll range");
                 Click("chat"); Click("model");
                 Require((int)Get(window, "modelOffset") == scroll, "view changes preserve model scroll");
+                Sample(modelPoint, wheel: 120);
+                Click("model-back-to-setup");
 
                 void ScrollTo(string key)
                 {
@@ -169,6 +182,28 @@ namespace NativeWorldTextProbe
                 var glm = Get(window, "modelDraft");
                 Require((string)Get(glm, "CredentialKind") == "legacy_compatible_key" && GetOptional(glm, "ApiKey") == null,
                     "selecting the explicit credential category keeps the old provider's key out of this draft");
+
+                Set(window, "modelOffset", 0);
+                Call(window, "Invalidate"); Prepare();
+                Click("model-provider");
+                Click("model-field-search");
+                Sample(At("model-field-search"), queue: "Ollama");
+                Sample(At("model-field-search"), keys: new[] { Keys.Enter }, queue: "\r");
+                Click("model-provider-ollama");
+                Click("model-field-model-id");
+                Sample(At("model-field-model-id"), queue: "fixture-local-model");
+                Click("model-save-use");
+                NativeQuickItemChecks.Until(() => { Prepare(); return GetOptional(window, "modelWrite") == null; });
+                var used = Get(window, "modelDraft");
+                Require((bool)Get(connections, "Enabled") && (Guid)Get(connections, "DefaultId") == (Guid)Get(used, "Id") &&
+                    ((string)Get(used, "DisplayName")).Contains("fixture-local-model"),
+                    "the normal first-use button saves, names and activates a local connection as default without a companion");
+                ScrollTo("model-manage");
+                Click("model-manage");
+                Click("model-enabled");
+                NativeQuickItemChecks.Until(() => { Prepare(); return GetOptional(window, "modelWrite") == null; });
+                Require(!(bool)Get(connections, "Enabled"), "explicit connection management can turn the feature off before the offline chat checks");
+                Click("model-back-to-setup");
 
                 Guid first = Create("聊天队友甲"), second = Create("聊天队友乙");
                 Prepare(); Click("profile:" + first); Click("chat"); Click("chat-draft");

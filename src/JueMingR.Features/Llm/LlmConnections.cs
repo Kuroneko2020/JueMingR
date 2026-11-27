@@ -171,18 +171,20 @@ namespace JueMingR.Features.Llm
         public string RevealSecretHeaders(LlmConnectionDraft draft) => ResolveSecrets(draft).Headers;
         public string RevealProxyCredentials(LlmConnectionDraft draft) => ResolveSecrets(draft).ProxyCredentials;
 
-        public Task SetBindingAsync(Guid owner, Guid profile, Guid? connection) => ChangeAsync(candidate =>
+        public Task SetBindingAsync(Guid owner, Guid profile, Guid? connection) =>
+            ChangeAsync(candidate => ApplyBinding(candidate, owner, profile, connection));
+
+        private static void ApplyBinding(LlmStoredConfiguration candidate, Guid owner, Guid profile, Guid? connection)
         {
-            var key = Tuple.Create(owner, profile);
             if (owner == Guid.Empty || profile == Guid.Empty)
                 throw Error("请先选中一个队友档案。");
+            var key = Tuple.Create(owner, profile);
             if (!connection.HasValue) { candidate.Bindings.Remove(key); return; }
             EnsureExists(candidate, connection.Value);
             if (candidate.Bindings.Count >= BindingLimit && !candidate.Bindings.ContainsKey(key))
                 throw Error("队友连接绑定已达上限。");
             candidate.Bindings[key] = connection.Value;
-        });
-
+        }
         public Task ForgetBindingAsync(Guid owner, Guid profile) =>
             ChangeAsync(candidate => candidate.Bindings.Remove(Tuple.Create(owner, profile)), true);
 
@@ -201,7 +203,12 @@ namespace JueMingR.Features.Llm
             // Keep explicit overrides so a deleted connection cannot silently move a teammate to a paid default.
         });
 
-        public Task SaveAsync(LlmConnectionDraft draft)
+        public Task SaveAsync(LlmConnectionDraft draft) => SaveDraftAsync(draft, false, null, null);
+
+        public Task SaveAndUseAsync(LlmConnectionDraft draft, Guid? owner = null, Guid? profile = null) =>
+            SaveDraftAsync(draft, true, owner, profile);
+
+        private Task SaveDraftAsync(LlmConnectionDraft draft, bool use, Guid? owner, Guid? profile)
         {
             LlmConnectionDraft captured = CopyDraft(draft);
             LlmConnectionSecrets secrets = ResolveSecrets(draft);
@@ -210,7 +217,9 @@ namespace JueMingR.Features.Llm
             {
                 if (candidate.Connections.Count >= ConnectionLimit && !candidate.Connections.ContainsKey(captured.Id))
                     throw Error("连接档案已达上限，请先整理已有连接。");
-                CaptureValidated(captured, secrets, true, false);
+                if (owner.HasValue != profile.HasValue)
+                    throw Error("请先选中一个完整的队友档案。");
+                CaptureValidated(captured, secrets, true, use);
                 var settings = new LlmConnectionSettings();
                 captured.CopyTo(settings);
                 settings.DisplayName = settings.DisplayName.Trim();
@@ -226,6 +235,13 @@ namespace JueMingR.Features.Llm
                     candidate.Secrets[version] = secrets;
                 }
                 candidate.Connections[captured.Id] = new LlmStoredConnection(captured.Id, settings, version, testResults);
+                if (!use) return;
+
+                // The one candidate publishes the new connection, enable flag and exactly one scope.
+                // A failed validation or protected document never switches active accounts.
+                if (owner.HasValue) ApplyBinding(candidate, owner.Value, profile.Value, captured.Id);
+                else candidate.DefaultId = captured.Id;
+                candidate.Enabled = true;
             });
         }
 

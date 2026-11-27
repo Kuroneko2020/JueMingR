@@ -32,8 +32,8 @@ namespace JueMingR.TerrariaHost.F5
             switch (modelPicker)
             {
                 case ModelPicker.Connections: title = "选择连接档案"; break;
-                case ModelPicker.Provider: title = "选择厂商"; break;
-                case ModelPicker.Plan: title = "选择计费方案"; break;
+                case ModelPicker.Provider: title = "选择服务商"; break;
+                case ModelPicker.Plan: title = "选择计费方式"; break;
                 case ModelPicker.Region: title = "选择地区"; break;
                 case ModelPicker.Credential: title = "选择凭据类型"; break;
                 case ModelPicker.Protocol: title = "选择该方案支持的协议"; break;
@@ -79,7 +79,7 @@ namespace JueMingR.TerrariaHost.F5
                     foreach (var group in presets.Where(item => item.Provider == modelPreset?.Provider && !item.Advanced).GroupBy(item => item.PlanId))
                     {
                         var selectedPreset = PreferredPreset(group);
-                        ModelChoice("plan-" + group.Key, selectedPreset.PlanLabel + PolicyLabel(selectedPreset.Policy),
+                        ModelChoice("plan-" + group.Key, ModelPlanName(selectedPreset) + PolicyLabel(selectedPreset.Policy),
                             () => ChoosePlan(selectedPreset), modelPreset?.PlanId == group.Key);
                     }
                     break;
@@ -158,11 +158,9 @@ namespace JueMingR.TerrariaHost.F5
             if (modelPreset != null && !SameRegion(modelPreset, preset) && StoredModel() != null)
             {
                 own = modelConnections.Edit();
-                own.DisplayName = preset.Label;
             }
             modelConnections.ApplyPreset(own, preset.Id);
             LoadModelDraft(own);
-            if (preset.Policy == "reference_only") modelExplain = true;
             return true;
         }
 

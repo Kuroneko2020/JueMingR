@@ -27,6 +27,7 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "cross-turn wire fields, tool groups and fragmented UTF-8", AcrossUserTurns);
             Run(failures, "bad completion, cancellation and redaction", FailuresAndRedaction);
             Run(failures, "DPAPI, prepared replacement, references and public history", PersistentConfiguration);
+            Run(failures, "save and use commits exactly the requested scope", SaveAndUse);
         }
 
         private static void Run(List<string> failures, string label, Func<Task> test)
@@ -382,6 +383,66 @@ namespace JueMingR.ArchitectureTests
             }
         }
 
+        private static async Task SaveAndUse()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "JueMingR-Llm-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var ownerId = Guid.NewGuid();
+            var currentProfile = Guid.NewGuid();
+            var otherProfile = Guid.NewGuid();
+            var inheritedProfile = Guid.NewGuid();
+            Guid defaultId, selectedId;
+            try
+            {
+                using (var transport = new LlmHttpTransport())
+                using (var store = new LlmFileStore(root))
+                {
+                    var connections = new LlmConnections(Presets, store, transport);
+                    await connections.InitializeAsync().ConfigureAwait(false);
+                    var first = NewDraft(connections, "deepseek_official_chat", false);
+                    var blockedPlan = NewDraft(connections, "mimo_token_sgp_chat", false);
+                    first.ApiKey = "";
+                    await Failure(() => connections.SaveAndUseAsync(first), LlmFailure.Configuration).ConfigureAwait(false);
+                    await Failure(() => connections.SaveAndUseAsync(blockedPlan), LlmFailure.Configuration).ConfigureAwait(false);
+                    Require(!connections.Enabled && !connections.DefaultId.HasValue && connections.List().Count == 0,
+                        "invalid key or restricted plan does not partially save or enable");
+
+                    first.ApiKey = TestKey;
+                    defaultId = first.Id;
+                    await connections.SaveAndUseAsync(first).ConfigureAwait(false);
+                    Require(connections.Enabled && connections.DefaultId == defaultId &&
+                        connections.TryResolve(ownerId, inheritedProfile, out var active, out _) && active.Id == defaultId,
+                        "initial save works without a selected teammate");
+                    await connections.SetBindingAsync(ownerId, currentProfile, defaultId).ConfigureAwait(false);
+                    await connections.SetBindingAsync(ownerId, otherProfile, defaultId).ConfigureAwait(false);
+
+                    var second = NewDraft(connections, "openai_official_chat", false);
+                    selectedId = second.Id;
+                    await connections.SaveAndUseAsync(second, ownerId, currentProfile).ConfigureAwait(false);
+                    Require(connections.DefaultId == defaultId && connections.GetBinding(ownerId, currentProfile) == selectedId &&
+                        connections.GetBinding(ownerId, otherProfile) == defaultId && !connections.GetBinding(ownerId, inheritedProfile).HasValue,
+                        "targeted save preserves the default and other bindings");
+                }
+
+                using (var transport = new LlmHttpTransport())
+                using (var store = new LlmFileStore(root))
+                {
+                    var connections = new LlmConnections(Presets, store, transport);
+                    await connections.InitializeAsync().ConfigureAwait(false);
+                    Require(connections.Enabled && connections.DefaultId == defaultId &&
+                        connections.TryResolve(ownerId, currentProfile, out var selected, out _) && selected.Id == selectedId,
+                        "enable, default and teammate selections survive reload");
+                    await connections.SetEnabledAsync(false).ConfigureAwait(false);
+                    string path = Path.Combine(root, "JueMingRData", "Llm", "connections.json");
+                    File.AppendAllText(path, Environment.NewLine);
+                    string incoming = File.ReadAllText(path);
+                    await Failure(() => connections.SaveAndUseAsync(connections.Edit(selectedId)), LlmFailure.Storage).ConfigureAwait(false);
+                    Require(!connections.Enabled && connections.DefaultId == defaultId && File.ReadAllText(path) == incoming,
+                        "actual atomic conflict cannot enable or publish a new default");
+                }
+            }
+            finally { Directory.Delete(root, true); }
+        }
         private static async Task PersistentConfiguration()
         {
             string root = Path.Combine(Path.GetTempPath(), "JueMingR-Llm-" + Guid.NewGuid().ToString("N"));

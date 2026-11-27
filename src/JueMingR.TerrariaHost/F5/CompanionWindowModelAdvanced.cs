@@ -9,6 +9,9 @@ namespace JueMingR.TerrariaHost.F5
     {
         private void BuildModelAdvanced()
         {
+            ModelButtonRow(("test-tools", "测试工具调用", () => StartModelTest(true), modelRead == null && modelWrite == null));
+            ModelParagraph("测试会请求服务商，工具只回填测试数据。");
+            if (!String.IsNullOrEmpty(modelStatus)) ModelParagraph(modelStatus);
             ModelHeading("服务与网络");
             ModelChoose("protocol", "协议", ProtocolName(modelDraft.Protocol), () => OpenModelPicker(ModelPicker.Protocol));
             if (modelPreset != null && modelConnections.Presets.Any(item => SameRegion(item, modelPreset) && item.Protocol == modelPreset.Protocol && item.Advanced != modelPreset.Advanced))

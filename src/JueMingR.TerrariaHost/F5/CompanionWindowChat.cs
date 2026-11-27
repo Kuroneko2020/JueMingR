@@ -102,7 +102,7 @@ namespace JueMingR.TerrariaHost.F5
             if (profile == null)
             {
                 Text("选择或创建队友后即可聊天。", new F5Rect(bodyView.X + 8, bodyView.Y, bodyView.Width - 16, row));
-                Button("chat-open-model", "前往模型页配置", new F5Rect(bodyView.X + 8, bodyView.Y + row + 4, ConfigurationWidth("前往模型页配置"), row), () => SelectPage(ModelPage));
+                Button("chat-open-model", "去设置模型", new F5Rect(bodyView.X + 8, bodyView.Y + row + 4, ConfigurationWidth("去设置模型"), row), OpenModelSetupFromChat);
                 return;
             }
 
@@ -139,8 +139,8 @@ namespace JueMingR.TerrariaHost.F5
                 ChatButton("send", "发送", x + width - sendWidth, actionTop, sendWidth, row, () => SendChat(), chatView.CanSend, blur: false);
             else
             {
-                float configureWidth = ConfigurationWidth("前往模型页配置");
-                ChatButton("configure", "前往模型页配置", x + width - configureWidth, actionTop, configureWidth, row, () => SelectPage(ModelPage));
+                float configureWidth = ConfigurationWidth("去设置模型");
+                ChatButton("configure", "去设置模型", x + width - configureWidth, actionTop, configureWidth, row, OpenModelSetupFromChat);
             }
         }
 
@@ -148,7 +148,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (chatConfirmation != 0)
             {
-                string question = chatConfirmation == 1 ? "清空聊天记录？当前活动将继续。" : "开启新上下文？可见聊天记录将保留。";
+                string question = chatConfirmation == 1 ? "清空聊天记录？队友会继续当前活动。" : "另起一段对话？聊天记录会保留。";
                 Text(question, new F5Rect(x, top, width - 116, row), ChatScale);
                 ChatButton("confirm", "确认", x + width - 112, top, 52, row, () =>
                 {
@@ -162,11 +162,17 @@ namespace JueMingR.TerrariaHost.F5
             float buttonWidth = (width - 24) / 5;
             ChatButton("copy", "复制", x, top, buttonWidth, row, CopyChat, chatView?.Entries.Count > 0);
             ChatButton("clear", "清空", x + buttonWidth + 6, top, buttonWidth, row, () => ConfirmChat(1), chatView?.Entries.Count > 0);
-            ChatButton("restart", "新上下文", x + 2 * (buttonWidth + 6), top, buttonWidth, row, () => ConfirmChat(2), chatView != null);
+            ChatButton("restart", "另起对话", x + 2 * (buttonWidth + 6), top, buttonWidth, row, () => ConfirmChat(2), chatView != null);
             ChatButton("stop-reply", "停止回复", x + 3 * (buttonWidth + 6), top, buttonWidth, row,
                 () => host.StopChatReply(chatOwner, chatProfile), chatView?.IsRunning == true);
             ChatButton("stop-activity", "停止活动", x + 4 * (buttonWidth + 6), top, buttonWidth, row,
                 () => { if (!host.StopChatActivity(chatOwner, chatProfile)) ShowNotice("当前没有可停止的活动。"); }, chatView?.CanStopActivity == true);
+        }
+
+        private void OpenModelSetupFromChat()
+        {
+            SelectPage(ModelPage);
+            OpenModelPage(ModelPageView.Setup);
         }
 
         private void ChatButton(string key, string text, float x, float top, float width, float row, Action action,
