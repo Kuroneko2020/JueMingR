@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
+using JueMingR.Features.Blueprint;
 using Terraria;
 using Terraria.DataStructures;
 using Terraria.GameContent;
@@ -90,6 +91,16 @@ namespace JueMingR.TerrariaHost.Blueprint
                 critterProducers.TryGetValue(CritterProducerKey(critter.Type, (int)leashedNpcType.GetValue(critter), critter.anchorStyle,
                     critter is NormalButterflyLeashedCritter ? (byte)butterflyVariant.GetValue(critter) : 0), out item);
             return item > 0 && ValidEntityItem(tileType, item, frameY) ? item : 0;
+        }
+        internal static bool LeashedItemPending(CaptureCell cell)
+        {
+            if (!Ready || Main.netMode != 1 || cell.Payload.EntityState != BlueprintPayloadState.Unknown) return false;
+            lock (nameGate)
+            {
+                TileEntity awaited, current;
+                return awaitingLeashedSync.TryGetValue(Key(cell.X, cell.Y), out awaited) &&
+                    TileEntity.ByPosition.TryGetValue(new Point16(cell.X, cell.Y), out current) && ReferenceEquals(awaited, current);
+            }
         }
         private static void InstallLeashedObservation(Harmony harmony)
         {

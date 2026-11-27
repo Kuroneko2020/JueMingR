@@ -21,7 +21,11 @@ namespace NativeWorldTextProbe
     internal static class NativeBlueprintMirrorTrimChecks
     {
         private const BindingFlags F=BindingFlags.Instance|BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public;
-        internal static void Run(object context) { RunCore(context, false); }
+        internal static void Run(object context)
+        {
+            NativeBlueprintBoundaryDoorChecks.Run(context);
+            RunCore(context, false);
+        }
         // A bounded historical A/B entry uses the same new public-input check
         // against archived Host bytes, without rerunning the other consumers.
         internal static void RunConfirmOnly(object context) { RunCore(context, true); }

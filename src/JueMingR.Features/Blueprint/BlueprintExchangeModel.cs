@@ -7,8 +7,8 @@ using JueMingR.Platform.Settings;
 namespace JueMingR.Features.Blueprint
 {
     public enum BlueprintExchangeKind { Import, Export, PrepareExport }
-    public enum BlueprintExchangePhase { Preparing, ReadingOrWriting, Validating, Publishing, Completed }
-    public enum BlueprintExchangeStatus { Completed, AlreadyExists, Cancelled, Failed, CommitUnconfirmed }
+    public enum BlueprintExchangePhase { Preparing, ReadingOrWriting, Validating, Publishing, Completed, AwaitingName }
+    public enum BlueprintExchangeStatus { Completed, AlreadyExists, Cancelled, Failed, CommitUnconfirmed, NeedsName }
     public sealed class BlueprintExportNameProposal
     {
         public Guid RequestId { get; internal set; }
@@ -37,6 +37,7 @@ namespace JueMingR.Features.Blueprint
         public BlueprintExchangeStatus Status { get; internal set; }
         public Guid AssetId { get; internal set; }
         public string Message { get; internal set; }
+        public string SourceName { get; internal set; }
         public bool FileCommitted { get; internal set; }
         public bool CounterCommitted { get; internal set; }
         public BlueprintExportNameProposal Proposal { get; internal set; }

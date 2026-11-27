@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.Blueprint
     // their own appearance/wire/actuation work in the same bounded source.
     internal enum BlueprintBuildLane { TileBody, WallBody, Shape, Appearance, Wire, Actuation }
     internal enum BlueprintBuildOperationKind
-    { Body, Hammer, PaintTile, PaintWall, Scrape, AddWire, AddActuator, SetInactive, RemoveOwnedActuator, PlaceBase, ConvertSubstrate, HoikBase, HoikSwap }
+    { Body, Hammer, PaintTile, PaintWall, Scrape, AddWire, AddActuator, SetInactive, RemoveOwnedActuator, PlaceBase, ConvertSubstrate, HoikBase, HoikSwap, ChristmasTreeOrnament }
     internal sealed class BlueprintBuildOperation
     {
         internal BlueprintBuildOperationKind Kind;
@@ -114,7 +114,15 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             if (WiringOperation(operation)) return TryPlanWiringTool(target, p, preferred, out plan, out wait, out dependencySlots);
             int tool = -1, primary = -1;
-            if (AppearanceOperation(operation))
+            if (OrnamentOperation(operation))
+            {
+                tool = ConstructionItemSlot(p, operation.Mode);
+                if (tool < 0) { wait = BlueprintBuildWait.Material; return false; }
+                if (!p.IsInTileInteractionRange(target.WorldX, target.WorldY, TileReachCheckSettings.Simple, p.inventory[tool].tileBoost + p.blockRange))
+                { wait = BlueprintBuildWait.Player; return false; }
+                operation = CopyBuildOperation(operation);
+            }
+            else if (AppearanceOperation(operation))
             {
                 bool outside;
                 tool = FindAppearanceTool(target, p, out outside, preferred);
@@ -212,6 +220,11 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (HoikOperation(target.Operation)) return TryPrepareHoikBuild(target, p, out flight, plan);
             if (AppearanceOperation(target.Operation)) return TryPrepareAppearanceBuild(target, p, out flight, plan);
             if (WiringOperation(target.Operation)) return TryPrepareWiringBuild(target, p, out flight, plan);
+            if (OrnamentOperation(target.Operation))
+            {
+                int slot = plan == null ? ConstructionItemSlot(p, target.Operation.Mode) : PlannedBuildToolSlot(p, plan);
+                return TryCreateOperationFlight(target, p, slot, -1, 1, 0, out flight);
+            }
             return TryPrepareSpecialBuild(target, p, out flight, plan);
         }
         private BlueprintBuildReadiness CreateConstructionCandidate(BlueprintProjectionPlacement owner,BlueprintProjectionMatchRange range,
@@ -304,6 +317,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             else if (lane == BlueprintBuildLane.WallBody)
             { if (!BasicPlacement(target.Placement) || !BuildEmpty(target.WorldX, target.WorldY, true)) return false; }
+            else if (lane == BlueprintBuildLane.Shape && TryPlanChristmasTreeOrnament(target, actual, out operation)) return true;
             else if (lane == BlueprintBuildLane.Shape || lane == BlueprintBuildLane.Appearance)
             { if (!TryPlanAppearanceBuild(target, actual, lane, out operation)) return false; }
             else if (!TryPlanWiringBuild(target, actual, lane, out operation)) return false;
@@ -330,6 +344,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (HoikOperation(flight.Operation)) return HoikBuildCurrent(flight);
             if (AppearanceOperation(flight.Operation)) return AppearanceBuildCurrent(flight);
             if (WiringOperation(flight.Operation)) return WiringBuildCurrent(flight);
+            if (OrnamentOperation(flight.Operation)) return ChristmasTreeOrnamentCurrent(flight);
             return SpecialBuildCurrent(flight);
         }
         private bool ConstructionBuildApplied(BuildFlight flight)
@@ -337,6 +352,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if (HoikOperation(flight.Operation)) return HoikBuildApplied(flight);
             if (AppearanceOperation(flight.Operation)) return AppearanceBuildApplied(flight);
             if (WiringOperation(flight.Operation)) return WiringBuildApplied(flight);
+            if (OrnamentOperation(flight.Operation)) return ChristmasTreeOrnamentApplied(flight);
             return SpecialBuildApplied(flight);
         }
         private bool NativeConstructionConsumer(BuildFlight flight, ToolBuildConsumer consumer, Item material, bool wall, bool animation)
@@ -349,13 +365,16 @@ namespace JueMingR.TerrariaHost.Blueprint
                 flight.Checked || flight.Rejected || !BuildFlightCurrent(flight, true) ||
                 Player.tileTargetX != flight.Target.WorldX || Player.tileTargetY != flight.Target.WorldY) return false;
             bool allowed = HoikOperation(flight.Operation) ? NativeHoikConsumer(flight, consumer, material, wall, animation) : AppearanceOperation(flight.Operation) ? NativeAppearanceConsumer(flight, consumer, material, wall, animation) :
-                WiringOperation(flight.Operation) ? NativeWiringConsumer(flight, consumer, material, wall, animation) : NativeSpecialConsumer(flight, consumer, material, wall, animation);
+                WiringOperation(flight.Operation) ? NativeWiringConsumer(flight, consumer, material, wall, animation) :
+                OrnamentOperation(flight.Operation) ? consumer == ToolBuildConsumer.ChristmasTreeOrnament && !flight.Entered &&
+                    animation && flight.Player.ItemTimeIsZero && ChristmasTreeOrnamentCurrent(flight) : NativeSpecialConsumer(flight, consumer, material, wall, animation);
             if (allowed && consumer != ToolBuildConsumer.ApplyPaint && consumer != ToolBuildConsumer.ApplyCoating) flight.Entered = true;
             return allowed;
         }
         private Action<Exception> BeginConstructionConsumer(BuildFlight flight,ToolBuildConsumer consumer)
         {
             if(flight?.Operation==null)return null;
+            if(OrnamentOperation(flight.Operation))return null;
             if(HoikOperation(flight.Operation))return BeginHoikConsumer(flight,consumer);
             return WiringOperation(flight.Operation)?BeginWiringBuildConsumer(flight,consumer):
                 AppearanceOperation(flight.Operation)?null:BeginSpecialBuildConsumer(flight,consumer);

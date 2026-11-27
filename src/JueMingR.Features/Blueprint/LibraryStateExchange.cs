@@ -12,6 +12,7 @@ namespace JueMingR.Features.Blueprint
         { worker.ConfigureExchange(io, counter, localClock ?? (() => DateTime.Now)); }
         public bool TryBeginExchange(BlueprintExchangeRequest request) { return worker.TryBeginExchange(request); }
         public bool TryReserveExchange(Guid id) { return worker.TryReserveExchange(id); }
+        public bool ResumeImportName(Guid id, string name) { return worker.ResumeImportName(id, name); }
         public bool TryTakeExchangeReceipt(out BlueprintExchangeReceipt value) { return worker.TryTakeExchangeReceipt(out value); }
         public void CancelExchange(Guid id) { worker.CancelExchange(id); }
     }

@@ -282,7 +282,7 @@ namespace NativeWorldTextProbe
             var item=NativeBlueprintWorldMatchChecks.Place(host,input,entry,44,42,step);Ready(host,item,step);Window(host,item,step);
             var qualification=Qualification(item);var state=Get(item,"Match");
             Require(qualification.EffectiveRequiredLayerCount==4 && qualification.EffectiveUnknownLayerCount==4 && (long)Get(state,"Unknown")==4 && Matches(item)==0 &&
-                Call(host,"ProjectionMoveEligibility",item).ToString()=="Checking","foreign root version keeps Tile/Wire/Actuator unknown even where the actual world already matches");
+                Call(host,"ProjectionMoveEligibility",item).ToString()=="Unsupported","foreign root version keeps the Tile/Wire/Actuator construction proof unknown and ends movement eligibility even where the actual world appears to match");
             var renderer=Get(item,"Renderer");object[] resultArgs={0,0,default(BlueprintWorldMatchResult)};
             var readMatch=renderer.GetType().GetMethod("TryGetMatch",F);bool published=false;
             // The logical offscreen summary can be current before the raw

@@ -52,9 +52,10 @@ namespace JueMingR.Features.Blueprint
     {
         public BlueprintProjectionWindow(BlueprintProjectionIdentity identity, long windowGeneration, CaptureSummary summary, BlueprintProjectionBounds bounds, CaptureCell[] cells, CaptureObject[] objects)
             : this(identity, windowGeneration, summary, bounds, cells, objects, false) { }
-        internal BlueprintProjectionWindow(BlueprintProjectionIdentity identity, long windowGeneration, CaptureSummary summary, BlueprintProjectionBounds bounds, CaptureCell[] cells, CaptureObject[] objects, bool owned, BlueprintProjectionMask appliedMask = null, BlueprintProjectionView view = null, BlueprintProjectionWindow sourceWindow = null, bool cellsInSourceOrder = true)
+        internal BlueprintProjectionWindow(BlueprintProjectionIdentity identity, long windowGeneration, CaptureSummary summary, BlueprintProjectionBounds bounds, CaptureCell[] cells, CaptureObject[] objects, bool owned, BlueprintProjectionMask appliedMask = null, BlueprintProjectionView view = null, BlueprintProjectionWindow sourceWindow = null, bool cellsInSourceOrder = true, bool provenDoorContext = false)
         {
             AppliedMask = appliedMask; View = view; SourceWindow = sourceWindow; CellsInSourceOrder = cellsInSourceOrder;
+            ProvenDoorContext = provenDoorContext || sourceWindow?.ProvenDoorContext == true;
             Identity = identity ?? throw new ArgumentNullException(nameof(identity)); WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary) ?? throw new ArgumentNullException(nameof(summary)); Bounds = bounds;
             Cells = Array.AsReadOnly(owned ? cells : (CaptureCell[])cells.Clone()); Objects = Array.AsReadOnly(owned ? objects : (CaptureObject[])objects.Clone());
             long bytes = checked(256L + cells.LongLength * 64L + objects.LongLength * 128L);
@@ -70,6 +71,8 @@ namespace JueMingR.Features.Blueprint
         public BlueprintProjectionView View { get; }
         public BlueprintProjectionWindow SourceWindow { get; }
         public bool CellsInSourceOrder { get; }
+        // Only a complete validated worker read can attest the auxiliary air.
+        internal bool ProvenDoorContext { get; }
         // Summary retains the saved source origin. Cell/object X/Y below have
         // ALREADY had Summary.Left/Top subtracted; raw frames remain unchanged.
         public CaptureSummary Summary { get; }
@@ -82,6 +85,8 @@ namespace JueMingR.Features.Blueprint
     }
 
     public enum BlueprintProjectionReceiptKind { Opened, Window, Failed, Closed }
+    public enum BlueprintProjectionFailureScope { None, Demand, DerivedView, SharedAsset, SavedInstance }
+    public enum BlueprintProjectionFailureStage { None, Open, Window, SourceRead, SourceTransform, Qualification, Restore, Edit }
 #if DEBUG
     // Development-only counters for the bounded-work checks. No Release
     // sampling, logging, timers, or diagnostic file output is installed.
@@ -109,8 +114,9 @@ namespace JueMingR.Features.Blueprint
 #endif
     public sealed class BlueprintProjectionReceipt
     {
-        internal BlueprintProjectionReceipt(BlueprintProjectionReceiptKind kind, BlueprintProjectionIdentity identity, long windowGeneration = 0, CaptureSummary summary = null, BlueprintProjectionWindow window = null, string error = null, string failureCode = null, long totalLayerCount = 0, IReadOnlyList<BlueprintProjectionSourceRange> sourceRanges = null, IReadOnlyList<BlueprintProjectionSourceRange> matchRanges = null, bool identityRetired = false, long totalConstructionLayerCount = 0, string name = null)
-        { Name = name; MatchRanges = matchRanges; SourceRanges = sourceRanges; TotalLayerCount = totalLayerCount; TotalConstructionLayerCount = totalConstructionLayerCount; Kind = kind; Identity = identity; WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary); Window = window; Error = error; FailureCode = failureCode; IdentityRetired = identityRetired; }
+        internal BlueprintProjectionReceipt(BlueprintProjectionReceiptKind kind, BlueprintProjectionIdentity identity, long windowGeneration = 0, CaptureSummary summary = null, BlueprintProjectionWindow window = null, string error = null, string failureCode = null, long totalLayerCount = 0, IReadOnlyList<BlueprintProjectionSourceRange> sourceRanges = null, IReadOnlyList<BlueprintProjectionSourceRange> matchRanges = null, bool identityRetired = false, long totalConstructionLayerCount = 0, string name = null,
+            BlueprintProjectionFailureScope failureScope = BlueprintProjectionFailureScope.None, BlueprintProjectionFailureStage failureStage = BlueprintProjectionFailureStage.None, string failureDetail = null)
+        { Name = name; MatchRanges = matchRanges; SourceRanges = sourceRanges; TotalLayerCount = totalLayerCount; TotalConstructionLayerCount = totalConstructionLayerCount; Kind = kind; Identity = identity; WindowGeneration = windowGeneration; Summary = LibraryState.Copy(summary); Window = window; Error = error; FailureCode = failureCode; IdentityRetired = identityRetired; FailureScope = failureScope; FailureStage = failureStage; FailureDetail = failureDetail; }
         public string Name { get; }
         public IReadOnlyList<BlueprintProjectionSourceRange> SourceRanges { get; }
         public IReadOnlyList<BlueprintProjectionSourceRange> MatchRanges { get; }
@@ -125,9 +131,10 @@ namespace JueMingR.Features.Blueprint
         public BlueprintProjectionWindow Window { get; }
         public string Error { get; }
         public string FailureCode { get; }
-        // FailureCode describes the read; this states the worker ownership fact.
-        // A source failure can use the same code as a recoverable viewport
-        // budget refusal while already having revoked the shared identity.
+        public BlueprintProjectionFailureScope FailureScope { get; }
+        public BlueprintProjectionFailureStage FailureStage { get; }
+        public string FailureDetail { get; }
+        // Ownership is revoked only for shared source or an exact saved record.
         public bool IdentityRetired { get; }
     }
 }

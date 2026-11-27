@@ -36,6 +36,7 @@ namespace JueMingR.Features.Blueprint
         private readonly int[] rowOffsets;
         private readonly int baseFrameX, baseFrameY, columnStep;
         private readonly bool independentFrames;
+        private readonly bool christmasTreeMembers;
         public BlueprintWorldObject(int worldX, int worldY, int width, int height, int anchorX, int anchorY,
             ushort kind, int style, int direction, BlueprintWorldObjectFamily family, int[] form, long frameGroup = 0, BlueprintObjectShape memberLayout = null, int entityItemType = 0)
         {
@@ -47,6 +48,7 @@ namespace JueMingR.Features.Blueprint
             {
                 baseFrameX = memberLayout.BaseFrameX; baseFrameY = memberLayout.BaseFrameY; columnStep = memberLayout.ColumnStep;
                 rowOffsets = (int[])memberLayout.RowOffsets.Clone(); independentFrames = memberLayout.IndependentMemberFrames;
+                christmasTreeMembers = memberLayout.ChristmasTreeMembers;
             }
         }
         public int WorldX { get; }
@@ -79,12 +81,9 @@ namespace JueMingR.Features.Blueprint
         public bool MatchesMemberFrame(CaptureCell cell, int index)
         {
             if (rowOffsets == null) return true;
+            if (christmasTreeMembers) return BlueprintChristmasTreeMembers.Matches(cell, index);
             if (index < 0 || index >= MemberCount || rowOffsets.Length != Height || columnStep <= 0) return false;
-            if (cell.FrameY != baseFrameY + rowOffsets[index / Width]) return false;
-            if (!independentFrames) return cell.FrameX == baseFrameX + index % Width * columnStep;
-            // Locked closed-door rows choose exactly three decoration slots.
-            // Independent does not grant arbitrary or cross-style raw frames.
-            return cell.FrameX >= baseFrameX && cell.FrameX < baseFrameX + columnStep * 3 && (cell.FrameX - baseFrameX) % columnStep == 0;
+            return BlueprintObjectShape.MatchesGridFrame(cell, index, Width, baseFrameX, baseFrameY, columnStep, rowOffsets, independentFrames);
         }
 
         // Candidates are decoded on the game thread from the original metadata

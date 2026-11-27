@@ -9,6 +9,7 @@ namespace JueMingR.TerrariaHost.Blueprint
     internal sealed partial class HostBlueprint
     {
         private IBlueprintHorizontalMirrorProfile mirrorProfile;
+        private bool mirrorProfileUnavailable;
         private BlueprintProjectionPlacement editorTarget;
         private BlueprintProjectionMask editorMask;
         private IBlueprintHorizontalMirrorProfile editorProfile;
@@ -71,6 +72,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private void ClearProjectionEditor()
         {
             ClearTrimSession();
+            if (ReferenceEquals(projectionMatchPriority, editorTarget)) projectionMatchPriority = null;
             editorTarget = null; editorMask = null; editorProfile = null; editorPickOrder = null; editorPickPending = false; editorPickIndex = 0;
             trimPlan = null; trimDisplayBounds = default(BlueprintProjectionBounds); trimPreviewRevision++;
             trimConfirmMapping = -1; trimConfirmChord = null;
@@ -124,6 +126,16 @@ namespace JueMingR.TerrariaHost.Blueprint
         { trimDisplayBounds = BlueprintProjectionView.InclusiveRectangle(trimStartX, trimStartY, trimEndX, trimEndY, editorTarget.Summary.Width, editorTarget.Summary.Height); }
         private void PumpProjectionEditor()
         {
+            if (ProjectionMode == BlueprintProjectionMode.SelectingMove && editorTarget != null)
+            {
+                var target = editorTarget;
+                if (!EditorTargetCurrent())
+                { CancelProjection(); projectionFeedback = "这份蓝图已变化，本次移动已取消。"; return; }
+                if (CheckProjectionMove(target))
+                { ClearProjectionEditor(); BeginProjectionMove(target, moveClickX, moveClickY); }
+                else if (ReadProjectionMoveEligibility(target) != BlueprintProjectionMoveEligibility.Checking) ClearProjectionEditor();
+                return;
+            }
             if (!OwnMirrorCancellation && !OwnTrimCancellation) return;
             if ((editorPickPending || editorTarget != null) && (editorTransaction != projectionTransaction || editorSceneRevision != projectionSceneRevision))
             { CancelProjection(); projectionFeedback = "场景已变化，本次蓝图编辑已取消。"; return; }
@@ -144,7 +156,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                         else { hit = HitCell(item.Mask.Apply(cell), item.MirroredHorizontally ? 1f - editorPickSubX : editorPickSubX, editorPickSubY); break; }
                     }
                     if (!hit) { editorPickIndex--; continue; }
-                    if (OwnMirrorCancellation && !EnsureMirrorProfile()) { CancelProjection(); projectionFeedback = "原版镜像资料暂未就绪，原蓝图仍保留。"; return; }
+                    if (OwnMirrorCancellation && !EnsureMirrorProfile()) { ReportMirrorProfileState(); return; }
                     LockEditorTarget(item); editorPickPending = false; editorPickOrder = null; hoveredProjection = item;
                     if (OwnTrimCancellation)
                     { ProjectionMode = BlueprintProjectionMode.TrimReady; InterruptProjection(); Pointer.Cancel(); projectionFeedback = "拖选修剪范围，选定后点确定应用修改"; return; }
@@ -154,15 +166,16 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             if (OwnTrimCancellation) { TryDispatchTrim(); return; }
             if (editorTarget == null || ProjectionMode == BlueprintProjectionMode.Committing) return;
-            if (!EnsureMirrorProfile()) { CancelProjection(); projectionFeedback = "原版镜像资料暂未就绪，原蓝图仍保留。"; return; }
-            // Current+Unknown is a stable result, not a permission to sample
-            // the same source again. Ensure still starts a cold proof; actual
-            // section/catalog/world invalidation owns all subsequent work.
+            if (!EnsureMirrorProfile()) { ReportMirrorProfileState(); return; }
+            // A missing section can resume the same click on a world event.
+            // Stable unsupported semantics end the current edit immediately.
             var eligibility = ProjectionMoveEligibility(editorTarget);
             if (eligibility != BlueprintProjectionMoveEligibility.Movable)
             {
                 if (eligibility == BlueprintProjectionMoveEligibility.Matched)
                 { CancelProjection(); projectionFeedback = "这份蓝图已有已完成部分，不能镜像"; }
+                else if (eligibility == BlueprintProjectionMoveEligibility.Unsupported || eligibility == BlueprintProjectionMoveEligibility.Failed)
+                { string reason = ProjectionProofFailure(editorTarget, eligibility); CancelProjection(); projectionFeedback = reason; }
                 else { projectionMatchPriority = editorTarget; projectionFeedback = "正在核对这份蓝图…"; }
                 return;
             }
@@ -176,10 +189,23 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         private bool EnsureMirrorProfile()
         {
-            if (mirrorProfile?.Ready != true) mirrorProfile = BlueprintHorizontalMirrorResolver.Create();
+            if (mirrorProfile?.Ready != true && !mirrorProfileUnavailable && HasSession)
+            {
+                // Terraria completes TileObjectData, ContentSamples and
+                // Minecart initialization before a world session can start.
+                // Unavailable ABI in an active session is a terminal result.
+                mirrorProfile = BlueprintHorizontalMirrorResolver.Create();
+                mirrorProfileUnavailable = mirrorProfile?.Ready != true;
+            }
             if (mirrorProfile?.Ready != true) return false;
             foreach (var item in projectionScene) if (item.MirrorProfile == null) item.MirrorProfile = mirrorProfile;
             return true;
+        }
+        private void ReportMirrorProfileState()
+        {
+            if (mirrorProfileUnavailable)
+            { CancelProjection(); projectionFeedback = "当前原版资料无法确认镜像，原蓝图仍保留。"; }
+            else projectionFeedback = "正在准备原版镜像资料…";
         }
         private static CaptureCell EffectiveProjectionCell(BlueprintProjectionPlacement owner, BlueprintProjectionWindow window, int index)
         {

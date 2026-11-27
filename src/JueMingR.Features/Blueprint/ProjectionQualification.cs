@@ -12,11 +12,17 @@ namespace JueMingR.Features.Blueprint
             BlueprintProjectionMask mask, long total, long effective, long unknown, IReadOnlyList<BlueprintProjectionSourceRange> sourceRanges,
             IReadOnlyList<BlueprintProjectionSourceRange> matchRanges, BlueprintProjectionGeometryDirectory directory,
             string error = null, BlueprintProjectionView view = null)
+            : this(identity, catalog, mask, total, effective, unknown, sourceRanges, matchRanges, directory, error, view, BlueprintProjectionFailureScope.None, null, null) { }
+        internal BlueprintProjectionQualificationReceipt(BlueprintProjectionIdentity identity, BlueprintPlacementCatalog catalog,
+            BlueprintProjectionMask mask, long total, long effective, long unknown, IReadOnlyList<BlueprintProjectionSourceRange> sourceRanges,
+            IReadOnlyList<BlueprintProjectionSourceRange> matchRanges, BlueprintProjectionGeometryDirectory directory,
+            string error, BlueprintProjectionView view, BlueprintProjectionFailureScope failureScope, string failureCode, string failureDetail)
         {
             Identity = identity; Catalog = catalog; Mask = mask; TotalRequiredLayerCount = total;
             EffectiveRequiredLayerCount = effective; EffectiveUnknownLayerCount = unknown;
             SourceRanges = sourceRanges; MatchRanges = matchRanges; Error = error; View = view;
-            if(directory==null || !ReferenceEquals(directory.Sources,sourceRanges))throw new ArgumentException("blueprint-directory-source-identity",nameof(directory));
+            FailureScope = failureScope; FailureCode = failureCode; FailureDetail = failureDetail;
+            if(error==null && (directory==null || !ReferenceEquals(directory.Sources,sourceRanges)))throw new ArgumentException("blueprint-directory-source-identity",nameof(directory));
             GeometryDirectory=directory;
         }
         public BlueprintProjectionIdentity Identity { get; }
@@ -31,6 +37,10 @@ namespace JueMingR.Features.Blueprint
         public IReadOnlyList<BlueprintProjectionSourceRange> MatchRanges { get; }
         public BlueprintProjectionGeometryDirectory GeometryDirectory { get; }
         public string Error { get; }
+        public BlueprintProjectionFailureScope FailureScope { get; }
+        public string FailureCode { get; }
+        public string FailureDetail { get; }
+        internal long EstimatedBytes { get { return DescriptorBytes + 2L * ((Error?.Length ?? 0) + (FailureCode?.Length ?? 0) + (FailureDetail?.Length ?? 0)); } }
         public BlueprintProjectionView View { get; }
     }
 }

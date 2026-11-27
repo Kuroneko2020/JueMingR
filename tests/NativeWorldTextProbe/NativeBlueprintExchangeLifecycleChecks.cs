@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using JueMingR.Features.Blueprint;
+using JueMingR.Features.Text;
 using JueMingR.Infrastructure.Blueprint;
 using JueMingR.Infrastructure.Storage;
 using JueMingR.Platform.Blueprint;
@@ -378,6 +379,7 @@ namespace NativeWorldTextProbe
                     finally { Terraria.GameContent.FontAssets.MouseText = originalFont; Call(Get(shell, "renderer"), "RefreshResources"); }
                     Console.WriteLine("PASS template and ordinary Host materials CPU handoff: distinct B Completed before/after materials acceptance; Host success retained, queued positioning retired, valid post-F5 page/nonzero scroll/A selection preserved through normal processing and Shell modal close/resume. GPU/physical Materials click NOT_EXECUTED.");
                 }
+                HelperNameInput(host, ui, state, library, area, frame, step, value => focused = value, graphics == null ? null : clickVisible);
                 Console.WriteLine("PASS exchange Host lifecycle (" + (graphics == null ? "CPU unavailable Shell consumers and direct view commands; active GPU path separate" : "complete Shell update/pointer/real Draw and enabled view clicks; Name owner command only") + "): observed focus loss, focused modal, both real-IO/neutral orders, success/healthy duplicate/local name, all Mouse1-5 tails, cancel/failure, actual F5 and newer Back/Card/Name/Page/PlacedList/session intent.");
             }
             finally
@@ -390,7 +392,83 @@ namespace NativeWorldTextProbe
                 FocusHelper.IsSelectedApplication = priorSelected; Main.screenWidth = oldWidth; Main.screenHeight = oldHeight;
                 if (scaleChanged) Main.UIScale = oldScale;
                 PlayerInput.CacheOriginalScreenDimensions();
+                // The naming fixture leaves its Host session on purpose. Reopen
+                // with the original library restored and let real scene recovery
+                // finish before the next case uses its placed-list admission.
+                if (!(bool)Get(host, "HasSession"))
+                {
+                    Call(host, "OnSessionStarted");
+                    NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return (bool)Get(host, "ProjectionPersistenceReady"); });
+                }
             }
+        }
+        private static void HelperNameInput(object host, object ui, object state, LibraryState library, string area, Action<Keys[], int> frame, Action step, Action<bool> focus, Action<string, Guid?> clickVisible)
+        {
+            typeof(NativeLegacyPlacementIdentityChecks).GetMethod("PrepareTrackMetadata", F).Invoke(null, null);
+            NativeBlueprintWorldMatchChecks.InitializeMetadata();
+            var text = Get(ui, "TextInput");
+            var nativeIme = text.GetType().GetNestedType("NativeIme", BindingFlags.NonPublic);
+            var patch = new HarmonyLib.Harmony("JueMingR.Tests.Blueprint.ImportNameKeyboardTail");
+            patch.Patch(nativeIme.GetMethod("Toggle", F), new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintLibraryUiChecks).GetMethod("ImeToggle", F)));
+            patch.Patch(nativeIme.GetProperty("Composition", F).GetGetMethod(true), new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintLibraryUiChecks).GetMethod("ImeEmpty", F)));
+            patch.Patch(nativeIme.GetProperty("Candidates", F).GetGetMethod(true), new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintLibraryUiChecks).GetMethod("ImeNoCandidates", F)));
+            try
+            {
+                foreach (string exit in new[] { "confirm", "escape", "f5", "session" })
+                {
+                    step(); step(); Call(ui, "OpenLibrary");
+                    string source = Path.Combine(area, "long-name-" + exit + ".json");
+                    int width = exit == "confirm" ? 28 : 30;
+                    File.WriteAllText(source, "{\"name\":\"" + new string('长', 49) + "\",\"width\":" + width + ",\"height\":2,\"tiles\":[{\"x\":0,\"y\":0,\"tileType\":1,\"frameX\":0,\"frameY\":0}]}");
+                    var dialog = new Dialog(source); Set(host, "exchangeDialog", dialog); Call(host, "BeginImport");
+                    Require(dialog.Request != null, "Host admits real Helper name fixture through the original file dialog request");
+                    Guid request = dialog.Request.RequestId;
+                    step(); dialog.Select();
+                    NativeQuickItemChecks.Until(() => { step(); return (Guid)Get(ui, "importNameRequest") == request && (bool)Get(state, "Visible"); });
+                    long generation = (long)Get(ui, "ExchangePresentationGeneration");
+                    var editor = (TextEditBuffer)Get(ui, "Editor"); editor.Insert("本地有效名称");
+                    frame(new[] { Keys.W }, 0);
+                    Require((bool)Get(text, "Owned") && library.ExchangePhase == BlueprintExchangePhase.AwaitingName, "prepared import owns existing text lease while the sealed stage waits");
+                    if (exit == "confirm")
+                    {
+                        focus(false); step();
+                        Require(!(bool)Get(text, "Owned") && ReferenceEquals(editor, Get(ui, "Editor")) && editor.Text == "本地有效名称", "temporary focus loss releases IME and keeps this exact local draft");
+                        focus(true); step(); step(); frame(new[] { Keys.W }, 0);
+                        // CPU enters the exact command handler; visual uses the
+                        // actual rendered and hit-tested button's mouse gesture.
+                        if (clickVisible != null) clickVisible("ConfirmImportName", null);
+                        else Require((bool)Call(ui, "RequestFinish"), "actual presentation accepts the same request's local name");
+                        Require((long)Get(ui, "ExchangePresentationGeneration") == generation, "name confirmation retains final selection rights for the exact request");
+                    }
+                    else if (exit == "escape")
+                    {
+                        Main.keyCount = 1; Main.keyInt[0] = 27; Main.keyString[0] = "";
+                        frame(new[] { Keys.W, Keys.Escape }, 0);
+                    }
+                    else if (exit == "f5") frame(new[] { Keys.W, Keys.F5 }, 0);
+                    else { Call(host, "OnSessionEnded"); Call(ui, "Suspend"); }
+                    for (int i = 0; i < 2; i++) frame(new[] { Keys.W }, 0);
+                    Require(!(bool)Get(text, "Owned") && !(bool)Get(text, "keyboardTail") && Main.keyState.IsKeyDown(Keys.W) && !PlayerInput.WritingText,
+                        "the import name's " + exit + " preserves continuing W immediately without an unrelated release gate");
+                    NativeQuickItemChecks.Until(() => { frame(new[] { Keys.W }, 0); return !(bool)Get(host, "ExchangeBusy"); });
+                    if (exit == "confirm")
+                    {
+                        frame(new[] { Keys.W }, 0);
+                        var selected = ((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId;
+                        NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });
+                        Require(selected.HasValue && library.TryList(721, 0, selected.Value) && NativeBlueprintLibraryWait.AcceptedList(library, "newly named exact row").Page.Entries.Any(e => e.AssetId == selected.Value && e.Name == "本地有效名称"),
+                            "normal Host receipt positions the same newly named asset through the unchanged library generation");
+                    }
+                    else Require(!Directory.EnumerateDirectories(Path.Combine(area, "templates", ".staging")).Any(), "Host " + exit + " retires its unpublished private stage");
+                    if (exit == "f5")
+                    {
+                        frame(new[] { Keys.W, Keys.F5 }, 0);
+                        Require((bool)Get(state, "Visible"), "fresh F5 reopens while W has never been released");
+                    }
+                }
+            }
+            finally { patch.UnpatchAll(patch.Id); }
+            Console.WriteLine("PASS Helper naming Host/input: exact request and IME lease, transient focus preserves local draft, explicit confirm/Escape/F5/session tails, continuing W and fresh F5.");
         }
         private static void AssertSelected(object state, object ui, object host, Guid asset, string reason)
         { Require((bool)Get(state, "Visible") && ((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId == asset && (Guid?)GetOptional(ui, "selected") == asset, reason); }

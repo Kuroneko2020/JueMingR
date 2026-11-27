@@ -85,6 +85,10 @@ namespace JueMingR.TerrariaHost.Input
             Error = null;
         }
         internal void AfterSample(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused)
+        { ProcessSample(active, layout, physicalSample, focused, retainKeyboardTail: true); }
+        internal void AfterSampleForImportName(bool active, KeyboardState physicalSample, bool focused)
+        { ProcessSample(active, null, physicalSample, focused, retainKeyboardTail: false); }
+        private void ProcessSample(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused, bool retainKeyboardTail)
         {
             sample = physicalSample;
             if (!focused) { Release(false); return; }
@@ -106,7 +110,7 @@ namespace JueMingR.TerrariaHost.Input
                 previousComposition = composing;
                 // Raw shortcuts earlier in the next Update consume this cached state.
                 // Never restore consumed keys after Update and replay them there.
-                Main.keyState = default(KeyboardState); keyboardTail = HostKeyboardActions.HasHeldOperationKey(sample);
+                Main.keyState = default(KeyboardState); keyboardTail = retainKeyboardTail && HostKeyboardActions.HasHeldOperationKey(sample);
             }
             else if (keyboardTail && !OtherTextOwner)
             {

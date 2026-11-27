@@ -46,7 +46,8 @@ namespace JueMingR.Features.Blueprint
                     Width = document.Width, Height = document.Height, ContentCount = document.Cells.Count }, true);
                 // Generated revisions are independent of the private stage.
                 root.ContentRevision = new Guid(revisionBytes);
-                foreach (bool step in PublishImport(operation, root, LibraryCodec.EncodeRoot(root), document.Name)) yield return step;
+                operation.ImportRoot = root;
+                operation.ImportName = document.Name;
             }
         }
         private void WriteHelperChunk(ExchangeOperation operation, CaptureChunk chunk, HashAlgorithm identity)

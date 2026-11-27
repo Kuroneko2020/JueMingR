@@ -86,7 +86,12 @@ namespace JueMingR.Features.Blueprint
             if ((target.Layers & CaptureLayer.Actuator) != 0 && target.Actuator) into.Add(catalog.ActuatorItemType, 1);
         }
         public static void StaticObject(CaptureObject obj, CaptureCell first, BlueprintPlacementCatalog catalog, BlueprintMaterialAccumulator into)
-        { if (!obj.Reliable) into.Unresolved("对象尚未完整确认"); else into.Add(catalog == null ? BlueprintConstructionTargets.Pending : catalog.QualifyTile(first, obj)); }
+        {
+            if (!obj.Reliable) { into.Unresolved("对象尚未完整确认"); return; }
+            var qualification = catalog == null ? BlueprintConstructionTargets.Pending : catalog.QualifyTile(first, obj);
+            into.Add(qualification);
+            if (qualification.Placement != null) ChristmasTreeOrnaments(first, 0, into);
+        }
 
         public static void RequiredSteps(CaptureCell target, BlueprintWorldMatchSample world, BlueprintPlacementCatalog catalog,
             BlueprintMaterialAccumulator into, BlueprintBodyState? objectBody = null, bool foregroundHandledElsewhere = false, CaptureObject? obj = null,
@@ -138,7 +143,12 @@ namespace JueMingR.Features.Blueprint
             var qualification = catalog == null ? BlueprintConstructionTargets.Pending : catalog.QualifyTile(first, obj);
             if (qualification.Disposition == BlueprintTargetDisposition.DisplayOnly) return;
             if (qualification.Disposition == BlueprintTargetDisposition.Unresolved) { into.Unresolved(qualification.MaterialReason); return; }
-            if (body == BlueprintBodyState.Unknown) into.Unresolved("对象尚未完整确认"); else if (body != BlueprintBodyState.Same) into.Add(qualification);
+            if (body == BlueprintBodyState.Unknown) into.Unresolved("对象尚未完整确认");
+            else if (body != BlueprintBodyState.Same)
+            {
+                into.Add(qualification);
+                if (qualification.Placement != null) ChristmasTreeOrnaments(first, 0, into);
+            }
         }
 
         // The complete-object proof owns Tile appearance only. Its original
@@ -155,6 +165,19 @@ namespace JueMingR.Features.Blueprint
             if (qualification.Disposition == BlueprintTargetDisposition.Unresolved) { into.Unresolved(qualification.MaterialReason); return; }
             if (!world.Available) { into.Unresolved("世界内容尚未可读"); return; }
             Appearance(target, world.Cell, true, SameBody(target, world, catalog, true, policy) == BlueprintBodyState.Same, catalog, into, tileOnly: true);
+            if (BlueprintChristmasTreeMembers.IsAnchor(world.Cell)) ChristmasTreeOrnaments(target, world.Cell.FrameY, into);
+        }
+
+        private static void ChristmasTreeOrnaments(CaptureCell anchor, int actual, BlueprintMaterialAccumulator into)
+        {
+            if (!BlueprintChristmasTreeMembers.IsAnchor(anchor) || anchor.FrameY == actual) return;
+            for (int slot = 0; slot < BlueprintChristmasTreeMembers.OrnamentSlots; slot++)
+            {
+                int wanted = BlueprintChristmasTreeMembers.OrnamentItem(anchor.FrameY, slot);
+                if (wanted == BlueprintChristmasTreeMembers.OrnamentItem(actual, slot)) continue;
+                if (wanted > 0) into.Add(wanted, 1);
+                else into.Unresolved("圣诞树上有多余的装饰，需要手动处理。");
+            }
         }
 
         // Paint and both coatings consume separately on each actual member and

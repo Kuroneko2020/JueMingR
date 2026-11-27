@@ -53,7 +53,7 @@ namespace JueMingR.Features.Blueprint
                 var obj = ProjectionObject(owner, id);
                 long strings = ((long)(obj.Reason ?? "").Length + (obj.MissingPayload ?? "").Length) * 2;
                 long payload = checked(384L + index.Members * 64L + strings);
-                if (payload > ProjectionWindowLimit) throw new InvalidDataException("blueprint-projection-window-budget");
+                if (payload > ProjectionWindowLimit) throw new ProjectionBudgetException();
                 long bytes = checked(512L + index.Members * 384L + index.Blocks.Count * 80L + strings);
                 if (batch.Entries.Count != 0 && planned + bytes > targetBytes) break;
                 obj.X -= owner.Root.Summary.Left; obj.Y -= owner.Root.Summary.Top;

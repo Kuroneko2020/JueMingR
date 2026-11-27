@@ -64,9 +64,10 @@ namespace JueMingR.TerrariaHost.Blueprint
                 !ReferenceEquals(item.QualificationRequestedMask,receipt.Mask) || item.QualificationRequestedRevision!=receipt.CapabilityRevision || !ReferenceEquals(receipt.View,item.View) || !ReferenceEquals(item.QualificationRequestedView,item.View))return;
             if(receipt.Error!=null)
             {
-                // Preserve display and raw source on a real qualification read
-                // failure. No target can be built, moved or retired from it.
-                item.Qualification=receipt;projectionFeedback="这份蓝图的施工内容暂未能确认，原图仍保留。";return;
+                ReportProjectionFailure(item, receipt.FailureScope, BlueprintProjectionFailureStage.Qualification, receipt.FailureCode, receipt.FailureDetail);
+                // A failed derived proof is terminal for this view/catalog.
+                // Display/raw source retain their own successful publications.
+                item.Qualification=receipt;projectionFeedback=receipt.Error;return;
             }
             // A first qualification publishes no old Match to retire. Keep a
             // real Checking click's scheduling intent across this cold receipt;

@@ -276,10 +276,14 @@ namespace JueMingR.Features.Blueprint
         // transport bound, not an extension of reliable-object proof capacity.
         public const long MaximumEstimatedBytes = 32L * 1024 * 1024 + DirectoryBytes + BlueprintProjectionSourcePart.DescriptorBytes + 16L * 8;
         internal BlueprintProjectionSourceReceipt(BlueprintProjectionIdentity identity, long generation,
-            BlueprintProjectionSourcePart[] parts, string error = null, long capabilityRevision = 0, BlueprintProjectionView view = null)
+            BlueprintProjectionSourcePart[] parts, string error = null, long capabilityRevision = 0, BlueprintProjectionView view = null,
+            BlueprintProjectionFailureScope failureScope = BlueprintProjectionFailureScope.None, BlueprintProjectionFailureStage failureStage = BlueprintProjectionFailureStage.None,
+            string failureCode = null, string failureDetail = null)
         {
             Identity = identity; Generation = generation; Parts = Array.AsReadOnly(parts); Error = error; CapabilityRevision = capabilityRevision; View = view;
-            long bytes = DirectoryBytes + parts.LongLength * BlueprintProjectionSourcePart.DescriptorBytes;
+            FailureScope = failureScope; FailureStage = failureStage; FailureCode = failureCode; FailureDetail = failureDetail;
+            long bytes = DirectoryBytes + parts.LongLength * BlueprintProjectionSourcePart.DescriptorBytes +
+                2L * ((error?.Length ?? 0) + (failureCode?.Length ?? 0) + (failureDetail?.Length ?? 0));
             var windows = new HashSet<BlueprintProjectionWindow>();
             foreach (var part in parts) if (part.Window != null && windows.Add(part.Window)) bytes = checked(bytes + part.WindowEstimatedBytes + part.DoorContextEstimatedBytes);
             EstimatedBytes = bytes;
@@ -299,6 +303,10 @@ namespace JueMingR.Features.Blueprint
         public bool Complete { get { return Parts[0].Complete; } }
         public BlueprintProjectionWindow Window { get { return Parts[0].Window; } }
         public string Error { get; }
+        public BlueprintProjectionFailureScope FailureScope { get; }
+        public BlueprintProjectionFailureStage FailureStage { get; }
+        public string FailureCode { get; }
+        public string FailureDetail { get; }
     }
 #if DEBUG
     // Bounded-work evidence only; no Release sampling, timers or file output.

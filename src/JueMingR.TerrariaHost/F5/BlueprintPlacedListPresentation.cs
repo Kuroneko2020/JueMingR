@@ -23,6 +23,7 @@ namespace JueMingR.TerrariaHost.F5
             internal readonly List<BlueprintLibraryPart> Parts = new List<BlueprintLibraryPart>();
             internal BlueprintLibraryPart Materials, Remove, Preview;
             internal List<BlueprintLibraryPart> Relative;
+            internal bool Recovery;
         }
         private readonly HostBlueprint host;
         private readonly F5Interaction shell;
@@ -42,6 +43,8 @@ namespace JueMingR.TerrariaHost.F5
         private Vector2 screen;
         private bool ready, leftTail, rightTail, previousLeft = true, previousRight = true;
         private string shownRemoveReason;
+        private string shownRecoveryDisabledReason;
+        private long confirmRecoveryRemoval;
         private float previewWidth;
         private const float PreviewHeight = 112;
         private Point previewSize;
@@ -76,7 +79,7 @@ namespace JueMingR.TerrariaHost.F5
         internal void Close()
         {
             CancelPreviewRead(); previews.Dispose(); failedPreviews.Clear();
-            Opened = ready = OwnsPointer = false; armed = hovered = null;
+            Opened = ready = OwnsPointer = false; armed = hovered = null; confirmRecoveryRemoval = 0;
             rows.Clear(); visible.Clear(); directory = null; firstVisible = lastVisible = -1;
             renderer.Dispose(); resources = layout = -1; generation++; drawnGeneration = -1;
             // Visibility/focus do not prove physical release. The shared owner
@@ -104,12 +107,12 @@ namespace JueMingR.TerrariaHost.F5
                 host.Input.CanStartActions && drawnGeneration == generation && renderer.ResourcesCurrent &&
                 matrix == Main.UIScaleMatrix && screen == PlayerInput.OriginalScreenSize && layout == shell.Layout.Generation &&
                 scroll == shell.Scroll && F5PopupPlacement.SameAnchor(view, shell.Layout.Viewport.Offset(shell.X, shell.Y)) &&
-                ReferenceEquals(directory, host.MaterialInstances);
+                ReferenceEquals(directory, host.PlacedInstances);
             bool inside = current && hitClip.Contains(point.X, point.Y);
             hovered = inside ? Hit(point) : null;
             if(secondaryOnly && hovered?.Command!=BlueprintLibraryCommand.PlacedMaterials)hovered=null;
             OwnsPointer = inside || leftTail || rightTail;
-            if (!current) armed = null;
+            if (!current) { armed = null; confirmRecoveryRemoval = 0; }
             if (current)
             {
                 if (left && !previousLeft && inside)
@@ -117,7 +120,7 @@ namespace JueMingR.TerrariaHost.F5
                     leftTail = ConsumeLeft = true; armed = hovered?.Enabled == true ? hovered : null;
                     pressedSession = session; pressedGeneration = generation; pressedInstance = InstanceOf(armed);
                 }
-                if (right && inside) { rightTail = ConsumeRight = true; armed = null; }
+                if (right && inside) { rightTail = ConsumeRight = true; armed = null; confirmRecoveryRemoval = 0; }
                 if (!left && previousLeft && armed != null)
                 {
                     var target = armed; armed = null;
@@ -151,10 +154,21 @@ namespace JueMingR.TerrariaHost.F5
         private void Execute(BlueprintLibraryPart target, long instance)
         {
             if (ReferenceEquals(target, back)) { Back(); return; }
+            if (target.Command == BlueprintLibraryCommand.RemoveRecovery)
+            {
+                if (confirmRecoveryRemoval == instance)
+                { confirmRecoveryRemoval = 0; host.RemoveFailedPlacedInstance(session, instance); }
+                else confirmRecoveryRemoval = instance;
+                Project(playerX, playerY, false);
+                return;
+            }
+            confirmRecoveryRemoval = 0;
             if (target.Command == BlueprintLibraryCommand.PlacedMaterials)
                 host.OpenPlacedInstanceMaterials(session, instance, target.Element.Rect.Offset(view.X, view.Y - scroll));
             else if (target.Command == BlueprintLibraryCommand.PlacedRemove)
                 host.TryRemovePlacedInstance(session, instance);
+            else if (target.Command == BlueprintLibraryCommand.RetryRecovery)
+                host.RetryPlacedInstance(session, instance);
         }
         private void Back() { Close(); shell.Layout.SetBlueprintLibraryVisible(false); shell.ScrollTo(0); }
         private const float Gap = 8;
@@ -173,7 +187,7 @@ namespace JueMingR.TerrariaHost.F5
                 pendingPreviewKey = null; pendingPreviewImage = null; pendingPreviewSummary = null;
             }
             var next = shell.Layout.Viewport.Offset(shell.X, shell.Y);
-            var instances = host.MaterialInstances;
+            var instances = host.PlacedInstances;
             bool rebuild = !ReferenceEquals(directory, instances) || measuredWidth != next.Width || resources != renderer.Generation;
             bool geometry = rebuild || oldDevice != previews.Generation || !F5PopupPlacement.SameAnchor(view, next) || matrix != transform || screen != dimensions || layout != shell.Layout.Generation || scroll != shell.Scroll;
             matrix = transform; screen = dimensions; view = next; resources = renderer.Generation; layout = shell.Layout.Generation;
@@ -184,12 +198,12 @@ namespace JueMingR.TerrariaHost.F5
             shell.Layout.SetBlueprintContentHeight(contentHeight);
             shell.ClampScroll();
             geometry |= scroll != shell.Scroll;
-            if (geometry) { generation++; armed = null; drawnGeneration = -1; }
+            if (geometry) { generation++; armed = null; drawnGeneration = -1; confirmRecoveryRemoval = 0; }
             scroll = shell.Scroll;
             var player = Main.LocalPlayer;
             int px = player == null ? 0 : (int)Math.Floor(player.Center.X / 16.0), py = player == null ? 0 : (int)Math.Floor(player.Center.Y / 16.0);
             bool moved = px != playerX || py != playerY;
-            if (geometry || moved || shownRemoveReason != host.PlacedRemoveDisabledReason)
+            if (geometry || moved || shownRemoveReason != host.PlacedRemoveDisabledReason || shownRecoveryDisabledReason != host.PlacedRecoveryDisabledReason)
                 Project(px, py, geometry || moved);
             playerX = px; playerY = py; ready = true;
             hitClip = F5ControlRenderer.LogicalClip(F5ControlRenderer.ContentClip(view, matrix, new Rectangle(0, 0, (int)dimensions.X, (int)dimensions.Y)), matrix);
@@ -212,26 +226,32 @@ namespace JueMingR.TerrariaHost.F5
             float top = headerHeight + Gap;
             foreach (var item in directory)
             {
-                var row = new Row { Instance = item, Top = top, TextWidth = textWidth };
+                string failure = host.PlacedRecoveryReason(item.ProjectionGeneration);
+                var row = new Row { Instance = item, Top = top, TextWidth = textWidth, Recovery = failure != null };
                 float y = top + 8;
                 string label = item.Name + " · #" + item.Sequence.ToString(CultureInfo.InvariantCulture);
                 foreach (var line in Wrap(label, textWidth)) { row.Parts.Add(Text(line, 10, y, textWidth)); y += Math.Max(22, measure(line, .70f).Height + 2) + 3; }
-                string size = item.Width > 0 && item.Height > 0 ? "尺寸 " + item.Width + "×" + item.Height + " 格" : "正在恢复尺寸";
+                string size = failure ?? (item.Width > 0 && item.Height > 0 ? "尺寸 " + item.Width + "×" + item.Height + " 格" : "正在恢复尺寸");
                 foreach (var line in Wrap(size + " · 左上角（" + item.OriginX + "，" + item.OriginY + "）", textWidth))
                 { row.Parts.Add(Text(line, 10, y, textWidth)); y += Math.Max(22, measure(line, .70f).Height + 2) + 3; }
                 row.RelativeY = y;
                 // Reserve the longest finite coordinate vocabulary once. A
                 // player crossing a decimal boundary cannot reflow row actions.
-                foreach (var line in Wrap("左上方 · 距中心约 9999999999 格", textWidth)) y += Math.Max(22, measure(line, .70f).Height + 2) + 3;
+                if (!row.Recovery)
+                    foreach (var line in Wrap("左上方 · 距中心约 9999999999 格", textWidth)) y += Math.Max(22, measure(line, .70f).Height + 2) + 3;
                 y += 3;
                 float buttonHeight = Math.Max(30, measure("材料 移除", .70f).Height + 8);
-                float materialWidth = Math.Max(76, measure("材料", .70f).Width + 16), removeWidth = Math.Max(76, measure("移除", .70f).Width + 16);
-                row.Materials = Part(F5ElementKind.Button, new F5Rect(10, y, materialWidth, buttonHeight), "材料", BlueprintLibraryCommand.PlacedMaterials);
+                string firstAction = row.Recovery ? "重试" : "材料";
+                float materialWidth = Math.Max(76, measure(firstAction, .70f).Width + 16), removeWidth = Math.Max(76, measure(row.Recovery ? "确认移除" : "移除", .70f).Width + 16);
+                row.Materials = Part(F5ElementKind.Button, new F5Rect(10, y, materialWidth, buttonHeight), firstAction,
+                    row.Recovery ? BlueprintLibraryCommand.RetryRecovery : BlueprintLibraryCommand.PlacedMaterials);
                 bool wrapButtons = materialWidth + removeWidth + 8 > textWidth;
                 if (wrapButtons) y += buttonHeight + 6;
-                row.Remove = Part(F5ElementKind.Button, new F5Rect(wrapButtons ? 10 : 18 + materialWidth, y, removeWidth, buttonHeight), "移除", BlueprintLibraryCommand.PlacedRemove);
+                row.Remove = Part(F5ElementKind.Button, new F5Rect(wrapButtons ? 10 : 18 + materialWidth, y, removeWidth, buttonHeight), "移除",
+                    row.Recovery ? BlueprintLibraryCommand.RemoveRecovery : BlueprintLibraryCommand.PlacedRemove);
                 row.Height = Math.Max(y + buttonHeight + 10 - top, PreviewHeight + 16);
-                row.Preview = Part(F5ElementKind.Image, new F5Rect(view.Width - previewWidth - 10, top + (row.Height - PreviewHeight) / 2, previewWidth, PreviewHeight), "正在生成预览", BlueprintLibraryCommand.None);
+                row.Preview = Part(F5ElementKind.Image, new F5Rect(view.Width - previewWidth - 10, top + (row.Height - PreviewHeight) / 2, previewWidth, PreviewHeight),
+                    row.Recovery ? "预览暂不可用" : "正在生成预览", BlueprintLibraryCommand.None);
                 row.Parts.Insert(0, Part(F5ElementKind.Panel, new F5Rect(0, top, view.Width, row.Height), "", BlueprintLibraryCommand.None));
                 row.Parts.Add(row.Materials); row.Parts.Add(row.Remove); row.Parts.Add(row.Preview); rows.Add(row); top += row.Height + Gap;
             }
@@ -246,16 +266,25 @@ namespace JueMingR.TerrariaHost.F5
             while (lo < hi) { int mid = lo + (hi - lo) / 2; if (rows[mid].Top + rows[mid].Height < scroll + headerHeight) lo = mid + 1; else hi = mid; }
             firstVisible = Math.Max(0, lo - 1); lastVisible = firstVisible - 1;
             shownRemoveReason = host.PlacedRemoveDisabledReason;
+            shownRecoveryDisabledReason = host.PlacedRecoveryDisabledReason;
             for (int i = firstVisible; i < rows.Count && rows[i].Top < scroll + view.Height + 16; i++)
             {
                 var row = rows[i]; lastVisible = i;
 #if DEBUG
                 VisibleRowVisits++;
 #endif
-                row.Remove.Enabled = shownRemoveReason == null; row.Remove.Hint = shownRemoveReason;
-                row.Remove.HintSize = shownRemoveReason == null ? default(F5Size) : measure(shownRemoveReason, .62f);
-                row.Materials.Enabled = host.CanOpenMaterials;
-                if (relative || row.Relative == null)
+                var reason = row.Recovery ? shownRecoveryDisabledReason : shownRemoveReason;
+                row.Remove.Enabled = reason == null; row.Remove.Hint = reason;
+                row.Remove.HintSize = reason == null ? default(F5Size) : measure(reason, .62f);
+                row.Materials.Enabled = row.Recovery ? reason == null : host.CanOpenMaterials;
+                if (row.Recovery)
+                {
+                    row.Materials.Hint = reason; row.Materials.HintSize = row.Remove.HintSize;
+                    string text = confirmRecoveryRemoval == row.Instance.ProjectionGeneration ? "确认移除" : "移除";
+                    if (row.Remove.Element.Text != text)
+                        row.Remove.Element = new F5Element(F5ElementKind.Button, row.Remove.Element.Rect, text, measure(text, .70f), .70f, F5Command.None);
+                }
+                else if (relative || row.Relative == null)
                 {
                     row.Relative = new List<BlueprintLibraryPart>(); float relativeY = row.RelativeY;
                     foreach (var line in Wrap(RelativePosition(row.Instance, px, py), row.TextWidth))
@@ -264,8 +293,9 @@ namespace JueMingR.TerrariaHost.F5
                     RelativeUpdates++;
 #endif
                 }
-                row.Preview.PreviewKey = PreviewKey(row.Instance.Template);
-                visible.AddRange(row.Parts); visible.AddRange(row.Relative);
+                row.Preview.PreviewKey = row.Recovery ? null : PreviewKey(row.Instance.Template);
+                visible.AddRange(row.Parts);
+                if (row.Relative != null) visible.AddRange(row.Relative);
             }
         }
         private string PreviewKey(BlueprintTemplateKey template)
@@ -298,6 +328,7 @@ namespace JueMingR.TerrariaHost.F5
             for (int i = Math.Max(0, firstVisible); i <= lastVisible && i < rows.Count; i++)
             {
                 var row = rows[i];
+                if (row.Recovery) continue;
                 // Overscan aids row projection only. It cannot request bodies
                 // for a row hidden behind the fixed header or below the clip.
                 if (row.Top + row.Height <= scroll + headerHeight || row.Top >= scroll + view.Height) continue;

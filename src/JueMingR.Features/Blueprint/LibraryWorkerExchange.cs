@@ -21,11 +21,13 @@ namespace JueMingR.Features.Blueprint
             internal bool Promoted, Publishing, Cancelled, Finishing, AwaitingIo;
             internal ExportCommitKnowledge ExportCommit;
             internal BlueprintExchangeReceipt Completion;
-            internal readonly byte[] Buffer = new byte[65536];
+            internal byte[] Buffer = new byte[65536];
             internal byte[] Read;
             internal BlueprintExchangeIoReceipt Io;
             internal SHA256 OutputDigest;
             internal long OutputLength;
+            internal LibraryRoot ImportRoot;
+            internal string ImportHash, ImportName, ImportNameError;
         }
         private IBlueprintExchangeIo exchangeIo;
         private IPreferenceStorage exchangeCounter;
@@ -71,11 +73,32 @@ namespace JueMingR.Features.Blueprint
         }
         internal bool TryTakeExchangeReceipt(out BlueprintExchangeReceipt value)
         { lock (gate) { value = exchangeReceipt; if (value == null) return false; exchangeReceipt = null; return true; } }
+        internal bool ResumeImportName(Guid id, string name)
+        {
+            if (!LibraryName.TryValidate(name, out _)) return false;
+            lock (gate)
+            {
+                if (stopping || exchange == null || exchange.Request.RequestId != id || exchange.Cancelled ||
+                    exchangePhase != BlueprintExchangePhase.AwaitingName || exchangeReceipt != null) return false;
+                exchange.Steps = CommitImport(exchange, name).GetEnumerator();
+                exchange.ImportName = exchange.ImportNameError = null;
+                exchangePhase = BlueprintExchangePhase.Publishing; exchangeReady = true; Monitor.Pulse(gate);
+                return true;
+            }
+        }
         internal void CancelExchange(Guid id)
         {
             lock (gate)
             {
-                if (exchange != null && exchange.Request.RequestId == id) exchange.Cancelled = true;
+                if (exchange != null && exchange.Request.RequestId == id)
+                {
+                    exchange.Cancelled = true;
+                    if (exchangePhase == BlueprintExchangePhase.AwaitingName)
+                    {
+                        // A sealed import has no I/O completion left to wake it.
+                        exchangeReceipt = null; exchangeReady = true;
+                    }
+                }
                 else if (exchangeReservation == id) exchangeReservation = Guid.Empty;
                 Monitor.Pulse(gate);
             }
@@ -100,7 +123,22 @@ namespace JueMingR.Features.Blueprint
                 if (!opened) { if (rootFailure != null) throw new InvalidOperationException(rootFailure); files.Open(); opened = true; }
                 if (operation.Cancelled && !operation.Publishing && !operation.Finishing && !operation.AwaitingIo) throw new OperationCanceledException();
                 if (operation.Steps.MoveNext()) { if (operation.Steps.Current) WakeExchange(); return; }
-                operation.Steps.Dispose();
+                operation.Steps.Dispose(); operation.Steps = null;
+                if (operation.ImportNameError != null && !operation.Finishing)
+                {
+                    lock (gate)
+                    {
+                        if (operation.Cancelled) throw new OperationCanceledException();
+                        // The build iterator and external file are already closed.
+                        // Only the validated private stage and small resume state
+                        // survive this wait. No runnable work is left in this lane.
+                        exchangePhase = BlueprintExchangePhase.AwaitingName;
+                        exchangeReceipt = ExchangeResult(operation, BlueprintExchangeStatus.NeedsName, operation.ImportNameError);
+                        exchangeReceipt.AssetId = Guid.Empty;
+                        exchangeReceipt.SourceName = operation.ImportName;
+                    }
+                    return;
+                }
                 if (!operation.Finishing && operation.Request.Kind != BlueprintExchangeKind.PrepareExport)
                 { operation.Finishing = true; operation.Steps = FinishExchange(operation).GetEnumerator(); WakeExchange(); return; }
                 lock (gate)
@@ -111,7 +149,7 @@ namespace JueMingR.Features.Blueprint
             }
             catch (Exception error)
             {
-                operation.Steps.Dispose();
+                operation.Steps?.Dispose();
                 if (operation.Finishing)
                 {
                     // Cleanup failure never rewrites a reliable publish fact.
@@ -221,7 +259,12 @@ namespace JueMingR.Features.Blueprint
             foreach (bool step in ReadExchange(operation, (int)Math.Min(16, operation.SourceLength), null, 0)) yield return step;
             byte[] signature = operation.Read;
             bool native = signature.Length >= 8 && signature[0] == 0x4A && signature[1] == 0x4D && signature[2] == 0x52 && signature[3] == 0x4A && signature[4] == 0x4D && signature[5] == 0x42 && signature[6] == 0x50 && signature[7] == 0;
-            if (!native) { foreach (bool step in ImportHelperJson(operation)) yield return step; yield break; }
+            if (!native)
+            {
+                foreach (bool step in ImportHelperJson(operation)) yield return step;
+                foreach (bool step in PublishImport(operation, operation.ImportRoot, LibraryCodec.EncodeRoot(operation.ImportRoot), operation.ImportName)) yield return step;
+                yield break;
+            }
             using (var digest = SHA256.Create())
             {
                 foreach (bool step in ReadExchange(operation, 16, digest)) yield return step;
@@ -271,14 +314,15 @@ namespace JueMingR.Features.Blueprint
             foreach (int ignored in incremental.SealStageSteps(operation.Stage, rootBytes, 32)) yield return true;
             exchangePhase = BlueprintExchangePhase.Validating; yield return true;
             foreach (bool step in ValidateExchange(operation, operation.Stage, true, root)) yield return step;
-            string contentHash = LibraryCodec.HashString(rootBytes);
+            operation.ImportRoot = root;
+            operation.ImportHash = LibraryCodec.HashString(rootBytes);
             foreach (Guid candidate in files.EnumerateAssets())
             {
                 LibraryMetadata metadata = null;
                 try { PreferenceReadResult read = files.OpenMetadata(candidate); if (read.Status == PreferenceReadStatus.Loaded && !protectedAssets.Contains(candidate)) metadata = LibraryCodec.DecodeMetadata(read.Contents, candidate); }
                 catch { } finally { files.CloseMetadata(); }
                 yield return true;
-                if (metadata == null || metadata.Deleted || metadata.ContentHash != contentHash) continue;
+                if (metadata == null || metadata.Deleted || metadata.ContentHash != operation.ImportHash) continue;
                 // A corrupt matching metadata claim is not a duplicate. The
                 // iterator is stepped here so failures isolate only that item.
                 IEnumerator<bool> health = HealthyExchangeCandidate(operation, metadata).GetEnumerator(); bool healthy = true;
@@ -290,7 +334,21 @@ namespace JueMingR.Features.Blueprint
                 health.Dispose();
                 if (healthy) { operation.Asset = candidate; operation.Completion = ExchangeResult(operation, BlueprintExchangeStatus.AlreadyExists, "蓝图已存在，已定位到原条目"); yield break; }
             }
+            if (!LibraryName.TryValidate(name, out string error))
+            {
+                foreach (bool step in Io(operation, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.Close })) yield return step;
+                operation.Request.Ticket.Dispose(); operation.Request.Ticket = null; operation.Request.ImportProfile = null;
+                operation.Io = null; operation.Read = null; operation.Buffer = null;
+                operation.ImportNameError = error;
+                yield break;
+            }
             exchangePhase = BlueprintExchangePhase.Publishing;
+            foreach (bool step in CommitImport(operation, name)) yield return step;
+        }
+        private IEnumerable<bool> CommitImport(ExchangeOperation operation, string name)
+        {
+            var incremental = (IBlueprintLibraryExchangeSteps)files;
+            LibraryRoot root = operation.ImportRoot;
             // Proof scanning is still cancellable. Only the final atomic
             // promotion/publish step crosses the irreversible boundary.
             IEnumerator<int> promotion = incremental.PromoteStageSteps(operation.Stage, operation.Asset, 32).GetEnumerator();
@@ -299,7 +357,7 @@ namespace JueMingR.Features.Blueprint
             operation.Publishing = true; operation.Promoted = true;
             PreferenceReadResult missing = files.OpenMetadata(operation.Asset, true); if (missing.Status != PreferenceReadStatus.Missing) throw new InvalidDataException("blueprint-exchange-publish-conflict");
             long now = DateTime.UtcNow.Ticks;
-            var value = new LibraryMetadata { AssetId = operation.Asset, ContentRevision = root.ContentRevision, ContentHash = contentHash, Name = name, Width = root.Summary.Width, Height = root.Summary.Height, ContentCount = root.Summary.ContentCount, BlockCount = root.BlockCount, MissingSummary = String.Join("；", root.Summary.MissingPayloads), CreatedTicks = now, UpdatedTicks = now };
+            var value = new LibraryMetadata { AssetId = operation.Asset, ContentRevision = root.ContentRevision, ContentHash = operation.ImportHash, Name = name, Width = root.Summary.Width, Height = root.Summary.Height, ContentCount = root.Summary.ContentCount, BlockCount = root.BlockCount, MissingSummary = String.Join("；", root.Summary.MissingPayloads), CreatedTicks = now, UpdatedTicks = now };
             PreferenceWriteResult written = files.WriteMetadata(missing.Identity, LibraryCodec.EncodeMetadata(value)); files.CloseMetadata();
             if (written.Status != PreferenceWriteStatus.Saved)
             { operation.Publishing = written.CommitUnconfirmed; protectedAssets.Add(operation.Asset); throw new IOException("blueprint-exchange-metadata-not-saved"); }
@@ -383,7 +441,7 @@ namespace JueMingR.Features.Blueprint
                 while (!done) { try { done = files.CleanupStep(operation.Stage, true, operation.Blocks, 32); } catch { done = true; } yield return true; }
                 files.CloseCleanup();
             }
-            if (operation.Request.Kind != BlueprintExchangeKind.PrepareExport)
+            if (operation.Request.Ticket != null)
                 foreach (bool step in Io(operation, new BlueprintExchangeIoCommand { Kind = BlueprintExchangeIoKind.Close })) yield return step;
             if (operation.Io?.ErrorCode == "blueprint-exchange-cleanup-retained" && operation.Completion != null) operation.Completion.Message += "；未能确认临时文件清理，相关文件已保留";
             operation.Request.Ticket?.Dispose();
@@ -394,6 +452,10 @@ namespace JueMingR.Features.Blueprint
         private void CloseExchangeWorker()
         {
             exchange?.Steps?.Dispose();
+            // A paused (or just resumed) import owns no external I/O anymore.
+            // Its sealed stage can still be reclaimed on this worker at stop.
+            if (exchange != null && exchange.Request.Kind == BlueprintExchangeKind.Import && exchange.Request.Ticket == null && !exchange.Promoted)
+                foreach (bool step in FinishExchange(exchange)) { }
             // The external lane owns only external paths, never files/stage or
             // counter. A stop timeout therefore cannot dispose a live library IO.
             exchangeIo?.BeginStop(); exchangeCounter?.Dispose();

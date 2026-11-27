@@ -26,7 +26,7 @@ namespace NativeWorldTextProbe
             NativeBlueprintWorldMatchChecks.InitializeMetadata();
             typeof(NativeLegacyPlacementIdentityChecks).GetMethod("PrepareTrackMetadata", F).Invoke(null, null);
             var profile = (IBlueprintImportProfile)host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintHorizontalMirrorResolver").GetMethod("Create", F).Invoke(null, null);
-            string sample = Path.Combine(Program.Repository, "references/归档文件/JMR_Blueprint_Hoik_Zoom_20261110_v1/attachments/岛牌刷怪场4.0.json");
+            string sample = NativeBlueprintHelperImportChecks.LargeSamplePath();
             var receipt = (BlueprintExchangeReceipt)typeof(NativeBlueprintHelperImportChecks).GetMethod("Import", F).Invoke(null, new object[] { library, profile, sample });
             Require(receipt.Status == BlueprintExchangeStatus.Completed, "actual supplied sample imports into the standard library: " + receipt.Message);
             var page = (LibraryPage)typeof(NativeBlueprintHelperImportChecks).GetMethod("List", F).Invoke(null, new object[] { library });

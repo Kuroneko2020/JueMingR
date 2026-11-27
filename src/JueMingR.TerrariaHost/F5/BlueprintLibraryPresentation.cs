@@ -79,8 +79,10 @@ namespace JueMingR.TerrariaHost.F5
         internal bool TemporarilySuspended { get { return Submenu && focusSuspended; } }
         internal long ExchangePresentationGeneration { get; private set; }
         private Guid pendingExchangeAsset;
+        private Guid importNameRequest;
+        private string importSourceName, importNameReason;
         private long pendingExchangeSession, pendingExchangeGeneration;
-        private bool seenExchangeBusy;
+        private bool seenExchangeBusy, pendingExchangeAfterName;
         internal bool Visible { get { return Submenu && shell.Visible && shell.Page == 6; } }
         internal bool WorldInteractionBlocked { get { return Visible; } }
         internal bool OwnsTextToken { get { return TextInput.OwnsTextToken; } }
@@ -98,7 +100,7 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void OpenLibrary()
         {
-            ExchangePresentationGeneration++;
+            RetireExchangeIntent();
             host.Shell?.BeforeBlueprintLibraryOpen();
             // Host owns manual admission; presentation never cancels capture.
             // Saved receipts reveal the list through their independent path.
@@ -108,7 +110,7 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void ShowCapture()
         {
-            ExchangePresentationGeneration++;
+            RetireExchangeIntent();
             host.Shell?.BeforeBlueprintLibraryOpen();
             CancelRead();
             EndEdit(); mode = View.Capture; selected = Guid.Empty; deleteConfirm = null; validation = null; objectIndex = 0; objects = null;
@@ -124,7 +126,7 @@ namespace JueMingR.TerrariaHost.F5
             mode = View.Library; selected = asset; deleteConfirm = null;
             RequestList(requestedPage, asset); shell.ScrollTo(0);
         }
-        internal void AcceptExchangeAsset(Guid asset, long presentationGeneration)
+        internal void AcceptExchangeAsset(Guid asset, long presentationGeneration, bool afterName)
         {
             // The owner now requests automatic library reveal after import.
             // Only this exact live intent may reveal, after the real external
@@ -132,14 +134,49 @@ namespace JueMingR.TerrariaHost.F5
             if (mode != View.Library || presentationGeneration != ExchangePresentationGeneration || shell.Page != 6) return;
             if (!Visible && !focusSuspended) return;
             pendingExchangeAsset = asset; pendingExchangeSession = host.UiSession; pendingExchangeGeneration = presentationGeneration;
+            pendingExchangeAfterName = afterName;
+        }
+        internal bool AcceptImportName(Guid request, long presentationGeneration, string sourceName, string reason)
+        {
+            if (mode != View.Library || presentationGeneration != ExchangePresentationGeneration || shell.Page != 6 || !Visible && !focusSuspended) return false;
+            CancelRead();
+            importNameRequest = request; importSourceName = ImportSourceTitle(sourceName); importNameReason = reason;
+            BeginEdit(Guid.Empty, ""); shell.ScrollTo(0);
+            return true;
+        }
+        private static string ImportSourceTitle(string name)
+        {
+            if (String.IsNullOrEmpty(name)) return "（未填写）";
+            // Foreign malformed/very long titles must also be replaceable.
+            // Bound the displayed excerpt before it reaches glyph layout.
+            int length = Math.Min(name.Length, 128);
+            if (Char.IsHighSurrogate(name[length - 1])) length--;
+            var value = name.Substring(0, length).ToCharArray();
+            for (int i = 0; i < value.Length; i++)
+                if (Char.IsControl(value[i]) || value[i] == '\u2028' || value[i] == '\u2029' ||
+                    Char.IsHighSurrogate(value[i]) && (i + 1 == value.Length || !Char.IsLowSurrogate(value[i + 1])) ||
+                    Char.IsLowSurrogate(value[i]) && (i == 0 || !Char.IsHighSurrogate(value[i - 1]))) value[i] = '\uFFFD';
+            return new string(value) + (length < name.Length ? "…" : "");
+        }
+        internal void EndImportName(Guid request)
+        {
+            if (request == Guid.Empty || importNameRequest != request) return;
+            importNameRequest = Guid.Empty; importSourceName = importNameReason = null;
+            EndEdit(); RequestList(requestedPage);
+        }
+        private void CancelImportName()
+        {
+            if (importNameRequest == Guid.Empty) return;
+            var request = importNameRequest;
+            host.CancelImportName(request); EndImportName(request);
         }
         internal long BeginExchangeIntent()
         { return RetireExchangeIntent(); }
         // A newer view operation may revoke only import positioning, retaining
-        // the current library, selection and return scroll. File work belongs
-        // to Host/Library and is unaffected by this presentation retirement.
+        // the current library, selection and return scroll. Only an import
+        // still waiting for the user's name depends on that live intent.
         internal long RetireExchangeIntent()
-        { pendingExchangeAsset = Guid.Empty; return ++ExchangePresentationGeneration; }
+        { CancelImportName(); pendingExchangeAsset = Guid.Empty; return ++ExchangePresentationGeneration; }
         private void RevealPendingExchange(bool active)
         {
             if (pendingExchangeAsset == Guid.Empty) return;
@@ -147,7 +184,9 @@ namespace JueMingR.TerrariaHost.F5
             { pendingExchangeAsset = Guid.Empty; return; }
             if (!active || !host.Input.CanStartActions) return;
             Guid asset = pendingExchangeAsset; pendingExchangeAsset = Guid.Empty;
-            host.Input.Hotkeys.SuppressHeld(); host.Input.ConsumeHotkeyActions();
+            // An accepted name editor has already consumed its actual action.
+            // Its delayed result must not suppress other keys being held now.
+            if (!pendingExchangeAfterName) { host.Input.Hotkeys.SuppressHeld(); host.Input.ConsumeHotkeyActions(); }
             Reveal(); host.Flow.SelectedAssetId = asset; ShowSaved(asset);
         }
         internal void BeforeInput(bool active)
@@ -167,7 +206,11 @@ namespace JueMingR.TerrariaHost.F5
         private bool Editable { get { return !editProtected && (mode != View.Capture ||
             !host.Flow.ContentHandle.IsEmpty && host.Flow.Status == BlueprintCaptureStatus.DraftReady); } }
         public void PreserveUncommittedInput(TextEditBuffer value) { }
-        public void CancelEdit() { EndEdit(); deleteConfirm = null; dirty = true; }
+        public void CancelEdit()
+        {
+            if (importNameRequest != Guid.Empty) CancelImportName(); else EndEdit();
+            deleteConfirm = null; dirty = true;
+        }
         public bool RequestFinish()
         {
             if (editor == null) return true;
@@ -176,6 +219,15 @@ namespace JueMingR.TerrariaHost.F5
             if (TextInput.HasComposition) { if (mode == View.Capture) { validation = GetDraftSaveEligibility(); dirty = true; } return false; }
             string error;
             if (!LibraryName.TryValidate(editor.Text, out error)) { validation = error; dirty = true; return false; }
+            if (importNameRequest != Guid.Empty)
+            {
+                var request = importNameRequest;
+                if (!host.ResumeImportName(request, ExchangePresentationGeneration, editor.Text)) return false;
+                // Stay in the current library intent so the durable completion
+                // can still select the imported asset through the normal path.
+                EndImportName(request);
+                return true;
+            }
             if (mode == View.Capture)
             {
                 host.SetDraftName(editor.Text);
@@ -206,8 +258,7 @@ namespace JueMingR.TerrariaHost.F5
         // writes retain their receipt association and complete in the owner.
         internal void Suspend()
         {
-            ExchangePresentationGeneration++;
-            pendingExchangeAsset = Guid.Empty;
+            RetireExchangeIntent();
             focusSuspended = false;
             host.CancelProjectionOpen();
             if (mode == View.Capture) host.CancelCaptureOrDraft();
@@ -220,16 +271,17 @@ namespace JueMingR.TerrariaHost.F5
         internal void LoseFocus()
         {
             if (focusSuspended) return;
-            ReleasePresentation(); focusSuspended = true;
+            ReleasePresentation(preserveImportName: importNameRequest != Guid.Empty); focusSuspended = true;
             if (mode == View.Library) RequestList(requestedPage);
         }
-        private void ReleasePresentation()
+        private void ReleasePresentation(bool preserveImportName = false)
         {
             host.CancelStaticMaterialViews(); captureMaterials.Clear(); materialRenderer.Dispose(); pageMaterials.Clear(); draftMaterials = null;
             seenMaterialLayout = materialResources = -1; materialNames = -1;
             pendingMaterialScroll = materialScroll = float.NaN;
             CancelRead();
-            EndEdit(); deleteConfirm = null; armed = hovered = null; ready = false;
+            if (preserveImportName) TextInput.Release(false); else EndEdit();
+            deleteConfirm = null; armed = hovered = null; ready = false;
             OwnsPointer = false; parts.Clear(); previews.Dispose(); renderer.Dispose(); objects = null; objectsHandle = Guid.Empty;
             pendingImage = null; pendingPreviewKey = null; failedPreviews.Clear(); failedSummaries.Clear();
         }
@@ -254,6 +306,7 @@ namespace JueMingR.TerrariaHost.F5
             bool left = host.Input.RawMouseLeft, right = host.Input.RawMouseRight;
             ConsumeLeft = ConsumeRight = ConsumeWheel = OwnsPointer = false;
             PollReceipts();
+            if (!Visible && focusSuspended && importNameRequest != Guid.Empty && active && focused && !blocked && host.Input.CanStartActions) Reveal();
             if (!Visible) RevealPendingExchange(active && focused);
             bool ownGeometry = Same(view, shell.Layout.Viewport.Offset(shell.X, shell.Y)) && matrix == Main.UIScaleMatrix &&
                 scroll == shell.Scroll && layoutGeneration == shell.Layout.Generation;
@@ -270,7 +323,10 @@ namespace JueMingR.TerrariaHost.F5
             // Scrolling/projection can retire pointer geometry before Prepare.
             // The same editable field still owns text until a real input exit.
             bool textActive = active && Visible && Editable && !blocked && !secondaryOnly;
-            TextInput.AfterSample(textActive, null, keys, focused);
+            // This continuation owns this edit sample and its actual action.
+            // Leaving it returns movement even if a movement key stayed held.
+            if (importNameRequest != Guid.Empty) TextInput.AfterSampleForImportName(textActive, keys, focused);
+            else TextInput.AfterSample(textActive, null, keys, focused);
             bool inside = hitClip.Contains(point.X, point.Y);
             OwnsPointer = pointerOn && (inside || leftTail || rightTail);
             hovered = pointerOn && inside ? Hit(point.X - view.X, point.Y - view.Y) : null;
@@ -305,6 +361,8 @@ namespace JueMingR.TerrariaHost.F5
                     }
                     else if (!wasEditing && editor == null)
                     { host.Input.Hotkeys.SuppressKey((int)Keys.Escape); Back(); }
+                    else if (importNameRequest != Guid.Empty && !TextInput.Owned && !TextInput.OtherTextOwner)
+                    { host.Input.Hotkeys.SuppressKey((int)Keys.Escape); CancelImportName(); }
                 }
             }
             ConsumeLeft = leftTail; ConsumeRight = rightTail;
@@ -348,6 +406,8 @@ namespace JueMingR.TerrariaHost.F5
                     if (editor != null) { RequestFinish(); return; }
                     TryConfirmDraft(); return;
                 case BlueprintLibraryCommand.Rename: RequestFinish(); return;
+                case BlueprintLibraryCommand.ConfirmImportName: RequestFinish(); return;
+                case BlueprintLibraryCommand.CancelImportName: CancelImportName(); return;
                 case BlueprintLibraryCommand.Place:
                     var placing = Find(part.AssetId);
                     if (host.Place(placing)) { EndEdit(); deleteConfirm = null; validation = null; }
@@ -568,7 +628,7 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void RequestWork()
         {
-            if (host.Library.Snapshot.Busy || pendingMutation.HasValue || pendingPreviewKey != null || pendingImage != null) return;
+            if (importNameRequest != Guid.Empty || host.Library.Snapshot.Busy || pendingMutation.HasValue || pendingPreviewKey != null || pendingImage != null) return;
             if (mode == View.Library)
             {
                 if (wantList) { if (host.Library.TryList(listGeneration, requestedPage, selectAfterList)) { wantList = false; activeReadGeneration = listGeneration; } return; }
@@ -658,7 +718,24 @@ namespace JueMingR.TerrariaHost.F5
         private void Build()
         {
             parts.Clear(); pageKeys.Clear(); draftPreviewKey = null; editRect = default(F5Rect);
-            if (mode == View.Library) BuildLibrary(); else BuildCapture();
+            if (importNameRequest != Guid.Empty) BuildImportName();
+            else if (mode == View.Library) BuildLibrary(); else BuildCapture();
+        }
+        private void BuildImportName()
+        {
+            float width = Math.Max(1, view.Width - 24), y = 8;
+            y += AddWrapped("为导入的蓝图命名", 12, y, width, Color.White) + 4;
+            y += AddWrapped(importNameReason + "。请输入本地名称。", 12, y, width, Color.LightGoldenrodYellow) + 8;
+            editRect = new F5Rect(12, y, width, Math.Max(28, Measure("名称", .70f).Height + 8));
+            Button("", editRect, BlueprintLibraryCommand.Name, true, scale: .70f).Editing = true;
+            y = editRect.Bottom + 8;
+            float buttonWidth = Math.Min((width - 8) / 2, Math.Max(76, Measure("确认导入", .70f).Width + 12));
+            Button("确认导入", new F5Rect(12, y, buttonWidth, editRect.Height), BlueprintLibraryCommand.ConfirmImportName, true, scale: .70f);
+            Button("取消导入", new F5Rect(20 + buttonWidth, y, buttonWidth, editRect.Height), BlueprintLibraryCommand.CancelImportName, true, scale: .70f);
+            y += editRect.Height + 8;
+            if (!String.IsNullOrEmpty(Message)) y += AddWrapped(Message, 12, y, width, Color.LightSalmon) + 5;
+            y += AddWrapped("原名称：" + importSourceName, 12, y, width, Color.White);
+            shell.Layout.SetBlueprintContentHeight(y + 8);
         }
         private void BuildLibrary()
         {

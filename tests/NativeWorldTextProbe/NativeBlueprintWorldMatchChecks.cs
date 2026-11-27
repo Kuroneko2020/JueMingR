@@ -576,8 +576,8 @@ namespace NativeWorldTextProbe
             NativeQuickItemChecks.Until(() => { Call(host, "UpdateProjectionWindow", new WorldTargetView(70, 60, 32, 24, 0)); step(); return Scene(host).All(p => GetOptional(p, "Window") != null); });
             Require(CallResult(host, "ProjectionMoveEligibility", bottom).ToString() == "Movable", "independent missing wall is known zero-Match despite unreadable furniture meaning");
             StartSelection(host, input, false); Pointer(host, false, 80, 70); Pointer(host, true, 80, 70);
-            Require(Mode(host) == "SelectingMove" && GetOptional(host, "ProjectionCandidate") == null && ReferenceEquals(Get(host, "ProjectionHover"), top) && Get(host, "ProjectionHoverMoveEligibility").ToString() == "Checking",
-                "top Unknown target has the same hover/click qualification and cannot select through to a known movable wall instance");
+            Require(Mode(host) == "SelectingMove" && GetOptional(host, "ProjectionCandidate") == null && ReferenceEquals(Get(host, "ProjectionHover"), top) && Get(host, "ProjectionHoverMoveEligibility").ToString() == "Unsupported",
+                "readable but uninterpretable original furniture ends proof and cannot select through to a known movable wall instance");
             Call(host, "CancelProjection"); StartSelection(host, input, true); Pointer(host, false, 80, 70); Pointer(host, true, 80, 70);
             Require(Scene(host).Length == 1 && ReferenceEquals(Scene(host)[0], bottom), "Remove remains independent of Unknown move qualification"); Call(host, "ClearProjection");
 

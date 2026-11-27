@@ -99,10 +99,26 @@ namespace JueMingR.Features.Blueprint
     {
         public CaptureObject Object;
         public int BaseFrameX, BaseFrameY, ColumnStep;
-        // Some original world generators choose each member's decoration
-        // independently. Describe proves membership; raw frames remain intact.
+        // Locked closed doors choose from exactly three per-member X slots.
         public bool IndependentMemberFrames;
+        public bool ChristmasTreeMembers;
         public int[] RowOffsets = Array.Empty<int>();
+        public bool CanMatchMembers => ChristmasTreeMembers ?
+            Object.Width == BlueprintChristmasTreeMembers.Width && Object.Height == BlueprintChristmasTreeMembers.Height :
+            Object.Width > 0 && Object.Height > 0 && RowOffsets?.Length == Object.Height && ColumnStep > 0;
+        public bool MatchesMemberFrame(CaptureCell cell, int index)
+        {
+            if (!CanMatchMembers || (uint)index >= (long)Object.Width * Object.Height) return false;
+            if (ChristmasTreeMembers) return BlueprintChristmasTreeMembers.Matches(cell, index);
+            return MatchesGridFrame(cell, index, Object.Width, BaseFrameX, BaseFrameY, ColumnStep, RowOffsets, IndependentMemberFrames);
+        }
+        internal static bool MatchesGridFrame(CaptureCell cell, int index, int width, int baseX, int baseY, int step, int[] rows, bool independent)
+        {
+            if (cell.FrameY != baseY + rows[index / width]) return false;
+            if (!independent) return cell.FrameX == baseX + index % width * step;
+            int offset = cell.FrameX - baseX;
+            return offset >= 0 && offset < step * 3 && offset % step == 0;
+        }
         public string Key { get { return Object.Type + ":" + Object.X + ":" + Object.Y; } }
     }
 

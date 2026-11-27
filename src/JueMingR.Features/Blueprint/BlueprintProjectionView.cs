@@ -25,10 +25,10 @@ namespace JueMingR.Features.Blueprint
         public BlueprintProjectionMask Mask { get; }
         public IBlueprintHorizontalMirrorProfile Profile { get; }
         public long ProfileRevision { get { return Profile?.Revision ?? 0; } }
-        public int DisplayX(int sourceX) { return MirroredHorizontally ? checked(Width - 1 - sourceX) : sourceX; }
+        public int DisplayX(int sourceX) { return MirroredHorizontally ? checked((int)((long)Width - 1 - sourceX)) : sourceX; }
         public int SourceX(int displayX) { return DisplayX(displayX); }
         public BlueprintProjectionBounds DisplayBounds(BlueprintProjectionBounds source)
-        { return MirroredHorizontally ? new BlueprintProjectionBounds(checked(Width - source.Right), source.Top, source.Width, source.Height) : source; }
+        { return MirroredHorizontally ? new BlueprintProjectionBounds(checked((int)((long)Width - source.Left - source.Width)), source.Top, source.Width, source.Height) : source; }
         public BlueprintProjectionBounds SourceBounds(BlueprintProjectionBounds display) { return DisplayBounds(display); }
         public bool SamePose(BlueprintProjectionView other)
         { return other != null && Width == other.Width && Height == other.Height && SourceLeft == other.SourceLeft && SourceTop == other.SourceTop &&
@@ -40,6 +40,34 @@ namespace JueMingR.Features.Blueprint
             long right = Math.Min((long)width, Math.Max((long)x1, x2) + 1), bottom = Math.Min((long)height, Math.Max((long)y1, y2) + 1);
             if (right <= left || bottom <= top) return new BlueprintProjectionBounds(0, 0, 0, 0);
             return new BlueprintProjectionBounds(checked((int)left), checked((int)top), checked((int)(right - left)), checked((int)(bottom - top)));
+        }
+
+        // Real source records always stay inside the declared template.
+        // Only the worker's exhausted 3×3 door query proves an outside column
+        // is auxiliary air, whose position reflects without a Tile decoder.
+        internal bool TryTransformCell(CaptureCell cell, bool provenDoorContext, out CaptureCell target, out string reason)
+        {
+            target = cell; reason = null;
+            if (cell.Y < 0 || cell.Y >= Height || cell.X < 0 || cell.X >= Width)
+            {
+                if (!provenDoorContext || cell.HasContent || cell.ObjectId != 0 ||
+                    cell.Y < 0 || cell.Y >= Height || cell.X != -1 && cell.X != Width)
+                { reason = "blueprint-mirror-cell-bounds"; return false; }
+            }
+            if (!MirroredHorizontally) return true;
+            if ((cell.Layers & CaptureLayer.Tile) != 0) return Profile.TryMirrorCell(cell, Width, out target, out reason);
+            target.X = DisplayX(cell.X); return true;
+        }
+
+        internal bool TryTransformObject(CaptureObject obj, IReadOnlyList<CaptureCell> members,
+            out CaptureObject target, out CaptureCell[] transformed, out string reason)
+        {
+            target = obj; transformed = null; reason = null;
+            if (!MirroredHorizontally) return Profile?.Ready != true || Profile.TryNormalizeObject(obj, members, out target, out reason);
+            if (!Profile.TryMirrorObject(obj, members, Width, out target, out transformed, out reason)) return false;
+            if (transformed == null || transformed.Length != members.Count)
+            { reason = "blueprint-mirror-object-members"; return false; }
+            return true;
         }
 
         // Source transport remains in physical order. Complete object consumers
@@ -71,15 +99,9 @@ namespace JueMingR.Features.Blueprint
                 if (!members.TryGetValue(obj.Id, out group)) continue;
                 group.Sort(Compare);
                 if (group.Count != (long)obj.Width * obj.Height) { reason = "blueprint-mirror-object-incomplete"; return false; }
-                CaptureObject result = obj;
-                if (MirroredHorizontally)
-                {
-                    CaptureCell[] cells;
-                    if (!Profile.TryMirrorObject(obj, group, Width, out result, out cells, out reason)) return false;
-                    if (cells == null || cells.Length != group.Count) { reason = "blueprint-mirror-object-members"; return false; }
-                    foreach (var cell in cells) transformed.Add(Key(SourceX(cell.X), cell.Y), cell);
-                }
-                else if (Profile != null && Profile.Ready && !Profile.TryNormalizeObject(obj, group, out result, out reason)) return false;
+                CaptureObject result; CaptureCell[] cells;
+                if (!TryTransformObject(obj, group, out result, out cells, out reason)) return false;
+                if (cells != null) foreach (var cell in cells) transformed.Add(Key(SourceX(cell.X), cell.Y), cell);
                 metadata.Add(result);
             }
             var output = new CaptureCell[visible.Count];
@@ -94,8 +116,9 @@ namespace JueMingR.Features.Blueprint
                         if (!transformed.TryGetValue(Key(cell.X, cell.Y), out member)) { reason = "blueprint-mirror-object-metadata"; return false; }
                         cell = member;
                     }
-                    else if (!Profile.TryMirrorCell(cell, Width, out cell, out reason)) return false;
+                    else if (!TryTransformCell(cell, source.ProvenDoorContext, out cell, out reason)) return false;
                 }
+                else if (!TryTransformCell(cell, source.ProvenDoorContext, out cell, out reason)) return false;
                 output[i] = cell;
             }
             if (displayRowMajor) Array.Sort(output, Compare);

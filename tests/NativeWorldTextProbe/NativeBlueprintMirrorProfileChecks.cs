@@ -12,7 +12,7 @@ using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
 {
-    internal static class NativeBlueprintMirrorProfileChecks
+    internal static partial class NativeBlueprintMirrorProfileChecks
     {
         private const BindingFlags F = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
         internal static void Run(object context)

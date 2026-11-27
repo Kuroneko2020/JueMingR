@@ -403,6 +403,8 @@ leaf	BlueprintImportedMaterialsVisual	blueprint-imported-materials-visual
 leaf	CombatGuidedNavigationCpu	combat-guided-navigation
 
 leaf	BlueprintPayloadCpu	blueprint-payload
+leaf	BlueprintChristmasTreeCpu	blueprint-christmas-tree
+leaf	BlueprintPersistenceCpu	blueprint-persistence
 
 leaf	BlueprintStructureCpu	blueprint-structure
 leaf	AfkModeCpu	afk-mode

@@ -1,9 +1,15 @@
 using System;
 using System.Reflection;
+using System.Runtime.Serialization;
 using JueMingR.Features.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.DataStructures;
+using Terraria.GameContent;
+using Terraria.GameContent.UI.States;
+using Terraria.GameInput;
 using Terraria.ID;
+using Terraria.ObjectData;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -44,10 +50,88 @@ namespace NativeWorldTextProbe
                 for(int i=0;i<100;i++){NativeQuickItemChecks.BeginWorldStep();Call(facing,"Apply",p);}Require(Counter(facing,"CandidateReads")==reads,"enabled without use intent does not read NPC candidates");
                 p.inventory[0].SetDefaults(ItemID.CopperPickaxe);NativeToolExecutionChecks.Sample(context,input,p.Center+new Vector2(200,0),true);Call(combat,"Sample");
                 for(int i=0;i<30;i++){NativeQuickItemChecks.BeginWorldStep();Call(facing,"Apply",p);}Require(Counter(facing,"CandidateReads")==reads,"ineligible tools do not search even with held input");
+                SleepKeepsBedFacing(context,combat,facing,input,p);
                 NativeCombatCadenceChecks.Save(combat,new CombatOptions());p.direction=-1;Call(facing,"Apply",p);Require(p.direction==-1,"off releases coverage without restoring an old direction");
                 Console.WriteLine("PASS G11A independent facing, native manual controls, stale target and friendly exclusion.");
             }
             finally{NativeCombatCadenceChecks.Save(combat,new CombatOptions());}
+        }
+
+        private static void SleepKeepsBedFacing(object context,object combat,object facing,object input,Player player)
+        {
+            NativeBlueprintWorldMatchChecks.InitializeMetadata();
+            var bed=TileObjectData.GetTileData(TileID.Beds,0);
+            var priorAnchors=Main.sleepingManager;
+            var priorScreen=Main.screenPosition;
+            var priorMain=Main.instance;
+            var priorBestiary=Main.BestiaryUI;
+            int priorChatBubble=priorMain?.currentNPCShowingChatBubble??-1;
+            try
+            {
+                // LookForTileInteractions compares the real UI identities, even
+                // with no screen open. A headless fixture has no Bestiary view.
+                if(Main.BestiaryUI==null)Main.BestiaryUI=(UIBestiaryTest)FormatterServices.GetUninitializedObject(typeof(UIBestiaryTest));
+                if(Main.instance==null){Main.instance=(Main)FormatterServices.GetUninitializedObject(typeof(Main));GC.SuppressFinalize(Main.instance);}
+                Main.instance.currentNPCShowingChatBubble=-1;
+                Main.sleepingManager=new AnchoredEntitiesCollection();
+                Main.screenPosition=new Vector2(450,450);
+                foreach(var npc in Main.npc)npc.active=false;
+                player.inventory[0].SetDefaults(ItemID.CopperShortsword);
+                player.itemAnimation=player.itemTime=0;
+                const int top=50;
+                foreach(int direction in new[]{-1,1})
+                {
+                    int left=direction<0?44:54;
+                    for(int x=left;x<left+4;x++)
+                    {
+                        Main.tile[x,top].ClearEverything();
+                        Main.tile[x,top+1].ClearEverything();
+                        NativeToolsChecks.Tile(x,top+2,TileID.Stone);
+                    }
+                    Require(WorldGen.PlaceObject(left+bed.Origin.X,top+bed.Origin.Y,TileID.Beds,true,direction:direction),"native fixture places a supported bed");
+                    int tileX=left+(direction<0?3:0);
+                    Require(PlayerSleepingHelper.GetSleepingTargetInfo(tileX,top,out int bedDirection,out Vector2 anchor,out _) && bedDirection==direction,"fixture picks the sleeping end for each bed direction");
+                    player.Bottom=anchor;
+                    player.ChangeDir(-direction);
+                    player.releaseUseTile=true;
+                    var cursor=new Vector2(tileX*16+8,top*16+8);
+                    NativeToolExecutionChecks.Sample(context,input,cursor,false);
+                    // Supply the mapped right-click at the normal combat sample seam.
+                    Main.mouseRight=PlayerInput.Triggers.Current.MouseRight=true;
+                    Call(combat,"Sample");
+                    PlayerInput.Triggers.Current.CopyInto(player);
+                    Player.tileTargetX=tileX;
+                    Player.tileTargetY=top;
+                    NativeQuickItemChecks.BeginWorldStep();
+                    Require((bool)Get(combat,"Right") && !(bool)Get(combat,"Left") && Math.Sign(Main.MouseWorld.X-anchor.X)==-direction,"combat sees the bed click alone on the side opposite its facing");
+                    player.LookForTileInteractions();
+                    Require(player.tileInteractionHappened && player.sleeping.isSleeping && player.direction==direction,"original right-click starts sleeping with the bed direction");
+                    int reads=Counter(facing,"CandidateReads");
+                    player.ItemCheck();
+                    NativeQuickItemChecks.BeginWorldStep();
+                    Main.sleepingManager.ClearPlayerAnchors();
+                    player.sleeping.UpdateState(player);
+                    Require(player.sleeping.isSleeping && player.direction==direction,"sleeping survives ItemCheck with automatic facing enabled for bed direction="+direction+" actual="+player.direction);
+                    Require(Counter(facing,"CandidateReads")==reads,"sleeping never scans combat targets");
+                    player.controlRight=true;
+                    Main.sleepingManager.ClearPlayerAnchors();
+                    player.sleeping.UpdateState(player);
+                    Require(!player.sleeping.isSleeping,"original movement still gets the player out of bed");
+                    player.controlRight=false;
+                }
+                Console.WriteLine("PASS native bed right-click and ItemCheck with automatic facing, both bed directions and normal movement wake.");
+            }
+            finally
+            {
+                player.sleeping.StopSleeping(player);
+                player.controlRight=player.controlUseTile=player.tileInteractionHappened=false;
+                Main.mouseRight=PlayerInput.Triggers.Current.MouseRight=false;
+                Main.sleepingManager=priorAnchors;
+                Main.screenPosition=priorScreen;
+                Main.BestiaryUI=priorBestiary;
+                if(priorMain!=null)priorMain.currentNPCShowingChatBubble=priorChatBubble;
+                Main.instance=priorMain;
+            }
         }
         private static int Counter(object value,string name){return (int)(GetOptional(value,name)??0);}
     }

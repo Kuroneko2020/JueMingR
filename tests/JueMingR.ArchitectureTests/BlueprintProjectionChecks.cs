@@ -350,14 +350,15 @@ namespace JueMingR.ArchitectureTests
                 counted.FailBlock = -1; identity = Open(state, fixture, 21, 2); counted.FailBlock = 0; counted.FailCode = "blueprint-projection-window-budget";
                 Require(state.RequestProjectionSource(identity, 202, 0), "source budget-named reader exception reaches the real source lane");
                 failed = Await(state, BlueprintProjectionReceiptKind.Failed);
-                Require(failed.IdentityRetired && failed.WindowGeneration == 0 && failed.FailureCode == counted.FailCode && !state.RequestProjectionSource(identity, 203, 0),
-                    "source failure broadcasts actual identity retirement even when its code names a recoverable viewport budget refusal");
-                counted.FailBlock = -1; identity = Open(state, fixture, 22, 2); counted.FailBlock = 0;
+                Require(failed.IdentityRetired && failed.WindowGeneration == 0 && failed.FailureCode == counted.FailCode &&
+                    failed.FailureScope == BlueprintProjectionFailureScope.SharedAsset && !state.RequestProjectionSource(identity, 203, 0),
+                    "a raw read failure keeps its shared scope even when its message resembles a demand limit");
+                counted.FailBlock = -1; identity = Open(state, fixture, 22, 2); counted.FailBlock = 0; counted.DemandBudget = true;
                 Require(state.RequestProjectionWindow(identity, 204, new BlueprintProjectionBounds(0, 0, 10, 1)), "viewport budget refusal reaches its own request path");
                 failed = Await(state, BlueprintProjectionReceiptKind.Failed);
-                Require(!failed.IdentityRetired && failed.WindowGeneration == 204 && failed.FailureCode == counted.FailCode,
+                Require(!failed.IdentityRetired && failed.WindowGeneration == 204 && failed.FailureCode == counted.FailCode && failed.FailureScope == BlueprintProjectionFailureScope.Demand,
                     "viewport budget refusal retains identity and binds the actual viewport generation");
-                counted.FailBlock = -1; counted.FailCode = null;
+                counted.FailBlock = -1; counted.FailCode = null; counted.DemandBudget = false;
                 Require(Window(state, identity, 205, new BlueprintProjectionBounds(0, 0, 10, 1)).Cells.Count == 10, "budget refusal keeps its live reference available for a smaller retry");
                 counted.FailBlock = -1; identity = Open(state, fixture, 3, 2);
                 Require(Window(state, identity, 21, new BlueprintProjectionBounds(0, 0, 10, 1)).Cells.Count == 10, "retry replaces failure with actual records");
@@ -1158,6 +1159,7 @@ namespace JueMingR.ArchitectureTests
             internal long Reads, IndexReadBytes; internal int ActiveIndexes, MetadataWhileLayout, IndexesAtMetadataWrite, WritesWhileLayout;
             internal string LastWrittenIdentity;
             internal string FailCode;
+            internal bool DemandBudget;
             internal bool HoldDispose;
             internal readonly ManualResetEventSlim DisposeEntered=new ManualResetEventSlim(), DisposeRelease=new ManualResetEventSlim();
             internal int DeleteMode, HoldLayoutBatches; internal long HoldBlock = -1, FailBlock = -1; internal bool LayoutStarted, LayoutCompleted;
@@ -1183,7 +1185,14 @@ namespace JueMingR.ArchitectureTests
             {
                 Interlocked.Increment(ref Reads);
                 if (number == HoldBlock) { HoldBlock = -1; BlockEntered.Set(); if (!BlockRelease.Wait(5000)) throw new TimeoutException("Held read test boundary timed out."); }
-                if (number == FailBlock) { if (FailCode != null) throw new InvalidDataException(FailCode); throw new IOException("injected-projection-block-failure"); } return inner.ReadBlock(id, stage, number);
+                if (number == FailBlock)
+                {
+                    if (DemandBudget)
+                        throw (Exception)Activator.CreateInstance(typeof(LibraryState).Assembly.GetType("JueMingR.Features.Blueprint.LibraryWorker+ProjectionBudgetException", true), true);
+                    if (FailCode != null) throw new InvalidDataException(FailCode);
+                    throw new IOException("injected-projection-block-failure");
+                }
+                return inner.ReadBlock(id, stage, number);
             }
             public Stream OpenIndex(Guid id, bool stage) { return new CountedIndex(inner.OpenIndex(id, stage), this); }
             public void SealStage(Guid id, byte[] root) { inner.SealStage(id, root); }

@@ -40,12 +40,27 @@ namespace JueMingR.Features.Blueprint
             catch (OperationCanceledException) { }
             catch (Exception error)
             {
-                // A bad scene mask revokes only this restored reference, not
-                // another instance sharing the valid immutable template.
                 lock (gate)
                 {
-                    var id = projectionRestoreReference.Identity;
-                    if (projectionReferences.ContainsKey(id)) { projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, id, error: Reason(error), failureCode: Code(error), identityRetired: true)); RemoveProjectionReferenceLocked(id); }
+                    var reference = projectionRestoreReference; var id = reference.Identity;
+                    ProjectionReference current; ProjectionOwner owner;
+                    if (projectionReferences.TryGetValue(id, out current) && ReferenceEquals(current, reference) &&
+                        projectionOwners.TryGetValue(id.TemplateKey, out owner))
+                    {
+                        var scope = ProjectionFailureScope(error);
+                        if (scope == BlueprintProjectionFailureScope.SharedAsset)
+                            FailProjectionAssetLocked(owner, error, BlueprintProjectionFailureStage.Restore);
+                        else
+                        {
+                            // A bad saved mask or pose is an exact record
+                            // failure; an oversized proof is a demand refusal.
+                            if (scope != BlueprintProjectionFailureScope.Demand) scope = BlueprintProjectionFailureScope.SavedInstance;
+                            projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, id,
+                                error: Reason(error), failureCode: ProjectionFailureCode(error), identityRetired: true,
+                                failureScope: scope, failureStage: BlueprintProjectionFailureStage.Restore, failureDetail: ProjectionFailureDetail(error)));
+                            RemoveProjectionReferenceLocked(id);
+                        }
+                    }
                 }
             }
             projectionRestoring.Dispose(); projectionRestoring = null; projectionRestoreReference = null; return true;
@@ -80,6 +95,11 @@ namespace JueMingR.Features.Blueprint
                 if ((++processed & 31) == 0) yield return true;
             }
             if (removed != mask.RemovedLayerCount || construction != mask.RemovedConstructionLayerCount || removed >= owner.TotalLayers) throw new InvalidDataException("blueprint-scene-mask-count");
+            if (reference.RestoreMirroredProfile != null)
+            {
+                var view = new BlueprintProjectionView(summary, true, mask, reference.RestoreMirroredProfile);
+                foreach (bool step in ValidateProjectionView(owner, view, () => CheckProjectionRestore(reference))) yield return step;
+            }
         }
     }
 }

@@ -9,7 +9,7 @@ using Terraria.ObjectData;
 
 namespace JueMingR.TerrariaHost.Blueprint
 {
-    internal enum BlueprintProjectionTexture { Tile, Wall, Extra, Pixel }
+    internal enum BlueprintProjectionTexture { Tile, Wall, Extra, Pixel, ChristmasTree }
 
     internal struct BlueprintProjectionCommand
     {
@@ -175,6 +175,12 @@ namespace JueMingR.TerrariaHost.Blueprint
         private static void Tile(List<BlueprintProjectionCommand> result, Dictionary<long, CaptureCell> cells, CaptureCell c,
             CaptureObject obj, int sourceLeft, int sourceTop)
         {
+            if (c.TileType == BlueprintChristmasTreeMembers.TileType)
+            {
+                if (obj.Reliable && obj.Type == c.TileType && c.X == obj.X && c.Y == obj.Y &&
+                    BlueprintChristmasTreeMembers.Matches(c, 0)) ChristmasTree(result, c);
+                return;
+            }
             int width = 16, height = 16, dx = 0, dy = 0, fx = c.FrameX, fy = c.FrameY;
             SpriteEffects effects = SpriteEffects.None;
             if (obj.Id != 0 && obj.Reliable)
@@ -262,6 +268,25 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
             }
             Shape(result, normal, c.Slope, c.HalfBrick, platform, noSlope, TileID.Sets.HasSlopeFrames[c.TileType]);
+        }
+
+        private static void ChristmasTree(List<BlueprintProjectionCommand> output, CaptureCell anchor)
+        {
+            // DrawXmasTree borrows five native textures for one body, with
+            // 66px ornament strides and a 64x128 visible rectangle.
+            var command = new BlueprintProjectionCommand { Texture = BlueprintProjectionTexture.ChristmasTree,
+                Source = new Rectangle(0, 0, 64, 128), Position = new Vector2(anchor.X * 16, anchor.Y * 16 + 4),
+                Color = Ink(anchor, false) };
+            output.Add(command);
+            for (int slot = 0; slot < BlueprintChristmasTreeMembers.OrnamentSlots; slot++)
+            {
+                int ornament = BlueprintChristmasTreeMembers.Ornament(anchor.FrameY, slot);
+                if (ornament == 0) continue;
+                // The topper is drawn before garland, baubles and lights.
+                command.Type = slot == 0 ? 3 : slot == 3 ? 4 : slot;
+                command.Source = new Rectangle(66 * (ornament - 1), 0, 64, 128);
+                output.Add(command);
+            }
         }
 
         private static void HalfJoin(List<BlueprintProjectionCommand> output, BlueprintProjectionCommand n, bool west, bool east, CaptureCell above, ushort type)

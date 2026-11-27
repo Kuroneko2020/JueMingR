@@ -24,7 +24,7 @@ namespace NativeWorldTextProbe
             Require((bool)Get(tools,"Available"),"construction native hooks initialized: "+GetOptional(tools,"SetupError"));
             Framing.Initialize();Main.SetupTileMerge();TorchID.Initialize();
             var lightingMode=Lighting.Mode;Lighting.Mode=Terraria.Graphics.Light.LightMode.Color;
-            var previousMain=Main.instance;bool suppliesMain=(family=="Payload" || family=="Structure") && previousMain==null;
+            var previousMain=Main.instance;bool suppliesMain=(family=="Payload" || family=="Structure" || family=="ChristmasTree") && previousMain==null;
             // These new source samplers use the same full held-use Update as
             // CombatCadence, whose native item-frame path requires Main.instance.
             if(suppliesMain){Main.instance=(Main)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Main));GC.SuppressFinalize(Main.instance);}
@@ -50,6 +50,12 @@ namespace NativeWorldTextProbe
                         try{body();Console.WriteLine("PASS BlueprintConstruction case="+name);}
                         catch(Exception error){Console.Error.WriteLine("CONSTRUCTION CASE "+name+": "+error);DumpConstructionPreparation(host,tools);if(first==null)first=error;}
                     };
+                    if (family == "ChristmasTree")
+                    {
+                        ConstructionChristmasTree(context, host, tools, input);
+                        Console.WriteLine("PASS BlueprintChristmasTree: automatic held-item body placement and four native ornament uses.");
+                        return;
+                    }
                     check("finite original inventory input preparation",()=>ConstructionMaterialPreparation(context,host,tools,input));
                     // Explicit local fixture diagnosis only; formal Appearance
                     // retains its complete body and reaches this case there.
