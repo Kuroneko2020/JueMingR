@@ -152,8 +152,13 @@ namespace JueMingR.TerrariaHost.F5
         private void OpenModelPage(ModelPageView view)
         {
             modelPageView = view;
+            modelPicker = ModelPicker.None;
+            modelSearch = "";
+            modelMainOffset = 0;
+            modelCapabilityFilter = 0;
             modelOffset = 0;
             modelConfirmDelete = false;
+            pendingModelPreset = null;
             HideModelSecrets();
             Invalidate();
         }
@@ -238,9 +243,14 @@ namespace JueMingR.TerrariaHost.F5
             if (!String.IsNullOrEmpty(modelChatTest)) ModelParagraph(modelChatTest);
             if (!String.IsNullOrEmpty(modelToolTest)) ModelParagraph(modelToolTest);
             if (!String.IsNullOrEmpty(modelStatus)) ModelParagraph(modelStatus);
+            BuildModelCancelRequest();
+            BuildModelFooter(true);
+        }
+
+        private void BuildModelCancelRequest()
+        {
             if (modelRead != null)
                 ModelButtonRow(("cancel-read", "取消请求", () => { CancelModelRequest(); ModelMessage("已取消请求。"); }, true));
-            BuildModelFooter(true);
         }
 
         private void BuildModelFooter(bool advanced)

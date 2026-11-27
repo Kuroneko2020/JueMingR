@@ -122,10 +122,15 @@ namespace NativeWorldTextProbe
                     new[] { "model-provider", "model-field-api-key", "model-field-model-id", "model-discover", "model-test-chat", "model-save-use" }
                         .All(key => Control(key) != null && (bool)Get(Control(key), "Enabled")) &&
                     new[] { "model-create", "model-copy", "model-delete", "model-field-name", "model-enabled", "model-default", "model-plan", "model-region", "model-test-tools" }
-                        .All(key => Control(key) == null),
+                        .All(key => Control(key) == null) && !(bool)Get(Control("model-save-use"), "Selected"),
                     "the zero-profile narrow page immediately exposes first use and keeps single-plan and connection management controls off the page");
                 var connections = Get(host, "ChatConnections");
                 CheckModelResultSubject(window, connections);
+                Click("model-provider");
+                Click("chat");
+                Click("chat-open-model");
+                Require(Control("model-field-model-id") != null && Control("model-return") == null,
+                    "go to model settings from chat resets an earlier selection subpage to the first-use form");
                 Click("model-provider");
                 Click("model-field-search");
                 Sample(At("model-field-search"), queue: "Claude");

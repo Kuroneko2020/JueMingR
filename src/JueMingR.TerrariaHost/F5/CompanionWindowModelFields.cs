@@ -47,8 +47,7 @@ namespace JueMingR.TerrariaHost.F5
             {
                 var option = options[i];
                 var rect = new F5Rect(modelX + i * (buttonWidth + 6), modelY, buttonWidth, modelRow);
-                if (ModelVisible(rect)) Button("model-" + option.Key, option.Label, rect, () => RunModelAction(option.Run), option.Enabled,
-                    selectedValue: option.Key == "save-use" && option.Enabled);
+                if (ModelVisible(rect)) Button("model-" + option.Key, option.Label, rect, () => RunModelAction(option.Run), option.Enabled);
             }
             modelY += modelRow + 5;
         }

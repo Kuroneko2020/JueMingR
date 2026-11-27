@@ -10,6 +10,7 @@ namespace JueMingR.TerrariaHost.F5
         private void BuildModelAdvanced()
         {
             ModelButtonRow(("test-tools", "测试工具调用", () => StartModelTest(true), modelRead == null && modelWrite == null));
+            BuildModelCancelRequest();
             ModelParagraph("测试会请求服务商，工具只回填测试数据。");
             if (!String.IsNullOrEmpty(modelStatus)) ModelParagraph(modelStatus);
             ModelHeading("服务与网络");
