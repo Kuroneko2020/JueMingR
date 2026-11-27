@@ -35,6 +35,7 @@ namespace JueMingR.TerrariaHost.F5
                 case ModelPicker.Provider: title = "选择厂商"; break;
                 case ModelPicker.Plan: title = "选择计费方案"; break;
                 case ModelPicker.Region: title = "选择地区"; break;
+                case ModelPicker.Credential: title = "选择凭据类型"; break;
                 case ModelPicker.Protocol: title = "选择该方案支持的协议"; break;
                 case ModelPicker.Templates: title = "选择服务入口"; break;
                 default: title = discoveredModels == null ? "官方模型候选" : "此连接返回的模型"; break;
@@ -88,6 +89,19 @@ namespace JueMingR.TerrariaHost.F5
                         var selectedPreset = PreferredPreset(group);
                         ModelChoice("region-" + group.Key, selectedPreset.RegionLabel, () => ApplyModelPreset(selectedPreset), modelPreset.Region == group.Key);
                     }
+                    break;
+                case ModelPicker.Credential:
+                    foreach (string kind in modelPreset.CredentialKinds)
+                        ModelChoice("credential-" + kind, ModelCredentialKindName(kind), () =>
+                        {
+                            if (kind != modelDraft.CredentialKind)
+                            {
+                                string scope = modelDraft.CredentialScope();
+                                modelDraft.CredentialKind = kind;
+                                ModelDraftChanged(scope);
+                            }
+                            ReturnToModel();
+                        }, modelDraft.CredentialKind == kind);
                     break;
                 case ModelPicker.Protocol:
                     foreach (var group in presets.Where(item => modelPreset != null && SameRegion(item, modelPreset) && item.Advanced == modelPreset.Advanced).GroupBy(item => item.Protocol))

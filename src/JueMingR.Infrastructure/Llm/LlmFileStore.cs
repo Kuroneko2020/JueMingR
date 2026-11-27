@@ -26,6 +26,8 @@ namespace JueMingR.Infrastructure.Llm
         private const string HistoryFormat = "JueMingR.Llm.PublicHistory";
         private static readonly UTF8Encoding Utf8 = new UTF8Encoding(false, true);
         private static readonly PropertyInfo[] PersistedOptions = typeof(LlmConnectionSettings).GetProperties();
+        private static readonly Lazy<Dictionary<string, LlmPreset>> RoutingPresets = new Lazy<Dictionary<string, LlmPreset>>(
+            () => LlmPresetCatalog.Load().ToDictionary(preset => preset.Id, StringComparer.Ordinal));
         private readonly string directory;
         private readonly AtomicFileDocument settingsFile;
         private readonly AtomicFileDocument secretsFile;
@@ -358,6 +360,8 @@ namespace JueMingR.Infrastructure.Llm
         {
             var scope = new LlmConnectionDraft(connection.Id);
             connection.Settings.CopyTo(scope);
+            RoutingPresets.Value.TryGetValue(scope.PresetId ?? "", out LlmPreset preset);
+            scope.RoutingPreset = preset;
             // A manually edited configuration or moved reference cannot decrypt at a different authority or plan.
             return Utf8.GetBytes(SecretsFormat + "/" + connection.Id.ToString("D") + "/" +
                 connection.SecretVersion.ToString("D") + "/" + scope.CredentialScope());

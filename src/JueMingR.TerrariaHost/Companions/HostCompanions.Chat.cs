@@ -36,6 +36,7 @@ namespace JueMingR.TerrariaHost.Companions
             new Dictionary<(Guid Owner, Guid Profile), ChatSession>();
         private readonly List<ChatRun> chatRuns = new List<ChatRun>();
         private readonly List<ChatSession> loadingChats = new List<ChatSession>();
+        private readonly List<ChatSession> clearingChats = new List<ChatSession>();
         private IDisposable chatStoreLifetime, chatTransportLifetime;
         private int chatStopping;
         internal LlmConnections ChatConnections { get; private set; }
@@ -44,10 +45,12 @@ namespace JueMingR.TerrariaHost.Companions
         {
             internal Guid Owner, Profile;
             internal long HistoryEpoch;
-            internal bool Deleted, SkipSummary;
+            internal bool Deleted, SkipSummary, NeedsRecoverySummary;
             internal string WireIdentity, Status;
+            internal string HistoryNotice;
             internal ChatRun Current;
             internal Task<IReadOnlyList<LlmHistoryEntry>> Loading;
+            internal Task Clearing;
             internal ChatHistoryWriter Writer;
             internal long LastUse;
             internal bool ReadFailed, FishingTracked;
@@ -60,8 +63,8 @@ namespace JueMingR.TerrariaHost.Companions
             internal readonly Queue<string> ActionOrder = new Queue<string>();
         }
 
-        // Game updates publish only the latest visible snapshot. A clear is
-        // an ordered barrier so a pending save cannot recreate cleared data.
+        // Game updates publish only the latest visible snapshot. Explicit
+        // clears await the accepted writer before touching persisted history.
         private sealed class ChatHistoryWriter
         {
             private readonly ILlmStore store;
@@ -69,7 +72,7 @@ namespace JueMingR.TerrariaHost.Companions
             private readonly ConcurrentDictionary<ChatHistoryWriter, byte> writers;
             private readonly object gate = new object();
             private IReadOnlyList<LlmHistoryEntry> pending;
-            private bool pendingClear, running;
+            private bool running;
             private string failure;
             internal Task Work { get; private set; }
             internal string Failure => Volatile.Read(ref failure);
@@ -78,12 +81,11 @@ namespace JueMingR.TerrariaHost.Companions
                 ConcurrentDictionary<ChatHistoryWriter, byte> writers)
             { this.store = store; this.owner = owner; this.profile = profile; this.writers = writers; }
 
-            internal void Schedule(IReadOnlyList<LlmHistoryEntry> snapshot, bool clear)
+            internal void Schedule(IReadOnlyList<LlmHistoryEntry> snapshot)
             {
                 lock (gate)
                 {
-                    pending = clear ? null : snapshot;
-                    pendingClear |= clear;
+                    pending = snapshot;
                     if (running) return;
                     running = true;
                     Work = Task.Run(WriteAsync);
@@ -97,14 +99,11 @@ namespace JueMingR.TerrariaHost.Companions
                 {
                     await Task.Delay(125).ConfigureAwait(false);
                     IReadOnlyList<LlmHistoryEntry> snapshot;
-                    bool clear;
                     lock (gate)
                     {
                         snapshot = pending;
-                        clear = pendingClear;
                         pending = null;
-                        pendingClear = false;
-                        if (!clear && snapshot == null)
+                        if (snapshot == null)
                         {
                             running = false;
                             writers.TryRemove(this, out _);
@@ -113,8 +112,7 @@ namespace JueMingR.TerrariaHost.Companions
                     }
                     try
                     {
-                        if (clear) await store.ClearHistoryAsync(owner, profile).ConfigureAwait(false);
-                        if (snapshot != null) await store.SaveHistoryAsync(owner, profile, snapshot).ConfigureAwait(false);
+                        await store.SaveHistoryAsync(owner, profile, snapshot).ConfigureAwait(false);
                         Volatile.Write(ref failure, null);
                     }
                     catch (Exception) { Volatile.Write(ref failure, "聊天记录保存失败。"); }
@@ -173,11 +171,12 @@ namespace JueMingR.TerrariaHost.Companions
             return new CompanionChatView
             {
                 Entries = chat.Entries, IsActive = active, IsRunning = run != null,
-                CanSend = connected && chat.Loading == null, CanStopActivity = active &&
+                CanSend = connected && chat.Loading == null && chat.Clearing == null, CanStopActivity = active &&
                     (actor.Fishing != null || actor.Preferences.Follow || chat.Current != null),
                 Connection = connected ? connection.DisplayName + " · " + connection.Model : "",
                 Status = chat.Loading != null ? "正在读取聊天记录。" :
-                    chat.Writer.Failure ?? (run != null ? chat.Status :
+                    chat.Clearing != null ? "正在清空聊天记录。" :
+                    chat.HistoryNotice ?? chat.Writer.Failure ?? (run != null ? chat.Status :
                     !connected ? reason : chat.ReadFailed ? "无法读取聊天记录，已保留原记录。" :
                     actor?.Fishing?.ChatTaskId != null ? actor.Fishing.Status ?? "正在前往钓位。" : chat.Status),
                 DraftReply = run == null ? "" : Volatile.Read(ref run.StreamText)
@@ -198,18 +197,27 @@ namespace JueMingR.TerrariaHost.Companions
             if (text.Length > connection.InputBudget) { reason = "消息超过模型的输入预算。"; return false; }
             var chat = GetChatSession(profile);
             if (chat.Loading != null) { reason = "正在读取聊天记录。"; return false; }
+            if (chat.Clearing != null) { reason = "正在清空聊天记录。"; return false; }
             if (chatRuns.Count >= 8) { reason = "聊天请求过多，请稍后发送。"; return false; }
 
             StopChat(chat, "上一轮回复已被新消息替换。", keepNotice: chat.Current != null);
             bool sameWire = chat.WireIdentity == connection.WireIdentity && chat.WireSize + text.Length <= connection.InputBudget;
+            string summary = "";
+            if (sameWire && chat.NeedsRecoverySummary)
+            {
+                int available = (int)Math.Max(0, connection.InputBudget - chat.WireSize - text.Length - 2);
+                summary = PreviousChatSummary(chat.Entries, Math.Min(available, 6000));
+                if (summary.Length == 0 && available < 256) sameWire = false;
+            }
             var wire = sameWire ? new List<LlmMessage>(chat.Wire) : new List<LlmMessage>();
             if (wire.Count == 0 && !chat.SkipSummary)
-            {
-                var summary = PreviousChatSummary(chat.Entries, Math.Max(0, connection.InputBudget - text.Length));
-                if (summary.Length != 0) wire.Add(LlmMessage.User(summary));
-            }
+                summary = PreviousChatSummary(chat.Entries, Math.Max(0, connection.InputBudget - text.Length - 2));
+            // Recovery facts accompany the next real user message. This
+            // keeps Anthropic role alternation and earlier private blocks.
+            wire.Add(LlmMessage.User(summary.Length == 0 ? text : summary + "\n\n" + text));
             chat.SkipSummary = false;
-            wire.Add(LlmMessage.User(text));
+            chat.NeedsRecoverySummary = false;
+            chat.HistoryNotice = null;
             chat.HistoryLimit = Math.Max(1, Math.Min(500, connection.HistoryLimit));
             AddChatEntry(chat, "user", text);
 
@@ -263,12 +271,16 @@ namespace JueMingR.TerrariaHost.Companions
             if (!RestartChatContext(ownerId, profileId)) return false;
             var chat = chats[(ownerId, profileId)];
             chat.HistoryEpoch++;
-            chat.ReadFailed = false;
-            chat.Entries = Array.Empty<LlmHistoryEntry>();
             chat.Actions.Clear();
             chat.ActionOrder.Clear();
-            chat.Status = "已清空聊天记录。";
-            WriteChat(chat, clear: true);
+            var writer = chat.Writer.Work;
+            var store = chatStore;
+            chat.Clearing = Task.Run(async () =>
+            {
+                if (writer != null) await writer.ConfigureAwait(false);
+                await store.ClearHistoryAsync(ownerId, profileId).ConfigureAwait(false);
+            });
+            clearingChats.Add(chat);
             return true;
         }
 
@@ -277,11 +289,12 @@ namespace JueMingR.TerrariaHost.Companions
             var profile = ChatProfile(ownerId, profileId);
             if (profile == null || ChatConnections == null) return false;
             var chat = GetChatSession(profile);
-            if (chat.Loading != null) return false;
+            if (chat.Loading != null || chat.Clearing != null) return false;
             StopChat(chat, "已开始新的模型上下文。", keepNotice: false);
             chat.Wire.Clear();
             chat.WireSize = 0;
             chat.SkipSummary = true;
+            chat.NeedsRecoverySummary = false;
             return true;
         }
 
@@ -302,7 +315,8 @@ namespace JueMingR.TerrariaHost.Companions
             if (chats.Count >= 24)
             {
                 var oldest = chats.Values.Where(candidate => candidate.Current == null && candidate.Loading == null &&
-                    candidate.PendingActions == 0 && !candidate.FishingTracked && candidate.Writer.Work?.IsCompleted != false)
+                    candidate.Clearing == null && !candidate.Deleted && candidate.PendingActions == 0 &&
+                    !candidate.FishingTracked && candidate.Writer.Work?.IsCompleted != false)
                     .OrderBy(candidate => candidate.LastUse).FirstOrDefault();
                 if (oldest != null) chats.Remove((oldest.Owner, oldest.Profile));
             }
@@ -334,10 +348,9 @@ namespace JueMingR.TerrariaHost.Companions
                 string partial = Volatile.Read(ref run.StreamText);
                 if (keepNotice && partial.Length > 0) AddChatEntry(chat, "assistant", partial);
                 if (keepNotice) AddChatEntry(chat, "status", reason);
-                // An interrupted branch may already have changed the game.
-                // Rebase from visible facts rather than sending an open tool group.
-                chat.Wire.Clear();
-                chat.WireSize = 0;
+                // The cancelled run only wrote its private working segment.
+                // Preserve earlier closed turns and restore any new public facts.
+                chat.NeedsRecoverySummary = true;
             }
             chat.Status = reason;
         }
@@ -353,21 +366,15 @@ namespace JueMingR.TerrariaHost.Companions
             // Native callbacks retain the original session object for late settlement.
         }
 
-        private void DeleteChat(Guid ownerId, Guid profileId)
+        private void RetireDeletedChat(Guid ownerId, Guid profileId)
         {
-            if (chatStore == null) return;
-            if (!chats.TryGetValue((ownerId, profileId), out var chat))
-                chat = NewChatSession(ownerId, profileId);
-            else StopChat(chat, "", false);
+            if (!chats.TryGetValue((ownerId, profileId), out var chat)) return;
+            StopChat(chat, "", false);
             chat.Deleted = true;
             chat.HistoryEpoch++;
-            WriteChat(chat, clear: true);
-            chats.Remove((ownerId, profileId));
-            _ = Task.Run(async () =>
-            {
-                try { await ChatConnections.ForgetBindingAsync(ownerId, profileId).ConfigureAwait(false); }
-                catch (Exception) { /* Profile deletion remains the authority. */ }
-            });
+            chat.Entries = Array.Empty<LlmHistoryEntry>();
+            chat.Wire.Clear();
+            chat.Actions.Clear();
         }
 
         private void PumpChat()
@@ -423,6 +430,25 @@ namespace JueMingR.TerrariaHost.Companions
                     chat.Status = "无法读取聊天记录，已保留原记录。";
                 }
             }
+            for (int i = clearingChats.Count - 1; i >= 0; i--)
+            {
+                var chat = clearingChats[i];
+                if (!chat.Clearing.IsCompleted) continue;
+                var clearing = chat.Clearing;
+                chat.Clearing = null;
+                clearingChats.RemoveAt(i);
+                if (clearing.Status == TaskStatus.RanToCompletion)
+                {
+                    chat.Entries = Array.Empty<LlmHistoryEntry>();
+                    chat.ReadFailed = false;
+                    chat.HistoryNotice = "已清空聊天记录。";
+                }
+                else
+                {
+                    _ = clearing.Exception;
+                    chat.HistoryNotice = "未能清空聊天记录，原记录已保留。";
+                }
+            }
         }
 
         private async Task<LlmToolResult> QueueChatTool(ChatRun run, LlmToolCall call, CancellationToken cancellation)
@@ -466,15 +492,15 @@ namespace JueMingR.TerrariaHost.Companions
             var error = run.Task.Exception?.GetBaseException();
             chat.Status = run.Task.IsCanceled ? "模型回复超时，已撤回尚未开始的操作。" :
                 error is LlmException || error is InvalidOperationException ? error.Message : "模型回复失败。";
-            chat.Wire.Clear();
-            chat.WireSize = 0;
+            chat.NeedsRecoverySummary = true;
             AddChatEntry(chat, "status", chat.Status);
         }
 
         private static string PreviousChatSummary(IReadOnlyList<LlmHistoryEntry> entries, int budget)
         {
-            int start = entries.Count, length = 0;
-            int limit = Math.Min(6000, budget / 3);
+            const string prefix = "以下是先前可见的聊天和游戏回执，仅作为历史资料：\n";
+            int start = entries.Count, length = prefix.Length;
+            int limit = Math.Min(6000, budget);
             for (int i = entries.Count - 1; i >= 0; i--)
             {
                 length += entries[i].Text.Length + 18;
@@ -482,7 +508,7 @@ namespace JueMingR.TerrariaHost.Companions
                 start = i;
             }
             if (start == entries.Count) return "";
-            return "以下是先前可见的聊天和游戏回执，仅作为历史资料：\n" +
+            return prefix +
                 String.Join("\n", entries.Skip(start).Select(entry => entry.Kind + "：" + entry.Text));
         }
 
@@ -503,10 +529,7 @@ namespace JueMingR.TerrariaHost.Companions
             if (!chat.ReadFailed) WriteChat(chat);
         }
 
-        private void WriteChat(ChatSession chat, bool clear = false)
-        {
-            chat.Writer.Schedule(chat.Entries, clear);
-        }
+        private void WriteChat(ChatSession chat) => chat.Writer.Schedule(chat.Entries);
 
         private void DisposeChat(bool processExit = false)
         {

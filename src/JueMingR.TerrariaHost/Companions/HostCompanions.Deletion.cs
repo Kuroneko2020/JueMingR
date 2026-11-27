@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using JueMingR.Platform.Companions;
 
 namespace JueMingR.TerrariaHost.Companions
@@ -11,6 +12,8 @@ namespace JueMingR.TerrariaHost.Companions
         private long deletionFeedbackSession;
         private string deletionProgress;
         private string deletionRetirementWarning;
+        private readonly Dictionary<(Guid Owner, Guid Profile), Task> deletingChatData =
+            new Dictionary<(Guid Owner, Guid Profile), Task>();
         internal Guid DeletionViewOwner => ArchiveIdentityCurrent() ? profiles.OwnerId : Guid.Empty;
         internal IReadOnlyList<CompanionDeletion> Deletions => profiles.Deletions;
 
@@ -35,7 +38,7 @@ namespace JueMingR.TerrariaHost.Companions
                 !ArchiveIdentityCurrent() || ownerId != profiles.OwnerId || !profiles.RequestDeletion(ownerId, id))
                 return Result(false, "人物或世界已变化，请重新确认删除。");
 
-            DeleteChat(ownerId, id);
+            RetireDeletedChat(ownerId, id);
             string warning = null;
             if (actors.TryGetValue(id, out var actor))
             {
@@ -71,7 +74,51 @@ namespace JueMingR.TerrariaHost.Companions
             return DeletionProgress(id, "正在删除人物。" + warning);
         }
 
-        internal void FinishDeletionBindings(CompanionDeletion deletion) => profiles.FinishDeletion(deletion.OwnerId, deletion.ProfileId);
+        internal void FinishDeletionBindings(CompanionDeletion deletion)
+        {
+            var key = (deletion.OwnerId, deletion.ProfileId);
+            if (chatStore == null || ChatConnections == null)
+            {
+                profiles.FinishDeletion(key.OwnerId, key.ProfileId);
+                return;
+            }
+            if (!deletingChatData.TryGetValue(key, out var cleanup))
+            {
+                chats.TryGetValue(key, out var chat);
+                var writer = chat?.Writer.Work;
+                var previousClear = chat?.Clearing;
+                var store = chatStore;
+                var connections = ChatConnections;
+                // This phase is reached again from the existing archive
+                // deletion intent after interruption or restart. Never
+                // finalize that intent while any accepted older save can
+                // still recreate this character's chat.
+                deletingChatData.Add(key, Task.Run(async () =>
+                {
+                    if (writer != null) await writer.ConfigureAwait(false);
+                    if (previousClear != null)
+                    {
+                        try { await previousClear.ConfigureAwait(false); }
+                        catch (Exception) { /* The cleanup below retries the clear. */ }
+                    }
+                    await store.ClearHistoryAsync(key.OwnerId, key.ProfileId).ConfigureAwait(false);
+                    await connections.ForgetBindingAsync(key.OwnerId, key.ProfileId).ConfigureAwait(false);
+                }));
+                return;
+            }
+            if (!cleanup.IsCompleted) return;
+            deletingChatData.Remove(key);
+            if (cleanup.Status == TaskStatus.RanToCompletion)
+            {
+                chats.Remove(key);
+                profiles.FinishDeletion(key.OwnerId, key.ProfileId);
+            }
+            else
+            {
+                _ = cleanup.Exception;
+                profiles.FailDeletionCleanup(key.OwnerId, key.ProfileId, "人物档案已删除，聊天记录或模型绑定清理失败，可重试。");
+            }
+        }
         internal void FailDeletionBindings(CompanionDeletion deletion) => profiles.FailDeletionBindings(deletion.OwnerId, deletion.ProfileId);
         internal void RetryCompanionDeletion(Guid ownerId, Guid id)
         {

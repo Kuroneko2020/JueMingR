@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Remoting.Messaging;
 using System.Runtime.Remoting.Proxies;
+using JueMingR.Platform.Llm;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -153,6 +154,20 @@ namespace NativeWorldTextProbe
                 Click("chat");
                 Require(GetOptional(window, "modelRevealedValue") == null, "page switch retires the revealed secret projection");
                 Click("model");
+                Set(window, "modelOffset", 0);
+                Call(window, "Invalidate"); Prepare();
+                Click("model-provider");
+                Click("model-provider-glm");
+                Click("model-plan-standard_api");
+                Click("model-region-china");
+                ScrollTo("model-credential");
+                Click("model-credential");
+                Require(Control("model-credential-standard_api_key") != null && Control("model-credential-legacy_compatible_key") != null,
+                    "the actual GLM standard preset presents both supported credential categories");
+                Click("model-credential-legacy_compatible_key");
+                var glm = Get(window, "modelDraft");
+                Require((string)Get(glm, "CredentialKind") == "legacy_compatible_key" && GetOptional(glm, "ApiKey") == null,
+                    "selecting the explicit credential category keeps the old provider's key out of this draft");
 
                 Guid first = Create("聊天队友甲"), second = Create("聊天队友乙");
                 Prepare(); Click("profile:" + first); Click("chat"); Click("chat-draft");
@@ -177,6 +192,7 @@ namespace NativeWorldTextProbe
                     "another target opens its own draft and the previous edit releases the native lease");
                 Click("profile:" + first);
                 Require(Draft() == "你好世\n", "the draft returns to its original target on selection");
+                CheckHistoryMeasurement(window, layout);
                 Click("chat-draft"); Sample(editAt);
                 Click("model"); Sample(Vector2.Zero);
                 Require(GetOptional(window, "Editor") == null && !Main.blockInput && Main.CurrentInputTextTakerOverride == null && !PlayerInput.WritingText,
@@ -190,6 +206,40 @@ namespace NativeWorldTextProbe
                 NativeToolsUiChecks.Mouse(Vector2.Zero, false);
                 Main.clrInput();
             }
+        }
+
+        private static void CheckHistoryMeasurement(object window, object layout)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var entries = Enumerable.Range(0, 100).Select(i => new LlmHistoryEntry(Guid.NewGuid(),
+                i == 2 ? "action" : "assistant", i == 2 ? "正在钓鱼。" : "队友回复 " + i, now)).ToArray();
+            object[] Blocks() => ((IEnumerable)Get(window, "chatBlocks")).Cast<object>().ToArray();
+            int Measurements() => (int)Get(layout, "MeasurementCount");
+            void Update(LlmHistoryEntry[] records) => Call(window, "UpdateChatHistory", (object)records);
+            Update(entries);
+            var old = Blocks();
+            Set(window, "followChat", false);
+            Set(window, "chatOffset", (float)Get(old[12], "Top") + 8f);
+            int before = Measurements();
+            entries = entries.Skip(1).Concat(new[] { new LlmHistoryEntry(Guid.NewGuid(), "user", "该结束了。", now) }).ToArray();
+            Update(entries);
+            var afterTrim = Blocks();
+            Require(Measurements() - before < 20 && ReferenceEquals(Get(old[12], "Lines"), Get(afterTrim[11], "Lines")),
+                "a full history evicts its first entry and only measures the new row");
+            Require((float)Get(window, "chatOffset") == (float)Get(afterTrim[11], "Top") + 8f,
+                "trimming the oldest row keeps the same visible conversation anchor");
+            var changed = entries[1];
+            var revised = (LlmHistoryEntry[])entries.Clone();
+            revised[1] = new LlmHistoryEntry(changed.Id, changed.Kind, "已停止钓鱼。\n队友开始跟随。", now.AddSeconds(1));
+            var originalLines = Get(afterTrim[1], "Lines");
+            before = Measurements();
+            Update(revised);
+            var afterAction = Blocks();
+            Require(Measurements() - before < 28 && !ReferenceEquals(Get(afterAction[1], "Lines"), originalLines) &&
+                ReferenceEquals(Get(afterTrim[11], "Lines"), Get(afterAction[11], "Lines")),
+                "an early activity receipt updates its row without measuring the trailing history again");
+            Require((float)Get(window, "chatOffset") == (float)Get(afterAction[11], "Top") + 8f,
+                "an action card changing height keeps older reading in the same place");
         }
     }
 }

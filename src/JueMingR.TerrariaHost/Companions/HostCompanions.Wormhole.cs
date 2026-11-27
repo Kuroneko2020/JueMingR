@@ -24,7 +24,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal int PayerSlot;
             internal Vector2 Destination;
             internal RecallSend Send;
-            internal Action<string, string> ChatResult;
+            internal Action<string, string, bool> ChatResult;
             internal bool Automatic, Paid, OwnerPaid, Waiting = true, Open, EndQueued, ReplySeen, LocalEntered, Moved, AckQueued;
         }
 
@@ -141,7 +141,7 @@ namespace JueMingR.TerrariaHost.Companions
             return TryRecall(profileId, automatic: false);
         }
 
-        private bool TryRecall(Guid profileId, bool automatic, Action<string, string> chatResult = null)
+        private bool TryRecall(Guid profileId, bool automatic, Action<string, string, bool> chatResult = null)
         {
             if (!PrepareWormhole(profileId, out var actor, out var destination, out var source, out string reason, automatic))
                 return RejectRecallAdmission(profileId, automatic, reason, chatResult);
@@ -223,16 +223,16 @@ namespace JueMingR.TerrariaHost.Companions
                 else if (!automatic)
                 {
                     ShowWormholeResult(profileId, "正在等待传送结果。", true);
-                    attempt.ChatResult?.Invoke("running", "已提交传送" + ChatRecallPayment(attempt) + "，正在等待原版结果。");
+                    attempt.ChatResult?.Invoke("running", "已提交传送" + ChatRecallPayment(attempt) + "，正在等待原版结果。", false);
                 }
             }
             return attempt.LocalEntered || attempt.Moved || attempt.Send != RecallSend.None;
         }
 
-        private bool RejectRecallAdmission(Guid profile, bool automatic, string reason, Action<string, string> chatResult)
+        private bool RejectRecallAdmission(Guid profile, bool automatic, string reason, Action<string, string, bool> chatResult)
         {
             if (!automatic) ShowWormholeResult(profile, reason, false);
-            chatResult?.Invoke("rejected", reason);
+            chatResult?.Invoke("rejected", reason, false);
             return false;
         }
 
@@ -310,7 +310,9 @@ namespace JueMingR.TerrariaHost.Companions
             // Wire attribution ends here even if the UI timed out first.
             // Only this original attempt can set its terminal retry delay.
             SetAutoTeleportFailureDelay(attempt);
-            CompleteWormhole(attempt, attempt.Moved && attempt.AckQueued, "传送结果未确认。");
+            bool observed = attempt.Moved && attempt.AckQueued && WormholeActivationCurrent(attempt);
+            if (attempt.Waiting) CompleteWormhole(attempt, observed, "传送结果未确认。");
+            else FinishChatRecall(attempt, observed, null);
         }
 
         private void SetAutoTeleportFailureDelay(WormholeRecall attempt)
@@ -404,7 +406,7 @@ namespace JueMingR.TerrariaHost.Companions
                 latest.Waiting = false;
             }
             else if (Stopwatch.GetTimestamp() >= latest.Deadline)
-                CompleteWormhole(latest, false, "等待传送结果超时，已消耗 1 瓶虫洞药水。");
+                CompleteWormhole(latest, false, "等待传送结果超时，已消耗 1 瓶虫洞药水。", preserveLateChat: true);
         }
 
         private void RetireWormholes(Actor actor)
@@ -416,17 +418,17 @@ namespace JueMingR.TerrariaHost.Companions
                 if (attempt.Waiting && !Main.gameMenu && ReferenceEquals(owner, Main.ActivePlayerFileData?.Player) &&
                     ReferenceEquals(world, Main.ActiveWorldFileData) && attempt.Connection.Finished)
                     CompleteWormhole(attempt, false, "队友连接已结束，传送结果未确认。");
-                if (attempt.Waiting)
+                if (attempt.ChatResult != null)
                     FinishChatRecall(attempt, false, "队友已离开当前世界或收回，传送结果未确认。");
                 attempt.Waiting = false;
             }
         }
 
-        private void CompleteWormhole(WormholeRecall attempt, bool moved, string failure = null)
+        private void CompleteWormhole(WormholeRecall attempt, bool moved, string failure = null, bool preserveLateChat = false)
         {
             if (!attempt.Waiting) return;
             attempt.Waiting = false;
-            FinishChatRecall(attempt, moved && WormholeActivationCurrent(attempt), failure);
+            FinishChatRecall(attempt, moved && WormholeActivationCurrent(attempt), failure, preserveLateChat);
             if (moved && !WormholeActivationCurrent(attempt)) return;
             if (!moved && attempt.Actor.Generation != attempt.Generation) return;
             string payer = attempt.OwnerPaid ? "玩家" : "队友";
@@ -438,16 +440,19 @@ namespace JueMingR.TerrariaHost.Companions
             ShowWormholeResult(attempt.Profile, moved ? attempt.Body.name + " · 已传送，消耗" + payer + "虫洞药水 1 瓶" : failure, moved);
         }
 
-        private static void FinishChatRecall(WormholeRecall attempt, bool moved, string failure)
+        private static void FinishChatRecall(WormholeRecall attempt, bool moved, string failure, bool preserveLateChat = false)
         {
             var callback = attempt.ChatResult;
             if (callback == null) return;
-            attempt.ChatResult = null;
+            // A timed-out native window can still prove displacement and ACK
+            // later. Keep its original card reference until the wire fence
+            // settles, without holding or replaying the model tool request.
+            if (!preserveLateChat) attempt.ChatResult = null;
             bool submitted = attempt.Send != RecallSend.None || attempt.LocalEntered;
             string payer = ChatRecallPayment(attempt);
-            if (moved) callback("succeeded", "队友已传送到玩家附近" + payer + "。");
-            else if (submitted || attempt.Paid) callback("unconfirmed", "传送已提交，最终结果未确认" + payer + "。");
-            else callback("failed", failure ?? "本次传送未提交。");
+            if (moved) callback("succeeded", "队友已传送到玩家附近" + payer + "。", false);
+            else if (submitted || attempt.Paid) callback("unconfirmed", "传送已提交，最终结果未确认" + payer + "。", preserveLateChat);
+            else callback("failed", failure ?? "本次传送未提交。", preserveLateChat);
         }
 
         private static string ChatRecallPayment(WormholeRecall attempt) => !attempt.Paid ? "" :

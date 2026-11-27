@@ -25,6 +25,8 @@ namespace JueMingR.Features.Llm
                 throw Error("模型 ID 的格式不合适。");
             if (draft.AuthMode != "bearer" && draft.AuthMode != "optional_bearer" && draft.AuthMode != "api_key_header" && draft.AuthMode != "none")
                 throw Error("请选择有效的鉴权方式。");
+            if (!preset.CredentialKinds.Contains(draft.CredentialKind, StringComparer.Ordinal))
+                throw Error("请选择此地区和计费方案适用的凭据类型。");
             if (preset.AuthRequired && draft.AuthMode == "none")
                 throw Error("该厂商需要 API Key。");
             if (request && (preset.AuthRequired || draft.AuthMode == "bearer" || draft.AuthMode == "api_key_header") &&
@@ -42,19 +44,13 @@ namespace JueMingR.Features.Llm
                 throw Error("Base URL 应填接口公共前缀。请将末尾的请求路径移到操作路径栏。");
             Uri endpoint = Append(baseUrl, draft.InferencePath, false);
 
-            Uri discovery = null;
-            if (preset.DiscoveryStatus == "provider_specific" && !string.IsNullOrEmpty(preset.DiscoveryUrl))
+            Uri discovery = draft.DiscoveryEndpoint();
+            if (preset.Provider == "custom" && !string.IsNullOrWhiteSpace(draft.DiscoveryPath))
             {
-                string discoveryUrl = Expand(preset.DiscoveryUrl, draft.Workspace);
-                discovery = Base(discoveryUrl);
-                if (!SameOrigin(baseUrl, discovery))
-                    discovery = null;
+                try { discovery = Append(baseUrl, draft.DiscoveryPath, true); }
+                catch (LlmException) { discovery = null; }
             }
-            else if (preset.DiscoveryStatus == "documented" || preset.Provider == "custom")
-            {
-                if (!string.IsNullOrWhiteSpace(draft.DiscoveryPath))
-                    discovery = Append(baseUrl, draft.DiscoveryPath, true);
-            }
+            if (discovery != null && !SameOrigin(baseUrl, discovery)) discovery = null;
             return new LlmConnectionSnapshot(draft.Id, wireIdentity, draft, preset, secrets, endpoint, discovery);
         }
 

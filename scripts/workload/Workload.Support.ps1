@@ -62,7 +62,7 @@ function Get-WorkloadRoute {
     [void]$groups.Add('core')
     if ($Paths -contains '@full') {
         $Paths=@($Paths | Where-Object {$_ -cne '@full'})+@('src/JueMingR.TerrariaHost/Input/HostInputState.cs')
-        foreach($group in @('legacy-worker','workload-tools','package-tools','input-boundary')){[void]$groups.Add($group)}
+        foreach($group in @('legacy-worker','workload-tools','package-tools','input-boundary','llm-host')){[void]$groups.Add($group)}
     }
     $unknown = @()
     foreach ($path in $Paths) {

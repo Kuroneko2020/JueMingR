@@ -77,6 +77,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool RetryDeletion(Guid owner, Guid id) => manager.RetryDeletion(owner, id);
         internal void FinishDeletion(Guid owner, Guid id) => manager.FinishDeletion(owner, id);
         internal void FailDeletionBindings(Guid owner, Guid id) => manager.FailDeletionBindings(owner, id);
+        internal void FailDeletionCleanup(Guid owner, Guid id, string reason) => manager.FailDeletionCleanup(owner, id, reason);
         internal bool TryReserve(CompanionProfile profile, out long generation) { return manager.TryReserve(profile.Id, out generation); }
         internal void Release(CompanionProfile profile, long generation) { manager.Release(profile.Id, generation); }
         internal bool OwnsActivation(Guid id, long generation) { return manager.OwnsActivation(id, generation); }

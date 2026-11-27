@@ -134,7 +134,7 @@ namespace JueMingR.Features.Llm
         public LlmConnectionDraft Copy(Guid id)
         {
             LlmConnectionDraft source = Edit(id);
-            var copy = new LlmConnectionDraft(Guid.NewGuid());
+            var copy = new LlmConnectionDraft(Guid.NewGuid()) { RoutingPreset = source.RoutingPreset };
             source.CopyTo(copy);
             copy.DisplayName = source.DisplayName.Substring(0, Math.Min(75, source.DisplayName.Length)) + " 副本";
             return copy;
@@ -145,11 +145,13 @@ namespace JueMingR.Features.Llm
             if (!presets.TryGetValue(presetId, out LlmPreset preset)) throw Error("未找到厂商预设。");
             if (draft.PresetId == presetId) return;
             draft.PresetId = preset.Id;
+            draft.RoutingPreset = preset;
             draft.Protocol = preset.Protocol;
             draft.BaseUrl = preset.BaseUrl ?? "";
             draft.InferencePath = preset.InferencePath ?? "";
             draft.DiscoveryPath = preset.DiscoveryPath ?? "";
             draft.AuthMode = preset.AuthMode == "user_configured" ? "optional_bearer" : preset.AuthMode;
+            draft.CredentialKind = preset.CredentialKinds.Count == 1 ? preset.CredentialKinds[0] : "";
             draft.AnthropicVersion = preset.AnthropicVersion ?? "";
             draft.Workspace = "";
             draft.Model = "";
@@ -257,6 +259,7 @@ namespace JueMingR.Features.Llm
         public async Task<IReadOnlyList<LlmModelInfo>> DiscoverAsync(LlmConnectionDraft draft, CancellationToken cancellation)
         {
             LlmConnectionSnapshot connection = CaptureProbe(draft, false);
+            EnsureDiscoveryPlan(connection);
             IReadOnlyList<LlmModelInfo> models;
             try { models = await transport.DiscoverAsync(connection, cancellation).ConfigureAwait(false); }
             catch (LlmException) { SetProbe(draft, connection, "models", false); throw; }
@@ -309,6 +312,7 @@ namespace JueMingR.Features.Llm
         private LlmConnectionSnapshot CaptureValidated(LlmConnectionDraft draft, LlmConnectionSecrets secrets, bool model, bool request)
         {
             presets.TryGetValue(draft.PresetId ?? "", out LlmPreset preset);
+            draft.RoutingPreset = preset;
             LlmConnectionSnapshot connection = Capture(draft, preset, secrets, Fingerprint(draft, secrets), model, request);
             EnsureSelectedPlan(connection);
             (transport as ILlmConnectionValidator)?.Validate(connection);
@@ -326,6 +330,49 @@ namespace JueMingR.Features.Llm
             if (current.Provider != "custom" && !matches.Any(match => match.Provider == current.Provider &&
                 match.PlanId == current.PlanId && match.Region == current.Region))
                 throw Error("该地址属于另一个厂商、地区或计费方案，请选择对应预设并填写独立凭据。");
+        }
+
+        private void EnsureDiscoveryPlan(LlmConnectionSnapshot connection)
+        {
+            Uri discovery = connection.DiscoveryEndpoint;
+            if (discovery == null)
+                throw new LlmException(LlmFailure.DiscoveryUnavailable, "此连接没有可用的官方模型列表，请手工填写模型 ID。");
+
+            LlmPreset current = connection.Preset;
+            LlmConnectionSettings settings = connection.CopySettings();
+            if (current.Provider != "custom")
+            {
+                if (current.DiscoveryStatus == "documented" &&
+                    !string.Equals(settings.DiscoveryPath, current.DiscoveryPath, StringComparison.Ordinal))
+                    throw new LlmException(LlmFailure.DiscoveryUnavailable, "官方连接使用固定的模型列表路径，请恢复预设或手工填写模型 ID。");
+                return;
+            }
+            LlmPreset[] discoveryScopes = KnownRouteScopes(discovery);
+            if (discoveryScopes.Length == 0) return;
+            LlmPreset[] inferenceScopes = KnownRouteScopes(connection.Endpoint);
+            if (!discoveryScopes.Any(discovered => discovered.Policy != "reference_only" &&
+                inferenceScopes.Any(inference => inference.Policy != "reference_only" &&
+                    discovered.Provider == inference.Provider && discovered.Region == inference.Region && discovered.PlanId == inference.PlanId)))
+                throw new LlmException(LlmFailure.DiscoveryUnavailable, "模型列表路径与当前推理的已知地区或计费方案不一致，请手工填写模型 ID。");
+        }
+
+        private LlmPreset[] KnownRouteScopes(Uri endpoint)
+        {
+            // A longer verified Base path takes precedence on hosts that also have an ordinary API.
+            // A path prefix must end at a segment boundary to identify the same service.
+            var matches = new List<Tuple<LlmPreset, int>>();
+            foreach (LlmPreset preset in Presets)
+            {
+                if (preset.BaseUrl == null || preset.BaseUrl.Contains("{") ||
+                    !Uri.TryCreate(preset.BaseUrl, UriKind.Absolute, out Uri root) || root.Scheme != endpoint.Scheme ||
+                    root.IdnHost != endpoint.IdnHost || root.Port != endpoint.Port) continue;
+                string prefix = root.AbsolutePath.TrimEnd('/');
+                if (string.Equals(endpoint.AbsolutePath, prefix, StringComparison.OrdinalIgnoreCase) ||
+                    endpoint.AbsolutePath.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase))
+                    matches.Add(Tuple.Create(preset, prefix.Length));
+            }
+            int longest = matches.Select(match => match.Item2).DefaultIfEmpty(-1).Max();
+            return matches.Where(match => match.Item2 == longest).Select(match => match.Item1).ToArray();
         }
 
         private static bool MatchesPresetEndpoint(LlmPreset preset, Uri endpoint)
@@ -352,10 +399,12 @@ namespace JueMingR.Features.Llm
             return result;
         }
 
-        private static LlmConnectionDraft Draft(LlmStoredConnection row, LlmStoredConfiguration configuration)
+        private LlmConnectionDraft Draft(LlmStoredConnection row, LlmStoredConfiguration configuration)
         {
             var draft = new LlmConnectionDraft(row.Id) { SecretVersion = row.SecretVersion };
             row.Settings.CopyTo(draft);
+            presets.TryGetValue(draft.PresetId ?? "", out LlmPreset preset);
+            draft.RoutingPreset = preset;
             draft.SecretScope = draft.CredentialScope();
             draft.HasStoredKey = configuration.Secrets.TryGetValue(row.SecretVersion, out LlmConnectionSecrets secrets) &&
                 secrets.ApiKey.Length != 0;
@@ -364,7 +413,7 @@ namespace JueMingR.Features.Llm
 
         private static LlmConnectionDraft CopyDraft(LlmConnectionDraft draft)
         {
-            var copy = new LlmConnectionDraft(draft.Id) { SecretVersion = draft.SecretVersion };
+            var copy = new LlmConnectionDraft(draft.Id) { SecretVersion = draft.SecretVersion, RoutingPreset = draft.RoutingPreset };
             draft.CopyTo(copy);
             return copy;
         }
@@ -448,6 +497,7 @@ namespace JueMingR.Features.Llm
             var value = new StringBuilder();
             AppendFingerprint(value, settings.Id.ToString("D"));
             AppendFingerprint(value, settings.SecretVersion.ToString("D"));
+            AppendFingerprint(value, settings.CredentialScope());
             foreach (PropertyInfo property in RequestOptions)
                 AppendFingerprint(value, Convert.ToString(property.GetValue(settings), System.Globalization.CultureInfo.InvariantCulture));
             AppendFingerprint(value, secrets.ApiKey);

@@ -21,6 +21,8 @@ namespace JueMingR.ArchitectureTests
         internal static void Run(List<string> failures)
         {
             Run(failures, "presets, credential scope and discovery", PresetsAndDiscovery);
+            Run(failures, "official list paths and credential separation", DiscoveryIsolation);
+            Run(failures, "selected credential kind persists independently", CredentialKinds);
             Run(failures, "streaming and non-streaming tool round trips", ProtocolRoundTrips);
             Run(failures, "cross-turn wire fields, tool groups and fragmented UTF-8", AcrossUserTurns);
             Run(failures, "bad completion, cancellation and redaction", FailuresAndRedaction);
@@ -97,6 +99,110 @@ namespace JueMingR.ArchitectureTests
             }
         }
 
+        private static async Task DiscoveryIsolation()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "JueMingR-Llm-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            int handlerCalls = 0;
+            try
+            {
+                using (var transport = new LlmHttpTransport(_ => new Fixture(request =>
+                {
+                    handlerCalls++;
+                    // No attempted GET may arrive at a different plan's path or origin.
+                    Require(request.RequestUri.AbsoluteUri == "https://ark.cn-beijing.volces.com/api/v3/models", "verified Ark models URI");
+                    Require(Header(request, "Authorization") == "Bearer " + TestKey, "unchanged credential in ordinary request");
+                    return Json("{\"data\":[{\"id\":\"fixture-model\"}]}");
+                })))
+                using (var store = new LlmFileStore(root))
+                {
+                    var owner = new LlmConnections(Presets, store, transport);
+                    await owner.InitializeAsync().ConfigureAwait(false);
+                    LlmConnectionDraft saved = NewDraft(owner, "ark_beijing_chat", false);
+                    await owner.SaveAsync(saved).ConfigureAwait(false);
+                    LlmConnectionDraft edit = owner.Edit(saved.Id);
+                    await owner.DiscoverAsync(edit, CancellationToken.None).ConfigureAwait(false);
+                    Require(owner.HasValidDiscovery(edit), "official discovery proof before route edit");
+                    edit.BaseUrl = "https://ark.cn-beijing.volces.com";
+                    edit.InferencePath = "/api/v3/chat/completions";
+                    foreach (string path in new[] { "/api/plan/v3/models", "/api/coding/v3/models", "https://other.example/models" })
+                    {
+                        edit.DiscoveryPath = path;
+                        Require(!owner.HasValidDiscovery(edit), "edited official list cannot reuse previous successful test");
+                        await Failure(() => owner.DiscoverAsync(edit, CancellationToken.None), LlmFailure.DiscoveryUnavailable).ConfigureAwait(false);
+                    }
+                    Require(handlerCalls == 1 && owner.RevealApiKey(edit) == TestKey, "invalid discovery is blocked before HTTP and saved inference key stays usable");
+                    edit.DiscoveryPath = "/models";
+                    await owner.DiscoverAsync(edit, CancellationToken.None).ConfigureAwait(false);
+                    Require(handlerCalls == 2, "verified list survives equivalent inference URI split");
+
+                    LlmConnectionDraft custom = NewDraft(owner, "custom_openai_chat", false);
+                    custom.BaseUrl = "https://ark.cn-beijing.volces.com";
+                    custom.InferencePath = "/api/v3/chat/completions";
+                    custom.DiscoveryPath = "/api/v3/models";
+                    custom.ApiKey = TestKey;
+                    await owner.DiscoverAsync(custom, CancellationToken.None).ConfigureAwait(false);
+                    Require(handlerCalls == 3 && owner.HasValidDiscovery(custom), "custom same-plan, same-origin discovery");
+                    custom.DiscoveryPath = "/api/plan/v3/models";
+                    Require(owner.RevealApiKey(custom) == "" && !owner.HasValidDiscovery(custom), "custom path move detaches credential and test");
+                    custom.ApiKey = TestKey;
+                    await Failure(() => owner.DiscoverAsync(custom, CancellationToken.None), LlmFailure.DiscoveryUnavailable).ConfigureAwait(false);
+                    custom.DiscoveryPath = "https://other.example/models";
+                    custom.ApiKey = TestKey;
+                    await Failure(() => owner.DiscoverAsync(custom, CancellationToken.None), LlmFailure.DiscoveryUnavailable).ConfigureAwait(false);
+                    Require(handlerCalls == 3, "custom cross-region/plan and cross-origin paths are never sent");
+                }
+            }
+            finally { Directory.Delete(root, true); }
+        }
+        private static async Task CredentialKinds()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "JueMingR-Llm-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            int handlerCalls = 0;
+            Guid id;
+            try
+            {
+                using (var transport = new LlmHttpTransport(_ => new Fixture(request =>
+                {
+                    handlerCalls++;
+                    Require(Header(request, "Authorization") == "Bearer " + TestKey, "GLM uses explicit selected credential");
+                    return Sample("openai_chat", false, false);
+                })))
+                {
+                    using (var store = new LlmFileStore(root))
+                    {
+                        var owner = new LlmConnections(Presets, store, transport);
+                        await owner.InitializeAsync().ConfigureAwait(false);
+                        var draft = NewDraft(owner, "glm_china_standard_chat", false);
+                        id = draft.Id;
+                        Require(draft.CredentialKind == "", "multiple kinds require explicit choice");
+                        await Failure(() => owner.SaveAsync(draft), LlmFailure.Configuration).ConfigureAwait(false);
+                        draft.CredentialKind = "legacy_compatible_key";
+                        draft.ApiKey = TestKey;
+                        await owner.TestChatAsync(draft, CancellationToken.None).ConfigureAwait(false);
+                        await owner.SaveAsync(draft).ConfigureAwait(false);
+                    }
+
+                    using (var store = new LlmFileStore(root))
+                    {
+                        var owner = new LlmConnections(Presets, store, transport);
+                        await owner.InitializeAsync().ConfigureAwait(false);
+                        var draft = owner.Edit(id);
+                        Require(draft.CredentialKind == "legacy_compatible_key" && owner.HasValidChatTest(draft) &&
+                            owner.RevealApiKey(draft) == TestKey, "stored kind preserves verified credential identity");
+                        draft.CredentialKind = "standard_api_key";
+                        Require(!owner.HasValidChatTest(draft) && owner.RevealApiKey(draft) == "", "switching kind detaches previous credential and proof");
+                        await Failure(() => owner.TestChatAsync(draft, CancellationToken.None), LlmFailure.Configuration).ConfigureAwait(false);
+                        draft.CredentialKind = "team_plan_key";
+                        draft.ApiKey = TestKey;
+                        await Failure(() => owner.TestChatAsync(draft, CancellationToken.None), LlmFailure.Configuration).ConfigureAwait(false);
+                        Require(handlerCalls == 1, "missing or inconsistent credential kinds never start HTTP");
+                    }
+                }
+            }
+            finally { Directory.Delete(root, true); }
+        }
         private static async Task ProtocolRoundTrips()
         {
             foreach (string presetId in new[] { "deepseek_official_chat", "openai_official_responses", "claude_official_messages" })

@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.F5
             ModelField("base", "Base URL", modelDraft.BaseUrl, value => modelDraft.BaseUrl = value.Trim(), 1500);
             ModelField("path", "推理操作路径", modelDraft.InferencePath, value => modelDraft.InferencePath = value.Trim(), 1024);
             BuildEndpointPreview();
-            if (modelPreset?.DiscoveryStatus == "documented" || modelPreset?.Provider == "custom")
+            if (modelPreset?.Provider == "custom")
                 ModelField("discovery-path", "模型列表路径", modelDraft.DiscoveryPath, value => modelDraft.DiscoveryPath = value.Trim(), 1024);
             BuildAuthentication();
             BuildProxy();
@@ -33,7 +33,7 @@ namespace JueMingR.TerrariaHost.F5
             if (modelDraft.Protocol != "openai_responses")
                 ModelField("stop", "停止词（用 | 分隔）", modelDraft.StopSequences?.Replace('\n', '|'), value => modelDraft.StopSequences = value.Replace('|', '\n'), 500, "使用模型默认值");
             string thinkingHint = modelDraft.Protocol == "anthropic_messages" ? "填写 adaptive、disabled 或思考预算" :
-                modelPreset?.Provider == "deepseek" || modelPreset?.Provider == "zhipu_glm" ? "填写 low、medium、high、enabled 或 disabled" : "填写 low、medium 或 high 等模型支持的值";
+                modelPreset?.Provider == "deepseek" || modelPreset?.Provider == "glm" ? "填写 low、medium、high、enabled 或 disabled" : "填写 low、medium 或 high 等模型支持的值";
             ModelField("reasoning", "推理强度 / 思考", modelDraft.Reasoning, value => modelDraft.Reasoning = value.Trim(), 32, "使用模型默认值");
             ModelParagraph(thinkingHint + "。模型支持的值以服务商为准。");
 

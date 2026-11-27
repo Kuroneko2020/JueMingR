@@ -51,6 +51,7 @@ namespace JueMingR.Platform.Llm
         public string InferencePath { get; set; } = "";
         public string DiscoveryPath { get; set; } = "";
         public string AuthMode { get; set; } = "bearer";
+        public string CredentialKind { get; set; } = "";
         public string AnthropicVersion { get; set; } = "";
         public string Workspace { get; set; } = "";
         public string ProxyMode { get; set; } = "system";
@@ -88,6 +89,7 @@ namespace JueMingR.Platform.Llm
         public LlmConnectionDraft(Guid id) { Id = id; }
         public Guid Id { get; }
         public bool HasStoredKey { get; set; }
+        public LlmPreset RoutingPreset { get; set; }
         private string apiKey;
         private string secretHeaders;
         private string proxyCredentials;
@@ -106,13 +108,40 @@ namespace JueMingR.Platform.Llm
                 endpoint = url.GetLeftPart(UriPartial.Authority).ToLowerInvariant() + url.AbsolutePath;
             // Plans can share a host but use different paths, or share a complete endpoint with independent credentials.
             var normalized = new System.Text.StringBuilder();
-            foreach (string part in new[] { PresetId, Protocol, endpoint, Workspace, AuthMode, ProxyMode, ProxyUrl })
+            string discovery = DiscoveryEndpoint()?.AbsoluteUri;
+            foreach (string part in new[] { PresetId, Protocol, endpoint, discovery, Workspace, AuthMode, CredentialKind, ProxyMode, ProxyUrl })
             {
                 string value = part ?? "";
                 normalized.Append(value.Length).Append(':').Append(value);
             }
             return normalized.ToString();
         }
+        // One route calculation serves both request capture and the credential binding.
+        public Uri DiscoveryEndpoint()
+        {
+            LlmPreset preset = RoutingPreset;
+            if (preset == null || preset.Policy == "reference_only") return null;
+            Uri configured = ParseEndpoint(Expand(BaseUrl));
+            if (configured == null) return null;
+            if (preset.Provider == "custom")
+                return ParseEndpoint(Join(configured, DiscoveryPath));
+
+            Uri documented = ParseEndpoint(Expand(preset.BaseUrl));
+            if (documented == null) return null;
+            Uri configuredInference = ParseEndpoint(Join(configured, InferencePath));
+            Uri documentedInference = ParseEndpoint(Join(documented, preset.InferencePath));
+            if (!Uri.Equals(configured, documented) && (documentedInference == null || !Uri.Equals(configuredInference, documentedInference)))
+                return null;
+            if (preset.DiscoveryStatus == "provider_specific")
+                return ParseEndpoint(Expand(preset.DiscoveryUrl));
+            return preset.DiscoveryStatus == "documented" ? ParseEndpoint(Join(documented, preset.DiscoveryPath)) : null;
+        }
+
+        private string Expand(string path) => (path ?? "").Replace("{workspaceId}", Workspace ?? "");
+        private static Uri ParseEndpoint(string path) => Uri.TryCreate(path.Trim(), UriKind.Absolute, out Uri uri) ? uri : null;
+        private static string Join(Uri location, string path) =>
+            string.IsNullOrWhiteSpace(path) ? "" : location.AbsoluteUri.TrimEnd('/') + path;
+
         public string SecretScope { get; set; }
         public Guid SecretVersion { get; set; }
     }

@@ -343,7 +343,7 @@ namespace JueMingR.TerrariaHost.F5
         private void SelectProfile(Guid id)
         { host.CancelItemGesture(); CancelSelectionModes(); RetireConfigurationInput(); RetireChatTarget(); pendingCreatedId=Guid.Empty;pendingCreatedName=null; selected = id; SelectStorage(CompanionInventoryArea.Inventory, false); bodyOffset = 0; notice = null; Invalidate(); }
         private void SelectPage(int value)
-        { if (page == value) return; host.CancelItemGesture(); CancelSelectionModes(); RetireConfigurationInput(); LeaveAiPage(); page = value; bodyOffset = 0; notice = null; Invalidate(); }
+        { if (page == value && page >= ChatPage) return; host.CancelItemGesture(); CancelSelectionModes(); RetireConfigurationInput(); LeaveAiPage(); page = value; bodyOffset = 0; notice = null; Invalidate(); }
         private void Invalidate() { armedKey = null; generation++; }
         private void Translate(float x, float y)
         {

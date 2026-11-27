@@ -10,6 +10,7 @@ using System.Reflection;
 using HarmonyLib;
 using JueMingR.Features.Fishing;
 using JueMingR.Platform.Companions;
+using JueMingR.Platform.Llm;
 using JueMingR.Testing;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -366,42 +367,85 @@ namespace NativeWorldTextProbe
 
                         Put(body.inventory, PotionSlot, 1); Put(human.inventory, PotionSlot, 1);
                         human.position += new Vector2(96, 0);
-                        Require(Recall(host, id), "first timed attempt takes the exact AI bottle");
-                        begin = ReadFrame(stream); request = ReadFrame(stream); end = ReadFrame(stream); debit = ReadFrame(stream);
-                        var windows = (IList)((IDictionary)Get(host, "wormholeWindows"))[actor];
-                        Set(windows[0], "Deadline", Stopwatch.GetTimestamp() - 1);
-                        Call(host, "PumpConnection", actor);
-                        Require(feedback.Last().Text.Contains("超时") && body.inventory[PotionSlot].IsAir && Query(host, id, out _),
-                            "the waiting deadline ends the active result without refund or a permanent busy state");
-                        Require(Recall(host, id) && human.inventory[PotionSlot].IsAir, "new same-destination action revalidates and takes the actual human fallback bottle");
-                        var newBegin = ReadFrame(stream); var newRequest = ReadFrame(stream); var newEnd = ReadFrame(stream);
-                        // The owner's socket has the actual 5, never the AI's. The
-                        // same-destination response to the retired attempt is read
-                        // before the new attempt's first original fence response.
-                        var ownerDebit = NativeCompanionTeamChecks.ReadKind(ownerWire.Peer.GetStream(), 5);
-                        Require(ownerDebit[3] == player && BitConverter.ToInt16(ownerDebit, 4) == PotionSlot,
-                            "human fallback sends the original 5 only on the human's primary TCP connection");
-                        Server(); foreach (var frame in new[] { begin, request, end, debit }) Apply(frame, ai);
-                        Client(clientPlayers, player);
-                        NativeQuickItemChecks.Until(() => { Call(host, "PumpConnection", actor); return windows.Count == 1; });
-                        Require(feedback.Count(entry => entry.Text.Contains("已传送")) == completed && body.Bottom == human.Bottom,
-                            "late same-generation movement can occur, but it never completes the newer same-position request");
-                        var mobility = Get(actor, "Mobility");
-                        int movedRevision = (int)Get(mobility, "PositionRevision");
-                        ack = NativeCompanionTeamChecks.ReadKind(stream, 65);
-                        Server(); Apply(ack, ai); Apply(ownerDebit, player);
-                        foreach (var frame in new[] { newBegin, newRequest, newEnd }) Apply(frame, ai);
-                        Client(clientPlayers, player);
-                        NativeQuickItemChecks.Until(() => { Call(host, "PumpConnection", actor); return windows.Count == 0; });
-                        ack = NativeCompanionTeamChecks.ReadKind(stream, 65);
-                        Require(ack[3] == 3 && body.inventory[PotionSlot].IsAir && human.inventory[PotionSlot].IsAir,
-                            "the newer reply remains an independent native ACK with no debit replay");
-                        Require(feedback.Last().Text == "传送结果未确认。" && feedback.Count(entry => entry.Text.Contains("已传送")) == completed &&
-                            (int)Get(mobility, "PositionRevision") == movedRevision,
-                            "a matching native reply which did not displace the body does not manufacture a completed movement or retire its new navigation");
-                        Server(); Apply(ack, ai);
-                        Require((int)Get(serverPlayers[ai], "unacknowledgedTeleports") == 0, "both original requests settle their own server movement protection");
-                        Client(clientPlayers, player);
+                        var chat = NativeCompanionChatChecks.Attach(host);
+                        var profile = (CompanionProfile)Get(actor, "Profile");
+                        LlmToolResult[] reply = null;
+                        LlmHistoryEntry RecallCard() =>
+                            ((IReadOnlyList<LlmHistoryEntry>)Get(Call(host, "GetChat", profile.OwnerId, id), "Entries"))
+                            .SingleOrDefault(entry => entry.Kind == "action" && entry.Text.StartsWith("召回队友", StringComparison.Ordinal));
+                        chat.Remote.Reply = message =>
+                        {
+                            if (message.Messages.Last().Kind != LlmMessageKind.ToolResults)
+                                return System.Threading.Tasks.Task.FromResult(new LlmTurn("", new[]
+                                {
+                                    new LlmToolCall("timed-recall", "manual_recall", "{}", new Dictionary<string, object>())
+                                }, "{}"));
+                            reply = message.Messages.Last().Results.ToArray();
+                            return System.Threading.Tasks.Task.FromResult(new LlmTurn("已收到当前结果。", Array.Empty<LlmToolCall>(), "{}"));
+                        };
+                        try
+                        {
+                            NativeQuickItemChecks.Until(() =>
+                            {
+                                Call(host, "PumpChat");
+                                return (bool)Get(Call(host, "GetChat", profile.OwnerId, id), "CanSend");
+                            });
+                            Require((bool)Call(host, "SendChat", new object[] { profile.OwnerId, id, "请用一瓶虫洞药水召回。", null }),
+                                "first timed attempt arrives from real chat dispatch");
+                            NativeQuickItemChecks.Until(() =>
+                            {
+                                Call(host, "PumpChat");
+                                return RecallCard()?.Text.Contains("已提交传送") == true;
+                            });
+                            begin = ReadFrame(stream); request = ReadFrame(stream); end = ReadFrame(stream); debit = ReadFrame(stream);
+                            var windows = (IList)((IDictionary)Get(host, "wormholeWindows"))[actor];
+                            Set(windows[0], "Deadline", Stopwatch.GetTimestamp() - 1);
+                            Call(host, "PumpConnection", actor);
+                            Require(feedback.Last().Text.Contains("超时") && body.inventory[PotionSlot].IsAir && Query(host, id, out _),
+                                "the waiting deadline ends the active result without refund or a permanent busy state");
+                            NativeQuickItemChecks.Until(() =>
+                            {
+                                Call(host, "PumpChat");
+                                return !(bool)Get(Call(host, "GetChat", profile.OwnerId, id), "IsRunning");
+                            });
+                            Require(reply?.Length == 1 && reply[0].Id == "timed-recall" && reply[0].Output.Contains("unconfirmed") &&
+                                RecallCard()?.Text.Contains("结果未确认") == true,
+                                "the original call returns exactly one unconfirmed result at the native deadline");
+                            Guid oldReceipt = RecallCard().Id;
+                            Require(Recall(host, id) && human.inventory[PotionSlot].IsAir, "new same-destination action revalidates and takes the actual human fallback bottle");
+                            var newBegin = ReadFrame(stream); var newRequest = ReadFrame(stream); var newEnd = ReadFrame(stream);
+                            // The owner's socket has the actual 5, never the AI's. The
+                            // same-destination response to the retired attempt is read
+                            // before the new attempt's first original fence response.
+                            var ownerDebit = NativeCompanionTeamChecks.ReadKind(ownerWire.Peer.GetStream(), 5);
+                            Require(ownerDebit[3] == player && BitConverter.ToInt16(ownerDebit, 4) == PotionSlot,
+                                "human fallback sends the original 5 only on the human's primary TCP connection");
+                            Server(); foreach (var frame in new[] { begin, request, end, debit }) Apply(frame, ai);
+                            Client(clientPlayers, player);
+                            NativeQuickItemChecks.Until(() => { Call(host, "PumpConnection", actor); return windows.Count == 1; });
+                            Require(feedback.Count(entry => entry.Text.Contains("已传送")) == completed && body.Bottom == human.Bottom,
+                                "late same-generation movement can occur, but it never completes the newer same-position request");
+                            Require(RecallCard()?.Id == oldReceipt && RecallCard().Text.Contains("已传送到玩家附近") &&
+                                reply.Length == 1 && reply[0].Output.Contains("unconfirmed") && body.inventory[PotionSlot].IsAir,
+                                "the original card settles on the late native move and ACK without repeating the paid call or its model result");
+                            var mobility = Get(actor, "Mobility");
+                            int movedRevision = (int)Get(mobility, "PositionRevision");
+                            ack = NativeCompanionTeamChecks.ReadKind(stream, 65);
+                            Server(); Apply(ack, ai); Apply(ownerDebit, player);
+                            foreach (var frame in new[] { newBegin, newRequest, newEnd }) Apply(frame, ai);
+                            Client(clientPlayers, player);
+                            NativeQuickItemChecks.Until(() => { Call(host, "PumpConnection", actor); return windows.Count == 0; });
+                            ack = NativeCompanionTeamChecks.ReadKind(stream, 65);
+                            Require(ack[3] == 3 && body.inventory[PotionSlot].IsAir && human.inventory[PotionSlot].IsAir,
+                                "the newer reply remains an independent native ACK with no debit replay");
+                            Require(feedback.Last().Text == "传送结果未确认。" && feedback.Count(entry => entry.Text.Contains("已传送")) == completed &&
+                                (int)Get(mobility, "PositionRevision") == movedRevision,
+                                "a matching native reply which did not displace the body does not manufacture a completed movement or retire its new navigation");
+                            Server(); Apply(ack, ai);
+                            Require((int)Get(serverPlayers[ai], "unacknowledgedTeleports") == 0, "both original requests settle their own server movement protection");
+                            Client(clientPlayers, player);
+                        }
+                        finally { chat.Restore(); }
                         AutomaticWire(host, actor, id, human, body, stream, ai, feedback, Server, () => Client(clientPlayers, player));
                         AutomaticFishingWire(host, actor, id, human, body, serverPlayers[ai], stream, ai, Server, () => Client(clientPlayers, player));
                         Set(actor, "Connection", null);

@@ -13,7 +13,7 @@ namespace JueMingR.TerrariaHost.F5
 {
     internal sealed partial class CompanionWindow
     {
-        private enum ModelPicker { None, Connections, Provider, Plan, Region, Protocol, Templates, Models }
+        private enum ModelPicker { None, Connections, Provider, Plan, Region, Credential, Protocol, Templates, Models }
         private sealed class ModelFieldView
         {
             internal string Id, Value;
@@ -182,10 +182,14 @@ namespace JueMingR.TerrariaHost.F5
 
             if (modelPreset?.Policy == "reference_only")
             {
+                if (modelPreset.CredentialKinds?.Count > 0)
+                    ModelParagraph("适用凭据 · " + String.Join("、", modelPreset.CredentialKinds.Select(ModelCredentialKindName)));
                 ModelParagraph("请选择能在游戏内使用的计费方案，以继续设置密钥和模型。");
                 return;
             }
             ModelHeading("连接与模型");
+            if (modelPreset?.CredentialKinds?.Count > 1)
+                ModelChoose("credential", "凭据类型", ModelCredentialKindName(modelDraft.CredentialKind), () => OpenModelPicker(ModelPicker.Credential));
             BuildApiKey();
             ModelField("model-id", "模型 ID", modelDraft.Model, value => modelDraft.Model = value.Trim(), 200);
             BuildModelDiscovery();
@@ -302,6 +306,21 @@ namespace JueMingR.TerrariaHost.F5
             }
         }
 
+        private static string ModelCredentialKindName(string id)
+        {
+            switch (id)
+            {
+                case "standard_api_key": return "标准 API Key";
+                case "legacy_compatible_key": return "旧版 Compatible Key";
+                case "personal_plan_key": return "个人套餐 Key";
+                case "team_plan_key": return "团队套餐 Key";
+                case "personal_token_plan_key": return "个人 Token Plan Key";
+                case "team_seat_token_plan_key": return "团队席位 Token Plan Key";
+                case "kimi_code_key": return "Kimi Code Key";
+                default: return "请选择当前凭据类型";
+            }
+        }
+
         private static string ProviderName(LlmPreset preset)
         {
             switch (preset?.Provider)
@@ -309,7 +328,7 @@ namespace JueMingR.TerrariaHost.F5
                 case "deepseek": return "DeepSeek";
                 case "openai": return "OpenAI / GPT";
                 case "anthropic": return "Anthropic / Claude";
-                case "zhipu_glm": return "智谱 / Z.AI / GLM";
+                case "glm": return "智谱 / Z.AI / GLM";
                 case "moonshot": case "kimi": return "Kimi / 月之暗面";
                 case "minimax": return "MiniMax";
                 case "xiaomi": case "mimo": return "MiMo / 小米";

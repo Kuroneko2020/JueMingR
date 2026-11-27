@@ -49,7 +49,7 @@ namespace JueMingR.TerrariaHost.Companions
         private sealed class ChatResult
         {
             internal string Id, Title, State, Text, TaskId;
-            internal bool Settled;
+            internal bool Settled, AwaitingNativeSettlement;
             internal bool IsError => State == "failed" || State == "rejected" || State == "cancelled" ||
                 State == "superseded" || State == "unconfirmed";
             internal string Output() => State + " · 操作 " + Id + (TaskId == null ? "" : " · 活动 " + TaskId) + " · " + Text;
@@ -215,13 +215,14 @@ namespace JueMingR.TerrariaHost.Companions
             return command.Operation;
         }
 
-        private void CompleteChatAction(ChatCommand command, ChatResult result, string state, string text)
+        private void CompleteChatAction(ChatCommand command, ChatResult result, string state, string text, bool waitForNative = false)
         {
             if (result.Settled) return;
             result.Settled = true;
+            result.AwaitingNativeSettlement = waitForNative;
             UpdateChatAction(command.Run, result, state, text);
             var run = command.Run;
-            run.Conversation.PendingActions--;
+            if (!waitForNative) run.Conversation.PendingActions--;
             if (run.Conversation.Current == run) run.Conversation.Status = "正在继续模型回复。";
             command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, result.Output(), result.IsError));
         }
@@ -231,7 +232,10 @@ namespace JueMingR.TerrariaHost.Companions
             result.State = state;
             result.Text = text;
             if (run.Conversation.HistoryEpoch == run.HistoryEpoch)
+            {
                 AddChatEntry(run.Conversation, "action", result.Label(), Guid.ParseExact(result.Id, "N"));
+                if (run.Conversation.Current != run) run.Conversation.NeedsRecoverySummary = true;
+            }
         }
 
         private void ChangeChatBehavior(ChatCommand command, Actor actor, string mode, bool? attack, bool stop)
@@ -372,17 +376,24 @@ namespace JueMingR.TerrariaHost.Companions
 
         private void UseChatItem(ChatCommand command, Actor actor, string source)
         {
+            const string useIntent = "item-once";
+            if (command.Run.Consumed.TryGetValue(useIntent, out var existing))
+            {
+                command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, existing.Output(), existing.IsError));
+                return;
+            }
             if (!command.Run.Sources.TryGetValue(source, out var recorded))
             { RejectChatTool(command, "请先查询背包并使用本轮返回的物品来源。"); return; }
-            // The stable intent uses the original slot/type/prefix. Re-query
-            // can mint a fresh token but cannot spend the same intent again.
-            var action = NewChatAction(command, "使用一次", "use:" + recorded.Slot + ":" + recorded.Type + ":" + recorded.Prefix);
-            if (action == null) return;
+            var action = NewChatAction(command, "使用一次");
             if (!recorded.Matches(actor.Body.inventory[recorded.Slot]))
             { CompleteChatAction(command, action, "rejected", "物品来源已变化，本次请求未执行。"); return; }
             if (!CanUseItemOnce(actor.Profile.Id, CompanionInventoryArea.Inventory, recorded.Slot, out var reason) ||
                 !TryQueueItemOnce(actor, recorded.Slot, false, out reason))
             { CompleteChatAction(command, action, "rejected", reason); return; }
+            // Once the native scheduler accepts a use, this user command has
+            // spent its one-use authority. A new slot, source token or call
+            // ID cannot obtain another actual hand action.
+            command.Run.Consumed.Add(useIntent, action);
             var once = actor.Supplies.Once;
             once.ChatRunId = command.Run.Id;
             once.ChatCancellation = command.Cancellation;
@@ -395,10 +406,23 @@ namespace JueMingR.TerrariaHost.Companions
             var action = NewChatAction(command, "召回队友", "recall");
             if (action == null) return;
             TryRecall(actor.Profile.Id, automatic: false,
-                chatResult: (state, message) =>
+                chatResult: (state, message, waitingForNative) =>
                 {
-                    if (state == "running") UpdateChatAction(command.Run, action, state, message);
-                    else CompleteChatAction(command, action, state, message);
+                    if (action.Settled)
+                    {
+                        // Only the retained original native window can call
+                        // back after the tool result has already settled.
+                        if (action.AwaitingNativeSettlement)
+                        {
+                            action.AwaitingNativeSettlement = false;
+                            command.Run.Conversation.PendingActions--;
+                        }
+                        if (action.State == "unconfirmed" && state == "succeeded")
+                            UpdateChatAction(command.Run, action, state, message);
+                    }
+                    else if (state == "running")
+                        UpdateChatAction(command.Run, action, state, message);
+                    else CompleteChatAction(command, action, state, message, waitForNative: waitingForNative);
                 });
         }
     }

@@ -549,7 +549,7 @@ try {
     Assert-Route ($identity.fingerprint -cne (Get-WorkloadIdentity $fixtureRoot).fingerprint) 'untracked bytes belong to build identity'
     Assert-Route ($null -ne (Get-WorkloadChanges $fixtureRoot 'missing-baseline').reason) 'missing baseline is an explicit unresolved risk'
     # Exercise the actual executable plan, not script text or a duplicate dispatcher.
-    $catalog = @('FishingChecks|fishing-host','ProcessingChecks|processing-host','HotkeyCoreChecks|hotkeys','OnboardingChecks|about-host','CombatChecks|combat-host')
+    $catalog = @('FishingChecks|fishing-host','ProcessingChecks|processing-host','HotkeyCoreChecks|hotkeys','OnboardingChecks|about-host','CombatChecks|combat-host','LlmConnections|llm-host')
     foreach($path in @('src/JueMingR.Features/Combat/CombatSettings.cs','src/JueMingR.TerrariaHost/Combat/CombatUse.cs','src/JueMingR.TerrariaHost/F5/CombatIntervalDrag.cs','tests/NativeWorldTextProbe/CombatNetworkFixture.cs')) {
         $local = Get-WorkloadRoute @($path)
         Assert-Route ((@($local.groups) -join ',') -ceq 'combat-host,core') ('combat leaf classification: '+$path)
@@ -579,6 +579,13 @@ try {
     foreach ($expected in @('native-PageCompositionCpu','fixture-focus-input','fixture-hotkeys-popup','HotkeyCoreChecks')) { Assert-Route ($names -contains $expected) ('page actual consumer ' + $expected) }
     foreach ($excluded in @('native-FishingCpu','native-ToolsCpu','native-ProcessingCpu','FishingChecks')) { Assert-Route ($names -notcontains $excluded) ('page excludes unrelated execution ' + $excluded) }
     $all = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog (Get-WorkloadRoute @('@full')).groups)
+    $llmRoute = Get-WorkloadRoute @('src/JueMingR.Infrastructure/Llm/provider_presets.json','src/JueMingR.Platform/Llm/LlmConfiguration.cs')
+    $llmPlan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog $llmRoute.groups)
+    Assert-Route ($llmRoute.unknown.Count -eq 0 -and $llmRoute.groups -contains 'llm-host') 'provider data and model contracts select the actual model owner'
+    foreach ($name in @('LlmConnections','native-CompanionChatUiCpu','native-CompanionFishingLineCpu')) {
+        Assert-Route ($llmPlan.name -contains $name -and $all.name -contains $name) ('model consumer stays in Related and Full: '+$name)
+    }
+    Assert-Route ((Get-WorkloadExpectedNativeLeaf 'native-CompanionChatUiCpu') -ceq 'companions-chat-ui') 'chat UI requires the expected actual native leaf'
     $packageRoute = Get-WorkloadRoute @('scripts/verify-existing-package.ps1')
     $packagePlan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog $packageRoute.groups)
     Assert-Route ($packagePlan.Count -eq 1 -and $packagePlan[0].name -ceq 'workload-PackageVerification' -and $packagePlan[0].project -ceq '' -and $packagePlan[0].arguments[-1] -ceq (Join-Path $repositoryRoot 'tests/Phase0S/Invoke-PackageVerificationChecks.ps1')) 'standalone package tool has exactly its actual PowerShell check'

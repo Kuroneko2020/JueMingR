@@ -16,7 +16,7 @@ namespace NativeWorldTextProbe
 {
     internal static class NativeCompanionChatChecks
     {
-        private sealed class Transport : ILlmTransport
+        internal sealed class Transport : ILlmTransport
         {
             internal Func<LlmRequest, Task<LlmTurn>> Reply;
             public Task<LlmTurn> CompleteAsync(LlmConnectionSnapshot connection, LlmRequest request,
@@ -25,18 +25,25 @@ namespace NativeWorldTextProbe
                 Task.FromResult<IReadOnlyList<LlmModelInfo>>(Array.Empty<LlmModelInfo>());
         }
 
-        private sealed class Store : ILlmStore
+        internal sealed class Store : ILlmStore
         {
             internal LlmStoredConfiguration Configuration;
+            internal int FailClear, ClearCount;
             public Task<LlmStoredConfiguration> LoadAsync() => Task.FromResult(Configuration);
             public Task SaveAsync(LlmStoredConfiguration configuration) => Task.CompletedTask;
             public Task<IReadOnlyList<LlmHistoryEntry>> LoadHistoryAsync(Guid owner, Guid profile) =>
                 Task.FromResult<IReadOnlyList<LlmHistoryEntry>>(Array.Empty<LlmHistoryEntry>());
             public Task SaveHistoryAsync(Guid owner, Guid profile, IReadOnlyList<LlmHistoryEntry> entries) => Task.CompletedTask;
-            public Task ClearHistoryAsync(Guid owner, Guid profile) => Task.CompletedTask;
+            public Task ClearHistoryAsync(Guid owner, Guid profile)
+            {
+                Interlocked.Increment(ref ClearCount);
+                if (Interlocked.Exchange(ref FailClear, 0) != 0)
+                    throw new LlmException(LlmFailure.Storage, "isolated clear failure");
+                return Task.CompletedTask;
+            }
         }
 
-        internal static void Run(object host, Player human, Player body, CompanionProfile profile, Action nativeStep)
+        internal static (Transport Remote, Store Store, Action Restore) Attach(object host)
         {
             var previousConnections = Get(host, "ChatConnections");
             var previousTransport = Get(host, "chatTransport");
@@ -50,6 +57,7 @@ namespace NativeWorldTextProbe
                 PresetId = preset.Id, Protocol = preset.Protocol, BaseUrl = preset.BaseUrl,
                 InferencePath = preset.InferencePath, DiscoveryPath = preset.DiscoveryPath,
                 AuthMode = preset.AuthMode, DisplayName = "本地测试", Model = "deepseek-chat",
+                CredentialKind = preset.CredentialKinds[0],
                 GameActionsEnabled = true, LocalNoticesEnabled = true
             };
             var connectionId = Guid.NewGuid();
@@ -59,13 +67,28 @@ namespace NativeWorldTextProbe
             store.Configuration.Connections.Add(connectionId, new LlmStoredConnection(connectionId, options, secretVersion));
             var remote = new Transport();
             var connections = new LlmConnections(presets, store, remote);
+            Call(host, "ConfigureChat", connections, remote, store);
+            return (remote, store, () =>
+            {
+                Set(host, "chatTransport", previousTransport);
+                Set(host, "chatStore", previousStore);
+                Set(host, "chatStoreLifetime", previousStoreLifetime);
+                Set(host, "chatTransportLifetime", previousTransportLifetime);
+                host.GetType().GetProperty("ChatConnections", System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic).SetValue(host, previousConnections);
+            });
+        }
+
+        internal static void Run(object host, Player human, Player body, CompanionProfile profile, Action nativeStep)
+        {
+            var fixture = Attach(host);
+            var remote = fixture.Remote;
             var old = human.position;
             var actor = Call(host, "Owned", body);
             var behavior = ((CompanionProfile)Get(actor, "Profile")).Behavior;
             var first = new TaskCompletionSource<LlmTurn>(TaskCreationOptions.RunContinuationsAsynchronously);
             try
             {
-                Call(host, "ConfigureChat", connections, remote, store);
                 object View() => Call(host, "GetChat", profile.OwnerId, profile.Id);
                 void Sent(string text)
                 {
@@ -108,7 +131,9 @@ namespace NativeWorldTextProbe
                 Require(Entries().Count(entry => entry.Kind == "notice" && entry.Text.Contains("鱼饵")) == 1,
                     "one local notice is published without another charged model round");
 
-                remote.Reply = request => Task.FromResult(request.Messages.Last().Kind == LlmMessageKind.ToolResults ? textReply() :
+                const string privateClosedTurn = "{\"reasoning_content\":\"closed-a-private-field\"}";
+                remote.Reply = request => Task.FromResult(request.Messages.Last().Kind == LlmMessageKind.ToolResults ?
+                    new LlmTurn("跟随已设置。", Array.Empty<LlmToolCall>(), privateClosedTurn) :
                     calls(tool("stop", "stop_activity", new KeyValuePair<string, object>("mode", "follow"))));
                 Sent("停止，跟我走。");
                 Ended();
@@ -132,9 +157,17 @@ namespace NativeWorldTextProbe
                 });
                 Require(!isFishing() && Entries().Any(entry => entry.Kind == "status" && entry.Text.Contains("手动行为")),
                     "the late model callback cannot restart fishing after manual control");
+                LlmRequest resumed = null;
+                remote.Reply = request => { resumed = request; return Task.FromResult(textReply()); };
+                Sent("之前最后发生了什么？");
+                Ended();
+                Require(resumed?.Messages.Any(message => message.Turn?.WireJson == privateClosedTurn) == true &&
+                    !resumed.Messages.Any(message => message.Turn?.ToolCalls.Any(call => call.Id == "late") == true) &&
+                    resumed.Messages.Last().Text.Contains("手动行为"),
+                    "closed provider-private history survives an interrupted next turn while latest public facts belong to the new user message");
 
                 int life = body.statLife;
-                Item prior = body.inventory[49];
+                Item prior = body.inventory[49], priorSecond = body.inventory[48];
                 var potion = new Item(ItemID.LesserHealingPotion) { stack = 2 };
                 try
                 {
@@ -176,9 +209,56 @@ namespace NativeWorldTextProbe
                         Entries().Any(entry => entry.Kind == "action" && entry.Text.Contains("原版用物动作已结束") &&
                             entry.Text.Contains("后续效果未确认")),
                         "stopping a reply leaves the begun native weapon to reach its real animation tail");
+
+                    body.inventory[48] = new Item(ItemID.LesserHealingPotion) { stack = 2 };
+                    body.inventory[49] = new Item(ItemID.LesserHealingPotion) { stack = 2 };
+                    var testBehavior = ((CompanionProfile)Get(actor, "Profile")).Behavior;
+                    testBehavior.HealthRecoveryEnabled = false;
+                    testBehavior.AllowNurse = false;
+                    Require((bool)Call(host, "SetBehavior", profile.Id, testBehavior),
+                        "automatic treatment is disabled so only the two explicit commands can consume potions");
+                    body.statLife = 1;
+                    body.potionDelay = 0;
+                    string SlotSource(string row) => row.Substring(row.IndexOf("source=", StringComparison.Ordinal) + 7);
+                    LlmToolResult[] received = null;
+                    bool next = false;
+                    remote.Reply = request =>
+                    {
+                        var latest = request.Messages.Last();
+                        if (latest.Kind != LlmMessageKind.ToolResults)
+                            return Task.FromResult(calls(tool("read-48-49", "query_inventory",
+                                new KeyValuePair<string, object>("offset", 48))));
+                        if (latest.Results[0].Id == "read-48-49")
+                        {
+                            var rows = latest.Results[0].Output.Split('\n');
+                            var right = tool("use-other-slot", "use_item_once", new KeyValuePair<string, object>("source", SlotSource(rows[1])));
+                            var left = tool("use-first-slot", "use_item_once", new KeyValuePair<string, object>("source", SlotSource(rows[0])));
+                            return Task.FromResult(next ? calls(right) : calls(left, right));
+                        }
+                        received = latest.Results.ToArray();
+                        return Task.FromResult(textReply());
+                    };
+                    void NativeUseUntilReply() => NativeQuickItemChecks.Until(() =>
+                    {
+                        body.potionDelay = 0;
+                        nativeStep();
+                        return !(bool)Get(View(), "IsRunning");
+                    });
+                    Sent("用一次治疗药水。");
+                    NativeUseUntilReply();
+                    Require(received?.Length == 2 && received[0].Output == received[1].Output &&
+                        body.inventory[48].stack == 1 && body.inventory[49].stack == 2,
+                        "different calls with two real eligible potion sources share one operation and one actual debit");
+                    next = true;
+                    body.statLife = 1;
+                    Sent("再用一次治疗药水。");
+                    NativeUseUntilReply();
+                    Require(received?.Length == 1 && body.inventory[48].stack == 1 && body.inventory[49].stack == 1,
+                        "a new explicit user message has independent one-use authority");
                 }
-                finally { body.statLife = life; body.inventory[49] = prior; }
-                Console.WriteLine("PASS native companion chat send-time anchor, real activity, local notice, stop-to-follow, manual replacement, queued item withdrawal and begun use settlement.");
+                finally { body.statLife = life; body.inventory[49] = prior; body.inventory[48] = priorSecond; }
+                CheckClearAndDeletion(host, profile, fixture.Store, View, Entries, PumpUntil);
+                Console.WriteLine("PASS native companion chat anchor, real activity, notices, manual replacement, closed wire recovery, one debit per message, use settlement and retried deletion.");
             }
             finally
             {
@@ -187,13 +267,46 @@ namespace NativeWorldTextProbe
                 Call(host, "SetBehavior", profile.Id, behavior);
                 human.position = old;
                 // Restore composition for the surrounding native fishing checks.
-                Set(host, "chatTransport", previousTransport);
-                Set(host, "chatStore", previousStore);
-                Set(host, "chatStoreLifetime", previousStoreLifetime);
-                Set(host, "chatTransportLifetime", previousTransportLifetime);
-                host.GetType().GetProperty("ChatConnections", System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic).SetValue(host, previousConnections);
+                fixture.Restore();
             }
+        }
+
+        private static void CheckClearAndDeletion(object host, CompanionProfile profile, Store store, Func<object> view,
+            Func<LlmHistoryEntry[]> entries, Action<Func<bool>> pump)
+        {
+            var firstEntry = entries()[0].Id;
+            store.FailClear = 1;
+            Require((bool)Call(host, "ClearChat", profile.OwnerId, profile.Id), "history clear is accepted asynchronously");
+            pump(() => ((string)Get(view(), "Status")).Contains("未能清空"));
+            Require(entries()[0].Id == firstEntry, "failed persisted clear keeps the preceding visible record");
+            Require((bool)Call(host, "ClearChat", profile.OwnerId, profile.Id), "the owner can retry a failed history clear");
+            pump(() => entries().Length == 0 && ((string)Get(view(), "Status")).Contains("已清空"));
+
+            Require((bool)Call(host, "Create", "聊天清理验证"), "isolated profile has an actual deletion intent");
+            Guid retired = (Guid)Get(host, "LastCreatedId");
+            var profiles = Get(host, "profiles");
+            NativeQuickItemChecks.Until(() => { Call(profiles, "Pump"); return (bool)Call(profiles, "IsSaved", retired); });
+            var connections = (LlmConnections)Get(host, "ChatConnections");
+            Guid link = connections.DefaultId.Value;
+            connections.SetBindingAsync(profile.OwnerId, retired, link).GetAwaiter().GetResult();
+            store.FailClear = 1;
+            Require((bool)Call(host, "DeleteCompanion", profile.OwnerId, retired, (long)Get(host, "session")),
+                "confirmed character deletion starts even if chat storage will fail");
+            CompanionDeletion pending = null;
+            void Poll()
+            {
+                var receipts = (IReadOnlyList<CompanionDeletion>)Call(host, "PollDeletionBindings");
+                pending = receipts.SingleOrDefault(record => record.ProfileId == retired);
+                if (pending?.FilesRemoved == true && pending.Error == null && !pending.Finishing)
+                    Call(host, "FinishDeletionBindings", pending);
+            }
+            NativeQuickItemChecks.Until(() => { Poll(); return pending?.Error?.Contains("模型绑定清理失败") == true; });
+            Require(pending.FilesRemoved && connections.GetBinding(profile.OwnerId, retired) == link,
+                "failed LLM cleanup leaves the retryable archive receipt and still-known binding");
+            Call(host, "RetryCompanionDeletion", profile.OwnerId, retired);
+            NativeQuickItemChecks.Until(() => { Poll(); return pending == null; });
+            Require(connections.GetBinding(profile.OwnerId, retired) == null && connections.DefaultId == link,
+                "retry finishes the same intent and removes the retired profile's explicit binding");
         }
     }
 }
