@@ -259,7 +259,7 @@ namespace NativeWorldTextProbe
                 profile.Behavior.MainWeapons.Single().SlotHint == WeaponSlot && !(bool)Call(host, "IsJoined", id),
                 "fresh production lookup loads the final original-owner archive and finds no stale deployed activation");
             var window = OpenManager(context, graphics, host, id);
-            Require((string)Get(Tool(window, "actor-state"), "Text") == "点击加入", "fresh UI offers the correct actual join action");
+            Require((string)Get(Tool(window, "actor-state"), "Text") == "加入", "fresh UI offers the correct actual join action");
             Click(context, window, "actor-state");
             var body = (Player)Call(host, "GetBody", id);
             Require((bool)Call(host, "IsJoined", id) && body.active && !body.dead && body.inventory[ResourceSlot].type == ItemID.Wood &&
@@ -345,7 +345,7 @@ namespace NativeWorldTextProbe
         private static void CheckToolbar(object context, ProbeGraphics graphics, object host, Guid id, bool dead, string output, string stage)
         {
             var window = OpenManager(context, graphics, host, id);
-            Require(Main.LocalPlayer.dead == dead && (string)Get(Tool(window, "actor-state"), "Text") == "点击收回", "fixture has the reported relationship of the human and joined companion");
+            Require(Main.LocalPlayer.dead == dead && (string)Get(Tool(window, "actor-state"), "Text") == "退出", "fixture has the reported relationship of the human and joined companion");
             var renderer = Get(window, "renderer");
             var font = Terraria.GameContent.FontAssets.MouseText.Value;
             Require((bool)Get(renderer, "ResourcesCurrent"), "the actual companion renderer accepts its current native resources");

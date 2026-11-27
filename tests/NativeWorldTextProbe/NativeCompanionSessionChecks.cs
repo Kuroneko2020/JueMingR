@@ -136,9 +136,9 @@ namespace NativeWorldTextProbe
                 Require(!a.dead && Profile(host,first).Behavior.MainWeapons.Single().SlotHint==12,"re-enabling continues the existing zero timer and retains a valid preference");
                 a.inventory[49]=a.inventory[12];a.inventory[12]=new Item();
                 var live=Call(host,"Owned",a);
-                Call(host,"CaptureActorState",live,null);
+                Call(host,"CaptureActorState",live,null,null);
                 Require(Profile(host,first).Behavior.MainWeapons.Single().SlotHint==49,"same item moved within the real bag maps to its new slot");
-                a.inventory[49].SetDefaults(ItemID.DirtBlock);Call(host,"CaptureActorState",live,null);
+                a.inventory[49].SetDefaults(ItemID.DirtBlock);Call(host,"CaptureActorState",live,null,null);
                 Require(Profile(host,first).Behavior.MainWeapons.Length==0,"a material replacing the only copy retires the removed preference");
                 var beforeHuman=Get(borrowedProbe,"SessionIdentity");human.immune=false;human.immuneTime=0;Array.Clear(human.hurtCooldowns,0,human.hurtCooldowns.Length);
                 human.Hurt(PlayerDeathReason.ByCustomReason("isolated actual human death"),99999,0);Call(context,"UpdateRuntime");

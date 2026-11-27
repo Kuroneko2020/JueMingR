@@ -13,6 +13,18 @@ namespace JueMingR.Features.Blueprint
         private const long ProjectionCacheLimit = 8L * 1024 * 1024;
         private const long ProjectionWindowLimit = 32L * 1024 * 1024;
         private const int ProjectionRequestLimit = 32;
+        private sealed class ProjectionBudgetException : IOException
+        { internal ProjectionBudgetException() : base("blueprint-projection-window-budget") { } }
+        private sealed class ProjectionInterpretationException : InvalidOperationException
+        {
+            internal ProjectionInterpretationException(string code, string reason) : base(reason ?? code) { FailureCode = code; }
+            internal string FailureCode { get; }
+        }
+        private sealed class ProjectionAssetReadException : IOException
+        {
+            internal ProjectionAssetReadException(ProjectionOwner owner, Exception cause) : base(cause.Message, cause) { Owner = owner; }
+            internal ProjectionOwner Owner { get; }
+        }
         private sealed class ProjectionRequest
         {
             internal BlueprintProjectionIdentity Identity;
@@ -24,6 +36,7 @@ namespace JueMingR.Features.Blueprint
             internal BlueprintProjectionIdentity Identity;
             internal bool Opened;
             internal BlueprintProjectionMask RestoreMask;
+            internal IBlueprintHorizontalMirrorProfile RestoreMirroredProfile;
             internal bool RestoreQueued, RestoreValidated;
             internal ProjectionRequest Latest;
             internal long Serial;
@@ -101,7 +114,7 @@ namespace JueMingR.Features.Blueprint
         internal BlueprintProjectionStatistics ProjectionStatistics
         { get { lock (gate) return new BlueprintProjectionStatistics(Interlocked.Read(ref projectionBlockReads), Interlocked.Read(ref projectionDecodedRecords), Interlocked.Read(ref projectionDirectoryComparisons), Interlocked.Read(ref projectionWindowBlocks), Interlocked.Read(ref projectionSlices), Interlocked.Read(ref projectionRetiredRequests), Interlocked.Read(ref projectionCachePeak), Interlocked.Read(ref projectionDirectoryBytes), Interlocked.Read(ref projectionDirectoryBlocks), Interlocked.Read(ref projectionCacheBytes), projectionOwners.Count, projectionReferences.Count, projectionRequests.Count + (projectionActiveRequest == null ? 0 : 1) + projectionSourceRequests.Count + (projectionSourceActive == null ? 0 : 1) + projectionQualificationRequests.Count + (projectionQualifying == null ? 0 : 1), projectionReceiptBytes, Interlocked.Read(ref projectionWindowWorkingBytes) + Interlocked.Read(ref projectionQualificationWorkingBytes) + Interlocked.Read(ref projectionTrimWorkingBytes), Interlocked.Read(ref projectionSourceIndexBytes)); } }
 #endif
-        internal bool RequestProjectionOpen(BlueprintProjectionIdentity identity, BlueprintProjectionMask restoreMask = null)
+        internal bool RequestProjectionOpen(BlueprintProjectionIdentity identity, BlueprintProjectionMask restoreMask = null, IBlueprintHorizontalMirrorProfile mirroredProfile = null)
         {
             if (identity == null) throw new ArgumentNullException(nameof(identity));
             lock (gate)
@@ -111,7 +124,7 @@ namespace JueMingR.Features.Blueprint
                 if (projectionReferences.TryGetValue(identity, out found)) return true;
                 if (projectionUnopenedReferences >= ProjectionRequestLimit) return false;
                 int references; projectionTemplateReferences.TryGetValue(identity.TemplateKey, out references); projectionTemplateReferences[identity.TemplateKey] = references + 1;
-                projectionReferences.Add(identity, new ProjectionReference { Identity = identity, RestoreMask = restoreMask }); projectionUnopenedReferences++; projectionWake = true; Monitor.Pulse(gate); return true;
+                projectionReferences.Add(identity, new ProjectionReference { Identity = identity, RestoreMask = restoreMask, RestoreMirroredProfile = mirroredProfile }); projectionUnopenedReferences++; projectionWake = true; Monitor.Pulse(gate); return true;
             }
         }
         internal bool RequestProjectionWindow(BlueprintProjectionIdentity identity, long generation, BlueprintProjectionBounds bounds)
@@ -292,7 +305,7 @@ namespace JueMingR.Features.Blueprint
                     }
                 }
                 if (!opened && rootFailure == null) { try { files.Open(); opened = true; } catch (Exception e) { rootFailure = Reason(e); } }
-                if (rootFailure != null) { var failedOwners = new List<ProjectionOwner>(projectionOwners.Values); foreach (ProjectionOwner failedOwner in failedOwners) FailProjection(failedOwner, null, new IOException(rootFailure)); CloseProjectionCommitWorker(); return; }
+                if (rootFailure != null) { var failedOwners = new List<ProjectionOwner>(projectionOwners.Values); foreach (ProjectionOwner failedOwner in failedOwners) FailProjectionAsset(failedOwner, new IOException(rootFailure), BlueprintProjectionFailureStage.Open); CloseProjectionCommitWorker(); return; }
 #if DEBUG
                 Interlocked.Increment(ref projectionSlices);
 #endif
@@ -312,7 +325,7 @@ namespace JueMingR.Features.Blueprint
                         if (owner.Opening.MoveNext()) projectionOpenings.Enqueue(owner);
                         else { owner.Opening.Dispose(); owner.Opening = null; owner.Ready = true; lock (gate) projectionWake = true; }
                     }
-                    catch (Exception error) { FailProjection(owner, null, error); }
+                    catch (Exception error) { FailProjectionAsset(owner, error, BlueprintProjectionFailureStage.Open); }
                     return;
                 }
                 if (projectionReading == null)
@@ -336,33 +349,61 @@ namespace JueMingR.Features.Blueprint
                     {
                         if (!projectionReading.MoveNext()) { projectionReading.Dispose(); projectionReading = null; projectionActiveRequest = null; projectionReadingOwner = null; UpdateProjectionWindowWorkingBytes(0); }
                     }
-                    catch (Exception error) { ProjectionOwner owner = projectionReadingOwner; ProjectionRequest failed = projectionActiveRequest; projectionReading.Dispose(); projectionReading = null; projectionActiveRequest = null; projectionReadingOwner = null; UpdateProjectionWindowWorkingBytes(0); FailProjection(owner, failed, error); }
+                    catch (Exception error) { ProjectionOwner owner = projectionReadingOwner; ProjectionRequest failed = projectionActiveRequest; projectionReading.Dispose(); projectionReading = null; projectionActiveRequest = null; projectionReadingOwner = null; UpdateProjectionWindowWorkingBytes(0); FailProjectionWindow(owner, failed, error); }
                 }
             }
             finally { files.CloseMetadata(); }
         }
-        private void FailProjection(ProjectionOwner owner, ProjectionRequest request, Exception error)
+        private static BlueprintProjectionFailureScope ProjectionFailureScope(Exception error)
+        {
+            if (error is ProjectionAssetReadException) return BlueprintProjectionFailureScope.SharedAsset;
+            return error is ProjectionBudgetException ? BlueprintProjectionFailureScope.Demand : BlueprintProjectionFailureScope.DerivedView;
+        }
+        private static string ProjectionFailureCode(Exception error)
+        {
+            if (error is ProjectionBudgetException) return error.Message;
+            if (error is ProjectionInterpretationException interpretation) return interpretation.FailureCode;
+            return Code(error is ProjectionAssetReadException ? error.InnerException : error);
+        }
+        private static string ProjectionFailureDetail(Exception error)
+        { string detail = error.ToString(); return detail.Length <= 4096 ? detail : detail.Substring(0, 4096); }
+        private void FailProjectionWindow(ProjectionOwner owner, ProjectionRequest request, Exception error)
         {
             if (error is OperationCanceledException) { return; }
             lock (gate)
             {
-                if (request != null)
-                {
-                    ProjectionReference reference;
-                    if (!projectionReferences.TryGetValue(request.Identity, out reference) || reference.Serial != request.Serial) return;
-                    bool retired = Code(error) != "blueprint-projection-window-budget";
-                    projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, request.Identity, request.Generation, error: retired ? Reason(error) : "投影窗口需分批读取", failureCode: Code(error), identityRetired: retired));
-                    // Budget pressure is a demand-level retry, never loss of a
-                    // scene instance or of its validated shared template.
-                    if (retired) RemoveProjectionReferenceLocked(request.Identity);
-                }
+                ProjectionReference reference;
+                if (!projectionReferences.TryGetValue(request.Identity, out reference) || reference.Serial != request.Serial) return;
+                var scope = ProjectionFailureScope(error);
+                if (scope == BlueprintProjectionFailureScope.SharedAsset)
+                    FailProjectionAssetLocked(owner, error, BlueprintProjectionFailureStage.Window);
                 else
                 {
-                    var affected = new List<BlueprintProjectionIdentity>(); foreach (ProjectionReference reference in projectionReferences.Values) if (reference.Identity.TemplateKey.Equals(owner.Identity.TemplateKey)) affected.Add(reference.Identity);
-                    foreach (BlueprintProjectionIdentity identity in affected) { projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, identity, error: Reason(error), failureCode: Code(error), identityRetired: true)); RemoveProjectionReferenceLocked(identity); }
+                    projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, request.Identity, request.Generation,
+                        error: scope == BlueprintProjectionFailureScope.Demand ? "投影窗口需分批读取" : Reason(error), failureCode: ProjectionFailureCode(error),
+                        failureScope: scope, failureStage: BlueprintProjectionFailureStage.Window, failureDetail: ProjectionFailureDetail(error)));
                 }
             }
             ReleaseRetiredProjection();
+        }
+        private void FailProjectionAsset(ProjectionOwner owner, Exception error, BlueprintProjectionFailureStage stage)
+        {
+            if (error is OperationCanceledException) return;
+            lock (gate) { if (ProjectionCurrent(owner)) FailProjectionAssetLocked(owner, error, stage); }
+            ReleaseRetiredProjection();
+        }
+        private void FailProjectionAssetLocked(ProjectionOwner owner, Exception error, BlueprintProjectionFailureStage stage)
+        {
+            var affected = new List<BlueprintProjectionIdentity>();
+            foreach (ProjectionReference reference in projectionReferences.Values) if (reference.Identity.TemplateKey.Equals(owner.Identity.TemplateKey)) affected.Add(reference.Identity);
+            var cause = error is ProjectionAssetReadException ? error.InnerException : error;
+            string detail = ProjectionFailureDetail(error), code = ProjectionFailureCode(error), message = Reason(cause);
+            foreach (BlueprintProjectionIdentity identity in affected)
+            {
+                projectionFailures.Enqueue(new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Failed, identity, error: message, failureCode: code, identityRetired: true,
+                    failureScope: BlueprintProjectionFailureScope.SharedAsset, failureStage: stage, failureDetail: detail));
+                RemoveProjectionReferenceLocked(identity);
+            }
         }
         private static BlueprintProjectionBounds ProjectionSourceObjectBounds(CaptureObject obj,CaptureSummary summary)
         {
@@ -541,7 +582,7 @@ namespace JueMingR.Features.Blueprint
                         CaptureCell cell = chunk.Cells[i]; cell.X -= summary.Left; cell.Y -= summary.Top;
                         if (!bounds.Contains(cell.X, cell.Y)) continue;
                         if ((long)cells.Count >= area) throw new InvalidDataException("blueprint-projection-window-duplicate");
-                        windowBytes += 64 + cell.Payload.EstimatedBytes; if (windowBytes > ProjectionWindowLimit) throw new InvalidDataException("blueprint-projection-window-budget");
+                        windowBytes += 64 + cell.Payload.EstimatedBytes; if (windowBytes > ProjectionWindowLimit) throw new ProjectionBudgetException();
                         cells.Add(cell); if (cell.ObjectId != 0) objectIds.Add(cell.ObjectId);
                     }
                     UpdateProjectionWindowWorkingBytes(windowBytes + objectIds.Count * 32L);
@@ -560,7 +601,7 @@ namespace JueMingR.Features.Blueprint
                     else
                     {
                         windowBytes += 128L + (long)((obj.Reason ?? "").Length + (obj.MissingPayload ?? "").Length) * 2;
-                        if (windowBytes > ProjectionWindowLimit) throw new InvalidDataException("blueprint-projection-window-budget");
+                        if (windowBytes > ProjectionWindowLimit) throw new ProjectionBudgetException();
                         obj.X -= summary.Left; obj.Y -= summary.Top; objects.Add(obj); found = true; break;
                     }
                 }
@@ -570,7 +611,7 @@ namespace JueMingR.Features.Blueprint
             CheckProjection(owner, request);
             cells.Sort(CellComparer.Instance);
             var window = new BlueprintProjectionWindow(request.Identity, request.Generation, summary, bounds, cells.ToArray(), objects.ToArray(), true);
-            if (window.EstimatedBytes > ProjectionWindowLimit) throw new InvalidDataException("blueprint-projection-window-budget");
+            if (window.EstimatedBytes > ProjectionWindowLimit) throw new ProjectionBudgetException();
             while (!PublishProjection(owner, new BlueprintProjectionReceipt(BlueprintProjectionReceiptKind.Window, request.Identity, request.Generation, summary, window), request)) { CheckProjection(owner, request); yield return true; }
         }
         private IEnumerable<long> ProjectionBlocks(ProjectionOwner owner, int left, int top, int right, int bottom)
@@ -586,10 +627,16 @@ namespace JueMingR.Features.Blueprint
         {
             ProjectionCacheBlock hit = FindProjectionBlock(owner, number);
             if (hit != null) { projectionCache.Remove(hit); projectionCache.Add(hit); return hit.Chunk; }
-            owner.Index.Position = checked(number * 32L); byte[] expected = new byte[32]; ReadExactly(owner.Index, expected);
-            byte[] bytes = files.ReadBlock(owner.Identity.AssetId, false, number);
-            if (!LibraryCodec.Equal(LibraryCodec.Hash(bytes), expected)) throw new InvalidDataException("blueprint-chunk-hash");
-            CaptureChunk chunk = LibraryCodec.DecodeChunk(bytes);
+            CaptureChunk chunk;
+            try
+            {
+                owner.Index.Position = checked(number * 32L); byte[] expected = new byte[32]; ReadExactly(owner.Index, expected);
+                byte[] bytes = files.ReadBlock(owner.Identity.AssetId, false, number);
+                if (!LibraryCodec.Equal(LibraryCodec.Hash(bytes), expected)) throw new InvalidDataException("blueprint-chunk-hash");
+                chunk = LibraryCodec.DecodeChunk(bytes);
+            }
+            catch (Exception error) when (error is InvalidDataException || error is IOException && !(error is ProjectionBudgetException) || error is PreferenceFormatException)
+            { throw new ProjectionAssetReadException(owner, error); }
 #if DEBUG
             Interlocked.Increment(ref projectionBlockReads); Interlocked.Add(ref projectionDecodedRecords, chunk.Count + chunk.ObjectCount);
 #endif

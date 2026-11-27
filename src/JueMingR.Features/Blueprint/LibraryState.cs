@@ -36,7 +36,8 @@ namespace JueMingR.Features.Blueprint
         // Projection work has its own bounded latest-request/result mailboxes;
         // it never owns the accepted capture/save command slot or its token.
         public bool RequestProjectionOpen(BlueprintProjectionIdentity identity) { return worker.RequestProjectionOpen(identity); }
-        public bool RequestProjectionRestore(BlueprintProjectionIdentity identity, BlueprintProjectionMask mask) { return worker.RequestProjectionOpen(identity, mask ?? BlueprintProjectionMask.Empty); }
+        public bool RequestProjectionRestore(BlueprintProjectionIdentity identity, BlueprintProjectionMask mask, IBlueprintHorizontalMirrorProfile mirroredProfile = null)
+        { return worker.RequestProjectionOpen(identity, mask ?? BlueprintProjectionMask.Empty, mirroredProfile); }
         public bool RequestProjectionQualification(BlueprintProjectionIdentity identity, BlueprintPlacementCatalog catalog, BlueprintProjectionMask mask, BlueprintProjectionView view = null)
         { return worker.RequestProjectionQualification(identity, catalog, mask, view); }
         public bool TryTakeProjectionQualification(out BlueprintProjectionQualificationReceipt receipt) { return worker.TryTakeProjectionQualification(out receipt); }

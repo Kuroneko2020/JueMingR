@@ -149,12 +149,16 @@ namespace JueMingR.Features.Blueprint
     }
     public sealed class BlueprintProjectionCommitReceipt
     {
-        internal BlueprintProjectionCommitReceipt(BlueprintProjectionCommitRequest request, Dictionary<long, BlueprintProjectionMask> masks, List<long> retired, string error = null, BlueprintProjectionTrimPlan trimPlan = null)
-        { Request = request; Masks = new ReadOnlyDictionary<long, BlueprintProjectionMask>(masks); RetiredInstanceIds = retired.AsReadOnly(); Error = error; TrimPlan = trimPlan; }
+        internal BlueprintProjectionCommitReceipt(BlueprintProjectionCommitRequest request, Dictionary<long, BlueprintProjectionMask> masks, List<long> retired, string error = null, BlueprintProjectionTrimPlan trimPlan = null,
+            BlueprintProjectionFailureScope failureScope = BlueprintProjectionFailureScope.None, string failureCode = null, string failureDetail = null)
+        { Request = request; Masks = new ReadOnlyDictionary<long, BlueprintProjectionMask>(masks); RetiredInstanceIds = retired.AsReadOnly(); Error = error; TrimPlan = trimPlan; FailureScope = failureScope; FailureCode = failureCode; FailureDetail = failureDetail; }
         public BlueprintProjectionCommitRequest Request { get; }
         public IReadOnlyDictionary<long, BlueprintProjectionMask> Masks { get; }
         public IReadOnlyList<long> RetiredInstanceIds { get; }
         public string Error { get; }
+        public BlueprintProjectionFailureScope FailureScope { get; }
+        public string FailureCode { get; }
+        public string FailureDetail { get; }
         public bool Succeeded { get { return Error == null; } }
         public BlueprintProjectionTrimPlan TrimPlan { get; }
     }

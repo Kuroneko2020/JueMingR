@@ -7,6 +7,7 @@ using HarmonyLib;
 using JueMingR.TerrariaHost.Combat;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.DataStructures;
 using Terraria.GameInput;
 using Terraria.GameContent;
 
@@ -23,7 +24,8 @@ namespace JueMingR.TerrariaHost.Companions
         internal static HostCompanions.Actor CurrentActor => current?.Actor;
         internal static HostCompanions.Actor SupplyActor(Player player) => host?.Owned(player);
         private static readonly MethodInfo enemyDamage=AccessTools.Method(typeof(Projectile),"Damage_EVP");
-        private static readonly MethodInfo canDamage=AccessTools.Method(typeof(Projectile),"Damage_CanDealDamage");
+        private static readonly Func<Projectile, bool> canDamage=(Func<Projectile, bool>)Delegate.CreateDelegate(typeof(Func<Projectile, bool>),
+            AccessTools.Method(typeof(Projectile),"Damage_CanDealDamage"));
         private static readonly MethodInfo hurtTile=AccessTools.Method(typeof(Player),"GetHurtTile"),touchDamage=AccessTools.Method(typeof(Player),"ApplyTouchDamage"),shimmer=AccessTools.Method(typeof(Player),"TryToShimmerUnstuck");
         internal static void Install(HostCompanions value)
         {
@@ -56,6 +58,9 @@ namespace JueMingR.TerrariaHost.Companions
             Patch(typeof(Player),"PurgeDD2EnergyCrystals",transpiler:nameof(TrackEnergyPurge));
             Patch(typeof(WorldItem),"UpdateItem",postfix:nameof(ItemOwner));
             Patch(typeof(Projectile),"AI",nameof(ProjectileBefore),finalizer:nameof(ScopeFinal),transpiler:nameof(DeferSharedProjectileHeal));
+            Patch(typeof(Projectile), nameof(Projectile.NewProjectile), postfix: nameof(FishingProjectileSource), args: new[] {
+                typeof(IEntitySource), typeof(float), typeof(float), typeof(float), typeof(float), typeof(int), typeof(int),
+                typeof(float), typeof(int), typeof(float), typeof(float), typeof(float), typeof(NewProjectileModifier) });
             Patch(typeof(Projectile),"Update",transpiler:nameof(ProjectileSyncTail),args:new[]{typeof(int)});
             Patch(typeof(Projectile),"AI_075",transpiler:nameof(DrillTileGate));
             Patch(typeof(Projectile),"Damage",nameof(ProjectileBefore),nameof(ProjectileDamageAfter),nameof(ScopeFinal));
@@ -89,6 +94,7 @@ namespace JueMingR.TerrariaHost.Companions
             InstallFurnitureHooks();
             InstallMobilityHooks();
             CompanionSupplyHooks.Install(value);
+            InstallFishing();
             installed=true;
         }
         private static void Patch(Type t,string method,string prefix=null,string postfix=null,string finalizer=null,string transpiler=null,Type[] args=null)
@@ -97,8 +103,14 @@ namespace JueMingR.TerrariaHost.Companions
             Harmony.Patch(m,Hook(prefix),Hook(postfix),Hook(transpiler),Hook(finalizer));
         }
         private static HarmonyMethod Hook(string name){return name==null?null:new HarmonyMethod(typeof(CompanionHooks),name);}
-        internal static void Uninstall(){CompanionSupplyHooks.Uninstall();Harmony.UnpatchAll(Harmony.Id);installed=false;host=null;}
+        internal static void Uninstall(){UninstallFishing();CompanionSupplyHooks.Uninstall();Harmony.UnpatchAll(Harmony.Id);installed=false;host=null;}
         internal static void ProjectileBorn(Player player,Projectile projectile){host?.ProjectileBorn(player,projectile);}
+        internal static bool ProjectileCanDealDamage(Projectile projectile) => canDamage(projectile);
+        private static void FishingProjectileSource(IEntitySource __0, int __result)
+        {
+            if (host?.WantsFishingBackground != true || (uint)__result >= (uint)Main.maxProjectiles) return;
+            CompanionThreatField.RecordShotSource(Main.projectile[__result], __0);
+        }
         internal static Scope Enter(HostCompanions.Actor actor,Vector2 point,bool inventory=false){return new Scope(actor,point,inventory,false);}
         // NewNPCInstanceInSlot must still allocate the decoded instance and
         // preserve its generation. Only its global human-world slot cleanup is
@@ -283,6 +295,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var a=host?.Owned(__instance);
             if(a==null || !a.Ready || a.Closing || __instance.creativeGodMode || __instance.dead)return;
+            host.BeforeFishingDeath(a);
             __state=Enter(a,a.Aim);
             host.PublishSlotsBeforeDeath(a);
         }
@@ -301,7 +314,7 @@ namespace JueMingR.TerrariaHost.Companions
         {if(host==null || !host.HasActors)return;var a=host.ProjectileActor(__instance);if(a!=null && a.Ready && !a.Closing)__state=Enter(a,host.ProjectileAim(a,__instance));}
         private static void ProjectileDamageAfter(Projectile __instance)
         {
-            if(host==null || !host.HasActors || !__instance.active || !__instance.hostile || __instance.damage<=0 || !(bool)canDamage.Invoke(__instance,null))return;
+            if(host==null || !host.HasActors || !__instance.active || !__instance.hostile || __instance.damage<=0 || !ProjectileCanDealDamage(__instance))return;
             var hitbox=__instance.Damage_GetHitbox();
             foreach(var a in host.ActiveActors)
             {

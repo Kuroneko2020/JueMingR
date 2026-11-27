@@ -63,13 +63,13 @@ namespace JueMingR.TerrariaHost.Fishing
         }
         private void UpdateNotice()
         {
-            string settings=host.Settings.Message,error=host.Error,rename=RenameMessage?.Invoke();
+            string settings=host?.Settings.Message,error=host?.Error,rename=RenameMessage?.Invoke();
             string renameInput=editing==Edit.Rename?TextInput.Error??draft?.Error:null;
             if(seenSettingsMessage!=settings && settings!=null)message=settings;
             if(seenHostError!=error && error!=null)message=error;
-            if((seenRenameRevision!=host.Rename.Revision || seenRenameMessage!=rename) && rename!=null)message=rename;
+            if((seenRenameRevision!=RenameRevision || seenRenameMessage!=rename) && rename!=null)message=rename;
             if(seenRenameInput!=renameInput && renameInput!=null)message=renameInput;
-            seenSettingsMessage=settings;seenHostError=error;seenRenameMessage=rename;seenRenameRevision=host.Rename.Revision;seenRenameInput=renameInput;
+            seenSettingsMessage=settings;seenHostError=error;seenRenameMessage=rename;seenRenameRevision=RenameRevision;seenRenameInput=renameInput;
             if(notice!=null && Feedback.LocalShortFeedback.Now>=noticeExpires)message=null;
         }
         internal Action<string,F5Rect> HotkeyClicked;
@@ -80,7 +80,9 @@ namespace JueMingR.TerrariaHost.Fishing
         internal bool Visible {get{return overlay!=Overlay.None;}}
         // A pending durable write is a command gate, not a change in the
         // availability of every visible control. Keep adjacent pixels stable.
-        private bool PresentationAvailable {get{return host.Available && host.Player!=null && host.Settings.Loaded && !host.Settings.Protected;}}
+        private bool PresentationAvailable => host != null ?
+            host.Available && host.Player!=null && host.Settings.Loaded && !host.Settings.Protected :
+            companionCanConfigure;
         private static bool ListCommand(Command command)
         {return command>=Command.Current && command<=Command.Add || command==Command.Confirm || command==Command.ApplyPreset || command==Command.DeletePreset;}
         internal bool Captured {get{return armed!=null || leftTail || rightTail;}}
@@ -94,11 +96,16 @@ namespace JueMingR.TerrariaHost.Fishing
         internal bool BlockPointer {get{return framePopup || Visible && (Contains(pointer.X,pointer.Y) || Captured);}}
         public TextEditBuffer Editor {get{return editing==Edit.None?null:draft;}}
         internal FishingPresentation(HostFishing host,F5Interaction shell,INotesIme ime=null)
+            : this(ime)
         {
-            this.host=host;this.shell=shell;TextInput=new TextEditInput(this,new RenameClipboard(this,new NotesClipboard(()=>Main.instance.Window.Handle)),ime);
+            this.host=host;this.shell=shell;
             RenameRequested=host.Rename.Rename;CanRename=()=>host.Rename.CanRename;RenameMessage=()=>host.Rename.Message;
             host.Rename.OwnTextInput=()=>TextInput.OwnsTextToken && !TextInput.OtherTextOwner;
             var prior=shell.BeforeLeave;shell.BeforeLeave=p=>{if(prior!=null && !prior(p))return false;Suspend();return true;};
+        }
+        private FishingPresentation(INotesIme ime)
+        {
+            TextInput=new TextEditInput(this,new RenameClipboard(this,new NotesClipboard(()=>Main.instance.Window.Handle)),ime);
             LanguageManager.Instance.OnLanguageChanged+=LanguageChanged;
         }
         private void LanguageChanged(LanguageManager manager){culture=null;queryRevision=-1;presetDescriptions.Clear();dirty=true;}
@@ -118,7 +125,7 @@ namespace JueMingR.TerrariaHost.Fishing
             }
         }
         internal bool Contains(float px,float py){return ready && Visible && popupRect.Contains(px,py);}
-        internal void BeforeInput(bool active){TextInput.BeforeSample(active && shell.Visible && shell.Page==7);}
+        internal void BeforeInput(bool active){TextInput.BeforeSample(active && PaneVisible);}
         private void BeginEdit(Edit mode,string text)
         {TextInput.Release(false);validation=null;editing=mode;draft=new TextEditBuffer(text??"",true,16384,65536,"输入内容过长。");TextInput.PrepareEditor();queryRevision=-1;dirty=true;}
         public void PreserveUncommittedInput(TextEditBuffer editor){if(ReferenceEquals(editor,pendingEditor))pendingClose=false;}
@@ -130,7 +137,7 @@ namespace JueMingR.TerrariaHost.Fishing
             {
                 string word=draft.Text.Trim();if(word.Length==0){validation="请输入关键词。";dirty=true;return false;}
                 validation=null;
-                return Submit(host.Settings.Value.WithList(scopeMode,scopeMatch,host.Settings.Value.List(scopeMode,scopeMatch).Add(word)),true,"关键词已添加。");
+                return Submit(Value.WithList(scopeMode,scopeMatch,Value.List(scopeMode,scopeMatch).Add(word)),true,"关键词已添加。");
             }
             if(editing==Edit.Rename)
             {
@@ -149,11 +156,17 @@ namespace JueMingR.TerrariaHost.Fishing
         private void Open(Overlay value)
         {
             if(Visible && overlay==value && SameScope()){CloseOverlay();return;}
-            CloseOverlay();scopeMode=host.Settings.Value.EditingMode;scopeMatch=host.Settings.Value.Match;
+            CloseOverlay();scopeMode=Value.EditingMode;scopeMatch=Value.Match;
             overlay=value;popupScroll=0;message=null;Opened?.Invoke();dirty=true;
             if(value==Overlay.Search)BeginEdit(Edit.Search,"");else if(value==Overlay.Keyword)BeginEdit(Edit.Keyword,"");
             else if(value==Overlay.Current)
             {
+                if (companion != null)
+                {
+                    var preview = companion.CompanionFishingCandidates(companionProfile);
+                    candidates = preview.Keys; message = preview.Message;
+                    return;
+                }
                 host.Observation.Invalidate();var p=host.Player;if(p!=null)host.Observation.Read(p);
                 Projectile b=null;for(int i=0;i<host.Observation.Count;i++)if(host.Observation.Bobbers[i].InLiquid){b=host.Observation.Bobbers[i].Projectile;break;}
                 var result=host.Catalog.Current(p,b,true);candidates=result.Keys;message=result.Message;
@@ -161,36 +174,63 @@ namespace JueMingR.TerrariaHost.Fishing
         }
         private bool Submit(FishingOptions value,bool close,string success)
         {
-            if(!host.Controls || host.Settings.Value.FilterMode==0 || pending!=0 || !SameScope() || !host.Settings.Set(value))return false;
-            pending=host.Settings.AcceptedCommandId;pendingEpoch=epoch;pendingClose=close;pendingEditor=Editor;pendingRevision=Editor?.Revision??0;pendingMessage=success;dirty=true;return true;
+            if(!Controls || Value.FilterMode==0 || pending!=0 || !SameScope())return false;
+            if (companion == null)
+            {
+                if (!host.Settings.Set(value)) return false;
+                pending = host.Settings.AcceptedCommandId;
+            }
+            else
+            {
+                if (!SetCompanionValue(value)) return false;
+                companionWrite = value;
+                pending = 1;
+            }
+            pendingEpoch=epoch;pendingClose=close;pendingEditor=Editor;pendingRevision=Editor?.Revision??0;pendingMessage=success;dirty=true;return true;
         }
-        private bool SameScope(){return scopeMode==host.Settings.Value.EditingMode && scopeMatch==host.Settings.Value.Match;}
+        private bool SameScope(){return scopeMode==Value.EditingMode && scopeMatch==Value.Match;}
         private void PollReceipt()
         {
-            if(pending==0 || host.Settings.CompletedCommandId!=pending)return;
+            if(pending==0)return;
+            bool succeeded;
+            if (companion == null)
+            {
+                if (host.Settings.CompletedCommandId != pending) return;
+                succeeded = host.Settings.CompletionSucceeded;
+            }
+            else
+            {
+                // A layout change, retired profile or newer preference cannot
+                // close another draft with this write's result.
+                if (!ReferenceEquals(Value, companionWrite))
+                { pending = 0; companionWrite = null; dirty = true; return; }
+                succeeded = companion.FishingPreferencesSaved(companionProfile, companionWrite);
+                if (!succeeded && !companion.SaveFailed(companionProfile)) return;
+                companionWrite = null;
+            }
             pending=0;
             if(pendingEpoch!=epoch)return;
-            if(!host.Settings.CompletionSucceeded){message=host.Settings.Message;dirty=true;return;}
+            if(!succeeded){message=host != null ? host.Settings.Message : companion.Status(companionProfile);dirty=true;return;}
             bool sameEditor=pendingEditor==null || ReferenceEquals(Editor,pendingEditor) && Editor.Revision==pendingRevision && !TextInput.HasComposition;
             if(pendingClose && sameEditor)CloseOverlay();message=pendingMessage;dirty=true;
         }
         private void RefreshSearch()
         {
             if(overlay!=Overlay.Search || draft==null || queryRevision==draft.Revision && ReferenceEquals(culture,Language.ActiveCulture))return;
-            queryRevision=draft.Revision;culture=Language.ActiveCulture;candidates=host.Catalog.Search(draft.Text);popupScroll=0;dirty=true;
+            queryRevision=draft.Revision;culture=Language.ActiveCulture;candidates=Search(draft.Text);popupScroll=0;dirty=true;
         }
         internal bool SecondaryOnly;
         internal bool SecondaryEntryAt(Vector2 point)
-        { return ready && !dirty && shell.Visible && shell.Page==7 && generation==shell.Layout.Generation && scroll==shell.Scroll && !Contains(point.X,point.Y) && Parts.Exists(p=>p.Enabled && p.Region<2 && (p.Command==Command.Hotkey || p.Command==Command.Current || p.Command==Command.Plus || p.Command==Command.PresetList) && p.Element.Rect.Contains(point.X,point.Y)); }
+        { return ready && !dirty && PaneVisible && generation==PaneGeneration && scroll==PaneScroll && !Contains(point.X,point.Y) && Parts.Exists(p=>p.Enabled && p.Region<2 && (p.Command==Command.Hotkey || p.Command==Command.Current || p.Command==Command.Plus || p.Command==Command.PresetList) && p.Element.Rect.Contains(point.X,point.Y)); }
         internal void ProcessPopup(bool active,KeyboardState keys,Vector2 point,bool geometryCurrent,bool focused,int wheel)
         {
             pointer=point;ConsumeLeft=leftTail;ConsumeRight=rightTail;ConsumeWheel=BlocksPageWheel=OwnsPointer=framePopup=false;
             bool left=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,right=PlayerInput.MouseInfo.RightButton==ButtonState.Pressed;
-            bool on=active && focused && shell.Visible && shell.Page==7;
-            if(!on || session!=host.Tools.Runtime.Generation){Suspend();if(focused){if(!left)leftTail=false;if(!right)rightTail=false;}previousPopupLeft=focused?left:true;previousEscape=focused?keys.IsKeyDown(Keys.Escape):true;return;}
+            bool on=active && focused && PaneVisible;
+            if(!on || session!=PaneSession){Suspend();if(focused){if(!left)leftTail=false;if(!right)rightTail=false;}previousPopupLeft=focused?left:true;previousEscape=focused?keys.IsKeyDown(Keys.Escape):true;return;}
             bool hadEditor=Editor!=null;
             TextInput.AfterSample(on,null,keys,focused);PollReceipt();RefreshSearch();
-            if(!SameScope() || Visible && host.Settings.Value.FilterMode==0){CloseOverlay();scopeMode=host.Settings.Value.EditingMode;scopeMatch=host.Settings.Value.Match;listScroll=0;}
+            if(!SameScope() || Visible && Value.FilterMode==0){CloseOverlay();scopeMode=Value.EditingMode;scopeMatch=Value.Match;listScroll=0;}
             // While editing, only TextEditInput may interpret Escape after IME
             // composition and its physical key tail have been consumed.
             bool escape=keys.IsKeyDown(Keys.Escape);if(escape && !previousEscape && Visible && !hadEditor){framePopup=true;CloseOverlay();}previousEscape=escape;
@@ -200,7 +240,7 @@ namespace JueMingR.TerrariaHost.Fishing
                 if(!left){entryTail=false;entryArmed=null;}
                 previousPopupLeft=left;return;
             }
-            if(!geometryCurrent || generation!=shell.Layout.Generation || revision!=host.Settings.Revision || canConfigure!=host.Controls){armed=null;dirty=true;}
+            if(!geometryCurrent || generation!=PaneGeneration || revision!=ValueRevision || canConfigure!=Controls){armed=null;dirty=true;}
             Part entry=SecondaryEntryAt(point)?Hit(point,false):null;
             if(entry!=null && left && !previousPopupLeft){entryArmed=entry;entryTail=true;}
             if(entryTail)
@@ -218,8 +258,7 @@ namespace JueMingR.TerrariaHost.Fishing
                 previousPopupLeft=left; return;
             }
             bool inside=Contains(point.X,point.Y);
-            var window=F5Layout.WindowSize(screen.X,screen.Y,matrix.M11);
-            if(ready && !dirty && !inside && left && !previousPopupLeft && new F5Rect(shell.X,shell.Y,window.Width,window.Height).Contains(point.X,point.Y))
+            if(ready && !dirty && !inside && left && !previousPopupLeft && PaneWindow.Contains(point.X,point.Y))
             {
                 // Dismiss on a fresh main-window press and retain its release.
                 // The same gesture must not navigate, drag or toggle behind it.
@@ -236,12 +275,13 @@ namespace JueMingR.TerrariaHost.Fishing
         {
             bool secondaryOnly=SecondaryOnly;SecondaryOnly=false;
             pointer=point;bool left=PlayerInput.MouseInfo.LeftButton==ButtonState.Pressed,right=PlayerInput.MouseInfo.RightButton==ButtonState.Pressed;
-            if(!active || !focused || !shell.Visible || shell.Page!=7){previousLeft=focused?left:true;return;}
+            if(!active || !focused || !PaneVisible){previousLeft=focused?left:true;return;}
             // Popup processing already owns this gesture (including its closing
             // release). Page processing must not replace its armed candidate.
             if(Visible || framePopup){previousLeft=left;return;}
-            if(!geometryCurrent || generation!=shell.Layout.Generation || revision!=host.Settings.Revision || canConfigure!=host.Controls || scroll!=shell.Scroll || view.X!=shell.X+shell.Layout.Viewport.X || view.Y!=shell.Y+shell.Layout.Viewport.Y){armed=null;dirty=true;}
-            bool inside=ready && view.Contains(point.X,point.Y);OwnsPointer|=inside;
+            if(!geometryCurrent || generation!=PaneGeneration || revision!=ValueRevision || canConfigure!=Controls || scroll!=PaneScroll || !view.Equals(PaneViewport)){armed=null;dirty=true;}
+            bool inside=ready && view.Contains(point.X,point.Y) && (companion==null || point.Y>=view.Y-PaneScroll);
+            OwnsPointer|=inside;
             if(inside){if(left)leftTail=true;if(right)rightTail=true;}
             Part hit=ready && !dirty && inside && !Visible && !blocked?Hit(point,false):null;
             if(secondaryOnly && hit!=null && hit.Command!=Command.Hotkey)hit=null;
@@ -255,16 +295,16 @@ namespace JueMingR.TerrariaHost.Fishing
         {float next=Math.Max(0,Math.Min(Math.Max(0,total-height),offset-wheel/120f*48));if(next==offset)return;offset=next;dirty=true;armed=null;ConsumeWheel=true;}
         private void Execute(Part p)
         {
-            if(p.Mode!=host.Settings.Value.EditingMode || p.Match!=host.Settings.Value.Match)return;
-            if(p.Command!=Command.Close && (!host.Controls || ListCommand(p.Command) && host.Settings.Value.FilterMode==0))return;
-            var value=host.Settings.Value;
+            if(p.Mode!=Value.EditingMode || p.Match!=Value.Match)return;
+            if(p.Command!=Command.Close && (!Controls || ListCommand(p.Command) && Value.FilterMode==0))return;
+            var value=Value;
             switch(p.Command)
             {
-                case Command.Feature:host.Set(p.Feature,p.Value);break;
+                case Command.Feature:SetFeature(p.Feature,p.Value);break;
                 case Command.Hotkey:CloseOverlay();HotkeyClicked?.Invoke(HostFishing.ActionFor(p.Feature),p.Element.Rect);break;
-                case Command.Match:CloseOverlay();host.Set(6,p.Value);break;
-                case Command.Filter:CloseOverlay();host.Set(5,(value.FilterMode+1)%3);break;
-                case Command.Special:host.Set(p.Feature,(value.State(p.Feature)+1)%3);break;
+                case Command.Match:CloseOverlay();SetFeature(6,p.Value);break;
+                case Command.Filter:CloseOverlay();SetFeature(5,(value.FilterMode+1)%3);break;
+                case Command.Special:SetFeature(p.Feature,(value.State(p.Feature)+1)%3);break;
                 case Command.Current:Open(Overlay.Current);break;
                 case Command.Plus:Open(value.Match==0?Overlay.Search:Overlay.Keyword);break;
                 case Command.Clear:Submit(value.WithList(p.Mode,p.Match,new FishList()),false,"名单已清空。");break;

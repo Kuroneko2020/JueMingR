@@ -17,6 +17,7 @@ namespace NativeWorldTextProbe
             var previousMount = body.inventory[32];
             var previousPotion = body.inventory[33];
             var previousWeapon = body.inventory[41];
+            var wormhole = body.inventory[44];
             int life = body.statLife;
             int potionDelay = body.potionDelay;
             var buffs = (Array)body.buffType.Clone();
@@ -41,6 +42,7 @@ namespace NativeWorldTextProbe
                 body.armor[3] = new Item(ItemID.CreativeWings);
                 body.inventory[32] = new Item(ItemID.CosmicCarKey);
                 body.inventory[41] = new Item(ItemID.VenusMagnum);
+                body.inventory[44] = new Item(ItemID.WormholePotion);
                 int sickness = body.FindBuffIndex(BuffID.PotionSickness);
                 if (sickness >= 0) body.DelBuff(sickness);
                 body.potionDelay = 0;
@@ -55,6 +57,8 @@ namespace NativeWorldTextProbe
                 Require((bool)Call(host, "SetBehavior", profile.Id, new CompanionBehavior
                 {
                     Follow = true, AttackEnabled = false, HealthRecoveryEnabled = false,
+                    AutoTeleportEnabled = true, AutoTeleportBlockedEnabled = true, AutoTeleportBlockedSeconds = 2,
+                    AutoTeleportDistanceEnabled = false,
                     MainWeapons = new[] { new CompanionWeaponPreference(ItemID.VenusMagnum, 0, 41) }
                 }),
                     "dynamic fixture uses the public follow behavior");
@@ -128,6 +132,8 @@ namespace NativeWorldTextProbe
                 Require(ownerMoved > 90 && ownerOrigin.Y - ownerTop > 300 && human.position.X < 88 * 16,
                     "the scripted owner continuously flies above root planning range, releases, and reverses");
                 Require(!(bool)Get(actor, "Faulted"), "dynamic production player does not fault: " + Get(actor, "Status"));
+                Require(body.inventory[44].type == ItemID.WormholePotion && body.inventory[44].stack == 1,
+                    "the paid original action stays unused through working flight, descent and the owner's real reversal");
                 if (!comparison)
                 {
                     Require(firstUp >= 0 && firstUp < 55 && firstWing > firstUp && bodyMoved > 95 && crossedWall,
@@ -153,6 +159,7 @@ namespace NativeWorldTextProbe
                 body.inventory[32] = previousMount;
                 body.inventory[33] = previousPotion;
                 body.inventory[41] = previousWeapon;
+                body.inventory[44] = wormhole;
                 body.statLife = life;
                 body.potionDelay = potionDelay;
                 Array.Copy(buffs, body.buffType, buffs.Length);

@@ -32,11 +32,11 @@ namespace JueMingR.TerrariaHost.Fishing
         private int presetSkin=-1;
         internal long PresetScans {get;private set;}
         internal long PresetDescriptions {get;private set;}
-        private static readonly string[] help={"收竿后自动在原位抛竿；f5菜单开启时不生效","进入钓鱼后自动将保存的套装换成适合钓鱼的","进入钓鱼后自动将当前套装饰品换成适合钓鱼的","钓上的鱼获尝试放进附近箱子","有可用过滤模式下，尝试跳过不要的鱼获"};
+        private static readonly string[] help={"收竿后自动在原位抛竿；f5菜单开启时不生效","进入钓鱼后自动将保存的套装换成适合钓鱼的","进入钓鱼后自动将当前套装饰品换成适合钓鱼的","把鱼获堆叠到附近已有同类的容器","有可用过滤模式下，尝试跳过不要的鱼获"};
         internal long LayoutBuilds {get;private set;}
         internal void Prepare(bool active,Matrix transform,Vector2 viewport)
         {
-            if(!active || !shell.Visible || shell.Page!=7){if(ready || Visible || Editor!=null)Suspend();return;}
+            if(!active || !PaneVisible){if(ready || Visible || Editor!=null)Suspend();return;}
             if(!renderer.Refresh()){ready=false;return;}
             PrepareLayout(transform,viewport);PrepareIcons();
         }
@@ -44,32 +44,32 @@ namespace JueMingR.TerrariaHost.Fishing
         {
             // Retire drafts before publishing the next generation or processing
             // a late save receipt. Prepare can precede the next input callback.
-            if(session!=host.Tools.Runtime.Generation){CloseOverlay();message=null;listScroll=0;}
+            if(session!=PaneSession){CloseOverlay();message=null;listScroll=0;}
             if(matrix!=transform || screen!=viewport)dirty=true;
             matrix=transform;screen=viewport;PollReceipt();RefreshSearch();UpdateNotice();
-            var next=shell.Layout.Viewport.Offset(shell.X,shell.Y);
-            bool shape=dirty || hostError!=host.Error || inputError!=TextInput.Error || draftError!=draft?.Error || renameRevision!=host.Rename.Revision || renameAllowed!=host.Rename.CanRename || generation!=shell.Layout.Generation || skin!=renderer.Generation || revision!=host.Settings.Revision || canConfigure!=host.Controls || session!=host.Tools.Runtime.Generation || !ReferenceEquals(culture,Language.ActiveCulture) || playerName!=host.Player?.name || view.X!=next.X || view.Y!=next.Y || view.Width!=next.Width || view.Height!=next.Height;
+            var next=PaneViewport;
+            bool shape=dirty || hostError!=host?.Error || inputError!=TextInput.Error || draftError!=draft?.Error || renameRevision!=RenameRevision || renameAllowed!=RenameAllowed || generation!=PaneGeneration || skin!=renderer.Generation || revision!=ValueRevision || canConfigure!=Controls || session!=PaneSession || !ReferenceEquals(culture,Language.ActiveCulture) || playerName!=host?.Player?.name || view.X!=next.X || view.Y!=next.Y || view.Width!=next.Width || view.Height!=next.Height;
             view=next;ready=true;
             if(shape)
             {
-                LayoutBuilds++;armed=null;inputError=TextInput.Error;draftError=draft?.Error;hostError=host.Error;
-                if(!SameScope() || Visible && host.Settings.Value.FilterMode==0){CloseOverlay();listScroll=0;}
-                scopeMode=host.Settings.Value.EditingMode;scopeMatch=host.Settings.Value.Match;
+                LayoutBuilds++;armed=null;inputError=TextInput.Error;draftError=draft?.Error;hostError=host?.Error;
+                if(!SameScope() || Visible && Value.FilterMode==0){CloseOverlay();listScroll=0;}
+                scopeMode=Value.EditingMode;scopeMatch=Value.Match;
                 pageParts.Clear();listParts.Clear();popupParts.Clear();BuildPage();BuildPopup();
-                revision=host.Settings.Revision;canConfigure=host.Controls;session=host.Tools.Runtime.Generation;generation=shell.Layout.Generation;skin=renderer.Generation;culture=Language.ActiveCulture;playerName=host.Player?.name;renameRevision=host.Rename.Revision;renameAllowed=host.Rename.CanRename;dirty=false;
+                revision=ValueRevision;canConfigure=Controls;session=PaneSession;generation=PaneGeneration;skin=renderer.Generation;culture=Language.ActiveCulture;playerName=host?.Player?.name;renameRevision=RenameRevision;renameAllowed=RenameAllowed;dirty=false;
             }
-            if(shape || scroll!=shell.Scroll)
+            if(shape || scroll!=PaneScroll)
             {
                 projection++;armed=null;Parts.Clear();editRect=default(F5Rect);
                 PositionPopup();
-                listRect=F5HintLayout.Intersect(listLocal.Offset(view.X,view.Y-shell.Scroll),view);
-                foreach(var p in pageParts)Project(p,view.X,view.Y-shell.Scroll,view);
-                foreach(var p in listParts)Project(p,view.X+listLocal.X,view.Y+listLocal.Y-shell.Scroll-listScroll,listRect);
+                listRect=F5HintLayout.Intersect(listLocal.Offset(view.X,view.Y-PaneScroll),view);
+                foreach(var p in pageParts)Project(p,view.X,view.Y-PaneScroll,view);
+                foreach(var p in listParts)Project(p,view.X+listLocal.X,view.Y+listLocal.Y-PaneScroll-listScroll,listRect);
                 foreach(var p in popupParts)Project(p,p.Region==3?popupBody.X:popupRect.X,p.Region==3?popupBody.Y-popupScroll:popupRect.Y,p.Region==3?popupBody:popupRect);
-                scroll=shell.Scroll;
+                scroll=PaneScroll;
             }
             if(Editor!=null && editRect.Width>0 && (shape || editRevision!=draft.Revision || caretRevision!=draft.CaretRevision || composition!=TextInput.Composition || editWidth!=editRect.Width))
-            {editView.Prepare(draft,TextInput.Composition,editRect.Width-12,shell.Layout.DynamicTextSize);editRevision=draft.Revision;caretRevision=draft.CaretRevision;composition=TextInput.Composition;editWidth=editRect.Width;}
+            {editView.Prepare(draft,TextInput.Composition,editRect.Width-12,DynamicMeasure);editRevision=draft.Revision;caretRevision=draft.CaretRevision;composition=TextInput.Composition;editWidth=editRect.Width;}
         }
         private void Project(Part p,float dx,float dy,F5Rect clip)
         {
@@ -80,22 +80,27 @@ namespace JueMingR.TerrariaHost.Fishing
             Parts.Add(copy);if(Editor!=null && (copy.Command==Command.Field || copy.Command==Command.RenameField && editing==Edit.Rename))editRect=rect;
         }
         private Part Make(F5Element element,Command command=Command.None,int region=0)
-        {return new Part{Element=element,Command=command,Mode=scopeMode,Match=scopeMatch,Region=region,Enabled=PresentationAvailable && (!ListCommand(command) || host.Settings.Value.FilterMode!=0)};}
+        {return new Part{Element=element,Command=command,Mode=scopeMode,Match=scopeMatch,Region=region,Enabled=PresentationAvailable && (!ListCommand(command) || Value.FilterMode!=0)};}
         private void BuildPage()
         {
             float y=0;
+            if (companion == null) BuildPlayerControls(ref y);
+            BuildFilter(y);
+        }
+        private void BuildPlayerControls(ref float y)
+        {
             for(int feature=0;feature<5;feature++)
             {
                 var elements=new List<F5Element>();var labels=feature==3?new[]{"所有","任务鱼","关闭","键"}:new[]{"开启","关闭","键"};
-                new F5RowLayout(elements,shell.Layout.TextSize).Row(ref y,0,view.Width,HostFishing.Names[feature],labels,description:new F5RowDescription(HostFishing.Actions[feature],help[feature]));
+                new F5RowLayout(elements,Measure).Row(ref y,0,view.Width,HostFishing.Names[feature],labels,description:new F5RowDescription(HostFishing.Actions[feature],help[feature]));
                 foreach(var e in elements)
                 {
                     var p=Make(e,e.Kind==F5ElementKind.Hotkey?Command.Hotkey:e.Kind==F5ElementKind.Button?Command.Feature:Command.None);
-                    p.Feature=feature;p.Value=e.Text=="关闭"?0:e.Text=="任务鱼"?2:1;p.Selected=p.Command==Command.Feature && host.Settings.Value.State(feature)==p.Value;p.Hint=e.Description!=null?help[feature]:null;pageParts.Add(p);
-                    if(feature==3 && p.Command==Command.Feature && p.Value!=0)p.Hint=p.Value==1?"会尝试把所有鱼获放进箱子":"仅会尝试把任务鱼获放进箱子";
+                    p.Feature=feature;p.Value=e.Text=="关闭"?0:e.Text=="任务鱼"?2:1;p.Selected=p.Command==Command.Feature && Value.State(feature)==p.Value;p.Hint=e.Description!=null?help[feature]:null;pageParts.Add(p);
+                    if(feature==3 && p.Command==Command.Feature && p.Value!=0)p.Hint=p.Value==1?"把自动收竿的鱼获堆叠到附近已有同类的容器":"把当前任务鱼堆叠到附近已有同类的容器";
                 }
             }
-            var nameRow=new List<F5Element>();new F5RowLayout(nameRow,shell.Layout.TextSize).Row(ref y,0,view.Width,"快捷改名",new[]{null,editing==Edit.Rename?"确定":"快捷改名"});
+            var nameRow=new List<F5Element>();new F5RowLayout(nameRow,Measure).Row(ref y,0,view.Width,"快捷改名",new[]{null,editing==Edit.Rename?"确定":"快捷改名"});
             foreach(var e in nameRow)
             {
                 var p=Make(e,e.Kind==F5ElementKind.Field?Command.RenameField:e.Kind==F5ElementKind.Button?Command.Rename:Command.None);p.Enabled=CanRename?.Invoke()??false;
@@ -103,34 +108,37 @@ namespace JueMingR.TerrariaHost.Fishing
                 if(p.Command==Command.RenameField)p.Label=Fit(host.Player?.name??"",e.Rect,.7f,6);pageParts.Add(p);
             }
             var continuousRow=new List<F5Element>();
-            new F5RowLayout(continuousRow,shell.Layout.TextSize).Row(ref y,0,view.Width,HostFishing.AnglerName,new[]{"开启","关闭","键"},description:new F5RowDescription(HostFishing.AnglerAction,HostFishing.AnglerHelp));
+            new F5RowLayout(continuousRow,Measure).Row(ref y,0,view.Width,HostFishing.AnglerName,new[]{"开启","关闭","键"},description:new F5RowDescription(HostFishing.AnglerAction,HostFishing.AnglerHelp));
             foreach(var e in continuousRow)
             {
                 var p=Make(e,e.Kind==F5ElementKind.Hotkey?Command.Hotkey:e.Kind==F5ElementKind.Button?Command.Feature:Command.None);
-                p.Feature=10;p.Value=e.Text=="关闭"?0:1;p.Selected=p.Command==Command.Feature && host.Settings.Value.AnglerContinuous==(p.Value==1);
+                p.Feature=10;p.Value=e.Text=="关闭"?0:1;p.Selected=p.Command==Command.Feature && Value.AnglerContinuous==(p.Value==1);
                 p.Enabled=p.Enabled && host.Angler.Available;p.Hint=e.Description!=null?HostFishing.AnglerHelp:!host.Angler.Available?host.Angler.Status:null;pageParts.Add(p);
             }
+        }
+        private void BuildFilter(float y)
+        {
             float top=y,left=y+8;
-            float rightWidth=Math.Max(140,shell.Layout.DynamicTextSize("任务鱼：不要",.7f).Width+36);
+            float rightWidth=Math.Max(140,DynamicMeasure("任务鱼：不要",.7f).Width+36);
             string matchLabel=scopeMatch==0?"精确匹配":"关键词";
-            float titleWidth=shell.Layout.DynamicTextSize("当前过滤模式：",.7f).Width;
-            float buttonMinimum=shell.Layout.DynamicTextSize("精确匹配",.7f).Width+16;
+            float titleWidth=DynamicMeasure("当前过滤模式：",.7f).Width;
+            float buttonMinimum=DynamicMeasure("精确匹配",.7f).Width+16;
             bool side=view.Width-rightWidth-12>=Math.Max(300,titleWidth+buttonMinimum*2+32);float leftWidth=side?view.Width-rightWidth-12:view.Width;
             var leftPanel=Panel(new F5Rect(0,top,leftWidth,0));pageParts.Add(leftPanel);
             float toggleWidth=(leftWidth-32-titleWidth)/2;
-            float headerHeight=Math.Max(30,shell.Layout.DynamicTextSize(matchLabel,.7f).Height+8);
+            float headerHeight=Math.Max(30,DynamicMeasure(matchLabel,.7f).Height+8);
             var heading=Fit("当前过滤模式：",new F5Rect(8,left,titleWidth,headerHeight),.7f,0);
             var headingPart=Make(heading);headingPart.Hint="点击右边按钮切换过滤模式，需要声呐buff";pageParts.Add(headingPart);
-            var filterButton=Make(Element(F5ElementKind.Button,new F5Rect(16+titleWidth,left,toggleWidth,headerHeight),HostFishing.ModeName(5,host.Settings.Value.FilterMode)),Command.Filter);
-            filterButton.Feature=5;filterButton.Selected=host.Settings.Value.FilterMode!=0;pageParts.Add(filterButton);
-            filterButton.Hint=host.Settings.Value.FilterMode==1?"仅会尝试钓上名单内的物品":host.Settings.Value.FilterMode==2?"不会钓上名单内的物品":null;
+            var filterButton=Make(Element(F5ElementKind.Button,new F5Rect(16+titleWidth,left,toggleWidth,headerHeight),HostFishing.ModeName(5,Value.FilterMode)),Command.Filter);
+            filterButton.Feature=5;filterButton.Selected=Value.FilterMode!=0;pageParts.Add(filterButton);
+            filterButton.Hint=Value.FilterMode==1?"仅会尝试钓上名单内的物品":Value.FilterMode==2?"不会钓上名单内的物品":null;
             var matchButton=Make(Element(F5ElementKind.Button,new F5Rect(leftWidth-8-toggleWidth,left,toggleWidth,headerHeight),matchLabel),Command.Match);
             matchButton.Value=1-scopeMatch;matchButton.Hint=scopeMatch==0?"精确匹配名单内的物品":"匹配物品名包含名单内关键词的物品";pageParts.Add(matchButton);left+=headerHeight+6;
             string[] toolbar=scopeMatch==0?new[]{"添加当前","＋","清空","保存预设","预设列表"}:new[]{"＋","清空","保存预设","预设列表"};
             Command[] actions=scopeMatch==0?new[]{Command.Current,Command.Plus,Command.Clear,Command.Save,Command.PresetList}:new[]{Command.Plus,Command.Clear,Command.Save,Command.PresetList};
             Buttons(pageParts,ref left,8,leftWidth-16,toolbar,actions,configure:p=>{p.Hint=p.Command==Command.Current?"选择添加当前鱼获，需要先抛竿":p.Command==Command.Plus?(scopeMatch==0?"搜索物品并添加":"输入关键词"):p.Command==Command.Clear?"清空当前名单":null;},fill:true);
             pageParts.Add(Make(Element(F5ElementKind.Divider,new F5Rect(8,left+1,leftWidth-16,1))));left+=10;
-            var list=host.Settings.Value.List(scopeMode,scopeMatch);int count=scopeMatch==0?list.Exact.Count:list.Keywords.Count;
+            var list=Value.List(scopeMode,scopeMatch);int count=scopeMatch==0?list.Exact.Count:list.Keywords.Count;
             int columns=CardColumns(leftWidth-16,scopeMatch==0),rows=Math.Max(1,(count+columns-1)/columns);
             float cardHeight=CardHeight();float bodyHeight=Math.Max(cardHeight+8,Math.Min(228,rows*(cardHeight+4)));
             listHeight=rows*(cardHeight+4);listScroll=Math.Min(listScroll,Math.Max(0,listHeight-bodyHeight));
@@ -147,7 +155,7 @@ namespace JueMingR.TerrariaHost.Fishing
             Text(pageParts,"特殊规则",rx+8,ref right,rw-16);
             foreach(int feature in new[]{7,9,8})
             {
-                string name=feature==7?"匣子":feature==8?"任务鱼":"怪物";int state=host.Settings.Value.State(feature);string mode=state==0?"跟随":state==1?"要":"不要";
+                string name=feature==7?"匣子":feature==8?"任务鱼":"怪物";int state=Value.State(feature);string mode=state==0?"跟随":state==1?"要":"不要";
                 Buttons(pageParts,ref right,rx+8,rw-16,new[]{name+"："+mode},new[]{Command.Special},0,p=>{p.Feature=feature;p.Hint=state==0?"按照黑白名单过滤"+name+"，需要声呐buff":"忽略黑白名单，"+(state==1?"会":"不会")+"钓上"+name+"，需要声呐buff";},fill:true);
             }
             leftPanel.Element=Element(F5ElementKind.Panel,new F5Rect(0,top,leftWidth,left-top));
@@ -158,7 +166,8 @@ namespace JueMingR.TerrariaHost.Fishing
                 for(int i=first;i<pageParts.Count;i++){pageParts[i].Name="page-notice";pageParts[i].Ink=Color.LightSteelBlue;}
             }
             float bottom=Math.Max(left,right+8);
-            shell.Layout.SetFishingContentHeight(bottom+6);shell.ClampScroll();
+            if (companion == null) { shell.Layout.SetFishingContentHeight(bottom+6);shell.ClampScroll(); }
+            else FilterHeight = bottom + 6;
         }
         private void BuildPopup()
         {
@@ -170,8 +179,8 @@ namespace JueMingR.TerrariaHost.Fishing
                 deleteWidth=24;
                 for(int i=0;i<presets.Length;i++)
                 {
-                    var preset=presets[i];nameWidth=Math.Max(nameWidth,shell.Layout.DynamicTextSize(PresetName(preset,i),.7f).Width+8);
-                    float natural=preset.Match==0?preset.Content.Exact.Count*40-4:preset.Content.Keywords.Sum(word=>shell.Layout.DynamicTextSize(word,.7f).Width+20)-4;
+                    var preset=presets[i];nameWidth=Math.Max(nameWidth,DynamicMeasure(PresetName(preset,i),.7f).Width+8);
+                    float natural=preset.Match==0?preset.Content.Exact.Count*40-4:preset.Content.Keywords.Sum(word=>DynamicMeasure(word,.7f).Width+20)-4;
                     contentWidth=Math.Max(contentWidth,Math.Min(236,natural));
                 }
                 nameWidth=Math.Max(64,nameWidth);contentWidth=Math.Max(76,contentWidth);
@@ -182,12 +191,12 @@ namespace JueMingR.TerrariaHost.Fishing
             float y=10;string title=overlay==Overlay.Search?"添加鱼获":overlay==Overlay.Current?"当前水域候选":overlay==Overlay.Keyword?"添加关键词":"名单预设";
             if(overlay==Overlay.Presets)
             {
-                float closeWidth=shell.Layout.DynamicTextSize("关闭",.6f).Width+16;
-                var titleSize=shell.Layout.DynamicTextSize(title,.85f);
+                float closeWidth=DynamicMeasure("关闭",.6f).Width+16;
+                var titleSize=DynamicMeasure(title,.85f);
                 popupParts.Add(Make(Fit(title,new F5Rect(14,y,titleSize.Width,titleSize.Height+4),.85f,0),region:2));
                 var close=Make(Element(F5ElementKind.Button,new F5Rect(width-closeWidth-12,y,closeWidth,titleSize.Height+4)),Command.Close,2);close.Label=Fit("关闭",close.Element.Rect,.6f,4);close.Enabled=true;popupParts.Add(close);
                 string context=(scopeMode==1?"白名单":"黑名单")+" · "+(scopeMatch==0?"精确匹配":"关键词");
-                var contextSize=shell.Layout.DynamicTextSize(context,.55f);float contextX=22+titleSize.Width;
+                var contextSize=DynamicMeasure(context,.55f);float contextX=22+titleSize.Width;
                 bool inline=contextX+contextSize.Width+8<=close.Element.Rect.X;
                 var contextPart=Make(Fit(context,new F5Rect(inline?contextX:14,inline?y:y+titleSize.Height+6,inline?contextSize.Width+1:bodyWidth,inline?titleSize.Height+4:contextSize.Height),.55f,0),region:2);contextPart.Ink=Color.LightSteelBlue;popupParts.Add(contextPart);
                 y+=titleSize.Height+10+(inline?0:contextSize.Height+6);
@@ -260,7 +269,7 @@ namespace JueMingR.TerrariaHost.Fishing
             Command source=overlay==Overlay.Current?Command.Current:overlay==Overlay.Presets?Command.PresetList:Command.Plus;
             foreach(var part in pageParts)if(part.Command==source)
             {
-                var next=F5PopupPlacement.Place(part.Element.Rect.Offset(view.X,view.Y-shell.Scroll),popupRect.Width,popupRect.Height,screen.X/matrix.M11,screen.Y/matrix.M22);
+                var next=F5PopupPlacement.Place(part.Element.Rect.Offset(view.X,view.Y-PaneScroll),popupRect.Width,popupRect.Height,screen.X/matrix.M11,screen.Y/matrix.M22);
                 popupBody=popupBody.Offset(next.X-popupRect.X,next.Y-popupRect.Y);popupRect=next;return;
             }
         }
@@ -268,7 +277,7 @@ namespace JueMingR.TerrariaHost.Fishing
         {return ReferenceEquals(preset,TrashPreset)?"低渔力垃圾":"预设 "+(index+1-(scopeMode==2 && scopeMatch==0?1:0));}
         private FishPreset[] ScopedPresets()
         {
-            var source=host.Settings.Value.Presets;
+            var source=Value.Presets;
             if(ReferenceEquals(presetSource,source) && presetMode==scopeMode && presetMatch==scopeMatch)return scopedPresets;
             if(!ReferenceEquals(presetSource,source))presetDescriptions.Clear();
             presetSource=source;presetMode=scopeMode;presetMatch=scopeMatch;PresetScans++;
@@ -283,9 +292,9 @@ namespace JueMingR.TerrariaHost.Fishing
             for(int i=0;i<count;i++)
             {
                 string word=preset.Match==0?null:preset.Content.Keywords[i];
-                float w=word==null?36:Math.Min(available,(float)Math.Ceiling(shell.Layout.DynamicTextSize(word,.7f).Width)+20);
+                float w=word==null?36:Math.Min(available,(float)Math.Ceiling(DynamicMeasure(word,.7f).Width)+20);
                 var lines=word==null?Array.Empty<string>():PresetWordLines(word,w-16);
-                float lineHeight=word==null?0:shell.Layout.DynamicTextSize(word,.7f).Height+2;
+                float lineHeight=word==null?0:DynamicMeasure(word,.7f).Height+2;
                 float height=Math.Max(CardHeight(),lines.Length*lineHeight+10);
                 if(x>0 && x+w>available){x=0;y+=rowHeight+4;rowHeight=0;}
                 var chip=Make(Element(F5ElementKind.Button,new F5Rect(x,y,w,height)),region:3);
@@ -307,21 +316,21 @@ namespace JueMingR.TerrariaHost.Fishing
             for(int i=1;i<elements.Length;i++)
             {
                 int from=elements[i-1],end=elements[i];
-                if(shell.Layout.DynamicTextSize(word.Substring(from,end-from),.7f).Width<=width)stops.Add(end);
+                if(DynamicMeasure(word.Substring(from,end-from),.7f).Width<=width)stops.Add(end);
                 else while(from<end){from+=char.IsHighSurrogate(word[from]) && from+1<end && char.IsLowSurrogate(word[from+1])?2:1;stops.Add(from);}
             }
             var boundaries=stops.ToArray();int start=0;
             while(start<boundaries.Length-1)
             {
                 int low=start+1,high=boundaries.Length-1;
-                while(low<high){int mid=(low+high+1)/2;string part=word.Substring(boundaries[start],boundaries[mid]-boundaries[start]);if(shell.Layout.DynamicTextSize(part,.7f).Width<=width)low=mid;else high=mid-1;}
+                while(low<high){int mid=(low+high+1)/2;string part=word.Substring(boundaries[start],boundaries[mid]-boundaries[start]);if(DynamicMeasure(part,.7f).Width<=width)low=mid;else high=mid-1;}
                 lines.Add(word.Substring(boundaries[start],boundaries[low]-boundaries[start]));start=low;
             }
             return lines.ToArray();
         }
-        private float CardHeight(){return Math.Max(36,shell.Layout.TextSize("鱼获",.7f).Height+12);}
+        private float CardHeight(){return Math.Max(36,Measure("鱼获",.7f).Height+12);}
         private int CardColumns(float width,bool icons)
-        {float minimum=icons?Math.Max(112,36+shell.Layout.DynamicTextSize("鱼获",.7f).Width+28):140;return Math.Max(1,Math.Min(icons?3:2,(int)((width+4)/(minimum+4))));}
+        {float minimum=icons?Math.Max(112,36+DynamicMeasure("鱼获",.7f).Width+28):140;return Math.Max(1,Math.Min(icons?3:2,(int)((width+4)/(minimum+4))));}
         private void Card(List<Part> list,F5Rect rect,FishKey? fish,string name,Command command,int region)
         {
             var p=Make(Element(F5ElementKind.Button,rect),command,region);p.Fish=fish;p.Name=name;p.Selected=fish.HasValue && selected.Contains(fish.Value);p.Hint=name+(fish.HasValue?" #"+fish.Value.Id+(fish.Value.Kind==FishKind.Npc?"（NPC）":""):"");
@@ -334,24 +343,24 @@ namespace JueMingR.TerrariaHost.Fishing
         }
         private Part Panel(F5Rect rect){return Make(Element(F5ElementKind.Panel,rect));}
         private F5Element Element(F5ElementKind kind,F5Rect rect,string text=null)
-        {return new F5Element(kind,rect,text,text==null?default(F5Size):shell.Layout.DynamicTextSize(text,.7f),.7f,F5Command.None);}
+        {return new F5Element(kind,rect,text,text==null?default(F5Size):DynamicMeasure(text,.7f),.7f,F5Command.None);}
         private static F5Element Move(F5Element e,float x,float y){return new F5Element(e.Kind,e.Rect.Offset(x,y),e.Text,e.TextSize,e.TextScale,e.Command,e.HotkeyTarget,e.Description,e.HintRect.Offset(x,y));}
         private F5Element Fit(string text,F5Rect rect,float scale,float inset)
         {
-            string fitted=text;var size=shell.Layout.DynamicTextSize(fitted,scale);var boundaries=TextElements.Boundaries(text);
+            string fitted=text;var size=DynamicMeasure(fitted,scale);var boundaries=TextElements.Boundaries(text);
             if(size.Width>rect.Width-inset*2)
             {
                 int low=0,high=boundaries.Length-2;
-                while(low<high){int mid=(low+high+1)/2;var measured=shell.Layout.DynamicTextSize(text.Substring(0,boundaries[mid])+"…",scale);if(measured.Width<=rect.Width-inset*2)low=mid;else high=mid-1;}
-                fitted=text.Substring(0,boundaries[low])+"…";size=shell.Layout.DynamicTextSize(fitted,scale);
+                while(low<high){int mid=(low+high+1)/2;var measured=DynamicMeasure(text.Substring(0,boundaries[mid])+"…",scale);if(measured.Width<=rect.Width-inset*2)low=mid;else high=mid-1;}
+                fitted=text.Substring(0,boundaries[low])+"…";size=DynamicMeasure(fitted,scale);
             }
             return new F5Element(F5ElementKind.Text,new F5Rect(rect.X+inset,rect.Y+(rect.Height-size.Height)/2,size.Width,size.Height),fitted,size,scale,F5Command.None);
         }
         private void Text(List<Part> target,string text,float x,ref float y,float width,int region=0)
-        {var elements=new List<F5Element>();new F5RowLayout(elements,shell.Layout.DynamicTextSize).TextLines(text,x,ref y,width,.7f);foreach(var e in elements)target.Add(Make(e,Command.None,region));}
+        {var elements=new List<F5Element>();new F5RowLayout(elements,DynamicMeasure).TextLines(text,x,ref y,width,.7f);foreach(var e in elements)target.Add(Make(e,Command.None,region));}
         private void Buttons(List<Part> target,ref float y,float x,float width,string[] labels,Command[] commands,int region=0,Action<Part> configure=null,bool fill=false)
         {
-            var elements=new List<F5Element>();new F5RowLayout(elements,shell.Layout.DynamicTextSize).Buttons(ref y,x,width,labels);
+            var elements=new List<F5Element>();new F5RowLayout(elements,DynamicMeasure).Buttons(ref y,x,width,labels);
             // Preserve readable native text widths, then share each row's spare
             // width equally. The compact plus button does not crowd long labels.
             if(fill)for(int first=0;first<elements.Count;)

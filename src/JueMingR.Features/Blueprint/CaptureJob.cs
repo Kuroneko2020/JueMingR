@@ -91,7 +91,7 @@ namespace JueMingR.Features.Blueprint
                 shape.Object.Id = ++nextObjectId;
                 long area = (long)shape.Object.Width * shape.Object.Height;
                 if (!shape.Object.Reliable || area <= 0 || area >= CaptureChunk.MaximumRecords ||
-                    shape.RowOffsets.Length != shape.Object.Height || shape.ColumnStep <= 0)
+                    !shape.CanMatchMembers)
                 {
                     shape.Object.Reliable = false;
                     if (string.IsNullOrEmpty(shape.Object.Reason)) shape.Object.Reason = "对象范围或外观无法可靠确认";
@@ -154,8 +154,10 @@ namespace JueMingR.Features.Blueprint
         private bool Matches(BlueprintObjectShape shape, CaptureCell value, int index)
         {
             if ((value.Layers & CaptureLayer.Tile) == 0 || value.TileType != shape.Object.Type ||
-                !shape.IndependentMemberFrames && value.FrameX != shape.BaseFrameX + index % shape.Object.Width * shape.ColumnStep ||
-                value.FrameY != shape.BaseFrameY + shape.RowOffsets[index / shape.Object.Width]) return false;
+                !shape.MatchesMemberFrame(value, index)) return false;
+            // The finite tree member encoding already proves each member's
+            // exact origin at the coordinates requested by AdvanceObject.
+            if (shape.ChristmasTreeMembers) return true;
             var member = source.Describe(value);
             return member != null && member.Object.Reliable && member.Object.X == shape.Object.X && member.Object.Y == shape.Object.Y &&
                 member.Object.Width == shape.Object.Width && member.Object.Height == shape.Object.Height &&

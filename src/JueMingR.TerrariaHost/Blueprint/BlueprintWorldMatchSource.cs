@@ -14,9 +14,11 @@ namespace JueMingR.TerrariaHost.Blueprint
     {
         private readonly BlueprintCaptureSource source;
         private readonly int metadataThread = Thread.CurrentThread.ManagedThreadId;
+        internal bool PayloadPending { get; private set; }
         internal BlueprintWorldMatchSource(Func<bool> session) { source = new BlueprintCaptureSource(session); }
         internal bool TryRead(int x, int y, out BlueprintWorldMatchSample sample)
         {
+            PayloadPending = false;
             CaptureCell cell;
             if (!source.Read(x, y, out cell))
             { sample = new BlueprintWorldMatchSample(false, new CaptureCell { X = x, Y = y }); return false; }
@@ -42,6 +44,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             }
             short frameX, frameY; BlueprintWorldMatchComparer.NormalizeFrame(cell, kind, out frameX, out frameY);
             sample = new BlueprintWorldMatchSample(true, cell, obj, frames, frameX, frameY, !interpreted, kind, source.WriteState);
+            PayloadPending = source.PendingPayload || BlueprintNativePayload.LeashedItemPending(cell);
             return true;
         }
 

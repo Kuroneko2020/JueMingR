@@ -167,10 +167,10 @@ namespace NativeWorldTextProbe
             long uses = (long)Get(host, "BuildUsesStarted");
             Request(host, input, "MirrorProjection"); Pointer(host, false, 42, 41); Pointer(host, true, 42, 41);
             for (int i = 0; i < 12; i++) observe();
-            Require((bool)Get(host, "ProjectionEditing") && !(bool)Get(target, "MirroredHorizontally") && Scene(host).Contains(target) &&
+            Require(!(bool)Get(host, "ProjectionEditing") && !(bool)Get(target, "MirroredHorizontally") && Scene(host).Contains(target) &&
                 GetOptional(host, "ProjectionCandidate") == null && (bool)Get(host, "AutoBuildEnabled") &&
                 player.inventory[12].stack == 4 && player.inventory[13].stack == 5 && (long)Get(host, "BuildUsesStarted") == uses,
-                "actual Unknown proof cannot publish Mirror or consume inventory while the exact request remains checking");
+                "readable invalid furniture ends the unsupported proof without publishing Mirror or consuming inventory");
             Call(host, "CancelProjection");
         }
 

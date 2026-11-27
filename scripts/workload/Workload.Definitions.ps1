@@ -23,6 +23,10 @@ function Get-WorkloadLeafChecks {
         # These leaves are called only by the companion CPU dispatcher. Shared
         # NativeChecks/Program/fixture inputs retain their existing propagation.
         'tests/Companions/CompanionCoreChecks.cs'=@('CompanionCoreChecks')
+        'tests/NativeWorldTextProbe/NativeCompanionFishingUiChecks.cs'=@('native-CompanionFishingUiCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionFishingLineChecks.cs'=@('native-CompanionFishingLineCpu','native-CompanionWormholeCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionFishingOpeningChecks.cs'=@('native-CompanionFishingLineCpu','native-CompanionWormholeCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionFishingWorldChecks.cs'=@('native-CompanionFishingWorldCpu')
         'tests/NativeWorldTextProbe/NativeCompanionItemGestureChecks.cs'=@('native-CompanionItemsCpu','native-CompanionConfigVisual')
         'tests/NativeWorldTextProbe/NativeCompanionVoidPickupChecks.cs'=@('native-CompanionItemsCpu')
         'tests/NativeWorldTextProbe/NativeCompanionVanityShopChecks.cs'=@('native-CompanionItemsCpu')
@@ -53,6 +57,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Dash.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionVerticalFollowChecks.Graph.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionWormholeChecks.cs'=@('native-CompanionWormholeCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionAutoTeleportChecks.cs'=@('native-CompanionWormholeCpu','native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionDoorFollowChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFacilityFollowChecks.cs'=@('native-CompanionNavigationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionPlannedMovementChecks.cs'=@('native-CompanionNavigationCpu')
@@ -103,7 +108,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintHoikPersistenceChecks.cs'=@('native-BlueprintHoikCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikRecoveryChecks.cs'=@('native-BlueprintHoikCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintHoikSubstitutionChecks.cs'=@('native-BlueprintHoikSubstitutionCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintHelperImportChecks.cs'=@('native-BlueprintPayloadCpu','native-BlueprintExchangeCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintHelperImportChecks.cs'=@('native-BlueprintPayloadCpu','native-BlueprintExchangeCpu','native-BlueprintHoikCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintImportedMaterialsChecks.cs'=@('native-BlueprintImportedMaterialsCpu')
         'tests/NativeWorldTextProbe/NativeViewZoomControlChecks.cs'=@('native-ViewZoomControlCpu')
         'tests/JueMingR.ArchitectureTests/RuntimeFailureChecks.cs'=@('RuntimeFailureChecks')
@@ -136,6 +141,8 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorProfileChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorTrimUiChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorTrimChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintBoundaryDoorChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintChristmasTreeChecks.cs'=@('native-BlueprintChristmasTreeCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintMirrorConsumerChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintTrimAccumulationChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintTrimInputChecks.cs'=@('native-BlueprintCpu','native-BlueprintMirrorTrimCpu')
@@ -152,7 +159,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintRepairRecoveryChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintCompletionV2Checks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintPlacementChecks.cs'=@('native-BlueprintCpu','native-BlueprintInput')
-        'tests/NativeWorldTextProbe/NativeBlueprintProjectionChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintProjectionChecks.cs'=@('native-BlueprintCpu','native-BlueprintPersistenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintWorldMatchSemanticChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintWorldChangeChecks.cs'=@('native-BlueprintCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintSubstitutionLifecycleCpu','native-BlueprintCpu')
@@ -186,7 +193,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeBlueprintBuildThroughputChecks.cs'=@('native-BlueprintCpu','native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildWallContextChecks.cs'=@('native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildNativeTargetChecks.cs'=@('native-BlueprintCpu')
-        'tests/NativeWorldTextProbe/NativeBlueprintPersistenceChecks.cs'=@('native-BlueprintCpu')
+        'tests/NativeWorldTextProbe/NativeBlueprintPersistenceChecks.cs'=@('native-BlueprintCpu','native-BlueprintPersistenceCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintQualificationChecks.cs'=@('native-BlueprintCpu','native-BlueprintQualificationCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildMixedSourceChecks.cs'=@('native-BlueprintCpu','native-BlueprintConstructionCpu')
         'tests/NativeWorldTextProbe/NativeBlueprintBuildPreflightChecks.cs'=@('native-BlueprintSubstitutionCpu','native-BlueprintCpu')
@@ -524,6 +531,7 @@ function Get-WorkloadLeafChecks {
         'tests/NativeWorldTextProbe/NativeCombatRollingControlChecks.cs'=@('native-NpcStrategy','native-NpcStrategy-rollchoice')
         'tests/NativeWorldTextProbe/NativeNpcLifetimeChecks.cs'=@('native-NpcStrategy','native-NpcStrategy-rollchoice')
         'tests/NativeWorldTextProbe/NativeOuterInputBoundaryChecks.cs'=@('native-InputBoundary')
+        'tests/NativeWorldTextProbe/NativeOuterInputBoundaryChecks.OrdinaryPopups.cs'=@('native-InputBoundary')
         'tests/NativeWorldTextProbe/NativeCombatRunningControlChecks.cs'=@('native-NpcStrategy')
         'tests/NativeWorldTextProbe/NativeCombatStructuralControlChecks.cs'=@('native-NpcStrategy')
         'tests/NativeWorldTextProbe/NativeCombatFighterControlChecks.cs'=@('native-NpcStrategy')
@@ -556,7 +564,7 @@ function Get-WorkloadLeafChecks {
     }
     # EmptyWorld/metadata are called by both actual Build and Construction
     # runners, including their narrow families. Never discard that shared setup.
-    $leaves['tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs']+=@('native-BlueprintBuildCadenceCpu','native-BlueprintConstructionCpu','native-BlueprintPreparationCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu')
+    $leaves['tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs']+=@('native-BlueprintBuildCadenceCpu','native-BlueprintConstructionCpu','native-BlueprintPreparationCpu','native-BlueprintAppearanceCpu','native-BlueprintWiringCpu','native-BlueprintSpecialCpu','native-BlueprintPersistenceCpu')
     # SupplyRepair's actual preparation/conversion/handoff/Ready/native-tail
     # call graph. PostProcessingProbe, BusinessScope and SchedulerTimeline are
     # shared helpers despite their files' private cadence assertion bodies.
@@ -599,7 +607,13 @@ function Get-WorkloadLeafChecks {
         $leaves[$path]=@($leaves[$path])+@('native-BlueprintImportedMaterialsCpu')
     }
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintLibraryWait.cs']+=@('native-BlueprintImportedMaterialsCpu')
-    $leaves['tests/NativeWorldTextProbe/NativeLegacyPlacementIdentityChecks.cs']+=@('native-BlueprintImportedMaterialsCpu')
+    # These native import and capture fixtures reuse the original track metadata initializer.
+    $leaves['tests/NativeWorldTextProbe/NativeLegacyPlacementIdentityChecks.cs']+=@('native-BlueprintImportedMaterialsCpu','native-BlueprintExchangeCpu','native-BlueprintPayloadCpu','native-BlueprintChristmasTreeCpu')
+    foreach($helper in @('Build','Construction','WorldMatch','LibraryWait','HelperImport')){
+        $path='tests/NativeWorldTextProbe/NativeBlueprint'+$helper
+        if($helper -cne 'LibraryWait'){$path+='Checks'}
+        $leaves[$path+'.cs']+=@('native-BlueprintChristmasTreeCpu')
+    }
     $leaves['tests/NativeWorldTextProbe/NativeBlueprintExpectationChecks.cs']=@('native-BlueprintNearQueueCpu')
     # A family enters EffectChecks.RunCore and returns from its exact branch.
     # Its own body and called shared scene/Save/Step/solution helpers matter;
@@ -671,6 +685,13 @@ function Get-WorkloadLeafChecks {
         $leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-CompanionExitVisual')
     }
     $leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs']=@($leaves['tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs'])+@('native-InventoryStackingCpu')
+    # The facing scope uses the native composition, input sampler and tile
+    # metadata setup to exercise the actual sleeping/awake ItemCheck boundary.
+    foreach($path in @('tests/NativeWorldTextProbe/NativeQuickItemChecks.cs','tests/NativeWorldTextProbe/NativeCombatCadenceChecks.cs',
+        'tests/NativeWorldTextProbe/NativeToolExecutionChecks.cs','tests/NativeWorldTextProbe/NativeToolsChecks.cs',
+        'tests/NativeWorldTextProbe/NativeBlueprintWorldMatchChecks.cs')){
+        $leaves[$path]=@($leaves[$path])+@('native-CombatFacingCpu')
+    }
     foreach($path in @("tests/NativeWorldTextProbe/NativeCombatAimFixture.cs")){$leaves[$path]=@($leaves[$path] | Where-Object {$_})+@('native-CompanionFontVisual','native-CompanionConfigVisual','native-CompanionCreationInputVisual','native-CompanionShowcaseVisual','native-CompanionVisual','native-CompanionNetworkCpu','native-CompanionWormholeCpu','native-CompanionPasswordCpu','native-CompanionSuppliesCpu','native-CompanionObservationCombatCpu','native-CompanionSessionCpu','native-CompanionNavigationCpu','native-CompanionCpu','native-CompanionCreationCpu','native-CompanionItemsCpu')}
     return $leaves
 }
@@ -690,6 +711,9 @@ function Get-WorkloadNativeScopes {
         'CompanionResourceBarsVisual'=@('companion-host','shared-host');
         'CompanionCreationInputVisual'=@('companion-host','shared-host');
         'CompanionConfigVisual'=@('companion-host','shared-host');
+        'CompanionFishingUiCpu'=@('companion-host','fishing-host','shared-host');
+        'CompanionFishingLineCpu'=@('companion-host','fishing-host','items','recovery-host','shared-host');
+        'CompanionFishingWorldCpu'=@('companion-host','fishing-host','shared-host');
         'CompanionExitVisual'=@('companion-host','shared-host');
         'CompanionFontVisual'=@('companion-host','shared-host');
         'CompanionShowcaseVisual'=@('companion-host','shared-host');
@@ -814,6 +838,8 @@ function Get-WorkloadNativeScopes {
         'BlueprintExchangeCpu'=@('blueprint-host','tools-host','shared-host');
         'BlueprintExchangeFollowupCpu'=@('blueprint-host','shared-host','hotkeys');
         'BlueprintMirrorTrimCpu'=@('blueprint-host','hotkeys','tools-host');
+        'BlueprintChristmasTreeCpu'=@('blueprint-host','tools-host');
+        'BlueprintPersistenceCpu'=@('blueprint-host','storage-host','shared-host');
         'BlueprintQualificationCpu'=@('blueprint-host');
         'BlueprintSupplyContinuationCpu'=@('blueprint-host','tools-host');
         'BlueprintConstructionCpu'=@('blueprint-host','tools-host');

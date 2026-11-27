@@ -13,6 +13,10 @@ namespace JueMingR.TerrariaHost.F5
         private bool bodyOffsetClamped;
         private const float CellStep = 42;
         private const float ShowcaseHeight = 128;
+        private const float ActorActionGap = 6;
+        private static readonly string[] GearTabs = { "饰品", "时装", "装备" };
+        private static readonly string[] LoadoutTabs = { "I", "II", "III" };
+        private const float LoadoutButtonWidth = 27;
         private CompanionProfile CurrentProfile()
         {
             var profiles = host.Profiles;
@@ -31,8 +35,11 @@ namespace JueMingR.TerrariaHost.F5
                 // Shared structural measurements align both columns. Current
                 // values/status never change these baselines; only native maxima,
                 // style, chosen subpage or viewport geometry can do so.
-                sharedResourcesHeight=SharedResources(bodyView.Width/2-6);
-                sharedEquipmentHeight=SharedEquipment(bodyView.Width/2-6);
+                float paneWidth = companionView.Width;
+                float resourcesHeight = SharedResources(paneWidth);
+                sharedHeroHeight = profile == null ? Math.Max(ShowcaseHeight, resourcesHeight) :
+                    Math.Max(Math.Max(ShowcaseHeight, 78 + row), resourcesHeight + 4 + row);
+                sharedEquipmentHeight = SharedEquipment(paneWidth);
                 BuildActor(Main.LocalPlayer, true, ownerView, ownerOffset, row);
                 BuildActor(profile == null ? null : body, false, companionView, bodyOffset, row);
                 return;
@@ -53,7 +60,7 @@ namespace JueMingR.TerrariaHost.F5
             var own=owner==null?default(CompanionResourceDisplay.Blocks):resourceDisplay.MeasureBlocks(owner,width);
             var companion=ai==null?default(CompanionResourceDisplay.Blocks):resourceDisplay.MeasureBlocks(ai,width);
             sharedLifeHeight=Math.Max(own.Life,companion.Life);
-            return Math.Max(ShowcaseHeight,sharedLifeHeight+Math.Max(own.Mana,companion.Mana));
+            return sharedLifeHeight+Math.Max(own.Mana,companion.Mana);
         }
         private static float ShowcaseWidth(float paneWidth) {return Math.Min(116,Math.Max(92,paneWidth*.26f));}
         private static float ShowcaseCenter(float paneWidth) {return Math.Min(paneWidth*.82f,paneWidth-12-ShowcaseWidth(paneWidth)/2);}
@@ -84,22 +91,39 @@ namespace JueMingR.TerrariaHost.F5
             if(ActorVisible(nameRect,view)) Text(name,nameRect,.85f);
             y += row + 6;
             if(!owner) {respawnLabel=labels.Count;labels.Add(new F5Element(F5ElementKind.Text,wrapStatus?new F5Rect(x,y,width,24):new F5Rect(x+width-statusWidth,y-row-6,statusWidth,row),host.RespawnStatus(selected),default(F5Size),.6f,F5Command.None));}if(wrapStatus)y+=24;
-            float resources=sharedResourcesHeight;
-            float heroHeight=resources;
+            float heroHeight = sharedHeroHeight;
             float headerHeight=8+row+6+(wrapStatus?24:0)+heroHeight+4;
             var hero = new F5Rect(x,y,ResourceWidth(view.Width),heroHeight);
             float centerX=view.X+ShowcaseCenter(view.Width),frameTop=y;
-            var displayPanel=new F5Rect(centerX-ShowcaseWidth(view.Width)/2,frameTop,ShowcaseWidth(view.Width),ShowcaseHeight);
+            float showcaseWidth = ShowcaseWidth(view.Width);
+            float showcaseX = centerX - showcaseWidth / 2;
+            var profile = owner ? null : CurrentProfile();
+            bool joined = profile != null && host.IsJoined(profile.Id);
+            bool retiring = profile != null && host.RecallPending(profile.Id);
+            string action = retiring ? (host.SaveFailed(profile.Id) ? "保存失败" : "退出中") : joined ? "退出" : "加入";
+            float stateWidth = profile == null ? 0 : ConfigurationWidth(action);
+            float recallWidth = profile == null ? 0 : ConfigurationWidth("传送");
+            float actionWidth = stateWidth + recallWidth + 2 * ActorActionGap;
+            float actionInset = Math.Max(0, view.X + 4 - (showcaseX - actionWidth));
+            float showcaseHeight = profile == null ? ShowcaseHeight : heroHeight;
+            if (profile != null)
+            {
+                // Preserve the measured action widths on narrow panes. The
+                // shared header reserves the last row below both resource blocks.
+                showcaseX += actionInset;
+                showcaseWidth -= actionInset;
+            }
+            var displayPanel = new F5Rect(showcaseX, frameTop, showcaseWidth, showcaseHeight);
             var showcase=new F5Rect(displayPanel.X+2,displayPanel.Y+2,displayPanel.Width-4,displayPanel.Height-4);
             if(owner)ownerShowcase=showcase;else companionShowcase=showcase;
             if(owner)ownerShowcasePanel=displayPanel;else companionShowcasePanel=displayPanel;
             if (owner)ownerHero=hero;else companionHero=hero;
-            if(!owner&&CurrentProfile()!=null) {
-                bool joined=host.IsJoined(selected);Guid target=selected;
-                bool retiring=host.RecallPending(target), failed=retiring&&host.SaveFailed(target);
-                string action = retiring ? (failed ? "保存失败" : "正在收回") : joined ? "点击收回" : "点击加入";
-                float buttonWidth = ConfigurationWidth(action);
-                var stateRect = new F5Rect(displayPanel.X-buttonWidth-6, displayPanel.Bottom-row, buttonWidth, row);
+            if(profile != null) {
+                Guid target = profile.Id;
+                var stateRect = new F5Rect(displayPanel.X - stateWidth - ActorActionGap, displayPanel.Bottom - row, stateWidth, row);
+                var recallRect = new F5Rect(stateRect.X - recallWidth - ActorActionGap, stateRect.Y, recallWidth, row);
+                if (ActorVisible(recallRect, view))
+                    ManualRecallButton("actor-wormhole", profile, recallRect).ActorOverlay = true;
                 // A press owns this operation and actual activation. Natural
                 // detach/rejoin/respawn must retire it, rather than choosing
                 // the opposite operation on release. Timers/text keep the key.
@@ -109,7 +133,7 @@ namespace JueMingR.TerrariaHost.F5
                     bool canAct = host.CanChangeCompanionPresence(target, joined, out string reason);
                     var control = Button(stateKey, action, stateRect, () => Command(() => joined ? host.Recall(target) : host.Join(target)),canAct);
                     control.ActorOverlay = control.ActorState = true;
-                    control.Hint = reason ?? (joined ? "收回人物" : "加入当前世界");
+                    control.Hint = reason ?? (joined ? "退出当前世界并保存人物" : "加入当前世界");
                 }
                 string[] teams={"无队伍","红队","绿队","蓝队","黄队","粉队"};
                 for(int i=0;i<6;i++){int team=i;var r=new F5Rect(displayPanel.X-52+i%2*24,displayPanel.Y+8+i/2*24,20,20);if(ActorVisible(r,view)){var c=Button("team:"+i,"",r,()=>Command(()=>host.SetTeam(selected,team)),true,body!=null&&body.team==team);c.ActorOverlay=true;c.TeamIcon=i;c.Hint=teams[i];}}
@@ -119,14 +143,28 @@ namespace JueMingR.TerrariaHost.F5
             float groupTop=y;y+=8;
             // Subtabs and their native equipment/dye cells are one module.
             // This same group origin drives background, clipping and hit tests.
-            var tabs = new[] { "饰品", "时装", "装备" }; int gear = owner ? ownerGearPage : companionGearPage;
-            float totalTabs=8;foreach(string text in tabs)totalTabs+=Math.Max(46,measure(text,.7f).Width+18);
+            int gear = owner ? ownerGearPage : companionGearPage;
+            float totalTabs=8;foreach(string text in GearTabs)totalTabs+=Math.Max(46,measure(text,.7f).Width+18);
             int columns=Math.Max(1,Math.Min(10,(int)(width/40)));float gridWidth=columns*Math.Min(CellStep,width/columns)-1;
             float tabX=x+Math.Max(0,gridWidth-totalTabs-8);
+            float loadoutY = y;
+            if (tabX-x < 3*(LoadoutButtonWidth+4))
+            {
+                y += 26+4;
+            }
+            for (int t=0;t<LoadoutTabs.Length;t++)
+            {
+                int target = t;
+                var r = new F5Rect(x + t*(LoadoutButtonWidth+4), loadoutY, LoadoutButtonWidth, 26);
+                if (!ActorVisible(r, view)) continue;
+                var control = Button("loadout:" + owner + ":" + t, LoadoutTabs[t], r,
+                    () => SwitchActorLoadout(owner, body, target));
+                control.Owner = owner; control.SwitchLoadout = t;
+            }
             for (int t=0;t<3;t++)
             {
-                int target=t;float tw=Math.Max(46,measure(tabs[t],.7f).Width+18);var r=new F5Rect(tabX,y,tw,26);tabX+=tw+4;
-                if (ActorVisible(r,view)) Button("gear:"+owner+":"+t,tabs[t],r,() => {
+                int target=t;float tw=Math.Max(46,measure(GearTabs[t],.7f).Width+18);var r=new F5Rect(tabX,y,tw,26);tabX+=tw+4;
+                if (ActorVisible(r,view)) Button("gear:"+owner+":"+t,GearTabs[t],r,() => {
                     host.CancelItemGesture(); CancelSelectionModes(); if(owner) ownerGearPage=target; else companionGearPage=target; Invalidate();
                 },true,gear==t);
             }
@@ -165,6 +203,17 @@ namespace JueMingR.TerrariaHost.F5
             int maximum=Math.Max(0,(int)Math.Ceiling(y + offset + 8 - view.Bottom));
             if (owner) { ownerMaximum=maximum; if(ownerOffset>maximum) { ownerOffset=maximum; bodyOffsetClamped=true; Invalidate(); } }
             else { bodyMaximum=maximum; if(bodyOffset>maximum) { bodyOffset=maximum; bodyOffsetClamped=true; Invalidate(); } }
+        }
+
+        private void SwitchActorLoadout(bool owner, Player body, int target)
+        {
+            if (body == null || body.dead || Main.mouseItem?.IsAir == false || host.HasItemGesture) return;
+            if (owner)
+            {
+                if (ReferenceEquals(body, Main.LocalPlayer)) body.TrySwitchingLoadout(target);
+            }
+            else if (ReferenceEquals(body, host.GetBody(selected)))
+                Command(() => host.TrySwitchCompanionLoadout(selected, target));
         }
         private void ActorSlots(Player body, bool owner, CompanionInventoryArea area, int start, int count, ref float y, F5Rect view)
         {

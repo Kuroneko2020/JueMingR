@@ -59,7 +59,9 @@ namespace JueMingR.TerrariaHost.Combat
         internal void Apply(Player p)
         {
             LastChangeObserved=false;
-            if(!host.IsEnabled(5)){Reset();return;}
+            // A bed interaction can enter sleep before ItemCheck in the same
+            // update. Vanilla wakes the player if the bed's direction changes.
+            if(!host.IsEnabled(5) || p.sleeping.isSleeping){Reset();return;}
             if(!host.Left && !host.Right && p.itemAnimation<=0 && p.itemTime<=0 || !Weapon(p) || !host.Admitted(p) ||
                 host.Tools.Items.Ownership.HasUse && !host.Use.Active){Reset();return;}
             // A legal managed yoyo attack keeps its trusted attack intent.

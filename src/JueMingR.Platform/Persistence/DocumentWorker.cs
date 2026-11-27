@@ -6,14 +6,16 @@ namespace JueMingR.Platform.Persistence
 {
     public sealed class DocumentResult<T>
     {
-        internal DocumentResult(long id, bool success, T value, string error, bool commitUnconfirmed = false, bool isProtected = false)
-        { CommandId = id; Success = success; Value = value; Error = error; CommitUnconfirmed = commitUnconfirmed; IsProtected = isProtected; }
+        internal DocumentResult(long id, bool success, T value, string error, bool commitUnconfirmed = false, bool isProtected = false, string storageIdentity = null)
+        { CommandId = id; Success = success; Value = value; Error = error; CommitUnconfirmed = commitUnconfirmed; IsProtected = isProtected; StorageIdentity = storageIdentity; }
         public long CommandId { get; }
         public bool Success { get; }
         public T Value { get; }
         public string Error { get; }
         public bool CommitUnconfirmed { get; }
         public bool IsProtected { get; }
+        // Opaque identity supplied by storage for the exact accepted bytes.
+        public string StorageIdentity { get; }
     }
 
     // One consistency unit, one worker, one accepted immutable command. The slot
@@ -95,7 +97,7 @@ namespace JueMingR.Platform.Persistence
                     if (read.Status == PreferenceReadStatus.Missing || read.Status == PreferenceReadStatus.Loaded)
                     {
                         T value = read.Status == PreferenceReadStatus.Missing ? empty : decode(read.Contents);
-                        identity = read.Identity; current = value; writable = true; loaded = new DocumentResult<T>(0, true, value, null);
+                        identity = read.Identity; current = value; writable = true; loaded = new DocumentResult<T>(0, true, value, null, storageIdentity: identity);
                     }
                     else loaded = new DocumentResult<T>(0, false, default(T), read.Error ?? read.Status.ToString());
                 }
@@ -133,7 +135,7 @@ namespace JueMingR.Platform.Persistence
                         bool success = written.Status == PreferenceWriteStatus.Saved;
                         if (success) { identity = written.Identity; current = value; }
                         if (written.IsProtected) { lock (gate) writable = false; }
-                        completion = new DocumentResult<T>(id, success, success ? value : default(T), written.Error, written.CommitUnconfirmed, written.IsProtected);
+                        completion = new DocumentResult<T>(id, success, success ? value : default(T), written.Error, written.CommitUnconfirmed, written.IsProtected, success ? identity : null);
                     }
                     catch (Exception e) when (e is InvalidOperationException || e is ArgumentException || e is PreferenceFormatException)
                     { completion = new DocumentResult<T>(id, false, default(T), "document-encoding-or-size-failed", writeEntered, writeEntered); }

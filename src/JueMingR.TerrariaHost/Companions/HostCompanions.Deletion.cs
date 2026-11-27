@@ -43,8 +43,12 @@ namespace JueMingR.TerrariaHost.Companions
                 // and slot ownership cleanup without capturing a final body.
                 actor.Closing = true;
                 actor.Body.controlUseItem = actor.Body.channel = false;
-                try { RetireProjectiles(actor); }
-                catch (Exception) { warning = "持续攻击收尾时出现错误。"; }
+                try
+                {
+                    try { EndFishingActivity(actor, retire: true); }
+                    finally { RetireProjectiles(actor); }
+                }
+                catch (Exception) { warning = "队友动作收尾时出现错误。"; }
                 finally
                 {
                     profiles.EndPlay(actor.Body);

@@ -16,7 +16,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         private BlueprintTemplateKey exchangeTemplate;
         private string exchangeName, exchangeVersion;
         private BlueprintExportNameProposal exchangeProposal;
-        private bool exchangeShowing;
+        private bool exchangeShowing, exchangeResumedName;
         private IBlueprintImportProfile exchangeImportProfile;
         internal bool ExchangeBusy { get { return exchangeRequest != Guid.Empty || Library?.ExchangeBusy == true; } }
         internal string ExchangeDisabledReason
@@ -91,15 +91,32 @@ namespace JueMingR.TerrariaHost.Blueprint
                 else { Library.CancelExchange(receipt.RequestId); if (owns) RetireExchange(); }
                 return;
             }
+            if (receipt.Status == BlueprintExchangeStatus.NeedsName)
+            {
+                if (!owns || !HasSession || exchangeSession != generation ||
+                    Shell?.BlueprintUi?.AcceptImportName(receipt.RequestId, exchangeUi, receipt.SourceName, receipt.Message) != true)
+                    Library.CancelExchange(receipt.RequestId);
+                return;
+            }
             // Durable results remain facts in menus or a later session. Only
             // the still-current presentation may now auto-open the library,
             // after trustworthy input release, never on an old world's behalf.
             if (!String.IsNullOrEmpty(receipt.Message)) projectionFeedback = receipt.Message;
             if (owns && exchangeSession == generation && HasSession && receipt.Kind == BlueprintExchangeKind.Import &&
                 (receipt.Status == BlueprintExchangeStatus.Completed || receipt.Status == BlueprintExchangeStatus.AlreadyExists))
-                Shell?.BlueprintUi?.AcceptExchangeAsset(receipt.AssetId, exchangeUi);
+                Shell?.BlueprintUi?.AcceptExchangeAsset(receipt.AssetId, exchangeUi, exchangeResumedName);
+            if (owns) Shell?.BlueprintUi?.EndImportName(receipt.RequestId);
             if (owns) RetireExchange();
         }
+        internal bool ResumeImportName(Guid request, long presentation, string name)
+        {
+            if (!HasSession || exchangeSession != generation || exchangeUi != presentation || exchangeRequest != request ||
+                Library?.ResumeImportName(request, name) != true) return false;
+            exchangeResumedName = true;
+            return true;
+        }
+        internal void CancelImportName(Guid request)
+        { if (exchangeRequest == request && !exchangeResumedName) Library?.CancelExchange(request); }
         private void CancelSessionExchange()
         {
             if (exchangeRequest == Guid.Empty) return;
@@ -108,6 +125,6 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Keep request identity until its accepted write/dialog reports.
             // This cannot transfer its presentation rights to the new session.
         }
-        private void RetireExchange() { exchangeRequest = Guid.Empty; exchangeTemplate = null; exchangeName = exchangeVersion = null; exchangeProposal = null; exchangeImportProfile = null; exchangeShowing = false; }
+        private void RetireExchange() { exchangeRequest = Guid.Empty; exchangeTemplate = null; exchangeName = exchangeVersion = null; exchangeProposal = null; exchangeImportProfile = null; exchangeShowing = exchangeResumedName = false; }
     }
 }

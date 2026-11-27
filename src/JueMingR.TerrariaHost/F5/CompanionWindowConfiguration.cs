@@ -10,11 +10,14 @@ namespace JueMingR.TerrariaHost.F5
     internal sealed partial class CompanionWindow
     {
         private static readonly string[] SwitchActions = { "开启", "关闭", "键" };
+        private static readonly string[] FishingStorageActions = { "所有", "任务鱼", "关闭", "键" };
         private static readonly string[] ConfigurableActions = { "开启", "关闭", "配置", "键" };
         private static readonly string[] LifeActions = { "智能", "快速", "关闭", "配置", "键" };
         private static readonly string[] RecallActions = { "传送", "键" };
         private static readonly string[] RecallButtonOnly = { "传送" };
         private const string ManualRecallControl = "manual-wormhole";
+        private static readonly F5RowDescription autoTeleportDescription = new F5RowDescription("auto-warp",
+            "到达条件后AI尝试自动传送到玩家");
         private F5Rect configurationViewport, configurationNameRect;
         private string configurationName;
         private CompanionProfile deletionTarget;
@@ -26,7 +29,8 @@ namespace JueMingR.TerrariaHost.F5
 
         private void RetireConfigurationInput()
         {
-            CloseSupplyPopup(); confirmingReset = false; deletionTarget = null; CancelEdit();
+            RetireFishingPane();
+            CloseSupplyPopup(); autoTeleportPopup.Close(); confirmingReset = false; deletionTarget = null; CancelEdit();
         }
 
         private void BuildConfiguration(CompanionProfile profile, float row)
@@ -43,8 +47,18 @@ namespace JueMingR.TerrariaHost.F5
             labels.Add(new F5Element(F5ElementKind.Text, new F5Rect(x, y + row, width, 22),
                 host.RespawnStatus(selected), default(F5Size), .65f, F5Command.None));
             y += row + 24;
+            Button("configuration-general", "常规", new F5Rect(x, y, 64, row), () => SelectFishingPage(false), true, !fishingPage);
+            Button("configuration-fishing", "钓鱼", new F5Rect(x + 70, y, 64, row), () => SelectFishingPage(true), true, fishingPage);
+            y += row + 6;
             configurationViewport = new F5Rect(x, y, width, Math.Max(0, bodyView.Bottom - y));
             contentY = y - bodyOffset;
+            if (profile.FishingDepositUnconfirmedSlots != 0)
+                ConfigurationText(HostCompanions.FishingDepositUnconfirmedMessage, row);
+            if (fishingPage)
+            {
+                BuildFishingRows(profile, row);
+                return;
+            }
             BuildDeletionReceipts(row);
             var behavior = profile.Behavior;
             ConfigurationPair(profile, behavior, CompanionSetting.Follow, CompanionSetting.Attack);
@@ -52,6 +66,7 @@ namespace JueMingR.TerrariaHost.F5
             ConfigurationPair(profile, behavior, CompanionSetting.Buff, CompanionSetting.Growth);
             ConfigurationPair(profile, behavior, CompanionSetting.Nurse, CompanionSetting.Furniture);
             ConfigurationPair(profile, behavior, CompanionSetting.Respawn, null, recall: true);
+            ConfigurationPair(profile, behavior, CompanionSetting.AutoTeleportEnabled, null);
 
             if (host.SaveFailed(selected))
                 ConfigurationAction("retry-save", "保存失败 · 重试保存", () => Command(() => host.RetrySave(selected)), row);
@@ -166,13 +181,30 @@ namespace JueMingR.TerrariaHost.F5
                         ConfigurationBinding(CompanionHotkeys.RecallId(profile), bounds, F5HotkeyHints.CompanionRecall);
                     else
                     {
-                        var control = ConfigurationButton(ManualRecallControl, "传送", bounds,
-                            () => host.TryManualRecall(profile.Id));
-                        control.ManualRecall = true;
+                        var control = ManualRecallButton(ManualRecallControl, profile, bounds);
                         control.Element = element;
                     }
                 }
             }
+        }
+
+        private Control ManualRecallButton(string key, CompanionProfile profile, F5Rect bounds)
+        {
+            long activation = host.ActivationGeneration(profile.Id);
+            long session = host.CreationSessionToken;
+            long epoch = profile.DataEpoch;
+            // Both manual buttons bind the pressed target and body. Rechecking
+            // shared availability on release still cannot admit a replacement.
+            var control = ConfigurationButton(key, "传送", bounds, () =>
+            {
+                var current = CurrentProfile();
+                if (current?.Id == profile.Id && current.OwnerId == profile.OwnerId && current.DataEpoch == epoch &&
+                    host.CreationSessionToken == session && host.ActivationGeneration(profile.Id) == activation)
+                    host.TryManualRecall(profile.Id);
+            });
+            control.Key += "/" + session + "/" + activation;
+            control.ManualRecall = true;
+            return control;
         }
 
         private void ConfigurationBinding(string id, F5Rect rect, string hint)
@@ -181,20 +213,27 @@ namespace JueMingR.TerrariaHost.F5
             control.HotkeyId = id;
             // The shared popup uses the final visible control rectangle after
             // moving and scrolling the window, including the one-shot action.
-            control.Execute = () => { CloseSupplyPopup(); HotkeyClicked(id, control.Rect); };
+            control.Execute = () => { CloseSupplyPopup(); autoTeleportPopup.Close(); HotkeyClicked(id, control.Rect); };
             control.Hint = hint;
         }
 
         private void ConfigurationRow(CompanionProfile profile, CompanionBehavior behavior, CompanionSetting setting,
             float x, float width, ref float y)
         {
-            int mode = behavior.SettingValue(setting);
-            string[] actions = setting == CompanionSetting.Life ? LifeActions :
-                setting == CompanionSetting.Mana || setting == CompanionSetting.Buff || setting == CompanionSetting.Growth ?
+            bool occupied = setting == CompanionSetting.Follow && host.IsFishing(profile.OwnerId, profile.Id);
+            bool activity = setting == CompanionSetting.FishingMode;
+            int mode = activity ? (host.IsFishing(profile.OwnerId, profile.Id) ? 1 : 0) : behavior.SettingValue(setting);
+            bool automaticTeleport = setting == CompanionSetting.AutoTeleportEnabled;
+            bool available = !occupied && (activity ? mode != 0 || host.CanStartFishing(profile.OwnerId, profile.Id)
+                : !CompanionBehavior.IsFishingSetting(setting) || host.CanUseFishingPreferences(profile.Id));
+            string[] actions = setting == CompanionSetting.FishingStorage ? FishingStorageActions :
+                setting == CompanionSetting.Life ? LifeActions :
+                setting == CompanionSetting.Mana || setting == CompanionSetting.Buff || setting == CompanionSetting.Growth || automaticTeleport ?
                     ConfigurableActions : SwitchActions;
             if (HotkeyClicked == null) actions = actions.Take(actions.Length - 1).ToArray();
             rowElements.Clear();
-            new F5RowLayout(rowElements, measure).Row(ref y, x, width, CompanionHotkeys.Name(setting), actions);
+            new F5RowLayout(rowElements, measure).Row(ref y, x, width, CompanionHotkeys.Name(setting), actions,
+                description: automaticTeleport ? autoTeleportDescription : null);
             int actionIndex = 0;
             foreach (var element in rowElements)
             {
@@ -216,25 +255,48 @@ namespace JueMingR.TerrariaHost.F5
                     ConfigurationBinding(CompanionHotkeys.Id(profile, setting), r, F5HotkeyHints.Toggle);
                     continue;
                 }
-                int value = action == "关闭" ? 0 : action == "智能" ? 2 : 1;
+                int value = action == "关闭" ? 0 : action == "智能" || action == "任务鱼" ? 2 : 1;
                 bool configure = action == "配置";
                 bool current = !configure && value == mode;
                 var button = ConfigurationButton("config-" + setting + "/" + action, action, r,
                     configure ? null : (Action)(() => SetConfigurationSetting(setting, value)),
                     current, current && mode == 0);
                 button.Element = element;
+                button.Enabled = available;
+                if (occupied) button.Hint = "正在钓鱼";
+                else if (activity && !available) button.Hint = "人物加入世界并可以行动后，才能开启钓鱼模式。";
                 if (configure)
                 {
-                    button.Execute = () => ToggleSupplyPopup(profile, setting, button);
-                    if (supplySetting == setting) supplyAnchor = button;
+                    if (automaticTeleport)
+                    {
+                        button.Execute = () => { CloseSupplyPopup(); autoTeleportPopup.Toggle(profile); hint.Hide(); };
+                        autoTeleportAnchor = button;
+                    }
+                    else
+                    {
+                        button.Execute = () => { autoTeleportPopup.Close(); ToggleSupplyPopup(profile, setting, button); };
+                        if (supplySetting == setting) supplyAnchor = button;
+                    }
                 }
             }
         }
 
         private void SetConfigurationSetting(CompanionSetting setting, int value)
         {
-            var behavior = CurrentProfile()?.Behavior;
-            if (behavior == null || behavior.SettingValue(setting) == value) return;
+            var profile = CurrentProfile();
+            if (profile == null || setting == CompanionSetting.Follow && host.IsFishing(profile.OwnerId, profile.Id)) return;
+            if (CompanionBehavior.IsFishingSetting(setting))
+            {
+                Command(() => host.SetFishingControl(profile.OwnerId, profile.Id, setting, value));
+                return;
+            }
+            if (setting == CompanionSetting.AutoTeleportEnabled)
+            {
+                Command(() => host.SetAutoTeleportSetting(profile.OwnerId, profile.Id, host.CreationSessionToken, profile.DataEpoch, setting, value));
+                return;
+            }
+            var behavior = profile.Behavior;
+            if (behavior.SettingValue(setting) == value) return;
             ApplySetting(behavior, setting, value);
             Command(() => host.SetBehavior(selected, behavior));
         }

@@ -178,6 +178,14 @@ namespace JueMingR.TerrariaHost.Blueprint
             var cell = new CaptureCell { X = placement.xCoord, Y = placement.yCoord, Layers = CaptureLayer.Tile, TileType = (ushort)type,
                 FrameX = checked((short)(data.CoordinateFullWidth * (data.StyleHorizontal ? style : line))),
                 FrameY = checked((short)(data.CoordinateFullHeight * (data.StyleHorizontal ? line : style))) };
+            if (type == BlueprintChristmasTreeMembers.TileType)
+            {
+                // PlaceXmasTree_Direct uses member ordinals and starts bare.
+                // Geometry matches before separately restoring ornaments.
+                if (placement.style != 0 || placement.alternate != 0) return false;
+                cell.FrameX = BlueprintChristmasTreeMembers.PlacedAnchorFrameX;
+                cell.FrameY = 0;
+            }
             var shape = BlueprintCaptureSource.DescribeRead(cell, BlueprintWorldObjectSemantics.TileValue(cell)); BlueprintWorldObject actual;
             return BlueprintWorldObjectSemantics.TryCreate(cell, shape, out actual) && actual != null && target.Body.SamePlacement(actual);
         }

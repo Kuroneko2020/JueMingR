@@ -19,7 +19,7 @@ namespace NativeWorldTextProbe
             var library=(LibraryState)Get(host,"Library");
             var profile=(IBlueprintImportProfile)host.GetType().Assembly.GetType("JueMingR.TerrariaHost.Blueprint.BlueprintHorizontalMirrorResolver").GetMethod("Create",F).Invoke(null,null);
             var imported=(BlueprintExchangeReceipt)typeof(NativeBlueprintHelperImportChecks).GetMethod("Import",F).Invoke(null,new object[]{library,profile,
-                Path.Combine(Program.Repository,"references/JMR_Blueprint_Hoik_Zoom_20261110_v1/attachments/岛牌刷怪场4.0.json")});
+                NativeBlueprintHelperImportChecks.LargeSamplePath()});
             Require(imported.Status==BlueprintExchangeStatus.Completed,"real supplied JSON enters normal library for the mixed construction subset");
             var listed=(LibraryPage)typeof(NativeBlueprintHelperImportChecks).GetMethod("List",F).Invoke(null,new object[]{library});
             LibraryEntry importedEntry=listed.Entries.FirstOrDefault(e=>e.AssetId==imported.AssetId);

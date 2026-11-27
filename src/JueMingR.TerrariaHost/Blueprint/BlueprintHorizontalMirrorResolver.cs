@@ -25,7 +25,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         { return itemType > 0 && itemType < entityTiles.Length && entityTiles[itemType] == tileType && (tileType == 723 || frameY / 18 == entityStyles[itemType]); }
         public int TileCount { get { return roots.Length; } }
         public int WallCount { get; }
-        public long Revision { get { return Ready ? 14580002L : 0; } }
+        public long Revision { get { return Ready ? 14580003L : 0; } }
         public bool Ready { get; }
 
         internal static BlueprintHorizontalMirrorResolver Create()
@@ -147,7 +147,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             internal CaptureObject Object;
             internal Layout Data, Main;
             internal int BaseX, BaseY;
-            internal bool Independent, Sheet;
+            internal bool Independent, Sheet, ChristmasTree;
         }
         private static Layout Styled(Layout root, int style)
         { return style >= 0 && style < root.SubTiles.Length && root.SubTiles[style] != null ? root.SubTiles[style] : root; }
@@ -159,6 +159,15 @@ namespace JueMingR.TerrariaHost.Blueprint
             CaptureCell raw = cell;
             if (!legacy) cell = Normalize(cell);
             Layout basis = roots[cell.TileType];
+            if (cell.TileType == BlueprintChristmasTreeMembers.TileType)
+            {
+                if (legacy || basis.Width != BlueprintChristmasTreeMembers.Width || basis.Height != BlueprintChristmasTreeMembers.Height ||
+                    basis.OriginX != BlueprintChristmasTreeMembers.OriginX || basis.OriginY != BlueprintChristmasTreeMembers.OriginY ||
+                    !BlueprintChristmasTreeMembers.TryMember(cell, out int memberX, out int memberY)) return false;
+                result = new Decoded { ChristmasTree = true, Object = new CaptureObject { X = checked(cell.X - memberX), Y = checked(cell.Y - memberY),
+                    Width = basis.Width, Height = basis.Height, Type = cell.TileType, OriginX = basis.OriginX, OriginY = basis.OriginY, Reliable = true } };
+                return true;
+            }
             if (!Grid(basis)) return false;
             int column = cell.FrameX / basis.FullWidth, row = cell.FrameY / basis.FullHeight, wrap = Math.Max(1, basis.Wrap);
             int placement = checked(basis.Horizontal ? row * wrap + column : column * wrap + row);
@@ -263,11 +272,19 @@ namespace JueMingR.TerrariaHost.Blueprint
                 }
                 for (int i = 0; i < members.Count; i++)
                 {
-                    CaptureCell cell = members[i]; Decoded decoded;
+                    CaptureCell cell = members[i];
                     if ((cell.Layers & CaptureLayer.Tile) == 0 || cell.ObjectId != source.Id || cell.UnreliableObject ||
                         cell.X != checked(source.X + i % source.Width) || cell.Y != checked(source.Y + i / source.Width) ||
-                        !Shape(cell) || !Decode(cell, false, out decoded) || !Same(first.Object, decoded.Object) ||
-                        decoded.BaseX != first.BaseX || decoded.BaseY != first.BaseY) return false;
+                        !Shape(cell)) return false;
+                    if (first.ChristmasTree)
+                    {
+                        if (cell.TileType != source.Type || !BlueprintChristmasTreeMembers.Matches(cell, i)) return false;
+                    }
+                    else
+                    {
+                        if (!Decode(cell, false, out Decoded decoded) || !Same(first.Object, decoded.Object) ||
+                            decoded.BaseX != first.BaseX || decoded.BaseY != first.BaseY) return false;
+                    }
                 }
                 return true;
             }
@@ -380,7 +397,7 @@ namespace JueMingR.TerrariaHost.Blueprint
                 bool door = source.Type == TileID.OpenDoor || source.Type == TileID.ClosedDoor;
                 bool platform = source.Type < platforms.Length && platforms[source.Type];
                 if (source.Type == TileID.OpenDoor) baseX = baseX / 72 * 72 + (baseX % 72 < 36 ? 36 : 0);
-                else if (!door && !platform)
+                else if (!door && !platform && !semantic.ChristmasTree)
                 {
                     counterpart = Counterpart(semantic);
                     if (counterpart == null) { reason = "原版登记布局缺少对应镜像形态"; return false; }
@@ -395,7 +412,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                     int row = i / source.Width, col = i % source.Width;
                     CaptureCell original = sourceMembers[row * source.Width + source.Width - 1 - col], value = original;
                     value.X = x + col; value.Slope = MirrorSlope(value.Slope);
-                    if (platform)
+                    if (semantic.ChristmasTree) BlueprintChristmasTreeMembers.WriteMember(ref value, col, row, sourceMembers[0]);
+                    else if (platform)
                     { if (!Platform(original, ref value)) { reason = "平台帧超出原版二十七槽"; return false; } }
                     else if (source.Type != TileID.ClosedDoor)
                     {
@@ -497,7 +515,8 @@ namespace JueMingR.TerrariaHost.Blueprint
             {
                 if (Decode(cell, false, out decoded))
                 {
-                    shape = new BlueprintObjectShape { Object = decoded.Object, BaseFrameX = decoded.BaseX, BaseFrameY = decoded.BaseY,
+                    shape = decoded.ChristmasTree ? new BlueprintObjectShape { Object = decoded.Object, ChristmasTreeMembers = true } :
+                        new BlueprintObjectShape { Object = decoded.Object, BaseFrameX = decoded.BaseX, BaseFrameY = decoded.BaseY,
                         ColumnStep = decoded.Data.Step, RowOffsets = (int[])decoded.Data.Rows.Clone(), IndependentMemberFrames = decoded.Independent };
                     return true;
                 }

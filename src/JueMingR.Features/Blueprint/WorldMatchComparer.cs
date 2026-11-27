@@ -93,7 +93,15 @@ namespace JueMingR.Features.Blueprint
         {
             int row = actual.Y - observed.WorldY, column = actual.X - observed.WorldX;
             if (row < 0 || row >= target.Height || column < 0 || column >= observed.Width) return false;
-            if (target.Family != BlueprintWorldObjectFamily.Door) return column < target.Width && SameAppearance(expected[row * target.Width + column], actual);
+            if (target.Family != BlueprintWorldObjectFamily.Door)
+            {
+                if (column >= target.Width) return false;
+                int index = row * target.Width + column;
+                CaptureCell member = expected[index];
+                return SameAppearance(member, actual) &&
+                    (target.Kind != BlueprintChristmasTreeMembers.TileType ||
+                     observed.MatchesMemberFrame(actual, index) && (index != 0 || actual.FrameY == member.FrameY));
+            }
             CaptureCell requirement;
             return BlueprintDoorMembers.TryRequirement(target, expected, observed, actual.X, actual.Y, out requirement, catalog, policy) &&
                 SameAppearance(requirement, actual);

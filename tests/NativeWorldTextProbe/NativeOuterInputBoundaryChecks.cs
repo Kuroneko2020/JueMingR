@@ -16,7 +16,7 @@ using Terraria.UI.Gamepad;
 
 namespace NativeWorldTextProbe
 {
-internal static class NativeOuterInputBoundaryChecks
+internal static partial class NativeOuterInputBoundaryChecks
 {
     const BindingFlags F=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Static|BindingFlags.Instance;
     static readonly MethodInfo ResetControls = typeof(Player).GetMethod("ResetControls", F);
@@ -105,6 +105,7 @@ internal static class NativeOuterInputBoundaryChecks
             Console.WriteLine("PASS outer world focus/reactivation / skipped and exceptional input epoch; real Shell consumers remain available");
             WorldStateKeyRecovery();
             StateKeysDoNotSuppressOrRecord();
+            OrdinaryPopupInput(worker);
             InventoryMenuClose();
             RejectedCompanionOpen();
             CaptureAndText(patch,host);
@@ -370,7 +371,21 @@ internal static class NativeOuterInputBoundaryChecks
         var popup=Get(shell,"HotkeyPopup");Require((bool)Get(popup,"Visible"),"legitimate configurable popup opens");
         var prepare=popup.GetType().GetMethod("Prepare",F);var measure=Delegate.CreateDelegate(prepare.GetParameters()[3].ParameterType,renderer,renderer.GetType().GetMethod("PopupMeasure",F));
         prepare.Invoke(popup,new object[]{960f,640f,Get(renderer,"FontIdentity"),measure,Get(renderer,"SkinGeneration")});
-        var layout=Get(popup,"Layout");var commands=(IList)Get(layout,"Commands");int record=Enumerable.Range(0,commands.Count).First(i=>commands[i].ToString()=="Record");
+        var layout=Get(popup,"Layout");var commands=(IList)Get(layout,"Commands");
+        var hotkeys = (JueMingR.Platform.Hotkeys.HotkeyInput)Get(input, "Hotkeys");
+        int close = Enumerable.Range(0, commands.Count).First(i => commands[i].ToString() == "Close");
+        var closePanel = Get(layout, "Panel");
+        var closePoint = PopupTestCenter(Get(((IList)Get(layout, "Buttons"))[close], "Rect"), (float)Get(closePanel, "X"), (float)Get(closePanel, "Y"));
+        px = (int)closePoint.X; py = (int)closePoint.Y;
+        Frame(false, Keys.W); Frame(true, Keys.W); Frame(false, Keys.W);
+        Require(!(bool)Get(popup, "Visible") && !(bool)Get(input, "HotkeyCapture") && !hotkeys.IsSuppressed((int)Keys.W),
+            "actual normal shortcut popup close does not start recording or claim held W");
+        Frame(false, Keys.W); Frame(false);
+        Call(shell, "OpenHotkey", "item-browser.query", rect);
+        Call(shell, "OpenHotkey", "item-browser.query", rect);
+        Require((bool)Get(popup, "Visible"), "shortcut popup reopens after its ordinary Close");
+        prepare.Invoke(popup,new object[]{960f,640f,Get(renderer,"FontIdentity"),measure,Get(renderer,"SkinGeneration")});
+        int record=Enumerable.Range(0,commands.Count).First(i=>commands[i].ToString()=="Record");
         var button=Get(((IList)Get(layout,"Buttons"))[record],"Rect");var panel=Get(layout,"Panel");px=(int)((float)Get(panel,"X")+(float)Get(button,"X")+4);py=(int)((float)Get(panel,"Y")+(float)Get(button,"Y")+4);
         Frame(false,Keys.Kanji);Frame(true,Keys.Kanji);Frame(false,Keys.Kanji);
         Require((bool)Get(popup,"Capturing") && (bool)Get(input,"HotkeyCapture"),"actual popup Record click reaches capture owner with state key present");
@@ -400,6 +415,21 @@ internal static class NativeOuterInputBoundaryChecks
         // Match existing popup fixtures: prepare the actual layout before a
         // gesture. Missing geometry legitimately cancels an editor's lease.
         Call(renderer,"Prepare",state,960f,640f,1f);
+        Call(style,"Prepare",960f,640f,1f,Get(renderer,"FontIdentity"),measure,Get(renderer,"SkinGeneration"),Call(shell,"StyleAnchor"));
+        var styleLayout = Get(style, "Layout");
+        var stylePanel = Get(styleLayout, "Panel");
+        var resetCommands = (IList)Get(styleLayout, "Commands");
+        int reset = Enumerable.Range(0, resetCommands.Count).First(i => resetCommands[i].ToString() == "Reset");
+        var resetPoint = PopupTestCenter(Get(((IList)Get(styleLayout, "Buttons"))[reset], "Rect"), (float)Get(stylePanel, "X"), (float)Get(stylePanel, "Y"));
+        px = (int)resetPoint.X; py = (int)resetPoint.Y;
+        Frame(false, Keys.W); Frame(true, Keys.W); Frame(false, Keys.W);
+        Require((bool)Get(style, "Visible") && !(bool)Get(Get(style, "TextInput"), "Editing") && !hotkeys.IsSuppressed((int)Keys.W),
+            "ordinary Style reset gesture stays outside text capture and leaves W unclaimed");
+        px=py=150; Frame(false, Keys.W, Keys.Escape); Frame(false, Keys.W); Frame(false, Keys.W);
+        Require(!(bool)Get(style, "Visible") && !hotkeys.IsSuppressed((int)Keys.W) && Main.LocalPlayer.controlUp,
+            "ordinary Style Esc closes with its own tail while held W resumes");
+        Frame(false);
+        click.Invoke(style,new object[]{Enum.Parse(click.GetParameters()[0].ParameterType,"Enemy"),rect,0});
         Call(style,"Prepare",960f,640f,1f,Get(renderer,"FontIdentity"),measure,Get(renderer,"SkinGeneration"),Call(shell,"StyleAnchor"));
         var text=Get(style,"TextInput");Require((bool)Call(text,"Begin",Get(style,"Editor")),"real style text edit starts");expectTextLease=true;Frame(false);expectTextLease=false;
         Console.WriteLine("TEXT editing="+Get(text,"Editing")+" owns="+Get(text,"OwnsTextToken")+" block="+Terraria.Main.blockInput+" writing="+PlayerInput.WritingText+" shellFailed="+Get(shell,"Failed"));

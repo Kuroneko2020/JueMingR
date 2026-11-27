@@ -34,6 +34,8 @@ namespace JueMingR.TerrariaHost.Companions
             }
             internal readonly CompanionCombatState Combat = new CompanionCombatState();
             internal readonly CompanionSupplyState Supplies = new CompanionSupplyState();
+            internal FishingActivity Fishing;
+            internal readonly CompanionFishingLine FishingLine = new CompanionFishingLine();
             internal FurnitureRecovery Furniture;
             internal int DyeSwapCounter;
             internal CompanionConnection Connection;internal long Generation;
@@ -46,6 +48,11 @@ namespace JueMingR.TerrariaHost.Companions
             internal long LastAimAttempt;
             internal CompanionBehaviorHost Behavior=new CompanionBehaviorHost();
             internal readonly CompanionMobilityState Mobility = new CompanionMobilityState();
+            internal CompanionAutoTeleport AutoTeleport;
+            internal uint AutoTeleportDelayedAt, AutoTeleportDelay;
+            internal uint LastRecallSubmission;
+            internal long LastRecallGeneration;
+            internal bool LastRecallWasAutomatic;
             internal bool HasAim;
             internal bool Dirty,Faulted,WasUsing;
             internal bool DeathObserved,PermanentDeathPending,TileReachPending;
@@ -125,7 +132,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal Player GetBody(Guid id)
         {
-            var profile=Find(id);if(profile==null)return null;
+            var profile=Find(id);if(profile==null || profile.FishingDepositUnconfirmedSlots!=0)return null;
             Actor a;if(actors.TryGetValue(id,out a))return a.Body;
             Player p;long revision;if(previews.TryGetValue(id,out p) && previewRevisions.TryGetValue(id,out revision) && revision==profile.Revision)return p;
             try{p=profiles.LoadBody(profile);previews[id]=p;previewRevisions[id]=profile.Revision;return p;}catch(Exception e){Feedback=e.Message;return null;}
@@ -135,11 +142,12 @@ namespace JueMingR.TerrariaHost.Companions
             var profile=Find(id);if(profile==null)return "";
             actors.TryGetValue(id,out var actor);
             if(profiles.SaveFailed(id))return (actor?.TerminalFailure==null?"":actor.TerminalFailure+"；")+"保存失败，请重试";
+            if(profile.FishingDepositUnconfirmedSlots!=0)return FishingDepositUnconfirmedMessage;
             return actor!=null?actor.Status:profile.PermanentlyDead?"已永久死亡":states.TryGetValue(id,out var state)?state:"已收回";
         }
         internal bool IsJoined(Guid id){return Find(id)!=null && actors.ContainsKey(id);}
         internal long ActivationGeneration(Guid id){Actor a;return Find(id)!=null && actors.TryGetValue(id,out a)?a.Generation:0;}
-        internal bool CanTransfer(Guid id){Actor a;return Find(id)!=null && actors.TryGetValue(id,out a) && a.Ready && !a.Closing && a.Body.active && !a.Body.dead && !a.Profile.PermanentlyDead;}
+        internal bool CanTransfer(Guid id){Actor a;return Find(id)!=null && actors.TryGetValue(id,out a) && a.Ready && !a.Closing && a.Body.active && !a.Body.dead && !a.Profile.PermanentlyDead && a.Profile.FishingDepositUnconfirmedSlots==0;}
         private CompanionProfile Find(Guid id){return ArchiveIdentityCurrent()?profiles.Find(id):null;}
         private bool Result(bool value,string text){joiningFeedback=null;Feedback=text;return value;}
         private void RetireJoinFeedback(Actor actor)
@@ -161,6 +169,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             if(failed || !ArchiveIdentityCurrent())return Result(false,"当前不能加入队友。");
             if(actors.ContainsKey(id))return Result(false,"该人物已加入或正在加入。");var profile=Find(id);if(profile==null)return Result(false,"人物不存在。");
+            if(profile.FishingDepositUnconfirmedSlots!=0)return Result(false,FishingDepositUnconfirmedMessage);
             if(profile.PermanentlyDead)return Result(false,"该人物已永久死亡。清空配置后可重新创建身体。");
             long reservation=0;
             try
@@ -198,6 +207,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool Recall(Guid id)
         {
             Actor a;if(Find(id)==null || !actors.TryGetValue(id,out a) || a.Closing)return Result(false,"人物已离线或正在收回。");
+            if (QueueRecallForFishStorage(a)) return Result(true, "存鱼正在结算，确认后收回人物。");
             return CloseActor(a,null);
         }
         private bool CloseActor(Actor a,string failure)
@@ -206,9 +216,12 @@ namespace JueMingR.TerrariaHost.Companions
             a.Closing=true;a.Body.controlUseItem=false;a.Body.channel=false;
             try
             {
+                EndFishingActivity(a, retire: true);
+                ulong fishEvidence = FishingDepositEvidence(a);
                 if(a.PermanentDeathPending){a.Profile=profiles.MarkPermanentDeath(a.Profile.Id,a.Generation);a.PermanentDeathPending=false;}
                 RetireProjectiles(a);profiles.EndPlay(a.Body);
-                CaptureActorState(a);a.TeamSavePending=false;ItemCaptureSucceeded(a.Profile.Id);a.CloseCaptured=true;
+                CaptureActorState(a,fishingDepositUnconfirmedSlots:fishEvidence==0?(ulong?)null:fishEvidence);
+                a.TeamSavePending=false;ItemCaptureSucceeded(a.Profile.Id);a.CloseCaptured=true;
                 a.Status=a.TerminalFailure??"正在保存并收回";
                 // Success here means the latest snapshot was accepted for
                 // closing/retry, not that the original connection succeeded.
@@ -228,6 +241,7 @@ namespace JueMingR.TerrariaHost.Companions
         private void Detach(Actor a)
         {
             RetireJoinFeedback(a);
+            a.AutoTeleport=null;
             a.TeamPending=false;a.TeamConnection=null;
             CancelCompanionItemOnce(a);
             CancelItemGestureForActor(a);
@@ -282,8 +296,13 @@ namespace JueMingR.TerrariaHost.Companions
             if (System.Threading.Thread.CurrentThread.ManagedThreadId != itemThread || Find(id) == null) return false;
             try
             {
+                if (actors.TryGetValue(id, out var fishingActor) && FishingActive(fishingActor) && behavior.Follow != fishingActor.Preferences.Follow)
+                    return Result(false, "正在钓鱼");
                 if (actors.TryGetValue(id, out var a) && !a.Closing)
+                {
                     CaptureActorState(a, behavior);
+                    a.AutoTeleport?.Configure(a.Preferences);
+                }
                 else if (a != null) return Result(false, "等待队友收回后再修改设置。");
                 else profiles.SetBehavior(id, behavior);
                 return Result(true, "");
@@ -294,6 +313,7 @@ namespace JueMingR.TerrariaHost.Companions
         public void OnSessionEnded()
         {
             RetireArchiveIdentity();
+            SetFishingPage(Guid.Empty, Guid.Empty);
             navigationWorld.Reset();
             navigationActive=false;
             owner=null;world=null;EndPasswordSession();prediction.EndWorld();CompanionThreatField.Reset();EndRetiringConnectionSession();steam.Dispose();ClearWorldSources();
@@ -364,7 +384,7 @@ namespace JueMingR.TerrariaHost.Companions
                     if (a.Ready && !a.Closing && !a.Faulted && a.Body.active && !a.Body.dead)
                     {
                         if (!a.Body.CCed) planningActors.Add(a);
-                        if (a.Preferences.Follow)
+                        if (FishingFollowsOwner(a))
                         {
                             if (!observedOwner)
                             {
@@ -399,11 +419,13 @@ namespace JueMingR.TerrariaHost.Companions
                 try
                 {
                     if(a.Closing)continue;
+                    if(a.Faulted && FishingActive(a)){CloseActor(a,a.Status);continue;}
                     if(a.Connection!=null){PumpConnection(a);if(a.Connection?.Finished==true){CloseActor(a,a.Connection.Error??"连接已结束");continue;}}
+                    if(a.AutoTeleport?.HasCandidate==true)ConsumeAutoTeleport(a);
                     UpdatePasswordAttempt(a);
                     PublishTeam(a);
                     if(a.TeamSavePending && Main.GameUpdateCount>=a.NextSave)SaveTeam(a);
-                    if(a.Ready && a.Dirty && !a.TeamSavePending && !profiles.SaveFailed(a.Profile.Id) && Main.GameUpdateCount>=a.NextSave){CaptureActorState(a);ItemCaptureSucceeded(a.Profile.Id);a.Dirty=false;a.NextSave=Main.GameUpdateCount+300;}
+                    if(a.Ready && a.Dirty && !a.TeamSavePending && !FishingStorageAwaiting(a) && !profiles.SaveFailed(a.Profile.Id) && Main.GameUpdateCount>=a.NextSave){CaptureActorState(a);ItemCaptureSucceeded(a.Profile.Id);a.Dirty=false;a.NextSave=Main.GameUpdateCount+300;}
                 }
                 catch(Exception e){CloseActor(a,e.Message);}
             }

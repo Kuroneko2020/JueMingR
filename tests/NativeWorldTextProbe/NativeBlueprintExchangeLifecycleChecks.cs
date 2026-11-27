@@ -8,9 +8,11 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using JueMingR.Features.Blueprint;
+using JueMingR.Features.Text;
 using JueMingR.Infrastructure.Blueprint;
 using JueMingR.Infrastructure.Storage;
 using JueMingR.Platform.Blueprint;
+using JueMingR.Platform.Hotkeys;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Terraria;
@@ -22,6 +24,7 @@ namespace NativeWorldTextProbe
     internal static class NativeBlueprintExchangeLifecycleChecks
     {
         private const BindingFlags F = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+        private static bool importCandidatesVisible;
         internal static void Run(object context)
         { RunCore(context, null, null); }
         internal static void Visual(object context, ProbeGraphics graphics, string output)
@@ -58,6 +61,9 @@ namespace NativeWorldTextProbe
                 // it, and a failed setup must not retry that setter in finally.
                 if (graphics != null) { Main.UIScale = 1; scaleChanged = true; }
                 PlayerInput.CacheOriginalScreenDimensions();
+                Action mapKeyboard = null;
+                Action prepareNameControls = null;
+                Keys[] pointerKeys = Array.Empty<Keys>();
                 Action<Keys[], int> frame = (keys, mask) =>
                 {
                     FocusHelper.IsSelectedApplication = focused;
@@ -69,7 +75,8 @@ namespace NativeWorldTextProbe
                         (mask & 4) != 0 ? ButtonState.Pressed : ButtonState.Released, (mask & 2) != 0 ? ButtonState.Pressed : ButtonState.Released,
                         (mask & 8) != 0 ? ButtonState.Pressed : ButtonState.Released, (mask & 16) != 0 ? ButtonState.Pressed : ButtonState.Released);
                     PlayerInput.ScrollWheelDelta = PlayerInput.ScrollWheelDeltaForUI = wheel;
-                    PlayerInput.Triggers.Reset(); PlayerInput.Triggers.Current.Up = true;
+                    PlayerInput.Triggers.Reset();
+                    if (mapKeyboard == null) PlayerInput.Triggers.Current.Up = true;
                     // The real MouseInput postfix freezes the physical sample
                     // before general mapping can consume its game actions.
                     // Library gestures read that owner, not MouseInfo directly.
@@ -78,8 +85,10 @@ namespace NativeWorldTextProbe
                     Call(input, "AfterNativeMouse", mouseKeys);
                     Require((bool)Get(input, "RawMouseLeft") == ((mask & 1) != 0) && (bool)Get(input, "RawMouseRight") == ((mask & 2) != 0),
                         "real native mouse stage publishes the exact physical left/right sample before mapping");
+                    mapKeyboard?.Invoke();
                     Call(input, "AfterMapping"); Main.keyState = new KeyboardState(keys); Call(input, "AfterKeyboardRefresh");
                     Call(shell, "ProcessInput"); Call(context, "UpdateRuntime");
+                    prepareNameControls?.Invoke();
                     // CPU has no graphics device. It executes the actual entire
                     // unavailable cleanup path, but cannot certify active GPU
                     // preparation/drawing. Visual executes those same consumers
@@ -99,6 +108,7 @@ namespace NativeWorldTextProbe
                 Action neutral = () => { step(); step(); };
                 Action<string, Guid?> clickVisible = (command, asset) =>
                 {
+                    Action pointerStep = () => frame(pointerKeys, 0);
                     // All three real controls use the same actual scroll and
                     // clipping prerequisites. Reacquire parts after each wheel
                     // frame; offscreen parts are layout, not clickable proof.
@@ -108,7 +118,7 @@ namespace NativeWorldTextProbe
                         // Scrolling exposes real preview work. Let that current
                         // page finish before freezing a new press geometry;
                         // this waits before the only click, never retries it.
-                        NativeQuickItemChecks.Until(() => { step(); return (bool)Get(ui, "ready") && !(bool)Get(ui, "dirty") && !library.Snapshot.Busy; });
+                        NativeQuickItemChecks.Until(() => { pointerStep(); return (bool)Get(ui, "ready") && !(bool)Get(ui, "dirty") && !library.Snapshot.Busy; });
                         object part = ((IEnumerable)Get(ui, "parts")).Cast<object>().First(p => Get(p, "Command").ToString() == command && (bool)Get(p, "Enabled") &&
                             (!asset.HasValue || (Guid)Get(p, "AssetId") == asset.Value));
                         object rect = Get(Get(part, "Element"), "Rect"), view = Get(ui, "view"), clip = Get(ui, "hitClip");
@@ -122,15 +132,15 @@ namespace NativeWorldTextProbe
                         { pointer = new Vector2(x, y); reached = true; break; }
                         pointer = new Vector2(clipLeft + clipWidth / 2, clipTop + clipHeight / 2);
                         float beforeScroll = (float)Get(state, "Scroll");
-                        wheel = y < clipTop + clipHeight / 2 ? 120 : -120; step(); wheel = 0;
+                        wheel = y < clipTop + clipHeight / 2 ? 120 : -120; pointerStep(); wheel = 0;
                         Require((float)Get(state, "Scroll") != beforeScroll, "actual shell wheel must advance toward the clipped " + command + " control");
                     }
                     Require(reached, "the " + command + " control becomes reachable through actual shell scrolling");
-                    step(); object hovered = GetOptional(ui, "hovered");
+                    pointerStep(); object hovered = GetOptional(ui, "hovered");
                     Require((bool)Get(input, "CanStartActions") && hovered != null && Get(hovered, "Command").ToString() == command && (bool)Get(hovered, "Enabled") &&
                         (!asset.HasValue || (Guid)Get(hovered, "AssetId") == asset.Value),
                         "the actual drawn " + command + " control is enabled and hit by the current physical pointer before press");
-                    frame(Array.Empty<Keys>(), 1); step(); pointer = Vector2.Zero;
+                    frame(pointerKeys, 1); pointerStep(); pointer = Vector2.Zero;
                 };
                 Action open = () =>
                 {
@@ -378,6 +388,14 @@ namespace NativeWorldTextProbe
                     finally { Terraria.GameContent.FontAssets.MouseText = originalFont; Call(Get(shell, "renderer"), "RefreshResources"); }
                     Console.WriteLine("PASS template and ordinary Host materials CPU handoff: distinct B Completed before/after materials acceptance; Host success retained, queued positioning retired, valid post-F5 page/nonzero scroll/A selection preserved through normal processing and Shell modal close/resume. GPU/physical Materials click NOT_EXECUTED.");
                 }
+                HelperNameInput(context, host, ui, state, library, area, frame, step, value => focused = value,
+                    mapping => mapKeyboard = mapping, graphics == null ? prepare => prepareNameControls = prepare : (Action<Action>)null,
+                    (command, keys) =>
+                    {
+                        pointerKeys = keys;
+                        try { clickVisible(command, null); }
+                        finally { pointerKeys = Array.Empty<Keys>(); }
+                    });
                 Console.WriteLine("PASS exchange Host lifecycle (" + (graphics == null ? "CPU unavailable Shell consumers and direct view commands; active GPU path separate" : "complete Shell update/pointer/real Draw and enabled view clicks; Name owner command only") + "): observed focus loss, focused modal, both real-IO/neutral orders, success/healthy duplicate/local name, all Mouse1-5 tails, cancel/failure, actual F5 and newer Back/Card/Name/Page/PlacedList/session intent.");
             }
             finally
@@ -390,8 +408,216 @@ namespace NativeWorldTextProbe
                 FocusHelper.IsSelectedApplication = priorSelected; Main.screenWidth = oldWidth; Main.screenHeight = oldHeight;
                 if (scaleChanged) Main.UIScale = oldScale;
                 PlayerInput.CacheOriginalScreenDimensions();
+                // The naming fixture leaves its Host session on purpose. Reopen
+                // with the original library restored and let real scene recovery
+                // finish before the next case uses its placed-list admission.
+                if (!(bool)Get(host, "HasSession"))
+                {
+                    Call(host, "OnSessionStarted");
+                    NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return (bool)Get(host, "ProjectionPersistenceReady"); });
+                }
             }
         }
+        private static void HelperNameInput(object context, object host, object ui, object state, LibraryState library, string area,
+            Action<Keys[], int> frame, Action step, Action<bool> focus, Action<Action> mapping, Action<Action> prepareCpu,
+            Action<string, Keys[]> clickVisible)
+        {
+            typeof(NativeLegacyPlacementIdentityChecks).GetMethod("PrepareTrackMetadata", F).Invoke(null, null);
+            NativeBlueprintWorldMatchChecks.InitializeMetadata();
+            var text = Get(ui, "TextInput");
+            var nativeIme = text.GetType().GetNestedType("NativeIme", BindingFlags.NonPublic);
+            var patch = new HarmonyLib.Harmony("JueMingR.Tests.Blueprint.ImportNameKeyboardTail");
+            patch.Patch(nativeIme.GetMethod("Toggle", F), new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintLibraryUiChecks).GetMethod("ImeToggle", F)));
+            patch.Patch(nativeIme.GetProperty("Composition", F).GetGetMethod(true), new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintLibraryUiChecks).GetMethod("ImeEmpty", F)));
+            patch.Patch(nativeIme.GetProperty("Candidates", F).GetGetMethod(true), new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintExchangeLifecycleChecks).GetMethod(nameof(ImportCandidateWindow), F)));
+            object shell = Get(context, "Shell"), input = Get(context, "Input"), combat = Get(context, "Combat"), settings = Get(combat, "Settings");
+            var hotkeys = (HotkeyInput)Get(input, "Hotkeys");
+            var bindings = (HotkeyBindings)Get(Get(shell, "hotkeys"), "Bindings");
+            const string facing = "combat.facing";
+            var originalBinding = bindings.Get(facing);
+            var chroma = Main.ChromaPainter;
+            var originalFont = Terraria.GameContent.FontAssets.MouseText;
+            var keysByAction = PlayerInput.CurrentProfile.InputModes[InputMode.Keyboard].KeyStatus;
+            string[] mappedActions = { "MouseLeft", "Jump", "Inventory" };
+            var originalMappings = mappedActions.Select(action => keysByAction[action].ToArray()).ToArray();
+            var keyboard = typeof(PlayerInput).GetMethod("KeyboardInput", F);
+            bool nativeUse = false, nativeJump = false, nativeInventory = false, nativeUp = false;
+            Action<HotkeyChord> bind = chord =>
+            {
+                NativeQuickItemChecks.Until(() => { bindings.Poll(); return bindings.Loaded && !bindings.Busy; });
+                if (Equals(bindings.Get(facing), chord)) return;
+                Require(bindings.TrySet(facing, chord, null, out long _, out string reason), "common binding accepts the legal combat chord: " + reason);
+                NativeQuickItemChecks.Until(() => { bindings.Poll(); return !bindings.Busy; });
+                Require(Equals(bindings.Get(facing), chord), "combat chord is active after the reliable binding write");
+            };
+            var walking = new[] { Keys.W };
+            Action<Keys> textPress = key =>
+            {
+                Main.keyCount = 1; Main.keyInt[0] = (int)key; Main.keyString[0] = "";
+                frame(new[] { Keys.W, key }, 0);
+            };
+            try
+            {
+                Require(HotkeyChord.TryParse("Enter", out var enterChord, out _), "Enter is a legal common combat binding");
+                bind(enterChord);
+                Main.ChromaPainter = new Terraria.GameContent.ChromaHotkeyPainter();
+                foreach (string action in mappedActions)
+                {
+                    keysByAction[action].Add("Enter");
+                    keysByAction[action].Add("Escape");
+                }
+                mapping(() =>
+                {
+                    // Vanilla maps the previous cached keys while the prefix's
+                    // WritingText still holds and refreshes raw keys later.
+                    PlayerInput.MouseKeys.Clear();
+                    keyboard.Invoke(null, null);
+                    nativeUse = PlayerInput.Triggers.Current.MouseLeft; nativeJump = PlayerInput.Triggers.Current.Jump;
+                    nativeInventory = PlayerInput.Triggers.Current.Inventory; nativeUp = PlayerInput.Triggers.Current.Up;
+                    PlayerInput.WritingText = false;
+                });
+                NativeQuickItemChecks.Until(() => { Call(combat, "Poll"); return (bool)Call(combat, "CanConfigure", 5); });
+                var exits = new[] { "confirm", "escape", "mouse-confirm", "mouse-cancel", "f5", "session" };
+                foreach (string exit in exits)
+                {
+                    step(); step(); Call(ui, "OpenLibrary");
+                    string source = Path.Combine(area, "long-name-" + exit + ".json");
+                    int width = 28 + Array.IndexOf(exits, exit);
+                    File.WriteAllText(source, "{\"name\":\"" + new string('长', 49) + "\",\"width\":" + width + ",\"height\":2,\"tiles\":[{\"x\":0,\"y\":0,\"tileType\":1,\"frameX\":0,\"frameY\":0}]}");
+                    var dialog = new Dialog(source); Set(host, "exchangeDialog", dialog);
+                    NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });
+                    Call(host, "BeginImport");
+                    Require(dialog.Request != null, "Host admits Helper naming for " + exit + " through the original file dialog: " + GetOptional(host, "ExchangeDisabledReason"));
+                    Guid request = dialog.Request.RequestId;
+                    step(); dialog.Select();
+                    NativeQuickItemChecks.Until(() => { step(); return (Guid)Get(ui, "importNameRequest") == request && (bool)Get(state, "Visible"); });
+                    long generation = (long)Get(ui, "ExchangePresentationGeneration");
+                    var editor = (TextEditBuffer)Get(ui, "Editor"); editor.Insert("本地有效名称");
+                    frame(walking, 0);
+                    Require((bool)Get(text, "Owned") && library.ExchangePhase == BlueprintExchangePhase.AwaitingName, "prepared import owns existing text lease while the sealed stage waits");
+                    long acceptedBeforeEnter = 0;
+                    if (exit == "confirm")
+                    {
+                        importCandidatesVisible = true; textPress(Keys.Enter);
+                        importCandidatesVisible = false; textPress(Keys.Enter);
+                        Require((bool)Get(text, "Owned") && ReferenceEquals(editor, Get(ui, "Editor")) &&
+                            (Guid)Get(ui, "importNameRequest") == request && library.ExchangePhase == BlueprintExchangePhase.AwaitingName,
+                            "IME candidate confirmation and that same held Enter leave the exact naming continuation awaiting input");
+                        frame(walking, 0);
+                        focus(false); step();
+                        Require(!(bool)Get(text, "Owned") && ReferenceEquals(editor, Get(ui, "Editor")) && editor.Text == "本地有效名称", "temporary focus loss releases IME and keeps this exact local draft");
+                        focus(true); step(); step(); frame(walking, 0);
+                        acceptedBeforeEnter = (long)Get(settings, "AcceptedCommandId");
+                        textPress(Keys.Enter);
+                        Require(!(bool)Get(text, "Owned") && (Guid)Get(ui, "importNameRequest") == Guid.Empty,
+                            "the real queued Enter reaches the sealed naming command and releases the text lease");
+                        long afterText = (long)Get(settings, "AcceptedCommandId");
+                        var held = new[] { Keys.W, Keys.Enter };
+                        frame(held, 0); frame(held, 0);
+                        // A refreshed empty cache without a native mapping is
+                        // possible on an inactive Update. It cannot end the hold.
+                        Call(input, "BeginUpdate"); Main.keyState = default(KeyboardState); Call(input, "AfterKeyboardRefresh");
+                        Require(!hotkeys.Reliable && hotkeys.IsDown((int)Keys.Enter), "skipped native mapping is not release proof");
+                        frame(held, 0); frame(held, 0);
+                        Console.WriteLine("HELPER ENTER outside F5 combat accepted " + acceptedBeforeEnter + " -> " + afterText +
+                            ", held native use=" + nativeUse + " jump=" + nativeJump + " inventory=" + nativeInventory + " up=" + nativeUp);
+                        Require(afterText == acceptedBeforeEnter && !nativeUse && !nativeJump && !nativeInventory && nativeUp && hotkeys.IsDown((int)Keys.Enter),
+                            "one actual Enter press confirms only the name, never toggles combat or maps held vanilla actions, and keeps W");
+                        Require((long)Get(ui, "ExchangePresentationGeneration") == generation, "name confirmation retains final selection rights for the exact request");
+                    }
+                    else if (exit == "escape")
+                    {
+                        textPress(Keys.Escape);
+                        Require(!(bool)Get(text, "Owned") && !hotkeys.IsNew((int)Keys.Escape) && (Guid)Get(ui, "importNameRequest") == Guid.Empty,
+                            "actual Escape cancels exactly the named request and consumes its frozen edge");
+                        var held = new[] { Keys.W, Keys.Escape };
+                        frame(held, 0); frame(held, 0);
+                        Require(!nativeUse && !nativeJump && !nativeInventory && nativeUp,
+                            "the same held Escape cannot reach native mappings and W still maps");
+                        frame(new[] { Keys.W, Keys.Escape, Keys.F5 }, 0);
+                        Require(!(bool)Get(state, "Visible") && !Main.keyState.IsKeyDown(Keys.Escape), "F5 closes the page without retiring the held Escape");
+                        frame(walking, 0); frame(held, 0); frame(held, 0);
+                        Require(nativeUse && nativeJump && nativeInventory && nativeUp, "a fresh Escape maps again after real release");
+                    }
+                    else if (exit == "mouse-confirm" || exit == "mouse-cancel")
+                    {
+                        if (prepareCpu != null)
+                        {
+                            object painter = Get(shell, "renderer");
+                            if (exit == "mouse-confirm")
+                            {
+                                FiniteCostChecks.SetCpuFont(10);
+                                // CPU has font metrics and the real button layout;
+                                // only the missing textures are bypassed. Shell
+                                // still enforces real generation and pointer gates.
+                                foreach (object renderer in new[] { painter, Get(ui, "renderer"), Get(ui, "materialRenderer") })
+                                {
+                                    var refresh = renderer.GetType().GetMethod(ReferenceEquals(renderer, painter) ? "RefreshResources" : "Refresh", F);
+                                    patch.Patch(refresh, postfix: new HarmonyLib.HarmonyMethod(typeof(NativeBlueprintExchangeLifecycleChecks).GetMethod(nameof(ImportCpuResource), F)));
+                                }
+                            }
+                            prepareCpu(() =>
+                            {
+                                var dimensions = PlayerInput.OriginalScreenSize; var matrix = Main.UIScaleMatrix;
+                                Call(painter, "Prepare", state, dimensions.X, dimensions.Y, matrix.M11);
+                                Call(ui, "Prepare", true, matrix, dimensions);
+                            });
+                        }
+                        bool confirms = exit == "mouse-confirm";
+                        var held = new[] { Keys.W, confirms ? Keys.Enter : Keys.Escape };
+                        clickVisible(confirms ? "ConfirmImportName" : "CancelImportName", held);
+                        prepareCpu?.Invoke(null);
+                        Require(!(bool)Get(text, "Owned") && (Guid)Get(ui, "importNameRequest") == Guid.Empty,
+                            "the enabled naming button completes its actual pointer press and release");
+                        frame(held, 0); frame(held, 0);
+                        Require(nativeUse && nativeJump && nativeInventory && nativeUp, "a mouse exit keeps independently held keyboard mappings");
+                    }
+                    else if (exit == "f5") frame(new[] { Keys.W, Keys.F5 }, 0);
+                    else { Call(host, "OnSessionEnded"); Call(ui, "Suspend"); }
+                    for (int i = 0; i < 2; i++) frame(walking, 0);
+                    Require(!(bool)Get(text, "Owned") && !(bool)Get(text, "keyboardTail") && Main.keyState.IsKeyDown(Keys.W) && !PlayerInput.WritingText,
+                        "the import name's " + exit + " preserves continuing W immediately without an unrelated release gate");
+                    NativeQuickItemChecks.Until(() => { frame(walking, 0); return !(bool)Get(host, "ExchangeBusy"); });
+                    if (exit == "confirm" || exit == "mouse-confirm")
+                    {
+                        frame(walking, 0);
+                        var selected = ((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId;
+                        NativeQuickItemChecks.Until(() => { Call(host, "Poll"); return !library.Snapshot.Busy; });
+                        Require(selected.HasValue && library.TryList(721, 0, selected.Value) && NativeBlueprintLibraryWait.AcceptedList(library, "newly named exact row").Page.Entries.Any(e => e.AssetId == selected.Value && e.Name == "本地有效名称"),
+                            "normal Host receipt positions the same newly named asset through the unchanged library generation");
+                        if (exit == "confirm")
+                        {
+                            frame(new[] { Keys.W, Keys.F5 }, 0); frame(walking, 0);
+                            var held = new[] { Keys.W, Keys.Enter };
+                            frame(held, 0); frame(held, 0);
+                            Require((long)Get(settings, "AcceptedCommandId") > acceptedBeforeEnter && nativeUse && nativeJump && nativeInventory && nativeUp,
+                                "a fresh Enter after trusted release reaches both the legal common binding and native keyboard mappings");
+                        }
+                    }
+                    else Require(!Directory.EnumerateDirectories(Path.Combine(area, "templates", ".staging")).Any(), "Host " + exit + " retires its unpublished private stage");
+                    if (exit == "f5")
+                    {
+                        frame(new[] { Keys.W, Keys.F5 }, 0);
+                        Require((bool)Get(state, "Visible"), "fresh F5 reopens while W has never been released");
+                    }
+                }
+            }
+            finally
+            {
+                mapping(null);
+                prepareCpu?.Invoke(null);
+                importCandidatesVisible = false;
+                Main.ChromaPainter = chroma;
+                Terraria.GameContent.FontAssets.MouseText = originalFont;
+                for (int i = 0; i < mappedActions.Length; i++)
+                { keysByAction[mappedActions[i]].Clear(); keysByAction[mappedActions[i]].AddRange(originalMappings[i]); }
+                bind(originalBinding);
+                patch.UnpatchAll(patch.Id);
+            }
+            Console.WriteLine("PASS Helper naming Host/input: exact sealed request and IME candidate priority; actual Enter/Escape/confirm and cancel clicks/F5/session; combat command and vanilla held mappings, trusted release vs skipped mapping, continuing W.");
+        }
+        private static bool ImportCandidateWindow(ref bool __result) { __result = importCandidatesVisible; return false; }
+        private static void ImportCpuResource(ref bool __result) { __result = true; }
         private static void AssertSelected(object state, object ui, object host, Guid asset, string reason)
         { Require((bool)Get(state, "Visible") && ((BlueprintCaptureFlow)Get(host, "Flow")).SelectedAssetId == asset && (Guid?)GetOptional(ui, "selected") == asset, reason); }
         private static void WriteSource(string seedRoot, string source, ushort tile, int cellCount = 1)

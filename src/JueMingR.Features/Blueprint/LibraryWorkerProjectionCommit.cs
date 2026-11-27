@@ -90,7 +90,20 @@ namespace JueMingR.Features.Blueprint
             catch (Exception error)
             {
                 ReleaseProjectionTrimWorker();
-                lock (gate) if (projectionActiveCommit != null) projectionCommitReceipt = new BlueprintProjectionCommitReceipt(projectionActiveCommit, new Dictionary<long, BlueprintProjectionMask>(), new List<long>(), Reason(error));
+                lock (gate)
+                {
+                    var request = projectionActiveCommit;
+                    if (request != null && projectionReferences.ContainsKey(request.Candidate.Identity))
+                    {
+                        var assetError = error as ProjectionAssetReadException;
+                        if (assetError != null && ProjectionCurrent(assetError.Owner))
+                            FailProjectionAssetLocked(assetError.Owner, assetError, BlueprintProjectionFailureStage.Edit);
+                        else
+                            projectionCommitReceipt = new BlueprintProjectionCommitReceipt(request, new Dictionary<long, BlueprintProjectionMask>(),
+                                new List<long>(), Reason(error), failureScope: ProjectionFailureScope(error),
+                                failureCode: ProjectionFailureCode(error), failureDetail: ProjectionFailureDetail(error));
+                    }
+                }
             }
             projectionCommitting.Dispose(); projectionCommitting = null; lock (gate) projectionActiveCommit = null; return true;
         }
@@ -120,8 +133,8 @@ namespace JueMingR.Features.Blueprint
             CheckProjectionCommit(request, allReferences: true); ProjectionOwner incoming = CommitOwner(request.Candidate.Identity);
             if (request.Kind == BlueprintProjectionEditKind.Trim)
             { foreach (bool step in ComputeProjectionTrim(request, incoming)) yield return step; yield break; }
-            if (request.Kind == BlueprintProjectionEditKind.Mirror)
-                foreach (bool step in ValidateProjectionMirror(request, incoming)) yield return step;
+            if (request.Kind == BlueprintProjectionEditKind.Mirror || request.Kind == BlueprintProjectionEditKind.Move && request.Candidate.MirrorProfile != null)
+                foreach (bool step in ValidateProjectionView(incoming, request.Candidate.View, () => CheckProjectionCommit(request))) yield return step;
             var masks = new Dictionary<long, BlueprintProjectionMask>(); var retired = new List<long>();
             foreach (BlueprintProjectionPlacement old in request.Previous)
             {

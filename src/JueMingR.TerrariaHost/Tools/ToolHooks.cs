@@ -55,6 +55,7 @@ namespace JueMingR.TerrariaHost.Tools
             Patch(typeof(Player),"ItemCheck_UseMiningTools_TryHittingWall",new[]{typeof(Item),typeof(int),typeof(int)},nameof(BeforeHitWall));
             Patch(typeof(Player),"PlaceThing_Paintbrush",Type.EmptyTypes,nameof(BeforeBrush));
             Patch(typeof(Player),"PlaceThing_PaintRoller",Type.EmptyTypes,nameof(BeforeRoller));
+            Patch(typeof(Player),"PlaceThing_XMasTreeTops",Type.EmptyTypes,nameof(BeforeChristmasTreeOrnament));
             Patch(typeof(Player),"PlaceThing_PaintScraper_TryScraping",new[]{typeof(int),typeof(int)},nameof(BeforeScrape));
             Patch(typeof(Player),"PlaceThing_PaintScraper_LongMoss",new[]{typeof(int),typeof(int)},nameof(BeforeScrapeMoss));
             Patch(typeof(Player),"TryPainting",new[]{typeof(int),typeof(int),typeof(bool),typeof(bool)},nameof(BeforePainting));
@@ -391,6 +392,8 @@ namespace JueMingR.TerrariaHost.Tools
         private static bool BeforeHitWall(Player __instance,int __1,int __2){return BuildConsumer(__instance,ToolBuildConsumer.HittingWall,__1,__2);}
         private static bool BeforeBrush(Player __instance){return BuildConsumer(__instance,ToolBuildConsumer.Paintbrush,Player.tileTargetX,Player.tileTargetY);}
         private static bool BeforeRoller(Player __instance){return BuildConsumer(__instance,ToolBuildConsumer.PaintRoller,Player.tileTargetX,Player.tileTargetY);}
+        private static bool BeforeChristmasTreeOrnament(Player __instance)
+        { return BuildConsumer(__instance, ToolBuildConsumer.ChristmasTreeOrnament, Player.tileTargetX, Player.tileTargetY); }
         private static bool BeforeScrape(Player __instance,int __0,int __1){return BuildConsumer(__instance,ToolBuildConsumer.PaintScraper,__0,__1);}
         private static bool BeforeScrapeMoss(Player __instance,int __0,int __1){return BuildConsumer(__instance,ToolBuildConsumer.LongMoss,__0,__1);}
         private static bool BeforePainting(Player __instance,int __0,int __1,bool __2,bool __3)

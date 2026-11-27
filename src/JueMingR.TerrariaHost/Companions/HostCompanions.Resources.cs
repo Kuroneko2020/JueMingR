@@ -237,6 +237,8 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 companionChanged |= !change.Owner;
                 backpackChanged |= !change.Owner && change.Area == CompanionInventoryArea.Inventory;
+                if (!change.Owner && change.Area == CompanionInventoryArea.Inventory)
+                    FishingManualItemCommitted(actor, change.Slot, change.After);
                 if (!change.Owner && change.Area == CompanionInventoryArea.Armor)
                     InvalidateActorTileReach(actor.Body);
                 if (change.Owner && !change.OwnerTrash)
@@ -306,6 +308,8 @@ namespace JueMingR.TerrariaHost.Companions
                     profiles.OwnsActivation(pending.Actor.Profile.Id, pending.Generation);
                 else current &= ReferenceEquals(pending.Body, owner);
                 if (!current) { pendingItemSync.RemoveAt(i); continue; }
+                if (pending.Actor != null && pending.Slot < pending.Body.inventoryChestStack.Length &&
+                    pending.Body.inventoryChestStack[pending.Slot]) continue;
                 // SendData silently returns without sending when the primary
                 // socket is down; CompanionConnection likewise drops terminal
                 // sends. Neither return is a successful publication or ACK.

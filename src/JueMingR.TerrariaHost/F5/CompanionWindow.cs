@@ -31,6 +31,7 @@ namespace JueMingR.TerrariaHost.F5
             internal string Hint, Placeholder, StackText, Availability, StateText;
             internal bool Locked, Favorited;
             internal int LoadoutIcon = -1;
+            internal int SwitchLoadout = -1;
             internal bool IsSlot, Owner;
             internal bool WeaponCandidate, ActiveWeapon;
             internal bool ActorOverlay,ActorState,ManualRecall;
@@ -91,7 +92,7 @@ namespace JueMingR.TerrariaHost.F5
         private readonly CompanionPreview ownerPreview = new CompanionPreview(), companionPreview = new CompanionPreview();
         private readonly CompanionResourceDisplay resourceDisplay = new CompanionResourceDisplay();
         private F5Rect ownerHero, companionHero,ownerShowcase,companionShowcase,ownerShowcasePanel,companionShowcasePanel;
-        private float sharedResourcesHeight,sharedEquipmentHeight,sharedLifeHeight;
+        private float sharedHeroHeight, sharedEquipmentHeight, sharedLifeHeight;
         private readonly List<F5Rect> actorHeaders=new List<F5Rect>();
         private readonly List<F5Rect> groups = new List<F5Rect>();
         private int selectedStatusLabel=-1,respawnLabel=-1;
@@ -107,16 +108,23 @@ namespace JueMingR.TerrariaHost.F5
         private bool archiveRetry, archiveCreate;
         private int page, listOffset, bodyOffset, listMaximum, bodyMaximum, generation, armedGeneration, skin;
         private bool previousLeft, leftTail, rightTail, ready, confirmingReset;
-        public TextEditBuffer Editor { get { return editor; } }
+        public TextEditBuffer Editor => editor ?? autoTeleportPopup.Editor ?? fishingPane?.Editor;
+        // The shell sees any child editor. The password input adapter can
+        // acquire only its own masked buffer.
+        TextEditBuffer ITextEditSession.Editor => editor;
         internal bool Visible { get; private set; }
-        internal bool Captured { get { return dragging || armedKey != null || leftTail || rightTail; } }
+        internal bool Captured => dragging || armedKey != null || leftTail || rightTail || fishingPane?.Captured == true;
+        // A retired auto-teleport click is already filtered by physical source.
+        // Retain its pointer tail without blanking co-bound keyboard actions.
+        internal bool ClaimsMappedPointer => dragging || armedKey != null || leftTail && !autoTeleportLeftTail ||
+            rightTail && !autoTeleportRightTail || fishingPane?.Captured == true;
         internal bool Independent { get; private set; }
         internal bool Dragging { get { return dragging; } }
         internal bool OwnsPointer { get; private set; }
         internal bool ConsumeLeft { get; private set; }
         internal bool ConsumeRight { get; private set; }
         internal bool ConsumeWheel { get; private set; }
-        internal bool OwnsTextToken { get { return textInput.OwnsTextToken; } }
+        internal bool OwnsTextToken => textInput.OwnsTextToken || autoTeleportPopup.OwnsTextToken || fishingPane?.OwnsTextToken == true;
         internal int LayoutBuilds { get; private set; }
         internal int ItemPresentationUpdates { get; private set; }
         internal Action<string, F5Rect> HotkeyClicked;
@@ -124,6 +132,7 @@ namespace JueMingR.TerrariaHost.F5
         internal Guid HotkeyProfile => Visible && page == 1 ? selected : Guid.Empty;
         internal int HotkeyGeneration => generation;
         internal bool HasHotkeyAnchor(string id, F5Rect bounds) => Visible && ready && page == 1 && !PasswordPromptVisible && !SupplyPopupVisible &&
+            !autoTeleportPopup.Visible && fishingPane?.Visible != true &&
             (CurrentProfile()?.DataEpoch ?? 0) == viewDataEpoch &&
             controls.Exists(c => c.HotkeyId == id && c.Rect.Equals(bounds));
         internal void BlockForHotkeyPopup(Vector2 point, int wheel)
@@ -140,6 +149,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             this.host = host; this.input = input; measureSource = measure; this.measure = MeasureCached;
             textInput = new TextEditInput(this, new PasswordClipboard());
+            autoTeleportPopup = new AutoTeleportPopup(this);
         }
         internal void Toggle(F5Rect anchor)
         { ToggleCore(false); }
@@ -161,13 +171,17 @@ namespace JueMingR.TerrariaHost.F5
             previousRight = PlayerInput.MouseInfo.RightButton == ButtonState.Pressed; rightRepeat=0; rightSlot=null;
             armedKey = null; generation++;
         }
-        internal bool Contains(float x, float y) => Visible && ready && (panel.Contains(x, y) || SupplyPopupVisible && supplyPanel.Contains(x, y));
+        internal bool Contains(float x, float y) => Visible && ready &&
+            (panel.Contains(x, y) || SupplyPopupVisible && supplyPanel.Contains(x, y) || autoTeleportPopup.Contains(x, y) ||
+                fishingPane?.Contains(x, y) == true);
         internal void BeforeInput(bool active)
         {
             if (!active && editor != null) Close();
             RetireInvalidPasswordOwner();
-            if (active && !textInput.OtherTextOwner) SyncPasswordPrompt();
+            if (active && (!textInput.OtherTextOwner || autoTeleportPopup.OwnsTextToken)) SyncPasswordPrompt();
             textInput.BeforeSample(active && Visible);
+            autoTeleportPopup.BeforeInput(active && Visible && !PasswordPromptVisible);
+            fishingPane?.BeforeInput(active && FishingPageVisible);
         }
         internal void CloseWithParent() { if (!Independent) Close(); }
         internal void CancelForFocusLoss() { Close(); }
@@ -181,6 +195,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (!Visible && !ready && editor == null) return;
             CancelDrag();
+            RetireFishingPane();
+            autoTeleportPopup.Close();
             Visible = false; ready = false; armedKey = null; confirmingReset = false; deletionTarget = null; CloseSupplyPopup();
             CancelSelectionModes();
             SelectStorage(CompanionInventoryArea.Inventory, false);
@@ -195,6 +211,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             PrepareWindow(transform, physical, resources);
             if (SupplyPopupVisible) PrepareSupplyPopup(resources);
+            autoTeleportPopup.Prepare();
+            PrepareFishingPane(transform, physical, resources);
         }
         private void PrepareWindow(Matrix transform, Vector2 physical, bool resources)
         {
@@ -248,7 +266,8 @@ namespace JueMingR.TerrariaHost.F5
             // Only a structural projection/identity change retires an armed button.
             // Visible item values refresh in place on the fast path above.
             var pressed=armedKey==null?null:controls.Find(c=>c.Key==armedKey);
-            controls.Clear(); labels.Clear(); groups.Clear(); actorHeaders.Clear(); supplyAnchor=null; configurationNameRect=default(F5Rect); configurationViewport=bodyView; selectedStatusLabel=respawnLabel=-1; icons.BeginVisibleSet();
+            controls.Clear(); labels.Clear(); groups.Clear(); actorHeaders.Clear(); supplyAnchor=null; autoTeleportAnchor=null;
+            configurationNameRect=default(F5Rect); configurationViewport=bodyView; selectedStatusLabel=respawnLabel=-1; icons.BeginVisibleSet();
             Text("AI 队友", new F5Rect(panel.X + 12, panel.Y + 4, width - 64, row));
             Button("close", "×", new F5Rect(panel.Right - 40, panel.Y + 4, 30, row), Close);
             BuildList(row);
@@ -267,7 +286,8 @@ namespace JueMingR.TerrariaHost.F5
                 // replace those cells now, before hit testing or caching its epoch.
                 controls.RemoveRange(bodyControlStart, controls.Count - bodyControlStart);
                 labels.RemoveRange(bodyLabelStart, labels.Count - bodyLabelStart);
-                icons.BeginVisibleSet(); groups.Clear(); actorHeaders.Clear(); supplyAnchor=null; selectedStatusLabel=respawnLabel=-1; bodyOffsetClamped = false;
+                icons.BeginVisibleSet(); groups.Clear(); actorHeaders.Clear(); supplyAnchor=null; autoTeleportAnchor=null;
+                selectedStatusLabel=respawnLabel=-1; bodyOffsetClamped = false;
                 BuildSelected(row);
             }
             if (host.CanRetryArchive)
@@ -375,6 +395,9 @@ namespace JueMingR.TerrariaHost.F5
                     !ReferenceEquals(host.GetBody(profiles[index].Id), visibleBodies[i])) return true;
             }
             var profile = CurrentProfile(); var body = host.GetBody(selected);
+            if (page == 1 && profile != null &&
+                (shownFishing != host.IsFishing(profile.OwnerId, profile.Id) ||
+                    fishingPage && shownFishingReady != host.CanStartFishing(profile.OwnerId, profile.Id))) return true;
             bool retiring=host.RecallPending(selected);
             if ((profile?.DataEpoch??0)!=viewDataEpoch || page!=0 && (profile?.Revision ?? 0) != profileRevision ||
                 (page!=0||retiring) && host.SaveFailed(selected)!=saveFailed || retiring!=memberRetiring ||
@@ -411,6 +434,9 @@ namespace JueMingR.TerrariaHost.F5
             for (int i = listOffset; i < Math.Min(profiles.Count, listOffset + count); i++)
             { var p = profiles[i]; visibleIds.Add(p.Id); visibleNames.Add(p.Name); visibleStatuses.Add(host.Status(p.Id)); visibleBodies.Add(host.GetBody(p.Id)); }
             profileRevision = CurrentProfile()?.Revision ?? 0; selectedBody = host.GetBody(selected); memberJoined=host.IsJoined(selected);
+            var profile = page == 1 ? CurrentProfile() : null;
+            shownFishing = profile != null && host.IsFishing(profile.OwnerId, profile.Id);
+            shownFishingReady = fishingPage && profile != null && host.CanStartFishing(profile.OwnerId, profile.Id);
             memberRetiring=host.RecallPending(selected);memberActivation=host.ActivationGeneration(selected);saveFailed=host.SaveFailed(selected);
             if (selectedBody != null) { maximumLife = selectedBody.statLifeMax2; maximumMana = selectedBody.statManaMax2; }
         }
@@ -441,9 +467,10 @@ namespace JueMingR.TerrariaHost.F5
             if (!active || !focused)
             {
                 if (!focused) CancelForFocusLoss(); else Close();
+                autoTeleportPopup.SampleInactive(keys, focused);
                 previousLeft = focused ? left : true; ReleaseTails(left, right, focused); return;
             }
-            if (!Visible) { previousLeft = left; ReleaseTails(left, right, true); return; }
+            if (!Visible) { autoTeleportPopup.SampleInactive(keys, focused); previousLeft = left; ReleaseTails(left, right, true); return; }
             if (PasswordPromptVisible)
             {
                 PrepareCore(transform, physical, resources);
@@ -456,10 +483,12 @@ namespace JueMingR.TerrariaHost.F5
                 PrepareCore(transform, physical, resources);
                 if (ProcessSupplyPopup(point, left, right, wheel, resources)) return;
             }
-            if (!wasEditing && editor == null && input.Hotkeys.IsNew((int)Keys.Escape)) { input.ConsumeCancellation((int)Keys.Escape); Close(); ReleaseTails(left, right, true); return; }
             host.ValidateItemGesture();
             if (!panel.Contains(point.X, point.Y)) host.CancelItemGesture();
             if (!hadSupplyPopup) PrepareCore(transform, physical, resources);
+            if (autoTeleportPopup.Process(keys, point, left, right, wheel)) return;
+            if (ProcessFishingPane(keys, point, focused, wheel, left, right)) return;
+            if (!wasEditing && Editor == null && input.Hotkeys.IsNew((int)Keys.Escape)) { input.ConsumeCancellation((int)Keys.Escape); Close(); ReleaseTails(left, right, true); return; }
             bool wasDragging = dragging;
             if (dragging)
             {
@@ -484,6 +513,8 @@ namespace JueMingR.TerrariaHost.F5
             ProcessItemInput(hit, keys, left, right, wasDragging,resources);
             if (left && !previousLeft && !wasDragging && !(hit?.IsSlot ?? false))
             {
+                if (hit != null && (ReferenceEquals(hit, autoTeleportAnchor) || hit.ManualRecall))
+                    ClaimAutoTeleportClick(left, right);
                 if (hit == null && ready && titleBar.Contains(point.X, point.Y))
                 {
                     dragStartPosition = requestedPosition; dragStartPositioned = userPositioned;
@@ -503,7 +534,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             ConsumeLeft = leftTail; ConsumeRight = rightTail;
             if (!focused) return;
-            if (!left) { leftTail = false; armedKey = null; } if (!right) rightTail = false;
+            if (!left) { leftTail = autoTeleportLeftTail = false; armedKey = null; }
+            if (!right) rightTail = autoTeleportRightTail = false;
         }
         public bool RequestFinish()
         {
@@ -539,11 +571,19 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void PrepareHint()
         {
-            if (SupplyPopupVisible && supplyPanel.Contains(pointer.X, pointer.Y)) { hint.Hide(); return; }
+            if (SupplyPopupVisible && supplyPanel.Contains(pointer.X, pointer.Y) ||
+                autoTeleportPopup.Contains(pointer.X, pointer.Y)) { hint.Hide(); return; }
             string hintText = null; F5Rect target = default(F5Rect);
-            if(Visible&&ready&&page==1&&editor==null&&!Captured&&configurationNameRect.Contains(pointer.X,pointer.Y)) {hintText=configurationName;target=configurationNameRect;}
-            if (Visible && ready && editor == null && !Captured) foreach (var c in controls)
+            if (fishingPane?.Visible == true) hintText = fishingPane.Hint(pointer.X, pointer.Y, out target);
+            else if(Visible&&ready&&page==1&&editor==null&&!Captured&&configurationNameRect.Contains(pointer.X,pointer.Y)) {hintText=configurationName;target=configurationNameRect;}
+            if (Visible && ready && Editor == null && !Captured && fishingPane?.Visible != true) foreach (var c in controls)
                 if (c.Hint != null && c.Rect.Contains(pointer.X, pointer.Y)) { hintText = c.Hint; target = c.Rect; break; }
+            if (Visible && ready && page == 1 && !fishingPage && hintText == null && Editor == null && !Captured)
+                foreach (var label in labels)
+                    if (label.Description != null && label.HintRect.Contains(pointer.X, pointer.Y))
+                    { hintText = label.Description.Text; target = label.HintRect; break; }
+            if (hintText == null && Editor == null && !Captured && fishingPane != null)
+                hintText = fishingPane.Hint(pointer.X, pointer.Y, out target);
             hint.Prepare(hintText, target, new F5Rect(8, 8, screen.X / matrix.M11 - 16, screen.Y / matrix.M11 - 16), renderer, measure);
         }
         internal void Draw()
@@ -604,6 +644,7 @@ namespace JueMingR.TerrariaHost.F5
                 DrawHero(companionView, companionHero,companionShowcase,companionShowcasePanel, companionPreview, host.GetBody(selected));
                 renderer.Pass(matrix,bodyView,()=>{foreach(var c in controls)if(c.ActorOverlay)DrawActorControl(c);});
             }
+            fishingPane?.Draw(null);
 
             if (host.HasItemGesture && host.CursorItem != null && !host.CursorItem.IsAir)
                 renderer.Pass(matrix,panel,()=>PointDraw(()=> {var r=new F5Rect(pointer.X+10,pointer.Y+10,40,40);renderer.Item(host.CursorItem.type,r);if(host.CursorItem.stack>1)DrawStack(host.CursorItem.stack.ToString(),r);}));
@@ -616,7 +657,9 @@ namespace JueMingR.TerrariaHost.F5
                     renderer.Text(displayedNotice, new F5Rect(rect.X + 10, rect.Y, rect.Width - 20, rect.Height), Color.White, .65f);
                 });
             if (SupplyPopupVisible) DrawSupplyPopup();
-            if (hint.Visible && editor == null && !Captured) renderer.Pass(matrix, hint.Panel, () => { renderer.Panel(hint.Panel); foreach (var line in hint.Lines) renderer.Label(new F5Element(F5ElementKind.Text,line.Rect.Offset(hint.Panel.X+8,hint.Panel.Y+8),line.Text,line.TextSize,line.TextScale,F5Command.None)); });
+            autoTeleportPopup.Draw();
+            fishingPane?.DrawPopup(null);
+            if (hint.Visible && Editor == null && !Captured) renderer.Pass(matrix, hint.Panel, () => { renderer.Panel(hint.Panel); foreach (var line in hint.Lines) renderer.Label(new F5Element(F5ElementKind.Text,line.Rect.Offset(hint.Panel.X+8,hint.Panel.Y+8),line.Text,line.TextSize,line.TextScale,F5Command.None)); });
         }
         private void DrawEditor()
         {

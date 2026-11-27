@@ -156,6 +156,7 @@ namespace JueMingR.TerrariaHost.Companions
                 ReferenceEquals(Main.npc[target.whoAmI], target) && target.generation == generation &&
                 CombatSelection.Receives(target, false) && !target.townNPC && !NPCID.Sets.IsTownPet[target.type] &&
                 !NPCID.Sets.CountsAsCritter[target.type] && ObservedNpcCombatReady(target) && !PredictionDead(a, target) &&
+                (a.Fishing == null || a.Fishing.Threats.Contains(target, generation)) &&
                 Vector2.DistanceSquared(a.Body.Center, target.Center + target.netOffset) <= CompanionCombatRadius * CompanionCombatRadius;
         }
 
@@ -378,11 +379,12 @@ namespace JueMingR.TerrariaHost.Companions
             // farther opening, while the per-weapon pair count stays bounded.
             NPC extra = null;
             int start = state.NearbyOffset;
-            state.NearbyOffset = (start + 17) % Main.maxNPCs;
+            var fishing = a.Fishing?.Threats;
+            if (fishing == null) state.NearbyOffset = (start + 17) % Main.maxNPCs;
             const int nearestCount = CompanionCombatState.NearbyCapacity - 1;
-            for (int i = 0; i < Main.maxNPCs; i++)
+            for (int i = 0; i < (fishing?.Count ?? Main.maxNPCs); i++)
             {
-                var target = Main.npc[(i + start) % Main.maxNPCs];
+                var target = fishing == null ? Main.npc[(i + start) % Main.maxNPCs] : fishing[i];
                 if (!TargetCurrent(a, target, target?.generation ?? 0)) continue;
                 float distance = DistanceToReceiveBox(a.Body, target);
                 int index = Math.Min(state.NearbyCount, nearestCount);

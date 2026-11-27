@@ -179,15 +179,19 @@ namespace JueMingR.Features.Items
                     (fishStore || settings.StackEnabled && slot.MaximumStack > 1 && opportunity != null && opportunity.Contains(slot)))
                 {
                     if (operations.Ownership.StoreBlocked) continue;
-                    var group = new List<ItemSlotObservation>();bool dedicated=false;
+                    var group = new List<ItemSlotObservation>();ulong fishSlots=0;
                     foreach (ItemSlotObservation candidate in inventory.Slots)
                     {
                         bool fishMember=fishingDemand && (fishingMode==2?candidate.Identity.Type==questType:fishOpportunity!=null && fishOpportunity.Contains(candidate));
                         bool ordinaryMember=settings.StackEnabled && candidate.MaximumStack>1 && opportunity!=null && opportunity.Contains(candidate);
                         if (candidate.IsCandidate && !operations.Ownership.IsProtected(candidate.Slot) &&
-                            candidate.Identity.Equals(slot.Identity) && (fishMember || ordinaryMember)){group.Add(candidate);dedicated|=fishMember;}
+                            candidate.Identity.Equals(slot.Identity) && (fishMember || ordinaryMember))
+                        {
+                            group.Add(candidate);
+                            if (fishMember) fishSlots |= 1UL << candidate.Slot;
+                        }
                     }
-                    result = operations.Execute(new StoreItemsRequest(session, group,!dedicated));
+                    result = operations.Execute(new StoreItemsRequest(session, group,fishSlots==0,fishSlots));
                     // Rejected admission has not consumed a source opportunity.
                     // Executing or a terminal/no-target result does; actual late
                     // receipts remain the operation owner's responsibility.

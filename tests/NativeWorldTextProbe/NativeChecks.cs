@@ -14,6 +14,35 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "CompanionFishingUiCpu" || scope == "CompanionFishingWorldCpu" || scope == "CompanionFishingLineCpu" || scope == "CompanionFishingLineRelease")
+            {
+                Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user");
+                Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                if (scope == "CompanionFishingUiCpu")
+                {
+                    NativeQuickItemChecks.Run(NativeCompanionFishingUiChecks.Run, processing: true, shortFeedback: true);
+                    NativeScopeDispatch.Enter("companions-fishing-ui");
+                }
+                else if (scope == "CompanionFishingWorldCpu")
+                {
+                    NativeQuickItemChecks.Run(_ => NativeCompanionFishingWorldChecks.Run(), processing: true, shortFeedback: true);
+                    NativeScopeDispatch.Enter("companions-fishing-world");
+                }
+                else
+                {
+                    bool release = scope == "CompanionFishingLineRelease";
+                    // The measurement-only route exercises the ordinary Host
+                    // build. A Debug checkpoint cannot be qualified by that run.
+                    if (release && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT") != null)
+                        throw new InvalidOperationException("The Release companion fishing probe is an explicit specialist.");
+                    string candidate = release ? Path.Combine(Program.Repository,
+                        "artifacts/build/Release/work/bin/JueMingR.TerrariaHost/x86/Release/net472/JueMingR.TerrariaHost.dll") : null;
+                    NativeQuickItemChecks.Run(NativeCompanionFishingLineChecks.Run, processing: true, shortFeedback: true, candidateAssembly: candidate);
+                    if (!release) NativeScopeDispatch.Enter("companions-fishing-line");
+                }
+                return 0;
+            }
             if(scope=="CompanionFontVisual")
             {
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
@@ -273,8 +302,23 @@ namespace NativeWorldTextProbe
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content)){NativeBlueprintMirrorTrimVisualChecks.Run(context,graphics,output);NativeBlueprintChecks.Visual(context,graphics,output);}},processing:true,shortFeedback:true);return 0;
             }
+            if(scope=="BlueprintChristmasTreeCpu")
+            {
+                Directory.CreateDirectory(output); Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");
+                Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(context =>
+                {
+                    NativeBlueprintMirrorProfileChecks.ChristmasTreeRoundTrip(context);
+                    NativeBlueprintBuildChecks.RunConstruction(context, family:"ChristmasTree");
+                    NativeScopeDispatch.Enter("blueprint-christmas-tree");
+                }, processing:true, shortFeedback:true, candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));
+                return 0;
+            }
             if(scope=="BlueprintMirrorTrimCpu")
             {
+                string comparison = Environment.GetEnvironmentVariable("JUEMINGR_BLUEPRINT_PROJECTION_COMPARISON");
+                if (comparison != null && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT") != null)
+                    throw new InvalidOperationException("The formal projection scope requires its prepared Host.");
                 Directory.CreateDirectory(output);Terraria.Program.SavePath=Path.Combine(Path.GetFullPath(output),"isolated-user");Directory.CreateDirectory(Terraria.Program.SavePath);NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
                 NativeQuickItemChecks.Run(context=>
                 {
@@ -287,7 +331,7 @@ namespace NativeWorldTextProbe
                     NativeBlueprintMemberBatchChecks.Run(context);
                     NativeBlueprintMirrorWaitChecks.Run(context);
                     NativeBlueprintMirrorConsumerChecks.Run(context);
-                },processing:true,shortFeedback:true);return 0;
+                },processing:true,shortFeedback:true,candidateAssembly:comparison);return 0;
             }
             if(scope=="BlueprintHoikCpu" || scope=="BlueprintHoikSubstitutionCpu")
             {
@@ -341,7 +385,11 @@ namespace NativeWorldTextProbe
             if (scope == "BlueprintPersistenceCpu")
             {
                 Directory.CreateDirectory(output); Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user"); Directory.CreateDirectory(Terraria.Program.SavePath); NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
-                NativeQuickItemChecks.Run(NativeBlueprintPersistenceChecks.Run, processing:true,shortFeedback:true);return 0;
+                NativeQuickItemChecks.Run(context =>
+                {
+                    NativeBlueprintPersistenceChecks.Run(context);
+                    NativeScopeDispatch.Enter("blueprint-persistence");
+                }, processing:true,shortFeedback:true,candidateAssembly:Environment.GetEnvironmentVariable("JUEMINGR_COMBAT_GEOMETRY_CANDIDATE"));return 0;
             }
             if (scope == "BlueprintBuildCpu")
             {

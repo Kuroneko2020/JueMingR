@@ -195,6 +195,9 @@ namespace NativeWorldTextProbe
             // The wall immediately toward the owner exceeds the ordinary jump.
             // The reachable stair starts left of the body, behind the target.
             var area = new Dictionary<Point, Tile>();
+            var profile = (CompanionProfile)Get(actor, "Profile");
+            var originalPotion = body.inventory[44];
+            var originalOwnerVelocity = human.velocity;
             const int origin = 43; // Beyond Player.BordersMovement's 40-tile inset.
             for (int x = 14 + origin; x <= 55 + origin; x++)
                 for (int y = 35; y <= 66; y++)
@@ -211,6 +214,11 @@ namespace NativeWorldTextProbe
                 body.position = new Vector2((30 + origin) * 16, 62 * 16 - body.height);
                 body.velocity = Vector2.Zero;
                 human.position = new Vector2((39 + origin) * 16, 47 * 16 - human.height);
+                var auto = NativeCompanionAutoTeleportChecks.Preferences();
+                auto.AutoTeleportBlockedSeconds = 2;
+                Require((bool)Call(host, "SetBehavior", profile.Id, auto), "enable the blocked-only policy for the actual backtrack");
+                body.inventory[44] = new Item(ItemID.WormholePotion);
+                int initialAdmissions = (int)(GetOptional(host, "AutoTeleportAdmissions") ?? 0);
                 var initial = body.position;
                 long elapsed = 0, maximum = 0;
                 int ticks = 0, firstAway = -1, largestSlice = 0;
@@ -219,6 +227,8 @@ namespace NativeWorldTextProbe
                 int work = (int)(GetOptional(movement, "ExpansionWork") ?? 0), previousWork = work;
                 for (; ticks < 1200 && Vector2.DistanceSquared(body.Center, human.Center) > 55 * 55; ticks++)
                 {
+                    human.velocity.X = ticks % 80 < 40 ? .35f : -.35f;
+                    human.position.X += human.velocity.X;
                     long step = TimedNativeStep(host, body);
                     elapsed += step; maximum = Math.Max(maximum, step);
                     int nextWork = (int)(GetOptional(movement, "ExpansionWork") ?? 0);
@@ -235,11 +245,17 @@ namespace NativeWorldTextProbe
                     " actual=" + body.position + " goal=" + human.position + " status=" + Get(actor, "Status"));
                 Require(firstAway >= 0 && ticks < 1200 && !(bool)Get(actor, "Faulted"),
                     "real body backtracks to the platforms, reaches the upper owner region, and stays valid");
+                Require(body.inventory[44].type == ItemID.WormholePotion && body.inventory[44].stack == 1 &&
+                    (int)(GetOptional(host, "AutoTeleportAdmissions") ?? 0) == initialAdmissions,
+                    "native backtracking, jumping and platform traversal toward a moving owner never need a paid fallback");
                 Require(!hasDebugWork || largestSlice <= 96 && previousWork > work, "detour consumes incremental work inside its selected world-step bound");
             }
             finally
             {
                 foreach (var cell in area) Main.tile[cell.Key.X, cell.Key.Y] = cell.Value;
+                body.inventory[44] = originalPotion;
+                human.velocity = originalOwnerVelocity;
+                Call(host, "SetBehavior", profile.Id, profile.Behavior);
             }
         }
 

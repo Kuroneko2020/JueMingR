@@ -20,6 +20,15 @@ namespace JueMingR.TerrariaHost.Blueprint
             try
             {
                 CaptureObject raw = rawShape.Object;
+                if (rawShape.ChristmasTreeMembers)
+                {
+                    // Ornaments belong to one member. Keep one body identity
+                    // across all 32 reads; the complete comparison checks the
+                    // packed state at the anchor separately.
+                    result = new BlueprintWorldObject(raw.X, raw.Y, raw.Width, raw.Height, raw.X, raw.Y,
+                        raw.Type, raw.Style, raw.Direction, BlueprintWorldObjectFamily.Metadata, null, memberLayout: rawShape);
+                    return true;
+                }
                 if (cell.TileType == TileID.ClosedDoor || cell.TileType == TileID.OpenDoor)
                 {
                     // .8 WorldGen.OpenDoor/CloseDoor preserve style and hinge
@@ -134,7 +143,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // Platform body equivalence proves neither raw neighbor-frame
             // writes nor their coverage. Keep ordinary one-cell invalidation
             // and bounded rereads instead of inventing an operating phase set.
-            if (IsPlatform(first.TileType) || IsPlatform(observed.Kind)) return false;
+            if (IsPlatform(first.TileType) || IsPlatform(observed.Kind) || observed.Kind == BlueprintChristmasTreeMembers.TileType) return false;
             CaptureCell canonical = NormalizeOperatingFrame(first);
             var candidates = new List<BlueprintWorldObject> { observed };
             for (int axis = 0; axis < 2; axis++) foreach (int delta in operatingDisplacements)

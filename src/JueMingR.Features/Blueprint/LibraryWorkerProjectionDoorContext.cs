@@ -65,20 +65,14 @@ namespace JueMingR.Features.Blueprint
                         bytes => UpdateProjectionSourceWorkingBytes(working + temporary + bytes))) yield return true;
                     foreach (var pair in batch.Entries)
                     {
-                        check(); var entry = pair.Value; var target = entry.Metadata; string reason;
+                        check(); var entry = pair.Value; var target = entry.Metadata;
                         CaptureCell[] mirrored = null;
-                        if (view.MirroredHorizontally)
+                        if (view.Profile != null)
                         {
+                            string reason;
                             RecordProjectionObjectInterpretation();
-                            if (!view.Profile.TryMirrorObject(entry.Metadata, entry.Members, view.Width, out target, out mirrored, out reason))
-                                throw new System.IO.InvalidDataException(reason ?? "blueprint-view-source");
-                            if (mirrored == null || mirrored.Length != entry.Members.Count) throw new System.IO.InvalidDataException("blueprint-mirror-object-members");
-                        }
-                        else if (view.Profile != null)
-                        {
-                            RecordProjectionObjectInterpretation();
-                            if (!view.Profile.TryNormalizeObject(entry.Metadata, entry.Members, out target, out reason))
-                                throw new System.IO.InvalidDataException(reason ?? "blueprint-view-source");
+                            if (!view.TryTransformObject(entry.Metadata, entry.Members, out target, out mirrored, out reason))
+                                throw new ProjectionInterpretationException("blueprint-view-object", reason);
                         }
                         var members = mirrored == null ? null : new Dictionary<long, CaptureCell>();
                         if (mirrored != null) for (int i = 0; i < mirrored.Length; i++)
@@ -151,8 +145,8 @@ namespace JueMingR.Features.Blueprint
                     values.Add(new ProjectionSourceTransformCell(target, i));
                     if ((cell.Layers & CaptureLayer.Tile) != 0) { int count; liveTiles.TryGetValue(cell.ObjectId, out count); liveTiles[cell.ObjectId] = count + 1; }
                 }
-                else if (view.MirroredHorizontally)
-                { string reason; if (!view.Profile.TryMirrorCell(cell, view.Width, out cell, out reason)) throw new System.IO.InvalidDataException(reason); }
+                else
+                { string reason; if (!view.TryTransformCell(cell, target.Source.ProvenDoorContext, out cell, out reason)) throw new ProjectionInterpretationException("blueprint-view-cell", reason); }
                 target.Cells[i] = cell;
                 if ((i & 31) == 31) { check(); yield return true; }
             }
@@ -262,7 +256,7 @@ namespace JueMingR.Features.Blueprint
             // Only an exhausted, current, validated source read proves empty
             // neighbours. Cancellation/hash failure publishes no partial area.
             CheckProjectionSource(owner, request); obj.X -= summary.Left; obj.Y -= summary.Top;
-            return new BlueprintProjectionWindow(request.Identity, request.Generation, summary, bounds, cells, new[] { obj }, true);
+            return new BlueprintProjectionWindow(request.Identity, request.Generation, summary, bounds, cells, new[] { obj }, true, provenDoorContext: true);
         }
         private int ProjectionDoorCellLowerBound(CaptureChunk chunk, int x, int y)
         {

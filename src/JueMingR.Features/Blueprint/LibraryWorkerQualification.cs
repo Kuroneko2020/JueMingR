@@ -85,7 +85,7 @@ namespace JueMingR.Features.Blueprint
                     {
                         var receipt = projectionQualificationReceipts.Dequeue();
                         if (!receipt.Identity.TemplateKey.Equals(identity.TemplateKey) || ReferenceEquals(receipt.Catalog, catalog)) projectionQualificationReceipts.Enqueue(receipt);
-                        else projectionReceiptBytes -= BlueprintProjectionQualificationReceipt.DescriptorBytes;
+                        else projectionReceiptBytes -= receipt.EstimatedBytes;
                     }
                 }
                 RemoveProjectionQualificationReceipts(identity); projectionWake = true; Monitor.Pulse(gate); return true;
@@ -96,7 +96,7 @@ namespace JueMingR.Features.Blueprint
             lock (gate)
             {
                 receipt = projectionQualificationReceipts.Count == 0 ? null : projectionQualificationReceipts.Dequeue();
-                if (receipt != null) { projectionReceiptBytes -= BlueprintProjectionQualificationReceipt.DescriptorBytes; projectionAwaitingReceiptSpace = false; projectionWake = true; Monitor.Pulse(gate); }
+                if (receipt != null) { projectionReceiptBytes -= receipt.EstimatedBytes; projectionAwaitingReceiptSpace = false; projectionWake = true; Monitor.Pulse(gate); }
                 return receipt != null;
             }
         }
@@ -107,7 +107,7 @@ namespace JueMingR.Features.Blueprint
             {
                 var receipt = projectionQualificationReceipts.Dequeue();
                 if (!receipt.Identity.Equals(identity)) projectionQualificationReceipts.Enqueue(receipt);
-                else projectionReceiptBytes -= BlueprintProjectionQualificationReceipt.DescriptorBytes;
+                else projectionReceiptBytes -= receipt.EstimatedBytes;
             }
             projectionAwaitingReceiptSpace = false;
         }
@@ -120,7 +120,7 @@ namespace JueMingR.Features.Blueprint
         {
             projectionQualifying?.Dispose(); projectionQualifying = null; projectionQualificationActive = null; projectionQualificationOwner = null;
             projectionQualificationLatest.Clear(); projectionQualificationRequests.Clear();
-            while (projectionQualificationReceipts.Count != 0) { projectionQualificationReceipts.Dequeue(); projectionReceiptBytes -= BlueprintProjectionQualificationReceipt.DescriptorBytes; }
+            while (projectionQualificationReceipts.Count != 0) projectionReceiptBytes -= projectionQualificationReceipts.Dequeue().EstimatedBytes;
         }
         private bool ProjectionQualificationCurrent(ProjectionOwner owner, ProjectionQualificationRequest request)
         {
@@ -159,9 +159,24 @@ namespace JueMingR.Features.Blueprint
             catch (OperationCanceledException) { }
             catch (Exception error)
             {
-                // A validated source becoming unreadable is still an asset
-                // failure. Never publish zero targets after a partial pass.
-                FailProjection(projectionQualificationOwner, null, error);
+                var owner = projectionQualificationOwner; var request = projectionQualificationActive;
+                lock (gate)
+                {
+                    if (ProjectionQualificationCurrent(owner, request))
+                    {
+                        var scope = ProjectionFailureScope(error);
+                        if (scope == BlueprintProjectionFailureScope.SharedAsset)
+                            FailProjectionAssetLocked(owner, error, BlueprintProjectionFailureStage.Qualification);
+                        else
+                        {
+                            projectionQualifying.Dispose();
+                            var failed = new BlueprintProjectionQualificationReceipt(request.Identity, request.Catalog, request.Mask, 0, 0, 0,
+                                null, null, null, Reason(error), request.View, scope, ProjectionFailureCode(error), ProjectionFailureDetail(error));
+                            projectionQualifying = PublishProjectionQualification(owner, request, failed).GetEnumerator();
+                            return true;
+                        }
+                    }
+                }
             }
             projectionQualifying.Dispose(); projectionQualifying = null; projectionQualificationOwner = null; projectionQualificationActive = null;
             return true;
@@ -377,19 +392,7 @@ namespace JueMingR.Features.Blueprint
                 (buildGeometry?(sources.Capacity+proofs.Capacity)*64L+indexed.Count*64L:0));
             var completed = new BlueprintProjectionQualificationReceipt(request.Identity,catalog,request.Mask,total,effective,unknown,
                 geometry.Sources,geometry.Proofs,geometry.Directory,view: request.View);
-            while (true)
-            {
-                CheckProjectionQualification(owner, request);
-                lock (gate)
-                {
-                    CheckProjectionQualification(owner, request);
-                    if (projectionReceipts.Count + projectionSourceReceipts.Count + projectionQualificationReceipts.Count < ProjectionRequestLimit &&
-                        projectionReceiptBytes + BlueprintProjectionQualificationReceipt.DescriptorBytes <= BlueprintProjectionSourceReceipt.MaximumEstimatedBytes)
-                    { projectionQualificationReceipts.Enqueue(completed); projectionReceiptBytes += BlueprintProjectionQualificationReceipt.DescriptorBytes; break; }
-                    projectionAwaitingReceiptSpace = true;
-                }
-                yield return true;
-            }
+            foreach (bool ignored in PublishProjectionQualification(owner, request, completed)) yield return true;
             UpdateProjectionStatistics();
             }
             finally
@@ -398,6 +401,21 @@ namespace JueMingR.Features.Blueprint
                 if(directoryBuilder!=null && !directoryPublished)Interlocked.Increment(ref projectionGeometryDirectoryCancelled);
 #endif
                 UpdateProjectionQualificationWorkingBytes(0);
+            }
+        }
+        private IEnumerable<bool> PublishProjectionQualification(ProjectionOwner owner, ProjectionQualificationRequest request, BlueprintProjectionQualificationReceipt receipt)
+        {
+            while (true)
+            {
+                lock (gate)
+                {
+                    CheckProjectionQualification(owner, request);
+                    if (projectionReceipts.Count + projectionSourceReceipts.Count + projectionQualificationReceipts.Count < ProjectionRequestLimit &&
+                        projectionReceiptBytes + receipt.EstimatedBytes <= BlueprintProjectionSourceReceipt.MaximumEstimatedBytes)
+                    { projectionQualificationReceipts.Enqueue(receipt); projectionReceiptBytes += receipt.EstimatedBytes; break; }
+                    projectionAwaitingReceiptSpace = true;
+                }
+                yield return true;
             }
         }
     }

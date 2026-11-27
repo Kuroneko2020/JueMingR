@@ -42,7 +42,8 @@ namespace JueMingR.TerrariaHost.Input
         private string[] keys = new string[0];
         private readonly bool[] physical = new bool[HotkeyChord.KeyCount];
         private bool consumeInventoryOnNextMapping, inventoryHasUnownedMouseMapping;
-        private int inventoryMouseTail;
+        private bool importNameEnterHeld, importNameEscapeHeld;
+        private int uiMouseTail;
         private static readonly Dictionary<string, Keys> keyboardCodes = BuildKeyboardCodes();
         private static Dictionary<string, Keys> BuildKeyboardCodes()
         {
@@ -110,7 +111,7 @@ namespace JueMingR.TerrariaHost.Input
             ReadOnlyMouseMask = readOnlyTail;
             // MouseInput only staged these tokens; keyboard and gamepad mappings
             // have not merged yet. Filtering here preserves shared keyboard binds.
-            int excludedMouse = OwnedMouseMask | ReadOnlyMouseMask | inventoryMouseTail;
+            int excludedMouse = OwnedMouseMask | ReadOnlyMouseMask | uiMouseTail;
             for (int i = mouseKeys.Count - 1; i >= 0; i--)
             {
                 string key = mouseKeys[i];
@@ -120,7 +121,16 @@ namespace JueMingR.TerrariaHost.Input
             // mouse source for the same action available to vanilla.
             if (consumeInventoryOnNextMapping && GetInventoryBindings() is List<string> bindings)
                 foreach (string token in mouseKeys) inventoryHasUnownedMouseMapping |= bindings.Contains(token);
-            if (reliable) { mouseTail &= down; readOnlyTail &= down; inventoryMouseTail &= down; previousMouse = down; }
+            if (reliable) { mouseTail &= down; readOnlyTail &= down; uiMouseTail &= down; previousMouse = down; }
+        }
+        internal void ClaimUiMousePress(int key)
+        {
+            if (!Hotkeys.IsNew(key)) return;
+            // The control owns this sample. Retain only its physical mouse
+            // source for later mappings, even if the view closes first.
+            // A merged action can still arrive from an independent key.
+            uiMouseTail |= 1 << (key - 256);
+            Hotkeys.ConsumePress(key);
         }
         internal void ConsumeOwnedMouseEdges()
         { for (int i = 0; i < 5; i++) if ((OwnedMouseMask & 1 << i) != 0) Hotkeys.ConsumePress(256 + i); }
@@ -202,6 +212,7 @@ namespace JueMingR.TerrariaHost.Input
                 Main.keyState = default(KeyboardState);
                 ClearTextActions();
             }
+            else FilterImportNameKeys();
 #if JMR_INPUT_DIAGNOSTIC
             ObserveDiagnostics(0);
 #endif
@@ -249,7 +260,7 @@ namespace JueMingR.TerrariaHost.Input
             {
                 int key = 256 + button;
                 int bit = 1 << button;
-                if (((OwnedMouseMask | ReadOnlyMouseMask | inventoryMouseTail) & bit) != 0 ||
+                if (((OwnedMouseMask | ReadOnlyMouseMask | uiMouseTail) & bit) != 0 ||
                     !Hotkeys.IsNew(key) || !bindings.Contains(HotkeyChord.KeyName(key))) continue;
                 if (button >= 2 || mouseClick == InventoryMouseClick.CloseMenu)
                 {
@@ -265,7 +276,7 @@ namespace JueMingR.TerrariaHost.Input
 
             // Mouse tokens have already mapped in this frame. Own their held
             // buttons at the existing pre-mapping filter from the next sample.
-            inventoryMouseTail |= mousePresses;
+            uiMouseTail |= mousePresses;
             ConsumeMappedInventory();
             return keyboardPress || mouseClosesMenu;
         }
@@ -346,6 +357,15 @@ namespace JueMingR.TerrariaHost.Input
             // held bit. Independent UI consumers also read physical MouseInfo.
             hotkeyTailSample = Hotkeys.HasSuppressedKeys;
             Hotkeys.Update(physical, SampleFocused);
+            // Only the focused native refresh can release a text-owned key.
+            // An empty cache, a skipped mapping and an unfocused sample do not
+            // prove release, even if the editor or world has already closed.
+            if (SampleFocused)
+            {
+                importNameEnterHeld &= KeyboardSample.IsKeyDown(Keys.Enter);
+                importNameEscapeHeld &= KeyboardSample.IsKeyDown(Keys.Escape);
+            }
+            FilterImportNameKeys();
             if (UseGesture.HasTail) UseGesture.AfterSample(physical, SampleFocused,
                 CanUseInput && !HotkeyPointerOwned && (ClaimsHotkeyPointer == null || !ClaimsHotkeyPointer()));
             if (HotkeyCapture || Hotkeys.HasSuppressedKeys) ConsumeHotkeyActions();
@@ -364,6 +384,10 @@ namespace JueMingR.TerrariaHost.Input
                 mouse.MiddleButton == ButtonState.Released && mouse.XButton1 == ButtonState.Released && mouse.XButton2 == ButtonState.Released &&
                 !heldOperationKey && ExternalModalState != ExternalModalPhase.ModalOwned)
             {
+                // The early mapping still ran inside the rearm barrier. This
+                // trusted neutral sample retires the old UI mouse sources so
+                // the next physical press cannot be filtered as their tail.
+                uiMouseTail = 0;
                 rearming = false;
                 if (ExternalModalState == ExternalModalPhase.AwaitFocusedNeutral)
                 { ExternalModalState = ExternalModalPhase.None; externalModalRequest = Guid.Empty; }
@@ -373,6 +397,32 @@ namespace JueMingR.TerrariaHost.Input
 #if JMR_INPUT_DIAGNOSTIC
             ObserveDiagnostics(2);
 #endif
+        }
+        internal void ConsumeImportNameKey(Keys key)
+        {
+            if (!CanUseInput) return;
+            // Text can return its lease before Shell dispatch in this frame.
+            // Own the actual key even after that return, with no global hotkey
+            // suppression. A queued character alone cannot prove a held key.
+            Hotkeys.ConsumePress((int)key);
+            if (key == Keys.Enter) importNameEnterHeld |= KeyboardSample.IsKeyDown(key);
+            else if (key == Keys.Escape) importNameEscapeHeld |= KeyboardSample.IsKeyDown(key);
+            FilterImportNameKeys();
+        }
+        private void FilterImportNameKeys()
+        {
+            bool enter = importNameEnterHeld && Main.keyState.IsKeyDown(Keys.Enter);
+            bool escape = importNameEscapeHeld && Main.keyState.IsKeyDown(Keys.Escape);
+            if (!enter && !escape) return;
+            // Alt+Enter and PlayerInput.KeyboardInput read this cached state
+            // before the next refresh. Remove only our sources, preserving
+            // other keys even if they map to the same native action.
+            Keys[] pressed = Main.keyState.GetPressedKeys();
+            var remaining = new Keys[pressed.Length - (enter ? 1 : 0) - (escape ? 1 : 0)];
+            int index = 0;
+            foreach (Keys key in pressed)
+                if (!(enter && key == Keys.Enter) && !(escape && key == Keys.Escape)) remaining[index++] = key;
+            Main.keyState = new KeyboardState(remaining);
         }
 #if JMR_INPUT_DIAGNOSTIC
         internal bool DiagnosticGameplayActive {get;set;}
@@ -422,13 +472,13 @@ namespace JueMingR.TerrariaHost.Input
             Hotkeys.SuppressHeld();
             ConsumeNativeUiActions();
         }
-        internal void ConsumeCancellation(int key)
+        internal void ConsumeCancellation(int key) { ConsumeUiCommand(key); }
+        internal void ConsumeUiCommand(int key)
         {
-            // An accepted child cancellation owns this frame across every
-            // dispatch admission, including target/journey/blueprint shortcuts.
-            // Retain only its actual key tail: consuming frozen edges must not
-            // suppress held movement until those unrelated keys are released.
-            Hotkeys.SuppressKey(key);
+            // An accepted shortcut or cancellation owns this frame across all
+            // dispatch admissions. Only its actual primary owns a release tail.
+            if (key >= 256) ClaimUiMousePress(key);
+            else Hotkeys.SuppressKey(key);
             for (int i = 1; i < HotkeyChord.KeyCount; i++) Hotkeys.ConsumePress(i);
             ConsumeHotkeyActions();
         }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using JueMingR.Features.Footprints;
 using JueMingR.TerrariaHost.Input;
+using Microsoft.Xna.Framework.Input;
 
 namespace JueMingR.TerrariaHost.F5
 {
@@ -35,7 +36,7 @@ namespace JueMingR.TerrariaHost.F5
         private string archive, status;
         internal FootprintPopup(IFootprintControls host, HostInputState input) { this.host = host; this.input = input; }
         internal void Open(int currentPage)
-        { Close(); host.PrepareConfiguration(); Visible = true; page = currentPage; session = host.Session; archive = host.Generation; confirmation.Open(archive); input.Hotkeys.SuppressHeld(); input.ConsumeHotkeyActions(); }
+        { Close(); host.PrepareConfiguration(); Visible = true; page = currentPage; session = host.Session; archive = host.Generation; confirmation.Open(archive); }
         internal void Close() { Visible = OwnsPointer = false; Pressed = Hovered = -1; confirmation.Cancel(); dirty = true; }
         internal bool ContainsPointer(float x, float y) { return Visible && Panel.Contains(x, y); }
         internal bool Matches(float w, float h, object f, int s) { return F5PopupPlacement.SameAnchor(Anchor,preparedAnchor) && w == width && h == height && ReferenceEquals(f, font) && s == skin; }
@@ -47,14 +48,18 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal void Process(bool active, int currentPage, float x, float y, bool geometryCurrent)
         {
-            OwnsPointer = false; bool left = input.Hotkeys.IsDown(256); CheckSession();
+            OwnsPointer = false;
+            bool left = input.Hotkeys.IsDown(256), pressed = input.Hotkeys.IsNew(256);
+            CheckSession();
             if (!active || !input.SampleFocused || Visible && page != currentPage) { Close(); previousLeft = input.SampleFocused ? left : true; return; }
             if (!Visible) { previousLeft = left; return; }
-            OwnsPointer = ContainsPointer(x, y) || Pressed >= 0 || input.HotkeyPointerOwned;
-            if (input.Hotkeys.IsNew(27)) { Close(); input.Hotkeys.SuppressHeld(); input.ConsumeHotkeyActions(); previousLeft = left; return; }
+            bool inside = ContainsPointer(x, y);
+            bool ownsSample = OwnsPointer = inside || Pressed >= 0 || input.HotkeyPointerOwned;
+            if (inside) for (int key = 256; key <= 260; key++) input.ClaimUiMousePress(key);
+            if (input.Hotkeys.IsNew((int)Keys.Escape)) { input.ConsumeCancellation((int)Keys.Escape); Close(); previousLeft = left; return; }
             if (!geometryCurrent) { confirmation.Open(archive); Pressed = -1; }
             Hovered = geometryCurrent ? Hit(x, y) : -1;
-            if (input.Hotkeys.IsNew(256) && Hovered >= 0)
+            if (pressed && Hovered >= 0)
             { Pressed = Hovered; pressedGeneration = generation; if (Pressed == 2) confirmation.Press(archive); }
             if (!left && previousLeft && Pressed >= 0)
             {
@@ -70,7 +75,7 @@ namespace JueMingR.TerrariaHost.F5
                 }
                 else if (command == 2) { confirmation.Open(archive); dirty = true; }
             }
-            if (OwnsPointer) { for (int key = 256; key <= 260; key++) if (input.Hotkeys.IsNew(key)) input.Hotkeys.SuppressKey(key); input.ConsumeHotkeyActions(); }
+            if (ownsSample) input.ConsumeHotkeyActions();
             previousLeft = left;
         }
         private int Hit(float x, float y)

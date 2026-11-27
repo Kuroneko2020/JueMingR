@@ -105,7 +105,7 @@ namespace NativeWorldTextProbe
         {
             var input = Get(context, "Input"); var shell = Get(context, "Shell"); var layer = Get(host, "Layer"); var library = (MarkerLibrary)Get(host, "Markers");
             var state = Get(shell, "State"); Set(state, "Ready", true); Call(Get(shell, "renderer"), "RefreshResources");
-            bool focused = true;
+            bool focused = true, heldW = false;
             Set(input, "gameWindow", (Func<IntPtr>)(() => new IntPtr(1))); Set(input, "foregroundWindow", (Func<IntPtr>)(() => focused ? new IntPtr(1) : IntPtr.Zero));
             object oldContext = worker.GetField("postfixContext", Flags).GetValue(null); int oldCommitted = (int)worker.GetField("hookCommitted", Flags).GetValue(null);
             worker.GetField("postfixContext", Flags).SetValue(null, context); worker.GetField("hookCommitted", Flags).SetValue(null, 1);
@@ -121,7 +121,9 @@ namespace NativeWorldTextProbe
                 PlayerInput.Triggers.Reset(); PlayerInput.Triggers.Current.MouseLeft = left; PlayerInput.Triggers.Current.MouseRight = right;
                 if (request != null) PlayerInput.Triggers.Current.KeyStatus[request] = true;
                 PlayerInput.Triggers.Update(); Main.mouseLeft = left; Main.mouseRight = right; Main.mouseX = x; Main.mouseY = y; FocusHelper.IsSelectedApplication = focused;
-                Call(input, "AfterMapping"); Main.keyState = key == Keys.None ? new KeyboardState() : new KeyboardState(key);
+                Call(input, "AfterMapping"); Main.keyState = heldW
+                    ? key == Keys.None ? new KeyboardState(Keys.W) : new KeyboardState(Keys.W, key)
+                    : key == Keys.None ? new KeyboardState() : new KeyboardState(key);
                 worker.GetMethod("InputPostfix", Flags).Invoke(null, null);
                 Require(!(bool)Get(shell, "Failed"), "actual shell stays available during map input");
             };
@@ -136,8 +138,14 @@ namespace NativeWorldTextProbe
                 Until(() => { bindings.Poll(); return !bindings.Busy; });
                 pick(); frame(451, 301, false, false, Keys.F6, null);
                 Require(!(bool)Get(host, "MarkersEnabled") && !(bool)Get(layer, "Picking"), "actual full-map common hotkey disables marker picker"); neutral();
-                pick(); frame(451, 301, false, false, Keys.Escape, "Inventory"); PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);
-                Require(!(bool)Get(layer, "Picking") && !Main.LocalPlayer.controlInv && Main.mapFullscreen, "picker Esc cancels only picker and cannot enter native Inventory"); neutral();
+                var hotkeys = (JueMingR.Platform.Hotkeys.HotkeyInput)Get(input, "Hotkeys");
+                pick(); heldW = true; frame(451, 301, false, false, Keys.Escape, "Inventory"); PlayerInput.Triggers.Current.CopyInto(Main.LocalPlayer);
+                Require(!(bool)Get(layer, "Picking") && !Main.LocalPlayer.controlInv && Main.mapFullscreen && !hotkeys.IsSuppressed((int)Keys.W),
+                    "picker Esc cancels only picker, consumes Inventory and leaves held W unclaimed");
+                heldW = false; neutral();
+                pick(); heldW = true; frame(451, 301, false, true, Keys.None, null); frame(451, 301, false, false, Keys.None, null);
+                Require(!(bool)Get(layer, "Picking") && !hotkeys.IsSuppressed((int)Keys.W), "picker native right-click cancellation cannot claim held W");
+                heldW = false; neutral();
                 foreach (string takeover in new[] { "MapFull", "ToggleCameraMode", "capture", "map", "world", "focus" })
                 {
                     pick(); var p = option(); frame((int)p.X, (int)p.Y, true, false, Keys.None, null);

@@ -563,12 +563,18 @@ namespace NativeWorldTextProbe
                 Call(window,"Close");NativeToolsUiChecks.Mouse(Vector2.Zero,false);Call(window,"Toggle",Get(Get(Get(shell,"State"),"Layout"),"Viewport"));Set(window,"selected",id);Set(window,"page",0);
                 Call(window,"PrepareLayout",Matrix.Identity,new Vector2(1280,900));
                 var status=Controls(window).Single(c=>((string)Get(c,"Key")).StartsWith("actor-state/",StringComparison.Ordinal));
-                Require((bool)Get(status,"ActorState")&&(bool)Get(status,"Enabled")&&((string)Get(status,"Hint")).Contains(joined?"收回":"加入"),"actual inventory status control offers "+(joined?"recall for an ineligible joined actor":"join for an archived offline profile"));
+                var teleport = Controls(window).Single(c => ((string)Get(c, "Key")).StartsWith("actor-wormhole/", StringComparison.Ordinal));
+                Require((bool)Get(status,"ActorState")&&(bool)Get(status,"Enabled")&&((string)Get(status,"Hint")).Contains(joined?"退出":"加入"),"actual inventory status control offers "+(joined?"recall for an ineligible joined actor":"join for an archived offline profile"));
                 var statusRect=Get(status,"Rect");var portrait=Get(window,"companionShowcasePanel");
+                var teleportRect = Get(teleport, "Rect");
                 Require((float)Get(statusRect,"Right")<(float)Get(portrait,"X")&&
                     (float)Get(statusRect,"Bottom")== (float)Get(portrait,"Bottom")&&
-                    (string)Get(status,"Text")== (joined?"点击收回":"点击加入"),
-                    "the correct action is outside the portrait on the left and aligned to its bottom");
+                    (string)Get(status,"Text")== (joined?"退出":"加入") &&
+                    (float)Get(teleportRect, "Bottom") == (float)Get(portrait, "Bottom") &&
+                    (float)Get(teleportRect, "Right") < (float)Get(statusRect, "X") &&
+                    (string)Get(teleport, "Text") == "传送" && !(bool)Get(teleport, "Enabled") &&
+                    (string)Get(teleport, "Hint") == "需要已经加入且存活的队友。" && GetOptional(teleport, "HotkeyId") == null,
+                    "the backpack actions align at the portrait's left foot, with the shared no-body reason and no extra binding");
                 Console.WriteLine("PASS companion native membership layout joined="+joined+" transfer=false action="+(joined?"recall":"join")+"; no Draw/death-lifecycle claim");
             }
             finally {body.dead=dead;Call(window,"Close");NativeToolsUiChecks.Mouse(Vector2.Zero,false);}

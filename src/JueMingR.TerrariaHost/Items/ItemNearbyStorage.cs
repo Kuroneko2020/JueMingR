@@ -14,9 +14,7 @@ namespace JueMingR.TerrariaHost.Items
     {
         private readonly ItemHostObservation world;
         private readonly ItemOperationOwnership ownership;
-        private MethodInfo quickStack;
-        private Type sourceType;
-        private FieldInfo sourceItems, sourceCount, sourceSlots, sourceBlocked, sourcePosition;
+        private NativeChestStack nativeStack;
         private readonly object receiptGate = new object();
         private Pending pending;
         private readonly Dictionary<ItemIdentity, CapacityWait> capacityWaits = new Dictionary<ItemIdentity, CapacityWait>();
@@ -30,22 +28,46 @@ namespace JueMingR.TerrariaHost.Items
         {
             this.world = world; this.ownership = ownership;
         }
-        internal void BindNativeOperation()
+        internal void BindNativeOperation() { nativeStack = new NativeChestStack(); }
+
+        // Both the human and companion supply only their already admitted
+        // real slots. Private banks are resolved before the original
+        // world-chest operation runs on any remaining slots.
+        internal sealed partial class NativeChestStack
         {
-            sourceType = typeof(QuickStacking).GetNestedType("SourceInventory", BindingFlags.NonPublic);
-            if (sourceType == null || !sourceType.IsValueType) throw new MissingMemberException("selective-storage-source-abi");
-            sourceItems = Field("items", typeof(Item[])); sourceCount = Field("numItems", typeof(int));
-            sourceSlots = Field("slots", typeof(PlayerItemSlotID.SlotReference[])); sourceBlocked = Field("transferBlocked", typeof(bool[]));
-            sourcePosition = Field("position", typeof(Vector2));
-            quickStack = typeof(QuickStacking).GetMethod("QuickStackToNearbyChests", BindingFlags.NonPublic | BindingFlags.Static,
-                null, new[] { typeof(Player), sourceType, typeof(bool) }, null);
-            if (quickStack == null || quickStack.ReturnType != typeof(void)) throw new MissingMethodException("selective-storage-operation-abi");
-        }
-        private FieldInfo Field(string name, Type type)
-        {
-            FieldInfo field = sourceType.GetField(name, BindingFlags.Public | BindingFlags.Instance);
-            if (field == null || field.FieldType != type) throw new MissingFieldException("selective-storage-" + name);
-            return field;
+            private readonly MethodInfo quickStack;
+            private readonly Type sourceType;
+            private readonly FieldInfo sourceItems, sourceCount, sourceSlots, sourceBlocked, sourcePosition;
+
+            internal NativeChestStack()
+            {
+                sourceType = typeof(QuickStacking).GetNestedType("SourceInventory", BindingFlags.NonPublic);
+                if (sourceType == null || !sourceType.IsValueType) throw new MissingMemberException("selective-storage-source-abi");
+                sourceItems = Field("items", typeof(Item[])); sourceCount = Field("numItems", typeof(int));
+                sourceSlots = Field("slots", typeof(PlayerItemSlotID.SlotReference[])); sourceBlocked = Field("transferBlocked", typeof(bool[]));
+                sourcePosition = Field("position", typeof(Vector2));
+                quickStack = typeof(QuickStacking).GetMethod("QuickStackToNearbyChests", BindingFlags.NonPublic | BindingFlags.Static,
+                    null, new[] { typeof(Player), sourceType, typeof(bool) }, null);
+                if (quickStack == null || quickStack.ReturnType != typeof(void)) throw new MissingMethodException("selective-storage-operation-abi");
+                BindPersonalBanks();
+            }
+
+            private FieldInfo Field(string name, Type type)
+            {
+                FieldInfo field = sourceType.GetField(name, BindingFlags.Public | BindingFlags.Instance);
+                if (field == null || field.FieldType != type) throw new MissingFieldException("selective-storage-" + name);
+                return field;
+            }
+
+            internal object Prepare(Player player, Item[] items, PlayerItemSlotID.SlotReference[] slots)
+            {
+                object native = Activator.CreateInstance(sourceType);
+                sourceItems.SetValue(native, items); sourceCount.SetValue(native, items.Length); sourceSlots.SetValue(native, slots);
+                sourceBlocked.SetValue(native, new bool[items.Length]); sourcePosition.SetValue(native, player.Center);
+                return native;
+            }
+
+            internal void Execute(Player player, object native) => quickStack.Invoke(null, new[] { (object)player, native, false });
         }
         internal ItemOperationResult Execute(StoreItemsRequest request)
         {
@@ -69,30 +91,71 @@ namespace JueMingR.TerrariaHost.Items
                 items[i] = item; slots[i] = new PlayerItemSlotID.SlotReference(player, PlayerItemSlotID.Inventory0 + source.Slot);
                 mask |= 1UL << source.Slot; originalQuantity = checked(originalQuantity + item.stack);
             }
-            object native = Activator.CreateInstance(sourceType);
-            sourceItems.SetValue(native, items); sourceCount.SetValue(native, count); sourceSlots.SetValue(native, slots);
-            sourceBlocked.SetValue(native, new bool[count]); sourcePosition.SetValue(native, player.Center);
-            List<Chest> targets = null; long beforeTarget = 0;
-            if (Main.netMode == 0)
-            {
-                // Copy this one native scratch result before the native operation
-                // reuses it. This is an outcome check, never a private-bank precheck.
-                targets = new List<Chest>();
-                foreach (PositionedChest target in NearbyChests.GetChestsInRangeOf(player.position)) targets.Add(target.chest);
-                beforeTarget = Quantity(targets, identity);
-            }
             if (!ownership.TryBeginStore(request.Session, mask)) return Result(ItemOperationState.Rejected, "storage-range-busy");
-            if (Main.netMode == 1)
-            {
-                lock (receiptGate) pending = new Pending(request, player, originalQuantity, Tick);
-            }
             ItemOperationResult result;
             try
             {
                 world.AutomaticOperation = true;
+                int bankMoved = 0;
+                if (request.PersonalBankSlots != 0)
+                {
+                    int? movedToBank = nativeStack.ExecuteBanks(player, identity, items, slots, request.PersonalBankSlots,
+                        bank => BankTargetAdmitted(bank, identity.Type), localPlayerSave: true);
+                    if (!movedToBank.HasValue)
+                    {
+                        // Nothing changed. Wake the finite opportunity on the
+                        // usual cadence even if inventory remains identical.
+                        world.InvalidateObservation();
+                        result = Result(ItemOperationState.Rejected, "player-save-in-progress");
+                        ownership.FinishStore(request.Session, result);
+                        return result;
+                    }
+                    bankMoved = movedToBank.Value;
+                }
+                if (bankMoved == originalQuantity)
+                {
+                    result = new ItemOperationResult(ItemOperationState.Completed, bankMoved);
+                    ownership.FinishStore(request.Session, result);
+                    return result;
+                }
+                StoreItemsRequest worldRequest = request;
+                if (bankMoved != 0)
+                {
+                    // A native bank insertion can swap the source Item for
+                    // air. Re-read the actual slots before handing anything
+                    // to the original world-chest authority or locking it.
+                    var remainingItems = new List<Item>();
+                    var remainingSlots = new List<PlayerItemSlotID.SlotReference>();
+                    var remainingSources = new List<ItemSlotObservation>();
+                    for (int i = 0; i < count; i++)
+                    {
+                        Item actual = slots[i].Item;
+                        if (actual.IsAir) continue;
+                        ItemSlotObservation source = request.Sources[i];
+                        remainingItems.Add(actual); remainingSlots.Add(slots[i]);
+                        remainingSources.Add(new ItemSlotObservation(source.Slot, source.Identity, actual.stack,
+                            source.MaximumStack, source.Instance, source.Protected));
+                    }
+                    items = remainingItems.ToArray(); slots = remainingSlots.ToArray();
+                    worldRequest = new StoreItemsRequest(request.Session, remainingSources, request.RequireStackable);
+                }
+                object native = nativeStack.Prepare(player, items, slots);
+                List<Chest> targets = null; long beforeTarget = 0;
+                if (Main.netMode == 1)
+                {
+                    lock (receiptGate) pending = new Pending(worldRequest, player, originalQuantity - bankMoved, bankMoved, Tick);
+                }
+                else
+                {
+                    // The native operation reuses the scanner scratch list.
+                    // This snapshot checks the world's share of the transfer.
+                    targets = new List<Chest>();
+                    foreach (PositionedChest target in NearbyChests.GetChestsInRangeOf(player.position)) targets.Add(target.chest);
+                    beforeTarget = Quantity(targets, identity);
+                }
                 // Only this already selected group reaches the original overload.
                 // No real slot is masked, swapped, cleared, favorited or restored.
-                quickStack.Invoke(null, new[] { (object)player, native, false });
+                nativeStack.Execute(player, native);
                 if (Main.netMode == 1) return ownership.StoreResult;
                 int remaining = 0;
                 foreach (ItemSlotObservation source in request.Sources)
@@ -103,7 +166,7 @@ namespace JueMingR.TerrariaHost.Items
                 }
                 long added = Quantity(targets, identity) - beforeTarget;
                 int moved = originalQuantity - remaining;
-                result = moved >= 0 && remaining >= 0 && added == moved ?
+                result = moved >= bankMoved && remaining >= 0 && added == moved - bankMoved ?
                     new ItemOperationResult(moved == 0 ? ItemOperationState.NotApplicable : remaining == 0 ? ItemOperationState.Completed : ItemOperationState.PartiallyCompleted, moved) :
                     Result(ItemOperationState.Unconfirmed, "local-transfer-conservation-not-confirmed");
             }
@@ -112,6 +175,23 @@ namespace JueMingR.TerrariaHost.Items
             ownership.FinishStore(request.Session, result);
             if (result.State == ItemOperationState.NotApplicable) RememberNoCapacity(identity, player.position);
             return result;
+        }
+
+        private bool BankTargetAdmitted(Chest bank, int type)
+        {
+            // Restore/processing can hold a concrete bank slot independently
+            // of this Store lease. Native Transfer can touch matching partial
+            // stacks and empty slots, so keep that bank out when they overlap.
+            int account = -bank.index - 1;
+            for (int slot = 0; slot < bank.item.Length; slot++)
+            {
+                Item item = bank.item[slot];
+                if ((item.IsAir || item.type == type && item.stack < item.maxStack) &&
+                    (ownership.IsProtected(account, slot) || world.ManualMaterials.Contains(item) ||
+                    (world.ProcessingProtection?.Invoke(item) ?? false) || (world.AdditionalProtection?.Invoke(item) ?? false)))
+                    return false;
+            }
+            return true;
         }
 
         // Prefix/postfix observations bracket actual native message application.
@@ -185,7 +265,7 @@ namespace JueMingR.TerrariaHost.Items
                     }
                     else if (all)
                     {
-                        int moved = current.OriginalQuantity - remaining;
+                        int moved = current.BankQuantity + current.OriginalQuantity - remaining;
                         ownership.FinishStore(current.Request.Session, new ItemOperationResult(moved == 0 ? ItemOperationState.NotApplicable :
                             remaining == 0 ? ItemOperationState.Completed : ItemOperationState.PartiallyCompleted, moved));
                         // A negative capacity result belongs to the request's
@@ -253,6 +333,7 @@ namespace JueMingR.TerrariaHost.Items
             internal readonly StoreItemsRequest Request;
             internal readonly Player Player;
             internal readonly int OriginalQuantity;
+            internal readonly int BankQuantity;
             internal readonly ulong Started;
             internal readonly Vector2 Position;
             internal readonly bool[] Received;
@@ -260,8 +341,8 @@ namespace JueMingR.TerrariaHost.Items
             internal readonly Item[] RepliedItems;
             internal Fragment[] Fragments;
             internal bool Changed, Invalid, TimedOut;
-            internal Pending(StoreItemsRequest request, Player player, int originalQuantity, ulong started)
-            { Request = request; Player = player; OriginalQuantity = originalQuantity; Started = started; Position = player.position;
+            internal Pending(StoreItemsRequest request, Player player, int originalQuantity, int bankQuantity, ulong started)
+            { Request = request; Player = player; OriginalQuantity = originalQuantity; BankQuantity = bankQuantity; Started = started; Position = player.position;
                 Received = new bool[request.Sources.Count]; Remaining = new int[request.Sources.Count]; RepliedItems = new Item[request.Sources.Count]; }
         }
     }

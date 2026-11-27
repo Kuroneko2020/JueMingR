@@ -168,14 +168,15 @@ namespace JueMingR.TerrariaHost.Companions
 
         internal bool CompanionBuffPending(Actor actor)
         {
-            if (!actor.Preferences.BuffEnabled || actor.Preferences.AllowedBuffTypes.Length == 0 ||
-                !SupplyActorReady(actor)) return false;
+            if ((!actor.Preferences.BuffEnabled || actor.Preferences.AllowedBuffTypes.Length == 0) &&
+                !WantsCompanionSonar(actor) || !SupplyActorReady(actor)) return false;
             RefreshSupplyPreferences(actor);
             var body = actor.Body;
             if (body.cursed || body.CCed || body.spectating >= 0) return false;
             var state = actor.Supplies;
             var source = state.PlannedBuff;
             if (SourceCurrent(actor, source) && BuffRecovery.Missing(body, source.Item.buffType) &&
+                CompanionBuffAllowed(actor, source.Item, source.Account, source.Slot) &&
                 SupplyAdmitted(actor, source.Items, source.Account, source.Slot)) return true;
             state.PlannedBuff = default(RecoverySource);
             if (Main.GameUpdateCount < state.NextBuffScan) return false;
@@ -230,7 +231,7 @@ namespace JueMingR.TerrariaHost.Companions
                             amount = item.healMana;
                             break;
                         case CompanionSupplyKind.Buff:
-                            if (Array.IndexOf(preferences.AllowedBuffTypes, item.type) < 0 || !BuffRecovery.Missing(body, item.buffType)) continue;
+                            if (!CompanionBuffAllowed(actor, item, account, slot) || !BuffRecovery.Missing(body, item.buffType)) continue;
                             int priority = FoodPriority(item.buffType);
                             if (priority == 0)
                             {
@@ -251,6 +252,18 @@ namespace JueMingR.TerrariaHost.Companions
                 }
             }
             return best.Found ? best : firstOtherBuff;
+        }
+
+        private static bool WantsCompanionSonar(Actor a) => FishingActive(a) &&
+            a.Preferences.Fishing.FilterMode != 0 && BuffRecovery.Missing(a.Body, BuffID.Sonar);
+
+        private static bool CompanionBuffAllowed(Actor a, Item item, int account, int slot)
+        {
+            var options = a.Preferences;
+            // The exception belongs to this actor's fishing activity and
+            // main inventory only. Other potions use their normal consent.
+            return options.BuffEnabled && Array.IndexOf(options.AllowedBuffTypes, item.type) >= 0 ||
+                account == 0 && slot < 50 && item.type == ItemID.SonarPotion && WantsCompanionSonar(a);
         }
 
         private static int FoodPriority(int buff)

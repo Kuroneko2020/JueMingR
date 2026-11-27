@@ -5,7 +5,7 @@ using JueMingR.Features.Blueprint;
 namespace JueMingR.TerrariaHost.F5
 {
     internal enum BlueprintLibraryCommand
-    { None, Card, Name, Rename, Delete, Previous, Next, Back, ConfirmDraft, Cancel, Exclude, PreviousObjects, NextObjects, ExcludeAll, Place, Materials, PlacedMaterials, PlacedRemove, Import, Export }
+    { None, Card, Name, Rename, Delete, Previous, Next, Back, ConfirmDraft, Cancel, Exclude, PreviousObjects, NextObjects, ExcludeAll, Place, Materials, PlacedMaterials, PlacedRemove, Import, Export, ConfirmImportName, CancelImportName, RetryRecovery, RemoveRecovery }
 
     internal sealed class BlueprintLibraryPart
     {

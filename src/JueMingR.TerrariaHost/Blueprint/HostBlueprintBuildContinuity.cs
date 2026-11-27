@@ -157,6 +157,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             if(ordinaryA || ordinaryB)return ordinaryA && ordinaryB && group.Source.Type==toolType && group.Consumer==consumer;
             if(b==null || a.Kind!=b.Kind)return false;
             if(a.Kind==BlueprintBuildOperationKind.Hammer || a.Kind==BlueprintBuildOperationKind.Scrape)return true;
+            if(OrnamentOperation(a))return a.Mode==b.Mode && a.Cycle==b.Cycle && group.Source.Type==toolType;
             if(a.Kind==BlueprintBuildOperationKind.PaintTile || a.Kind==BlueprintBuildOperationKind.PaintWall)
                 return a.Mode==b.Mode && a.SupplyType==supplyType && a.Consumer==b.Consumer;
             if(a.Kind==BlueprintBuildOperationKind.AddWire || a.Kind==BlueprintBuildOperationKind.SetInactive)

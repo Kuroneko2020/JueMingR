@@ -66,16 +66,27 @@ namespace JueMingR.TerrariaHost.Fishing
             }
             return item.accessory && ItemSlot.CanEquipAccessoryInSlot(item,!functional,new ArraySegment<Item>(armor,functional?3:13,7),slot) && !ItemSlot.HasSameItemInSlot(item,new ArraySegment<Item>(armor,functional?13:3,7));
         }
-        internal static int Score(Player p,int loadout)
+        internal static int Score(Player p,int loadout,bool lava=false)
         {
             var projection=new Projection(p,loadout);int score=0;
             for(int slot=0;slot<10;slot++)
             {
                 Item item=projection.Effective(slot);FishingGear gear;
-                if(Role(p,item,slot) && FishingEquipmentCatalog.TryGet(item.type,false,out gear))score+=gear.ArmorSlot>=0?5:10;
+                if(Role(p,item,slot) && FishingEquipmentCatalog.TryGet(item.type,lava,out gear))score+=gear.ArmorSlot>=0?5:10;
             }
             return score;
         }
+        internal static bool LavaLoadout(Player p,int loadout)
+        {
+            var projection=new Projection(p,loadout);
+            for(int slot=3;slot<10;slot++)
+            {
+                var item=projection.Effective(slot);
+                if(Role(p,item,slot) && LavaAccessory(item.type))return true;
+            }
+            return false;
+        }
+        private static bool LavaAccessory(int type){return type==5064 || type==4881;}
         internal static int BestLoadout(Player p)
         {
             int best=p.CurrentLoadoutIndex,score=0;
@@ -99,7 +110,7 @@ namespace JueMingR.TerrariaHost.Fishing
             {var other=projection.Effective(i);if(!other.IsAir && !ItemSlot.CanEquipBothAccessories(armor[target],other,false))return false;}
             return true;
         }
-        internal static Move Next(Player p,bool lava,Func<Item[],int,bool> allowed,int manualSlots)
+        internal static Move Next(Player p,bool lava,Func<Item[],int,bool> allowed,int manualSlots,bool requireLava=false)
         {
             var all=new List<Candidate>();
             for(int slot=0;slot<10;slot++)
@@ -111,6 +122,18 @@ namespace JueMingR.TerrariaHost.Fishing
             void Add(Item[] array,int start,int end,int source)
             {for(int slot=start;slot<end;slot++){var item=array[slot];FishingGear gear;if(item!=null && !item.IsAir && allowed(array,slot) && FishingEquipmentCatalog.TryGet(item.type,lava,out gear))all.Add(new Candidate{Array=array,Slot=slot,Source=source,Item=item,Gear=gear});}}
             var ordered=all.OrderByDescending(x=>x.Gear.Score).ThenBy(x=>x.Source).ThenBy(x=>x.Slot).ThenBy(x=>x.Item.type).ToList();
+            if(requireLava)
+            {
+                foreach(var candidate in ordered)
+                {
+                    if(candidate.Source==0 || !LavaAccessory(candidate.Item.type))continue;
+                    var targets=Enumerable.Range(3,7).Where(slot=>(manualSlots&(1<<slot))==0)
+                        .OrderBy(slot=>Replacement(p.armor[slot],true)).ThenBy(slot=>GearScore(p.armor[slot],true)).ThenBy(slot=>slot);
+                    foreach(int target in targets)
+                        if(CanSwap(p,candidate.Array,candidate.Slot,target,true))return ToMove(candidate,target);
+                }
+                return null;
+            }
             for(int target=0;target<3;target++)
             {
                 if((manualSlots&(1<<target))!=0)continue;FishingGear current;

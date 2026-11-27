@@ -232,6 +232,15 @@ namespace JueMingR.TerrariaHost.Blueprint
             else if(operation?.Kind==BlueprintBuildOperationKind.PaintWall){family=NearCapabilityFamily.Roller;identity="roller";}
             else if(operation?.Kind==BlueprintBuildOperationKind.Scrape){family=NearCapabilityFamily.Scraper;identity="scraper";}
             else if(WiringOperation(operation))identity="wire:"+(int)operation.Kind+":"+operation.Mode;
+            else if(OrnamentOperation(operation))
+            {
+                // Zero encodes a satisfied, empty or non-replaceable slot.
+                // The key follows the current remaining decorations, so a
+                // prior use or a different tree body cannot retain old stock.
+                var slots=operation.OrnamentSlots;
+                identity="ornaments:"+NeededOrnamentType(cell,slots,0)+":"+NeededOrnamentType(cell,slots,1)+":"+
+                    NeededOrnamentType(cell,slots,2)+":"+NeededOrnamentType(cell,slots,3);
+            }
             else if(operation?.NativePlacement?.Producer!=null)
             {
                 if(!ReferenceEquals(nearCapabilityCatalog,MaterialCatalog)){nearCapabilityCatalog=MaterialCatalog;nearCapabilityCatalogIdentity++;}
@@ -247,6 +256,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 var accepted=new List<int>();
                 if(WiringOperation(operation))for(int option=0;option<3;option++)
                 {NearCapabilityDependencyWork();int type=WiringToolType(operation,option);if(type>0 && WiringToolMatches(operation,type) && !accepted.Contains(type))accepted.Add(type);}
+                else if(OrnamentOperation(operation))for(int slot=0;slot<BlueprintChristmasTreeMembers.OrnamentSlots;slot++)
+                {NearCapabilityDependencyWork();int type=NeededOrnamentType(cell,operation.OrnamentSlots,slot);if(type>0)accepted.Add(type);}
                 else if(operation?.NativePlacement?.Producer!=null && MaterialCatalog!=null)
                     foreach(var producer in MaterialCatalog.Producers(cell,obj))
                     {NearCapabilityDependencyWork();if(producer.Producer!=null && producer.UseItemType>0 && !accepted.Contains(producer.UseItemType))accepted.Add(producer.UseItemType);}

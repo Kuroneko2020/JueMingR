@@ -26,6 +26,12 @@ namespace JueMingR.Features.Blueprint
         {
             x = y = 0;
             if (column < 0 || row < 0 || column >= Descriptor.Width || row >= Descriptor.Height) return false;
+            if (Descriptor.TileType == BlueprintChristmasTreeMembers.TileType)
+            {
+                x = column == 0 && row == 0 ? BlueprintChristmasTreeMembers.PlacedAnchorFrameX : (short)column;
+                y = (short)row;
+                return true;
+            }
             long frameX = Door ? (long)(Descriptor.Style / 36) * 54 : BaseX + (long)column * ColumnStep;
             long frameY = Door ? (long)(Descriptor.Style % 36) * 54 + row * 18 :
                 Descriptor.Platform || Descriptor.PlanterBox ? (long)Descriptor.Style * 18 : row < rows.Length ? BaseY + (long)rows[row] : -1;
@@ -42,6 +48,8 @@ namespace JueMingR.Features.Blueprint
                 return style == Descriptor.Style && cell.FrameX % 18 == 0 && cell.FrameY % 18 == 0;
             }
             if (cell.TileType != Descriptor.TileType) return false;
+            if (cell.TileType == BlueprintChristmasTreeMembers.TileType)
+                return BlueprintChristmasTreeMembers.TryMember(cell, out _, out _);
             // Original track frames are semantic indices, not 18px object
             // grids. The Host copies front-slot item identity once; -1 is a
             // legal absent back rail, never a reason to discard its material.

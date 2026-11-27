@@ -62,6 +62,7 @@ namespace Terraria
                     var input = new HostInputState(() => new IntPtr(1), () => new IntPtr(1));
                     var popup = new HotkeyPopup(owner, registry, input); var anchor = new F5Rect(740, 150, 22, 30);
                     int extraMouse = -1;
+                    var mouseTokens = new List<string>();
                     Action<int[], bool, float, float> step = (keys, left, x, y) =>
                     {
                         input.BeginUpdate();
@@ -71,6 +72,10 @@ namespace Terraria
                             extraMouse == 257 ? ButtonState.Pressed : ButtonState.Released,
                             extraMouse == 259 ? ButtonState.Pressed : ButtonState.Released,
                             extraMouse == 260 ? ButtonState.Pressed : ButtonState.Released);
+                        mouseTokens.Clear();
+                        if (left) mouseTokens.Add("Mouse1");
+                        if (extraMouse > 256) mouseTokens.Add("Mouse" + (extraMouse - 255));
+                        input.AfterNativeMouse(mouseTokens);
                         input.AfterMapping(); var keyboard = new Keys[keys.Length]; for (int i = 0; i < keys.Length; i++) keyboard[i] = (Keys)keys[i];
                         Main.keyState = new KeyboardState(keyboard); input.AfterKeyboardRefresh();
                         popup.Process(true, 9, x, y, popup.Layout.Matches(800, 600, font)); popup.Prepare(800, 600, font, Measure);
@@ -158,8 +163,10 @@ namespace Terraria
                     Check(!popup.Capturing && owner.Get(target.Id)?.MainKey == 8, "first new primary immediately after start-button release is captured");
                     step(new int[0], false, 0, 0);
                     float bodyX = popup.Layout.Panel.X + 18, bodyY = popup.Layout.Panel.Y + 18;
-                    step(new int[0], true, bodyX, bodyY); step(new int[0], true, 2, 2);
-                    Check(input.Hotkeys.HasSuppressedKeys && !PlayerInput.Triggers.Current.MouseLeft, "popup body press retains its physical tail outside panel");
+                    step(new[] { 87 }, true, bodyX, bodyY); step(new[] { 87 }, true, 2, 2);
+                    Check(!input.Hotkeys.HasSuppressedKeys && !mouseTokens.Contains("Mouse1"), "ordinary body press filters only its Mouse1 tail outside panel");
+                    step(new[] { 87 }, false, 2, 2); step(new[] { 87 }, true, 2, 2);
+                    Check(mouseTokens.Contains("Mouse1") && !input.Hotkeys.IsSuppressed(87), "fresh native mouse token returns after actual release while W remains held");
                     step(new int[0], false, 2, 2);
                     for (int mouse = 256; mouse <= 260; mouse++)
                     {

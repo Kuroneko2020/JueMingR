@@ -255,6 +255,10 @@ namespace JueMingR.TerrariaHost.Blueprint
             // calls AND delegate targets, retaining background hardmode work.
             add(typeof(WorldGen).GetMethod("UpdateWorld", Flags));
             add(typeof(WorldGen).GetMethod("StartHardmode", Flags));
+            // TileObject.Place reaches this finite writer through the
+            // Christmas tree's registered HookPlaceOverride, outside the
+            // direct runtime call graph. Its stores revoke cached air proofs.
+            add(typeof(WorldGen).GetMethod(nameof(WorldGen.PlaceXmasTree_Direct), Flags));
             // Main has direct time/map roots outside WorldGen.UpdateWorld
             // (notably the nightly meteor). Read only its method operands,
             // without patching Main or enumerating the entire game graph.

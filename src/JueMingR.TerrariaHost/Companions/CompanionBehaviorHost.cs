@@ -40,11 +40,20 @@ namespace JueMingR.TerrariaHost.Companions
         internal void AdvanceMovement(Player body, CompanionMobilityState state, NavigationBudget budget) =>
             Navigator.Advance(body, state, OwnerTrail, budget);
 
+        private int NextThreatStamp()
+        {
+            if (++threatStamp == int.MaxValue) { Array.Clear(seenThreats, 0, seenThreats.Length); threatStamp = 1; }
+            return threatStamp;
+        }
+
+        internal void RefreshFishingThreats(Player body, FishingThreats threats) =>
+            CompanionThreatField.ObserveFishing(body, seenThreats, NextThreatStamp(), threats);
+
         internal CompanionMobilityFrame DecideMobility(Player body, Player owner, CompanionBehavior behavior, bool allowPlanning,
             NPC combatTarget, bool closeCombat, bool canAttack, Item pursuitWeapon, CompanionMobilityState mobility,
-            bool maintainMeleeApproach = false)
+            bool maintainMeleeApproach = false, HostCompanions.FishingActivity fishing = null)
         {
-            var currentOwner = behavior.Follow && owner != null && owner.active && !owner.dead ? owner : null;
+            var currentOwner = fishing == null && behavior.Follow && owner != null && owner.active && !owner.dead ? owner : null;
             bool segmentChanged = Navigator.ObserveOwnerTrail(OwnerTrail, mobility);
             if (!initialized || !ReferenceEquals(goalOwner, currentOwner))
             {
@@ -63,15 +72,27 @@ namespace JueMingR.TerrariaHost.Companions
             CompanionOwnerTrail.Sample pose = default;
             bool hasPose = currentOwner != null && OwnerTrail?.TryGetCurrent(out pose) == true;
             Vector2 center = hasPose ? pose.Center : currentOwner?.Center ?? anchor;
+            if (fishing != null) center = fishing.FeetGoal - new Vector2(0, body.height * .5f * body.gravDir);
             Vector2 follow = center, velocity = hasPose ? pose.Velocity : currentOwner?.velocity ?? Vector2.Zero;
-            float spacing = currentOwner == null ? 0f : 34f;
+            float spacing = currentOwner == null ? (fishing == null ? 0f : 8f) : 34f;
             bool needsAir = body.wet && body.breath < body.breathMax / 3 && !body.gills && !mobility.Observed.BreathProtected;
             if (!body.wet) { lastAir = body.Center; hasAir = true; }
             bool lava = body.lavaWet && !body.lavaImmune && (!mobility.Observed.Ready || mobility.Observed.LavaTime <= 24);
 
-            if (++threatStamp == int.MaxValue) { Array.Clear(seenThreats, 0, seenThreats.Length); threatStamp = 1; }
-            bool threat = CompanionThreatField.Observe(body, seenThreats, threatStamp, out int escape, out bool jumpClear);
-            if (needsAir || lava || threat)
+            var fishingThreats = fishing?.Threats;
+            int escape;
+            bool jumpClear, threat;
+            if (fishingThreats == null)
+                threat = CompanionThreatField.Observe(body, seenThreats, NextThreatStamp(), out escape, out jumpClear);
+            else
+            {
+                threat = fishingThreats.Danger;
+                escape = fishingThreats.Escape;
+                jumpClear = fishingThreats.JumpClear;
+            }
+            bool emergency = needsAir || lava || threat;
+            bool temporaryGoal = emergency;
+            if (emergency)
             {
                 if (needsAir) center = hasAir ? lastAir : body.Center - new Vector2(0, 80f * body.gravDir);
                 else center = body.Center + new Vector2(escape * 56f, (lava || jumpClear ? -48f : 0f) * body.gravDir);
@@ -87,8 +108,15 @@ namespace JueMingR.TerrariaHost.Companions
                 center = opening;
                 spacing = closeCombat ? 10f : 4f;
                 velocity = Vector2.Zero;
+                temporaryGoal = true;
             }
             else if (canAttack || combatTarget == null) openingTarget = null;
+
+            // A settled fishing pose is ordinary native physics without
+            // navigation's small correction inputs. Dangers still get their
+            // usual temporary goal, and the fixed anchor remains intact.
+            if (fishing?.Hold == true && !temporaryGoal)
+                return new CompanionMobilityFrame { Status = "停留" };
 
             Vector2 goal = center + new Vector2(0, body.height * .5f * body.gravDir);
             bool followInAir = false, targetContactKnown = true;
@@ -107,7 +135,9 @@ namespace JueMingR.TerrariaHost.Companions
                     else followInAir = pose.SupportKnown && !mediumObserved;
                 }
             }
-            return Navigator.Decide(body, mobility, goal, velocity, spacing, needsAir || lava || threat, escape, followInAir, targetContactKnown);
+            var frame = Navigator.Decide(body, mobility, goal, velocity, spacing, emergency, escape, followInAir, targetContactKnown);
+            frame.TemporaryGoal = temporaryGoal;
+            return frame;
         }
 
         private bool TryCombatPosition(Player body, Vector2 follow, NPC target, Item weapon, bool closeCombat,

@@ -108,13 +108,17 @@ namespace JueMingR.TerrariaHost.Blueprint
                 // A native/resource-pack pylon body has texture-defined size.
                 // Requery when that size becomes ready or changes, including
                 // when no pylon member was in the previous narrower window.
+                int halo = VisualHaloTiles;
+                // Once a tree member is in the source window, its whole native
+                // sprite may require the anchor eight rows above the viewport.
+                if (hasChristmasTree) halo = BlueprintChristmasTreeMembers.Height + 1;
                 Texture2D texture;
                 try { texture = Extra(181); }
                 catch (Exception error) when (LocalFailure(error))
-                { Fail(error, "蓝图绘制资源暂不可用，已停止投影并保留原文件。"); return VisualHaloTiles; }
-                if (texture == null || texture.IsDisposed) return VisualHaloTiles;
+                { Fail(error, "蓝图绘制资源暂不可用，已停止投影并保留原文件。"); return halo; }
+                if (texture == null || texture.IsDisposed) return halo;
                 float overhang = Math.Max(texture.Width / 28f - 24f, texture.Height / 16f - 24f);
-                return Math.Max(VisualHaloTiles, 1 + (int)Math.Ceiling(Math.Max(0, overhang) / 16f));
+                return Math.Max(halo, 1 + (int)Math.Ceiling(Math.Max(0, overhang) / 16f));
             }
         }
 
@@ -205,9 +209,17 @@ namespace JueMingR.TerrariaHost.Blueprint
             foreach (var pair in segments) if (!coverage.Contains((int)(pair.Key & uint.MaxValue), (int)(pair.Key >> 32))) remove.Add(pair.Key);
             if (remove.Count == 0) return; foreach (long key in remove) segments.Remove(key); window = null; mask = null; Compose();
         }
+        private bool hasChristmasTree;
         private void Compose()
         {
             commands = new List<BlueprintProjectionCommand>(); var extras = new HashSet<Vector2>();
+            hasChristmasTree = false;
+            foreach (var segment in segments.Values)
+            {
+                foreach (var obj in segment.Objects)
+                    if (obj.Type == BlueprintChristmasTreeMembers.TileType) { hasChristmasTree = true; break; }
+                if (hasChristmasTree) break;
+            }
             foreach (var segment in segments.Values) foreach (var command in segment.Commands)
                 if (command.Texture != BlueprintProjectionTexture.Extra || extras.Add(command.Position)) commands.Add(command);
             // Preserve the original global wall/liquid/tile/circuit passes even
@@ -254,6 +266,8 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (!ResolveMatch(ref command, out matched)) continue;
                 if (texture == null || texture.IsDisposed || !ReferenceEquals(texture.GraphicsDevice, Main.spriteBatch.GraphicsDevice)) continue;
                 Rectangle source = command.Source; Vector2 position = command.Position + offset;
+                if (command.Texture == BlueprintProjectionTexture.ChristmasTree && command.Type == 4)
+                    source.Y = 130 * Main.tileFrame[BlueprintChristmasTreeMembers.TileType];
                 Vector2 scale = Vector2.One;
                 if (command.Texture == BlueprintProjectionTexture.Pixel)
                 { scale = new Vector2(source.Width, source.Height); source = new Rectangle(0, 0, 1, 1); }
@@ -271,7 +285,9 @@ namespace JueMingR.TerrariaHost.Blueprint
                 if (mirroredHorizontally)
                 {
                     position.X = offset.X + poseWidth * 16f - (position.X - offset.X) - source.Width * scale.X;
-                    effects ^= SpriteEffects.FlipHorizontally;
+                    // Native trees have one visual orientation and re-encode
+                    // their ordinals at the new anchor. Their art stays fixed.
+                    if (command.Texture != BlueprintProjectionTexture.ChristmasTree) effects ^= SpriteEffects.FlipHorizontally;
                 }
                 if (!BlueprintProjectionRendererCommands.Clip(ref position, ref source, ref scale, effects,
                     command.Texture == BlueprintProjectionTexture.Pixel, Main.maxTilesX * 16f, Main.maxTilesY * 16f)) continue;
@@ -330,6 +346,13 @@ namespace JueMingR.TerrariaHost.Blueprint
         {
             if (command.Texture == BlueprintProjectionTexture.Pixel) return TextureAssets.MagicPixel != null && TextureAssets.MagicPixel.IsLoaded ? TextureAssets.MagicPixel.Value : null;
             if (command.Texture == BlueprintProjectionTexture.Extra) return Extra(command.Type);
+            if (command.Texture == BlueprintProjectionTexture.ChristmasTree)
+            {
+                var tree = TextureAssets.XmasTree?[command.Type];
+                if (tree == null) return null;
+                if (tree.State == AssetState.NotLoaded && Main.Assets != null) Main.Assets.Request<Texture2D>(tree.Name);
+                return tree.IsLoaded ? tree.Value : null;
+            }
             if (Main.instance == null) return null;
             if (command.Texture == BlueprintProjectionTexture.Tile)
             {
@@ -362,7 +385,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         }
         internal void Clear()
         {
-            window = null; mask = null; matchView = null; commands = null; slots.Clear(); textureKeys.Clear(); segments.Clear();
+            window = null; mask = null; matchView = null; commands = null; slots.Clear(); textureKeys.Clear(); segments.Clear(); hasChristmasTree = false;
             commandSlots = Array.Empty<int>(); textures = Array.Empty<Texture2D>();
             pendingError = null; Failure = null;
         }

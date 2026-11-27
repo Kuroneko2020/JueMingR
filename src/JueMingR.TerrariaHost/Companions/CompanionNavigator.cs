@@ -69,6 +69,33 @@ namespace JueMingR.TerrariaHost.Companions
         internal Vector2 Target => target;
         internal bool Supported => supported;
 
+        internal Vector2 DeliveredTravelAxis(CompanionMovementDelivery delivery, Vector2 feet)
+        {
+            // Freeze the physical leg before Observe can retire or advance it.
+            // Mounting and changing gravity are preparations, not passage.
+            if (action.Id == 0 || action.Id != delivery.ActionId || Terminal(action.Outcome) || delivery.NativeShapeExit)
+                return Vector2.Zero;
+            var edge = action.Edge;
+            Vector2 direction = action.ProgressTarget - feet;
+            if (edge.Kind == NavigationAction.Mount || edge.Kind == NavigationAction.Dismount || edge.Kind == NavigationAction.Gravity)
+                return Vector2.Zero;
+            if (edge.Kind == NavigationAction.Walk || edge.Kind == NavigationAction.Door)
+                direction.Y = 0f;
+            if (direction.LengthSquared() < 1f) direction = edge.To - edge.From;
+            return direction.LengthSquared() >= 1f ? Vector2.Normalize(direction) : Vector2.Zero;
+        }
+
+        internal bool WithinOwnerFollowBand(Player body, Player owner)
+        {
+            Vector2 feet = CompanionNativeContact.Feet(body);
+            Vector2 goal = body.gravDir == owner.gravDir ? CompanionNativeContact.Feet(owner) :
+                owner.Center + new Vector2(0, body.height * .5f * body.gravDir);
+            // CloseTarget can currently describe a weapon or emergency goal.
+            // Use the real owner's contact and the same local passage checks.
+            if (!CompanionMotionAction.Near(feet, goal, 34f, 10f)) return false;
+            return supported ? CompanionGroundRun.ConnectGroundTarget(body, goal) : NearLine(body, feet, goal, wholeLane: true);
+        }
+
 #if DEBUG
         internal int PlannerSlices { get; private set; }
         internal int TileWork { get; private set; }

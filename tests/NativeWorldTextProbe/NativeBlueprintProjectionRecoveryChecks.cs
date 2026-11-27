@@ -175,7 +175,7 @@ namespace NativeWorldTextProbe
                     }
                     Require(WorldGen.PlaceTile(800,800,1,true,true),"other template gets a real final construction while failed reader is held");
                     step();Require(Scene(host).Contains(other),"different template still needs its actual post-mutation proof");
-                    if(budgetCode)files.ReadFailureCode="blueprint-projection-window-budget";
+                    if(budgetCode){files.ReadFailureCode="blueprint-projection-window-budget";files.DemandBudget=viewport;}
                     else
                     {
                         sourcePath=Path.Combine(directory,asset.AssetId.ToString("N"),"content","chunks",0L.ToString("D20")+".bin");
@@ -185,7 +185,9 @@ namespace NativeWorldTextProbe
                     BlueprintProjectionReceipt failed=null;
                     NativeQuickItemChecks.Until(()=>{lock(gate){failed=FailureReceipts(worker).FirstOrDefault(r=>r.Identity.Equals(identity));return failed!=null;}});
                     bool recoverable=viewport && budgetCode;
-                    Require(failed.IdentityRetired!=recoverable && failed.FailureCode==(budgetCode?"blueprint-projection-window-budget":"blueprint-chunk-hash") && (viewport?failed.WindowGeneration>0:failed.WindowGeneration==0),"actual reader failure carries precise identity lifetime independently of overlapping error code");
+                    Require(failed.IdentityRetired!=recoverable && failed.FailureCode==(budgetCode?"blueprint-projection-window-budget":"blueprint-chunk-hash") &&
+                        failed.FailureScope==(recoverable?BlueprintProjectionFailureScope.Demand:BlueprintProjectionFailureScope.SharedAsset) &&
+                        (recoverable?failed.WindowGeneration>0:failed.WindowGeneration==0),"typed demand rejection and real reader failure carry precise identity ownership independently of overlapping error text");
                     if(recoverable)
                     {
                         Require(WorkerReferences(worker,identity),"viewport demand budget failure retains the real worker identity");Call(host,"Poll");
@@ -257,14 +259,20 @@ namespace NativeWorldTextProbe
         private sealed class ProjectionReadFiles : IBlueprintLibraryFiles
         {
             private readonly FileBlueprintLibrary inner;
-            internal Guid HoldAsset;internal long HoldBlock=-1;internal string ReadFailureCode;
+            internal Guid HoldAsset;internal long HoldBlock=-1;internal string ReadFailureCode;internal bool DemandBudget;
             internal readonly ManualResetEvent ReadEntered=new ManualResetEvent(false),ReadRelease=new ManualResetEvent(true);
             internal ProjectionReadFiles(string directory){inner=new FileBlueprintLibrary(directory);}
             public byte[] ReadBlock(Guid id,bool stage,long number)
             {
                 if(!stage && id==HoldAsset && number==HoldBlock){HoldBlock=-1;ReadEntered.Set();if(!ReadRelease.WaitOne(10000))throw new TimeoutException("isolated identity read gate was not released");}
                 var bytes=inner.ReadBlock(id,stage,number);string code=ReadFailureCode;
-                if(code!=null){ReadFailureCode=null;throw new InvalidDataException(code);}return bytes;
+                if(code!=null)
+                {
+                    ReadFailureCode=null;
+                    if(DemandBudget)throw (Exception)Activator.CreateInstance(typeof(LibraryState).Assembly.GetType("JueMingR.Features.Blueprint.LibraryWorker+ProjectionBudgetException", true), true);
+                    throw new InvalidDataException(code);
+                }
+                return bytes;
             }
             public void Open(){inner.Open();}
             public IEnumerable<Guid> EnumerateAssets(){return inner.EnumerateAssets();}

@@ -27,9 +27,8 @@ namespace NativeWorldTextProbe
                 "JueMingR.TerrariaHost.Companions.CompanionMobilityState", true), true);
             Call(native, "ObserveBody", body, false);
             var decide = AccessTools.Method(behavior.GetType(), "DecideMobility");
-            return decide.Invoke(behavior, decide.GetParameters().Length == 9
-                ? new object[] { body, owner, preferences, planning, null, false, false, null, native }
-                : new object[] { body, owner, preferences, planning, null, false, false, null, native, false });
+            object[] args = { body, owner, preferences, planning, null, false, false, null, native, false, null };
+            return decide.Invoke(behavior, args.Take(decide.GetParameters().Length).ToArray());
         }
 
         internal static void RunJumpReachability(object host)

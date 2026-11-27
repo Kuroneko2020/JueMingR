@@ -77,7 +77,7 @@ foreach($consumer in $hoikConsumers){Assert-Route ((Get-WorkloadCheckFingerprint
 Assert-Route ((Get-WorkloadCheckFingerprint $hoikBefore 'native-ViewZoomControlCpu') -ceq (Get-WorkloadCheckFingerprint $hoikAfter 'native-ViewZoomControlCpu')) 'Hoik helper preserves unrelated view proof'
 foreach($identityHelper in @('NativePlacementIdentityChecks.cs','NativeSwitchIdentityChecks.cs','NativeLegacyPlacementIdentityChecks.cs')){
     $identityPath='tests/NativeWorldTextProbe/'+$identityHelper
-    $identityConsumers=@(if($identityHelper -ceq 'NativeLegacyPlacementIdentityChecks.cs'){@('native-BrowserCpu','native-BlueprintImportedMaterialsCpu')}else{@('native-BrowserCpu')})
+    $identityConsumers=@(if($identityHelper -ceq 'NativeLegacyPlacementIdentityChecks.cs'){@('native-BrowserCpu','native-BlueprintImportedMaterialsCpu','native-BlueprintExchangeCpu','native-BlueprintPayloadCpu','native-BlueprintChristmasTreeCpu')}else{@('native-BrowserCpu')})
     Assert-Route (((@(Get-WorkloadPathChecks $identityPath)|Sort-Object)-join '|') -ceq (($identityConsumers|Sort-Object)-join '|')) ('identity helper actual consumers '+$identityHelper)
     $identityRoute=Get-WorkloadRoute @($identityPath)
     Assert-Route ($identityRoute.unknown.Count -eq 0) ('identity helper classified '+$identityHelper)

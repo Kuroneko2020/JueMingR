@@ -20,6 +20,10 @@ namespace JueMingR.Features.Blueprint
         internal readonly SortedDictionary<long, CaptureCell> Cells = new SortedDictionary<long, CaptureCell>();
         internal readonly List<CaptureObject> Objects = new List<CaptureObject>();
         private readonly HashSet<long> tileKeys = new HashSet<long>(), wallKeys = new HashSet<long>(), wireKeys = new HashSet<long>();
+        private readonly HashSet<long> containerKeys = new HashSet<long>();
+        private static readonly string[] TileFields = { "x", "y", "tileType", "frameX", "frameY", "color", "slope", "isHalfBrick", "inActive", "fullbright", "invisible" };
+        private static readonly string[] WallFields = { "x", "y", "wallType", "color", "fullbright", "invisible" };
+        private static readonly string[] WireFields = { "x", "y", "red", "blue", "green", "yellow", "actuator" };
         private static long Key(int x, int y) { return ((long)y << 32) | (uint)x; }
         internal IEnumerable<bool> Read(byte[] bytes, IBlueprintImportProfile profile)
         {
@@ -38,25 +42,23 @@ namespace JueMingR.Features.Blueprint
                 {
                     string field = reader.LocalName;
                     if (!fields.Add(field)) throw Bad("根属性重复：" + field);
-                    if (field == "tiles" || field == "walls" || field == "wires")
+                    if (field == "tiles" || field == "walls" || field == "wires" || field == "containers" || field == "entities")
                     {
+                        if (reader.GetAttribute("type") == "null") { reader.Skip(); yield return true; continue; }
                         Type(reader, "array"); bool empty = reader.IsEmptyElement; reader.ReadStartElement();
                         while (!empty && reader.MoveToContent() == XmlNodeType.Element)
                         {
-                            var item = (XElement)XNode.ReadFrom(reader); Record(item, field, profile); yield return true;
+                            var item = (XElement)XNode.ReadFrom(reader);
+                            if ((string)item.Attribute("type") != "null")
+                            {
+                                if (field == "containers" || field == "entities") PayloadRecord(item, field);
+                                else Record(item, field, profile);
+                            }
+                            yield return true;
                         }
                         if (!empty) reader.ReadEndElement();
                     }
-                    else if (field == "containers" || field == "entities")
-                    {
-                        Type(reader, "array"); bool empty = reader.IsEmptyElement; reader.ReadStartElement();
-                        while (!empty && reader.MoveToContent() == XmlNodeType.Element)
-                        {
-                            PayloadRecord((XElement)XNode.ReadFrom(reader), field); yield return true;
-                        }
-                        if (!empty) reader.ReadEndElement();
-                    }
-                    else if (field == "name") Name = Scalar((XElement)XNode.ReadFrom(reader), "string");
+                    else if (field == "name") Name = OptionalString((XElement)XNode.ReadFrom(reader));
                     else if (field == "createdAt")
                     {
                         DateTimeOffset date;
@@ -68,11 +70,8 @@ namespace JueMingR.Features.Blueprint
                     yield return true;
                 }
                 reader.ReadEndElement(); if (reader.MoveToContent() != XmlNodeType.None) throw Bad("蓝图尾部有额外内容");
-                foreach (string required in new[] { "name", "createdAt", "width", "height", "tiles", "walls", "wires", "containers" })
-                    if (!fields.Contains(required)) throw Bad("蓝图缺少必需属性：" + required);
+                if (!fields.Contains("width") || !fields.Contains("height")) throw Bad("蓝图缺少宽度或高度");
             }
-            string error;
-            if (!LibraryName.TryValidate(Name, out error) || Cells.Count == 0) throw Bad("蓝图名称无效或没有建筑内容");
             foreach (CaptureCell cell in Cells.Values)
             {
                 if (cell.X >= Width || cell.Y >= Height) throw Bad("坐标超出声明尺寸：" + cell.X + "," + cell.Y);
@@ -80,6 +79,8 @@ namespace JueMingR.Features.Blueprint
             }
             // Empty wire records also require coordinate validation.
             foreach (long key in wireKeys) { if ((uint)key >= Width || (key >> 32) >= Height) throw Bad("线路坐标超出声明尺寸"); yield return true; }
+            foreach (long key in containerKeys) { if ((uint)key >= Width || (key >> 32) >= Height) throw Bad("容器坐标超出声明尺寸"); yield return true; }
+            if (Cells.Count == 0) throw Bad("没有建筑内容");
             // Enumerate a stable key copy: setting ObjectId changes values, not
             // order. A footprint is proven exclusively against source records.
             var keys = new long[Cells.Count]; Cells.Keys.CopyTo(keys, 0);
@@ -92,15 +93,14 @@ namespace JueMingR.Features.Blueprint
                     if (shape != null)
                     {
                         CaptureObject obj = shape.Object;
-                        if (!obj.Reliable || obj.Width < 1 || obj.Height < 1 || (long)obj.Width * obj.Height >= CaptureChunk.MaximumRecords ||
+                        if (!obj.Reliable || !shape.CanMatchMembers || obj.Width < 1 || obj.Height < 1 || (long)obj.Width * obj.Height >= CaptureChunk.MaximumRecords ||
                             obj.X < 0 || obj.Y < 0 || (long)obj.X + obj.Width > Width || (long)obj.Y + obj.Height > Height) throw Bad("物件布局无法确认：" + cell.X + "," + cell.Y);
                         obj.Id = checked(Objects.Count + 1);
                         for (int member = 0; member < obj.Width * obj.Height; member++)
                         {
                             long memberKey = Key(obj.X + member % obj.Width, obj.Y + member / obj.Width); CaptureCell value;
                             if (!Cells.TryGetValue(memberKey, out value) || (value.Layers & CaptureLayer.Tile) == 0 || value.ObjectId != 0 || value.TileType != obj.Type ||
-                                !shape.IndependentMemberFrames && value.FrameX != shape.BaseFrameX + member % obj.Width * shape.ColumnStep ||
-                                value.FrameY != shape.BaseFrameY + shape.RowOffsets[member / obj.Width]) throw Bad("物件成员残缺或帧冲突：" + obj.X + "," + obj.Y);
+                                !shape.MatchesMemberFrame(value, member)) throw Bad("物件成员残缺或帧冲突：" + obj.X + "," + obj.Y);
                             BlueprintObjectShape description = profile.DescribeImport(value);
                             if (description == null || !Same(obj, description.Object)) throw Bad("物件成员布局不一致：" + obj.X + "," + obj.Y);
                             value.ObjectId = obj.Id; Cells[memberKey] = value; yield return true;
@@ -132,60 +132,80 @@ namespace JueMingR.Features.Blueprint
             string payload = layer == "entities" ? "itemType" : "name";
             if ((string)item.Attribute("type") != "object") throw Bad("附加记录必须是对象");
             var fields = new Dictionary<string, XElement>(StringComparer.Ordinal);
-            foreach (XElement value in item.Elements()) { if (fields.ContainsKey(value.Name.LocalName)) throw Bad("附加记录属性重复"); fields.Add(value.Name.LocalName, value); }
-            if (fields.Count != 3 || !fields.ContainsKey("x") || !fields.ContainsKey("y") || !fields.ContainsKey(payload)) throw Bad("附加记录属性不支持或缺失");
-            int x = Integer(fields["x"], 0, Int32.MaxValue), y = Integer(fields["y"], 0, Int32.MaxValue); long key = Key(x, y);
+            foreach (XElement value in item.Elements())
+            {
+                string field = value.Name.LocalName;
+                if (field != "x" && field != "y" && field != payload) throw Bad("不支持的附加记录属性：" + field);
+                if (fields.ContainsKey(field)) throw Bad("附加记录属性重复：" + field);
+                fields.Add(field, value);
+            }
+            int x = RequiredInteger(fields, "x", 0, Int32.MaxValue), y = RequiredInteger(fields, "y", 0, Int32.MaxValue); long key = Key(x, y);
             if (layer == "entities")
             {
-                int value = Integer(fields[payload], 1, Int16.MaxValue);
+                int value = RequiredInteger(fields, payload, 1, Int16.MaxValue);
                 if (entities.ContainsKey(key)) throw Bad("实体锚点重复"); entities.Add(key, value);
             }
             else
             {
-                string value = Scalar(fields[payload], "string");
-                if (value.Length > 20) throw Bad("容器名称超过20字");
-                if (containers.ContainsKey(key)) throw Bad("容器锚点重复"); containers.Add(key, value);
+                if (!containerKeys.Add(key)) throw Bad("容器锚点重复");
+                XElement field;
+                string value = fields.TryGetValue(payload, out field) ? OptionalString(field) : null;
+                // Helper asks for a name only after Terraria's 20-unit trim.
+                // Known empty names authored by R keep their separate meaning.
+                if (value != null && value.Length > 20) value = value.Substring(0, Char.IsHighSurrogate(value[19]) ? 19 : 20);
+                if (!String.IsNullOrEmpty(value)) containers.Add(key, value);
             }
         }
         private static bool Same(CaptureObject a, CaptureObject b)
         { return b.Reliable && a.Type == b.Type && a.X == b.X && a.Y == b.Y && a.Width == b.Width && a.Height == b.Height && a.Style == b.Style && a.Alternate == b.Alternate && a.Direction == b.Direction && a.OriginX == b.OriginX && a.OriginY == b.OriginY && a.PlacementStyle == b.PlacementStyle && a.RandomVariant == b.RandomVariant; }
         private void Record(XElement item, string layer, IBlueprintImportProfile profile)
         {
-            string[] expected = layer == "tiles" ? new[] { "x", "y", "tileType", "frameX", "frameY", "color", "slope", "isHalfBrick", "inActive", "fullbright", "invisible" } :
-                layer == "walls" ? new[] { "x", "y", "wallType", "color", "fullbright", "invisible" } : new[] { "x", "y", "red", "blue", "green", "yellow", "actuator" };
+            string[] expected = layer == "tiles" ? TileFields : layer == "walls" ? WallFields : WireFields;
             if ((string)item.Attribute("type") != "object") throw Bad("图层记录必须是对象");
             var fields = new Dictionary<string, XElement>(StringComparer.Ordinal);
-            foreach (XElement value in item.Elements()) { if (fields.ContainsKey(value.Name.LocalName)) throw Bad("记录属性重复"); fields.Add(value.Name.LocalName, value); }
-            if (fields.Count != expected.Length) throw Bad("图层记录属性不支持或缺失");
-            foreach (string name in expected) if (!fields.ContainsKey(name)) throw Bad("图层记录缺少：" + name);
-            int x = Integer(fields["x"], 0, Int32.MaxValue), y = Integer(fields["y"], 0, Int32.MaxValue); long key = Key(x, y);
+            foreach (XElement value in item.Elements())
+            {
+                string field = value.Name.LocalName;
+                if (Array.IndexOf(expected, field) < 0) throw Bad("不支持的图层记录属性：" + field);
+                if (fields.ContainsKey(field)) throw Bad("记录属性重复：" + field);
+                fields.Add(field, value);
+            }
+            int x = RequiredInteger(fields, "x", 0, Int32.MaxValue), y = RequiredInteger(fields, "y", 0, Int32.MaxValue); long key = Key(x, y);
             HashSet<long> seen = layer == "tiles" ? tileKeys : layer == "walls" ? wallKeys : wireKeys;
             if (!seen.Add(key)) throw Bad("同层坐标重复：" + x + "," + y);
             CaptureCell cell; Cells.TryGetValue(key, out cell); cell.X = x; cell.Y = y;
             if (layer == "tiles")
             {
-                cell.TileType = (ushort)Integer(fields["tileType"], 0, Math.Min(UInt16.MaxValue, profile.TileCount - 1)); cell.Layers |= CaptureLayer.Tile;
-                cell.FrameX = (short)Integer(fields["frameX"], Int16.MinValue, Int16.MaxValue); cell.FrameY = (short)Integer(fields["frameY"], Int16.MinValue, Int16.MaxValue);
-                cell.TilePaint = (byte)Integer(fields["color"], 0, 31); cell.Slope = (byte)Integer(fields["slope"], 0, 4); cell.HalfBrick = Boolean(fields["isHalfBrick"]);
+                cell.TileType = (ushort)RequiredInteger(fields, "tileType", 0, Math.Min(UInt16.MaxValue, profile.TileCount - 1)); cell.Layers |= CaptureLayer.Tile;
+                cell.FrameX = (short)RequiredInteger(fields, "frameX", Int16.MinValue, Int16.MaxValue); cell.FrameY = (short)RequiredInteger(fields, "frameY", Int16.MinValue, Int16.MaxValue);
+                cell.TilePaint = (byte)DefaultInteger(fields, "color", 31); cell.Slope = (byte)DefaultInteger(fields, "slope", 4); cell.HalfBrick = DefaultBoolean(fields, "isHalfBrick");
                 if (cell.HalfBrick && cell.Slope != 0) throw Bad("半砖与斜坡形状冲突");
-                cell.Inactive = Boolean(fields["inActive"]); cell.FullbrightTile = Boolean(fields["fullbright"]); cell.InvisibleTile = Boolean(fields["invisible"]);
+                cell.Inactive = DefaultBoolean(fields, "inActive"); cell.FullbrightTile = DefaultBoolean(fields, "fullbright"); cell.InvisibleTile = DefaultBoolean(fields, "invisible");
             }
             else if (layer == "walls")
             {
-                cell.WallType = (ushort)Integer(fields["wallType"], 1, Math.Min(UInt16.MaxValue, profile.WallCount - 1)); cell.Layers |= CaptureLayer.Wall;
-                cell.WallPaint = (byte)Integer(fields["color"], 0, 31); cell.FullbrightWall = Boolean(fields["fullbright"]); cell.InvisibleWall = Boolean(fields["invisible"]);
+                cell.WallType = (ushort)RequiredInteger(fields, "wallType", 1, Math.Min(UInt16.MaxValue, profile.WallCount - 1)); cell.Layers |= CaptureLayer.Wall;
+                cell.WallPaint = (byte)DefaultInteger(fields, "color", 31); cell.FullbrightWall = DefaultBoolean(fields, "fullbright"); cell.InvisibleWall = DefaultBoolean(fields, "invisible");
             }
             else
             {
-                cell.Wires = (byte)((Boolean(fields["red"]) ? 1 : 0) | (Boolean(fields["blue"]) ? 2 : 0) | (Boolean(fields["green"]) ? 4 : 0) | (Boolean(fields["yellow"]) ? 8 : 0));
+                cell.Wires = (byte)((DefaultBoolean(fields, "red") ? 1 : 0) | (DefaultBoolean(fields, "blue") ? 2 : 0) | (DefaultBoolean(fields, "green") ? 4 : 0) | (DefaultBoolean(fields, "yellow") ? 8 : 0));
                 if (cell.Wires != 0) cell.Layers |= CaptureLayer.Wire;
-                cell.Actuator = Boolean(fields["actuator"]); if (cell.Actuator) cell.Layers |= CaptureLayer.Actuator;
+                cell.Actuator = DefaultBoolean(fields, "actuator"); if (cell.Actuator) cell.Layers |= CaptureLayer.Actuator;
             }
             if (cell.HasContent) Cells[key] = cell;
         }
         private static void Type(XmlReader reader, string type) { if (reader.GetAttribute("type") != type) throw Bad("属性类型无效"); }
         private static string Scalar(XElement value, string type)
         { if ((string)value.Attribute("type") != type || value.HasElements) throw Bad("属性类型无效"); return value.Value; }
+        private static string OptionalString(XElement value)
+        { return (string)value.Attribute("type") == "null" ? null : Scalar(value, "string"); }
+        private static int RequiredInteger(Dictionary<string, XElement> fields, string field, int min, int max)
+        { XElement value; if (!fields.TryGetValue(field, out value)) throw Bad("记录缺少：" + field); return Integer(value, min, max); }
+        private static int DefaultInteger(Dictionary<string, XElement> fields, string field, int max)
+        { XElement value; return fields.TryGetValue(field, out value) ? Integer(value, 0, max) : 0; }
+        private static bool DefaultBoolean(Dictionary<string, XElement> fields, string field)
+        { XElement value; return fields.TryGetValue(field, out value) && Boolean(value); }
         private static int Integer(XElement value, int min, int max)
         { int result; if (!Int32.TryParse(Scalar(value, "number"), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out result) || result < min || result > max) throw Bad("数值超出支持范围：" + value.Name.LocalName); return result; }
         private static bool Boolean(XElement value)
