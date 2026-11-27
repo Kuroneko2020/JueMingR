@@ -55,6 +55,10 @@ namespace JueMingR.TerrariaHost.Companions
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             private static readonly Regex NamedUse = new Regex(QuantityPattern + @"(?<name>[^。！？]+?)[。.!]?$",
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            private static readonly Regex Sale = new Regex(@"^(?:去)?(?:卖(?:掉|出)?|出售|sell)\s*" + QuantityPattern +
+                @"(?<name>[^。！？]+?)(?:给商人)?[。.!]?$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            private static readonly Regex Coast = new Regex(@"^(?:去|到|在)?(?:左|右)?海(?:岸|边)(?:就)?(?<action>钓|等|待命)",
+                RegexOptions.CultureInvariant);
 
             internal ChatAuthority(string raw)
             {
@@ -81,11 +85,12 @@ namespace JueMingR.TerrariaHost.Companions
 
             internal bool Stop => Starts("停", "取消", "结束", "收线", "stop", "cancel", "end");
             internal bool Pause(bool paused) => paused ? Starts("暂停", "先停一下", "pause") : Starts("恢复", "继续", "resume", "continue");
-            private bool Fish => Starts("钓", "fish", "cast", "去钓", "到这里钓", "去右海边钓", "去左海边钓", "去海边钓", "右海边钓", "左海边钓", "海边钓", "海岸钓") ||
+            private bool CoastAction(string action) => clauses.Any(clause => Coast.Match(clause).Groups["action"].Value == action);
+            private bool Fish => Starts("钓", "fish", "cast", "去钓", "到这里钓") || CoastAction("钓") ||
                 Contains("改成钓鱼", "到了就钓", "到了钓", "在这里钓", "在这钓", "开始钓");
             private bool Move => Starts("去", "到", "回", "走", "跟", "带路", "go", "move", "walk", "return", "follow", "come") ||
                 Contains("停止后回来", "停下后回来", "完成后回来", "结束后回来");
-            private bool Wait => Starts("等", "待命", "留在", "站着", "wait", "stay", "stand by") ||
+            private bool Wait => Starts("等", "待命", "留在", "站着", "wait", "stay", "stand by") || CoastAction("等") || CoastAction("待命") ||
                 Contains("在这里等", "在那里等", "位置等我", "到达后等", "到达后待命", "回来等我");
             private bool Attack => Starts("攻击", "打", "战斗", "守", "保卫", "attack", "fight", "guard", "defend");
             private bool Prepare => Starts("准备打", "准备挑战", "备战", "prepare for");
@@ -219,7 +224,17 @@ namespace JueMingR.TerrariaHost.Companions
                             (Use || Transfer) && Contains("制作", "合成", "craft") || Prepare && PreparationSupply(args)) &&
                             (!args.TryGetValue("allow_nearby", out var nearby) || nearby is bool permitted && (!permitted || SpendNearby));
                     case "buy_item": return Starts("买", "购买", "buy", "purchase") && Spend(args, repeats, cost);
-                    case "sell_item": return Starts("卖", "出售", "sell");
+                    case "sell_item":
+                        // Sale can permanently remove a companion asset. The
+                        // NPC payout does not authorize changing type or selling more.
+                        if (!args.TryGetValue("item_type", out var sold) || !(sold is int saleType) ||
+                            !args.TryGetValue("amount", out var saleAmount) || !(saleAmount is int sellCount) ||
+                            !Reserve(cost, "sale", saleType, (long)sellCount * repeats, AuthorizedCount(Sale, saleType)))
+                        {
+                            cost.Denial = "本条消息没有明确委托出售这一物品或数量。请写明原版物品名和最多可卖数量。";
+                            return false;
+                        }
+                        return true;
                     case "reforge_item": return Starts("重铸", "重锻", "reforge") && Spend(args, repeats, cost);
                     case "nurse_heal": return Starts("治疗", "找护士", "去找护士", "去护士", "heal", "visit the nurse") && Spend(args, repeats, cost);
                     case "turn_in_angler": return Starts("交任务", "交鱼", "提交", "找渔夫", "turn in") || Contains("交给渔夫", "提交给渔夫");

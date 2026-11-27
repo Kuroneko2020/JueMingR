@@ -10,6 +10,7 @@ using JueMingR.Platform.Companions;
 using JueMingR.Platform.Llm;
 using Microsoft.Xna.Framework;
 using Terraria;
+using Terraria.GameContent;
 using static NativeWorldTextProbe.NativeInformationChecks;
 
 namespace NativeWorldTextProbe
@@ -374,19 +375,21 @@ namespace NativeWorldTextProbe
             KeyValuePair<string, object> Field(string name, object value) => new KeyValuePair<string, object>(name, value);
             LlmTurn CallTool(LlmToolCall tool) => new LlmTurn("", new[] { tool }, "{}");
             var reply = new LlmTurn("我已读到本轮实际信息。", Array.Empty<LlmToolCall>(), "{}");
-            string RunQuery(string prompt, LlmToolCall tool)
+            LlmToolResult[] RunTools(string prompt, params LlmToolCall[] tools)
             {
-                string result = null;
+                LlmToolResult[] result = null;
                 remote.Reply = request =>
                 {
-                    if (request.Messages.Last().Kind != LlmMessageKind.ToolResults) return Task.FromResult(CallTool(tool));
-                    result = request.Messages.Last().Results.Single().Output;
+                    if (request.Messages.Last().Kind != LlmMessageKind.ToolResults)
+                        return Task.FromResult(new LlmTurn("", tools, "{}"));
+                    result = request.Messages.Last().Results.ToArray();
                     return Task.FromResult(reply);
                 };
                 send(prompt);
                 ended();
                 return result;
             }
+            string RunQuery(string prompt, LlmToolCall tool) => RunTools(prompt, tool)?.Single().Output;
 
             var search = Tool("find_game_items", Field("filter", "Magic Mirror"), Field("purpose", "home_teleport"));
             Require(!(bool)Get(catalog, "CatalogCurrent"), "the original browser catalog starts cold");
@@ -456,6 +459,7 @@ namespace NativeWorldTextProbe
 
                 CheckStrategyCraftDelivery(Call(host, "Owned", body), remote, human, body, nativeStep, ended, send, TaskView, RunQuery);
                 CheckTaskAuthorityAndPause(host, human, body, profile, nativeStep, RunQuery);
+                CheckAuthorizedSale(host, human, body, profile, nativeStep, RunTools);
 
                 var boss = Tool("choose_game_strategy", Field("goal", "prepare_boss"), Field("boss", "skeletron"));
                 Main.dayTime = false;
@@ -719,11 +723,19 @@ namespace NativeWorldTextProbe
                     ["quest_fish"] = true, ["quantity"] = 1 });
                 var back = Step("move_to", new Dictionary<string, object> { ["destination"] = "owner" });
                 var wait = Step("stand_by", new Dictionary<string, object>());
-                Require(Submit("去右海边钓任务鱼，完成后回来等我。", fish, back, wait)?.Contains("accepted") == true &&
+                var coast = Step("move_to", new Dictionary<string, object> { ["destination"] = "right_ocean" });
+                Require(Submit("去右海岸等我。", coast, wait)?.Contains("accepted") == true && View().StepCount == 2,
+                    "the actual coast instruction authorizes movement followed by standing by");
+                Guid coastTask = View().TaskId;
+                Require(Submit("去右海岸等我，可以吗？", coast, wait)?.Contains(readOnly) == true &&
+                    Submit("如果去右海岸等我。", wait)?.Contains(readOnly) == true &&
+                    Submit("不要去右海岸等我。", coast, wait)?.Contains(readOnly) == true && View().TaskId == coastTask,
+                    "questions, hypothetical fragments and negation do not start a coast standby task");
+                Require(Submit("去右海岸钓任务鱼，完成后回来等我。", fish, back, wait)?.Contains("accepted") == true &&
                     View().StepCount == 3, "the requested quest fishing and return compose into the existing typed task");
-                Require(Submit("如果去右海边钓任务鱼，完成后回来等我，会怎样？", fish, back, wait)?.Contains(readOnly) == true &&
-                    Submit("如果去右海边钓任务鱼，完成后回来等我。", wait)?.Contains(readOnly) == true &&
-                    Submit("不要去右海边钓任务鱼。", fish, back, wait)?.Contains(readOnly) == true,
+                Require(Submit("如果去右海岸钓任务鱼，完成后回来等我，会怎样？", fish, back, wait)?.Contains(readOnly) == true &&
+                    Submit("如果去右海岸钓任务鱼，完成后回来等我。", wait)?.Contains(readOnly) == true &&
+                    Submit("不要去右海岸钓任务鱼。", fish, back, wait)?.Contains(readOnly) == true,
                     "conditional advice and negated fishing do not retire the existing itinerary");
 
                 body.statLife = 1;
@@ -797,6 +809,65 @@ namespace NativeWorldTextProbe
             void Finish()
             {
                 for (int tick = 0; tick < 240 && View().IsActive; tick++) nativeStep();
+            }
+        }
+
+        private static void CheckAuthorizedSale(object host, Player human, Player body, CompanionProfile profile, Action nativeStep,
+            Func<string, LlmToolCall[], LlmToolResult[]> query)
+        {
+            const string prompt = "卖掉 1 个火把。";
+            const int npcSlot = 199;
+            var previousNpc = Main.npc[npcSlot];
+            var previousInventory = body.inventory.ToArray();
+            int firstSlot = body.selectedItem == 46 ? 47 : 46;
+            int secondSlot = body.selectedItem == 48 ? 49 : 48;
+            if (NPCInteractions.All.Count == 0) NPCInteractions.Initialize();
+            var vendor = new NPC();
+            vendor.SetDefaults(NPCID.Merchant);
+            vendor.whoAmI = npcSlot;
+            vendor.active = true;
+            vendor.Center = body.Center + new Vector2(30f, 0f);
+            Main.npc[npcSlot] = vendor;
+            string reference = (string)Call(host, "NpcTaskReference", vendor);
+            CompanionTaskSnapshot View() => (CompanionTaskSnapshot)Call(host, "GetTask", profile.OwnerId, profile.Id, null);
+            int Quantity(Player player, int type) => player.inventory.Where(item => item.type == type).Sum(item => item.stack);
+            long Copper(Player player) => Quantity(player, ItemID.CopperCoin) + 100L * Quantity(player, ItemID.SilverCoin) +
+                10000L * Quantity(player, ItemID.GoldCoin) + 1000000L * Quantity(player, ItemID.PlatinumCoin);
+            LlmToolCall Sale(string id, int type, int amount, int slot) => new LlmToolCall(id, "execute_operation", "{}",
+                new Dictionary<string, object> { ["title"] = "商人出售", ["operation"] = "sell_item",
+                    ["arguments"] = new Dictionary<string, object> { ["item_type"] = type, ["amount"] = amount,
+                        ["slot"] = slot, ["npc"] = reference } });
+            try
+            {
+                body.inventory[firstSlot] = new Item(ItemID.Torch) { stack = 3 };
+                body.inventory[secondSlot] = new Item(ItemID.Torch) { stack = 2 };
+                body.inventory[45] = new Item(ItemID.Wood) { stack = 5 };
+                long actorCopper = Copper(body), ownerCopper = Copper(human);
+                Guid last = View().TaskId;
+                var denied = query(prompt, new[] { Sale("wrong-sale-item", ItemID.Wood, 1, 45),
+                    Sale("oversized-sale", ItemID.Torch, 2, firstSlot) });
+                Require(denied?.Length == 2 && denied.All(value => value.IsError && value.Output.Contains("没有明确委托出售")) &&
+                    View().TaskId == last && body.inventory[45].stack == 5 && body.inventory[firstSlot].stack == 3 &&
+                    body.inventory[secondSlot].stack == 2 && Copper(body) == actorCopper && Copper(human) == ownerCopper,
+                    "the model cannot change the requested sale item, amount, task or payout");
+                var requested = query(prompt, new[] { Sale("authorized-sale", ItemID.Torch, 1, firstSlot),
+                    Sale("second-sale", ItemID.Torch, 1, secondSlot) });
+                Require(requested?.Length == 2 && !requested[0].IsError && requested[0].Output.Contains("accepted") &&
+                    requested[1].IsError && requested[1].Output.Contains("没有明确委托出售"),
+                    "the same player message cannot obtain a second unit by changing the sale slot");
+                for (int i = 0; i < 120 && View().IsActive; i++) nativeStep();
+                var completed = View();
+                Require(completed.State == "succeeded" && completed.Attempts.Count == 1 && completed.Attempts[0].Completed == 1 &&
+                    body.inventory[firstSlot].stack == 2 && body.inventory[secondSlot].stack == 2 && body.inventory[45].stack == 5 &&
+                    Copper(body) > actorCopper && Copper(human) == ownerCopper,
+                    "native sale pays only for the requested single Torch and only into the actor wallet: " + completed.Detail);
+                Console.WriteLine("PASS scripted chat sale: exact type, per-turn quantity and original merchant payout.");
+            }
+            finally
+            {
+                Call(host, "StopTask", profile.OwnerId, profile.Id, null);
+                Array.Copy(previousInventory, body.inventory, previousInventory.Length);
+                Main.npc[npcSlot] = previousNpc;
             }
         }
 
