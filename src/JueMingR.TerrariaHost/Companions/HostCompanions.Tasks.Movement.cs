@@ -391,6 +391,8 @@ namespace JueMingR.TerrariaHost.Companions
                 default: return false;
             }
             var point = feet.ToTileCoordinates();
+            if (execution.Anchor.WorkPoint is Point authorized && execution.Anchor.WorkReference==site.Reference && authorized!=point)
+            { error="发话时指定的地点已变化，请重新确认。"; return false; }
             site.X = point.X; site.Y = point.Y;
             return WorldGen.InWorld(site.X, site.Y, 4);
         }

@@ -41,10 +41,14 @@ namespace JueMingR.TerrariaHost.Companions
             if (collect && !MiningProductMatches(tileType,product)) return TaskOutcome("failed","需要与目标矿种匹配的原版产物类型。");
             if (!(execution.State is TaskMineArea work))
             {
+                var bound=execution.Anchor;
+                if (bound.WorkPoint.HasValue && bound.WorkOreType>=0 &&
+                    SharedWorldMemory?.SavedOreTargetCurrent(bound.WorkReference,bound.WorkPoint.Value,tileType)!=true)
+                    return TaskOutcome("failed","发话时确认的已保存矿点已变化，请重新确认。");
                 execution.State=work=new TaskMineArea();
                 if (execution.Text("destination")=="companion")
                 {
-                    work.Center=CompanionNativeContact.Feet(actor.Body).ToTileCoordinates();
+                    work.Center=bound.WorkPoint ?? CompanionNativeContact.Feet(actor.Body).ToTileCoordinates();
                     work.Located=true;
                 }
                 else work.Travel=new TaskExecution(null)

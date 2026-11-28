@@ -170,10 +170,12 @@ namespace NativeWorldTextProbe
                 void CheckBudgetPicture(CompanionProfile profile)
                 {
                     var format = window.GetType().GetMethod("FormatChatTokens", BindingFlags.Static | BindingFlags.NonPublic);
-                    string Tokens(long? total, long missing = 0, long count = 1) => (string)format.Invoke(null, new object[] { new LlmUsageTotals(count, missing, total: total) });
+                    string Tokens(long? total, long missing = 0, long count = 1, bool legacy = false) =>
+                        (string)format.Invoke(null, new object[] { new LlmUsageTotals(count, missing, total: total), legacy });
                     Require(Tokens(null, 0, 0) == "0 tokens" && Tokens(null, 1) == "—" && Tokens(999) == "999 tokens" &&
                         Tokens(1000) == "1k tokens" && Tokens(1249) == "1.2k tokens" && Tokens(3400000) == "3.4m tokens" &&
-                        Tokens(999950) == "1m tokens" && Tokens(999950, 1, 2) == "999.9k+ tokens" && Tokens(1260, 1, 2) == "1.2k+ tokens",
+                        Tokens(999950) == "1m tokens" && Tokens(999950, 1, 2) == "999.9k+ tokens" && Tokens(1260, 1, 2) == "1.2k+ tokens" &&
+                        Tokens(null, count: 0, legacy: true) == "未提供" && Tokens(555, legacy: true) == "555+ tokens",
                         "only the footer abbreviates large totals and never rounds a partial lower bound upward");
                     var fixture = NativeCompanionChatChecks.Attach(host);
                     try

@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
+using JueMingR.Features.MapMarkers;
 using JueMingR.Infrastructure.Companions;
 using JueMingR.Platform.Companions;
 using JueMingR.Platform.Llm;
@@ -150,6 +152,52 @@ namespace NativeWorldTextProbe
                     "original channel tool breaks the intended observed tile: "+Snapshot()+" · "+body.Bottom);
                 Console.WriteLine("PASS original Cobalt Drill channels through normal task and actually breaks the witnessed tile.");
 
+                Put(body,58); Put(human,58);
+                body.inventory[38]=new Item(ItemID.StoneBlock){stack=2};
+                int Stones()=>body.inventory.Where(item=>item?.type==ItemID.StoneBlock).Sum(item=>item.stack);
+                int priorStones=Stones();
+                var markerA=new MarkerRecord(Guid.NewGuid().ToString("N"),60,54,8,"放置地点甲");
+                var markerB=new MarkerRecord(Guid.NewGuid().ToString("N"),61,54,8,"放置地点乙");
+                var priorMarkers=Get(host,"TaskMarkers");
+                var priorSelection=Get(host,"TaskSelectedMarker");
+                var chosen=markerA;
+                try
+                {
+                    var aliases=host.GetType().Assembly.GetType("JueMingR.TerrariaHost.ItemBrowser.NativeItemAliases",true);
+                    var pendingName=aliases.GetMethod("IsPending",BindingFlags.Static|BindingFlags.NonPublic);
+                    NativeQuickItemChecks.Until(()=>!(bool)pendingName.Invoke(null,new object[]{"石块"}));
+                    Set(host,"TaskMarkers",(Func<IReadOnlyList<MarkerRecord>>)(()=>new[]{markerA,markerB}));
+                    Set(host,"TaskSelectedMarker",(Func<string>)(()=>chosen.Id));
+                    string TileAt(int x)
+                    {
+                        var known=(CompanionTaskOutcome)Call(host,"TryGetTaskObservation",identity,"observe_tiles",new Dictionary<string,object>
+                        { ["radius"]=4,["empty"]=true,["offset"]=3*9+x-58+4 },Call(host,"CaptureTaskSendAnchor",human));
+                        string row=known.Detail.Split('；').First(entry=>entry.StartsWith("("+x+",54)",StringComparison.Ordinal));
+                        return row.Substring(row.LastIndexOf("· ",StringComparison.Ordinal)+2).Split(' ')[0];
+                    }
+                    var beforePlacement=View().TaskId;
+                    Plan("在指定位置放一块石块。",()=>chosen=markerB,
+                        Node("world_use",("action","place_tile"),("target",TileAt(61)),("item_type",(int)ItemID.StoneBlock)));
+                    Require(View().TaskId==beforePlacement && toolReply?.IsError==true && toolReply.Output.Contains("指定位置") &&
+                        !Main.tile[61,54].active() && Stones()==priorStones,
+                        "a valid observed tile at the newer marker cannot replace the player's send-time target: "+Receipts());
+                    chosen=markerA;
+                    Plan("在指定位置放一块石块。",()=>chosen=markerB,
+                        Node("world_use",("action","place_tile"),("target",TileAt(60)),("item_type",(int)ItemID.StoneBlock)));
+                    Require(View().State=="accepted" && Finish(350).State=="succeeded" && Main.tile[60,54].active() &&
+                        Main.tile[60,54].type==TileID.Stone && !Main.tile[61,54].active() && Stones()==priorStones-1,
+                        "normal exact placement text consumes one real stone only at the send-time marker: "+Snapshot()+" · "+Receipts()+
+                        " · tool="+toolReply?.Output+" · tiles="+Main.tile[60,54].active()+"/"+Main.tile[61,54].active()+" · stones="+Stones()+"/"+priorStones);
+                }
+                finally
+                {
+                    Set(host,"TaskMarkers",priorMarkers);
+                    Set(host,"TaskSelectedMarker",priorSelection);
+                    // The next fixture needs its original open projectile path.
+                    Main.tile[60,54]=new Tile();
+                }
+                Console.WriteLine("PASS original chat placement stays bound to the send-time marker and debits one item once.");
+
                 Preference(false,true);
                 Call(host,"RestartChatContext",profile.OwnerId,profile.Id);
                 var other=((IReadOnlyList<CompanionProfile>)Get(archive,"Profiles")).First(candidate=>candidate.Id!=profile.Id);
@@ -235,13 +283,16 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS real radius-50 screenshot command, native hostile and friendly defeats, protected and outside spared, later arrival and guard stop.");
 
                 for(int i=0;i<5;i++) Main.npc[i]=new NPC();
-                body.inventory[0]=new Item(ItemID.RottenEgg){stack=6};
+                body.inventory[0]=new Item();
+                int eggSlot=Enumerable.Range(0,10).First(slot=>(bool)Call(host,"AttackSourceAvailable",actor,slot));
+                body.inventory[eggSlot]=new Item(ItemID.RottenEgg){stack=6};
                 Put(body,58); Put(human,58);
                 var eggTarget=Npc(0,NPCID.Merchant,61);
                 var eggProtected=Npc(1,NPCID.Bunny,63);
+                Require((bool)Call(host,"HasFriendlyAreaWeapon",actor,eggTarget),"a real available Rotten Egg source and native Merchant target are eligible");
                 Plan("那你把我附近半径50格的怪杀了，包括友好生物",null,Node("clear_area",("radius",50),("include_friendly",true)));
-                Require(Finish(680).State=="succeeded" && eggTarget.life<=0 && eggProtected.life==1 && body.inventory[0].stack<6,
-                    "native Rotten Egg projectile actually damages allowed friendly only and consumes a real item: "+Snapshot());
+                Require(Finish(680).State=="succeeded" && eggTarget.life<=0 && eggProtected.life==1 && body.inventory[eggSlot].stack<6,
+                    "native Rotten Egg projectile actually damages allowed friendly only and consumes a real item: "+Snapshot()+" · items="+body.inventory[eggSlot].stack);
                 Console.WriteLine("PASS actual Rotten Egg projectile and resource debit, original protected critter remains unharmed.");
             }
             finally

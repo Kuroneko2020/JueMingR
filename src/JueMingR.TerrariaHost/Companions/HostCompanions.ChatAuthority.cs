@@ -61,6 +61,9 @@ namespace JueMingR.TerrariaHost.Companions
                 RegexOptions.CultureInvariant);
             private static readonly Regex RadiusPhrase = new Regex(@"(?:半径|周围|附近)\s*(?<count>[0-9一二两三四五六七八九十百零]+)\s*(?:图格|格)",RegexOptions.CultureInvariant);
             private static readonly Regex WorkCount = new Regex(@"(?<count>[0-9一二两三四五六七八九十百零]+)\s*(?:块|格|面|棵|根|件)",RegexOptions.CultureInvariant);
+            private static readonly Regex SpatialWork = new Regex(
+                @"^(?:前往|去|到|在)\s*(?<site>.+?)\s*(?:帮我|给我)?\s*(?<verb>开采|采矿|挖|安放|放|摆|铺|拆墙|敲墙|砍|锤|涂|布线|倒水|舀)(?<object>.*)$",
+                RegexOptions.CultureInvariant);
 
             internal ChatAuthority(string raw)
             {
@@ -99,7 +102,7 @@ namespace JueMingR.TerrariaHost.Companions
                 Contains("清掉","清理","杀了","杀掉","打掉");
             private bool IncludeFriendly => Contains("包括友好","连同友好","连友好","也打友好","including friendly");
             private bool Mine => Starts("挖","采矿","开采","mine","dig") || Move && Contains("挖","采矿","开采") ||
-                Starts("用","使用") && Contains("挖掉","挖开","开采");
+                Starts("用","使用") && Contains("挖掉","挖开","开采") || HasSpatialWork("挖","采矿","开采");
             private bool Prepare => Starts("准备打", "准备挑战", "备战", "prepare for");
             private bool Use => Starts("用", "使用", "喝", "吃", "挥", "丢", "投", "use", "drink", "eat", "swing", "consume") ||
                 Contains("连续用", "连续使用");
@@ -112,6 +115,50 @@ namespace JueMingR.TerrariaHost.Companions
             internal bool ReferencesHeld => Contains("这件物品", "这件东西", "手里这件", "手上这件", "this item");
             internal bool NamesActorHand => Contains("你手里", "你手上", "你拿着", "you are holding");
             internal bool ReferencesLastShimmer => Contains("上次那个微光", "上次的微光", "之前那个微光", "last shimmer");
+            internal bool ReturnsToOwner => Contains("回来跟我","回来跟着我","完成后回来","挖完回来");
+            internal ChatWorldSite WorldSite;
+            internal string PriorShimmer;
+            internal Microsoft.Xna.Framework.Point? PriorShimmerPoint;
+
+            internal string WorkLocation()
+            {
+                foreach (var clause in clauses)
+                {
+                    var spatial=SpatialWork.Match(clause);
+                    if (spatial.Success) return spatial.Groups["site"].Value.Trim().Trim('“','”','"','「','」','『','』');
+                }
+                // A comma may separate the travel clause from the mining verb.
+                if (Mine)
+                    foreach (var clause in clauses)
+                        if (clause.StartsWith("去",StringComparison.Ordinal) && clause.EndsWith("矿点",StringComparison.Ordinal))
+                            return clause.Substring(1).Trim();
+                return null;
+            }
+
+            private bool HasSpatialWork(params string[] verbs) => clauses.Any(clause=>verbs.Contains(SpatialWork.Match(clause).Groups["verb"].Value));
+
+            private string SpatialPlacementMaterial()
+            {
+                foreach (var clause in clauses)
+                {
+                    var spatial=SpatialWork.Match(clause);
+                    if (!spatial.Success || !new[]{"放","摆","铺","安放"}.Contains(spatial.Groups["verb"].Value)) continue;
+                    return NamedUse.Match(spatial.Groups["object"].Value.Trim()).Groups["name"].Value;
+                }
+                return null;
+            }
+
+            internal void PreparePlacementName()
+            {
+                string material=SpatialPlacementMaterial();
+                if (!String.IsNullOrEmpty(material)) NativeItemAliases.IsPending(material);
+            }
+
+            private bool AuthorizedPlacementMaterial(IReadOnlyDictionary<string,object> args)
+            {
+                string material=SpatialPlacementMaterial();
+                return material==null || args.TryGetValue("item_type",out var raw) && raw is int id && NameMatches(id,material);
+            }
 
             internal bool Setting(string label,int value)
             {
@@ -277,8 +324,10 @@ namespace JueMingR.TerrariaHost.Companions
                     case "turn_in_angler": return Starts("交任务", "交鱼", "提交", "找渔夫", "turn in") || Contains("交给渔夫", "提交给渔夫");
                     case "build_projection": return Starts("建", "施工", "照蓝图", "按蓝图", "build", "construct");
                     case "mine_area": return AuthorizedMining(args,repeats,cost);
-                    case "world_use": return args.TryGetValue("action", out var action) && World(action as string) &&
-                        Reserve(cost,"world edit",0,repeats,RequestedNumber(WorkCount,1));
+                    case "world_use":
+                        return args.TryGetValue("action",out var action) && action is string verb && World(verb) &&
+                            (verb!="place_tile" && verb!="place_wall" || AuthorizedPlacementMaterial(args)) &&
+                            Reserve(cost,"world edit",0,repeats,RequestedNumber(WorkCount,1));
                     case "open_container":
                         return Starts("打开", "开袋", "开匣", "拆袋", "open") &&
                             args.TryGetValue("item_type", out var container) && container is int containerType &&
@@ -364,7 +413,7 @@ namespace JueMingR.TerrariaHost.Companions
                     case "hammer": return Starts("敲","锤","hammer");
                     case "remove_wall": return Starts("拆墙","拆这段墙","敲墙","去掉墙","remove wall");
                     case "place_tile": case "place_wall":
-                        return Starts("放", "摆", "铺", "建", "搭", "place", "build", "lay");
+                        return Starts("放", "摆", "铺", "建", "搭", "place", "build", "lay") || HasSpatialWork("放","摆","铺","安放");
                     case "paint_tile": case "paint_wall": case "coat_tile": case "coat_wall":
                         return Starts("涂", "染", "上漆", "paint", "coat");
                     case "scrape_tile": case "scrape_wall": return Starts("刮", "去漆", "scrape");

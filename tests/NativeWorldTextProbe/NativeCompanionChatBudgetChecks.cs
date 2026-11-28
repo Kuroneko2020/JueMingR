@@ -1,8 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Threading.Tasks;
 using JueMingR.Features.Llm;
+using JueMingR.Infrastructure.Llm;
 using JueMingR.Platform.Companions;
 using JueMingR.Platform.Llm;
 using Terraria;
@@ -86,8 +91,108 @@ namespace NativeWorldTextProbe
                 Console.WriteLine("PASS native screenshot wording, same-turn compaction, mining detail and visible latest/cumulative usage.");
 
                 CheckIssuedTask(host, body, profile, tick, fixture.Remote, Send, View);
+                CheckPendingFactsOnHttp(host, profile, fixture.Store, Send, View, PollUntil);
             }
             finally { fixture.Restore(); }
+        }
+
+        private static void CheckPendingFactsOnHttp(object host, CompanionProfile profile,
+            NativeCompanionChatChecks.Store store, Action<string> send, Func<object> view, Action<Func<bool>> poll)
+        {
+            const string late = "探针晚到事实：同一动作的实得数量已经确认。";
+            const string oversized = "待续长回执：";
+            const string original = "请按已经确认的回执说明这条消息。";
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            try
+            {
+                using (var transport = new LlmHttpTransport())
+                {
+                    var presets = LlmPresetCatalog.Load();
+                    var preset = presets.Single(value => value.Id == "ollama_local_chat");
+                    var options = new LlmConnectionSettings
+                    {
+                        PresetId = preset.Id, Protocol = preset.Protocol, InferencePath = preset.InferencePath,
+                        AuthMode = preset.AuthMode, CredentialKind = preset.CredentialKinds[0],
+                        BaseUrl = "http://127.0.0.1:" + ((IPEndPoint)listener.LocalEndpoint).Port + "/v1",
+                        DisplayName = "本机预算探针", Model = "receipt-fixture", ProxyMode = "direct",
+                        Stream = false, GameActionsEnabled = false, InputBudget = 10500,
+                        FirstByteSeconds = 2, RunTimeoutSeconds = 5,
+                        ExtraParameters = "{\"fixture_padding\":\"" + new string('p', 7400) + "\"}"
+                    };
+                    Guid connection = Guid.NewGuid();
+                    store.Configuration = new LlmStoredConfiguration { Enabled = true, DefaultId = connection };
+                    store.Configuration.Connections.Add(connection, new LlmStoredConnection(connection, options, Guid.Empty));
+                    Call(host, "ConfigureChat", new LlmConnections(presets, store, transport), transport, store);
+                    poll(() => (bool)Get(view(), "CanSend"));
+                    Call(host, "RestartChatContext", profile.OwnerId, profile.Id);
+                    var served = Task.Run(() => new[] { Reply("旧会话种子。", new string('r', 2750)), Reply("已读取晚到回执。", "") });
+                    send("请保存这次回复。");
+                    poll(() => !(bool)Get(view(), "IsRunning"));
+                    Call(host, "PublishChatTaskFact", profile.OwnerId, profile.Id, oversized + new string('宽', 3900));
+                    Call(host, "PublishChatTaskFact", profile.OwnerId, profile.Id, late);
+                    var session = Call(host, "GetChatSession", profile);
+                    var pending = (IReadOnlyList<LlmHistoryEntry>)Get(session, "PendingFacts");
+                    Require(pending.Count == 2, "both prior late facts entered the real recovery queue");
+
+                    send(original);
+                    poll(() => !(bool)Get(view(), "IsRunning"));
+                    Require(served.Wait(TimeSpan.FromSeconds(3)), "both loopback requests reached the real HTTP peer: " + Get(view(), "Status"));
+                    string[] packets = served.GetAwaiter().GetResult();
+                    var progress = (LlmChatProgress)Get(view(), "Progress");
+                    Require(progress.ModelTurns == 1 && progress.Compactions >= 1 && packets[1].Length <= options.InputBudget &&
+                        packets[1].Contains(original) && packets[1].Contains(late) && !packets[1].Contains(oversized) &&
+                        !packets[1].Contains(new string('r', 100)),
+                        "pre-first real HTTP compaction preserved original player text and one whole older receipt: " +
+                        progress.ModelTurns + "/" + progress.Compactions + "/" + packets[1].Length);
+                    Require(pending.Count == 1 && pending[0].Text.StartsWith(oversized, StringComparison.Ordinal),
+                        "normal model closure consumes only the receipt carried by the actual HTTP body");
+
+                    send(new string('"', 5500));
+                    poll(() => !(bool)Get(view(), "IsRunning"));
+                    progress = (LlmChatProgress)Get(view(), "Progress");
+                    Require(progress.ModelTurns == 0 && ((LlmChatUsage)Get(view(), "Usage")).Latest.Requests == 0 &&
+                        pending.Count == 1 && pending[0].Text.StartsWith(oversized, StringComparison.Ordinal),
+                        "locally rejected minimum encoded request consumes no prior pending receipt");
+                    Call(host, "RestartChatContext", profile.OwnerId, profile.Id);
+                    Console.WriteLine("PASS real loopback HTTP pre-first compression preserves earlier pending facts and consumes only sent receipts.");
+                }
+            }
+            finally { listener.Stop(); }
+
+            string Reply(string text, string reasoning)
+            {
+                using (var peer = listener.AcceptTcpClient())
+                using (var stream = peer.GetStream())
+                {
+                    peer.ReceiveTimeout = 5000;
+                    var header = new StringBuilder();
+                    for (int unit; (unit = stream.ReadByte()) >= 0 && header.Length < 8192;)
+                    {
+                        header.Append((char)unit);
+                        int end = header.Length - 1;
+                        if (end >= 3 && header[end] == '\n' && header[end - 1] == '\r' &&
+                            header[end - 2] == '\n' && header[end - 3] == '\r') break;
+                    }
+                    string length = header.ToString().Split('\n').Single(line =>
+                        line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase));
+                    var body = new byte[Int32.Parse(length.Substring(length.IndexOf(':') + 1))];
+                    for (int read = 0; read < body.Length;)
+                    {
+                        int count = stream.Read(body, read, body.Length - read);
+                        if (count == 0) throw new EndOfStreamException();
+                        read += count;
+                    }
+                    byte[] payload = Encoding.UTF8.GetBytes("{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"" +
+                        text + "\",\"reasoning_content\":\"" + reasoning +
+                        "\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":3}}");
+                    byte[] response = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+                        payload.Length + "\r\nConnection: close\r\n\r\n");
+                    stream.Write(response, 0, response.Length);
+                    stream.Write(payload, 0, payload.Length);
+                    return Encoding.UTF8.GetString(body);
+                }
+            }
         }
 
         private static void CheckIssuedTask(object host, Player body, CompanionProfile profile, Action tick,

@@ -178,15 +178,15 @@ namespace JueMingR.TerrariaHost.F5
             shownChatUsage = usage;
             string percent = progress == null || progress.InputLimit <= 0 ? "—" :
                 (100d * progress.EstimatedInput / progress.InputLimit).ToString("0", CultureInfo.InvariantCulture) + "%";
-            chatUsageLine = "当前上下文 " + percent + " · 总用量 " + FormatChatTokens(usage.Total);
+            chatUsageLine = "当前上下文 " + percent + " · 总用量 " + FormatChatTokens(usage.Total, usage.PriorUsageUnknown);
         }
 
-        private static string FormatChatTokens(LlmUsageTotals total)
+        private static string FormatChatTokens(LlmUsageTotals total, bool priorUsageUnknown)
         {
-            if (total.Requests == 0) return "0 tokens";
+            if (total.Requests == 0) return priorUsageUnknown ? "未提供" : "0 tokens";
             if (!total.Total.HasValue) return "—";
             decimal compact = total.Total.Value;
-            bool partial = total.UnknownRequests > 0;
+            bool partial = priorUsageUnknown || total.UnknownRequests > 0;
             int unit = 0;
             for (; compact >= 1000m && unit < ChatTokenUnits.Length - 1; unit++) compact /= 1000m;
             if (unit > 0)

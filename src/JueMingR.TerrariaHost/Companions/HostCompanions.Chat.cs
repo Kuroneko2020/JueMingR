@@ -158,7 +158,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal Task<LlmTurn> Task;
             internal List<LlmMessage> Wire;
             internal ChatBoundary Boundary;
-            internal IReadOnlyList<LlmHistoryEntry> SentFacts;
+            internal IReadOnlyList<LlmHistoryEntry> DeliveredFacts = Array.Empty<LlmHistoryEntry>();
             internal bool ToolsEnabled;
             internal List<LlmHistoryEntry> PublicFacts;
             internal string StreamText = "";
@@ -309,7 +309,9 @@ namespace JueMingR.TerrariaHost.Companions
                 ? (activeTask == null ? "" : "当前或最近任务：" + activeTask.Title + " · " + activeTask.State + " · " + activeTask.Detail + "。") +
                     ChatWorldFacts(actor, refresh: false)
                 : actionReason + "当前无法观察实时状态或执行游戏行动。");
+            var authority = new ChatAuthority(text);
             var anchor = boundary.CanAct && owner.active && !owner.dead ? CaptureChatTaskAnchor(owner, boundary.Profile) : default(FishingAnchor);
+            if (anchor.Valid) CaptureChatWorldAuthority(authority, anchor);
             if (anchor.Valid)
                 actorFacts += "\n本条主人发送时脚点（图格）" + (int)(anchor.Feet.X / 16f) + "," + (int)(anchor.Feet.Y / 16f) +
                     (anchor.SelectedMarkerId == null ? "" : "，已选标记 " + anchor.SelectedMarkerId) + "。";
@@ -357,22 +359,24 @@ namespace JueMingR.TerrariaHost.Companions
             }
             // Recovery facts accompany the next real user message. This
             // keeps Anthropic role alternation and earlier private blocks.
-            wire.Add(LlmMessage.User(summary.Length == 0 ? text : summary + "\n\n" + text));
+            wire.Add(LlmMessage.User(summary.Length == 0 ? text : summary + "\n\n" + text, sentFacts));
+            var pendingFacts = chat.PendingFacts.ToArray();
             chat.SkipSummary = false;
             chat.NeedsRecoverySummary = false;
             chat.HistoryNotice = null;
             chat.HistoryLimit = Math.Max(1, Math.Min(500, connection.HistoryLimit));
             var run = new ChatRun
             {
-                Conversation = chat, Boundary = boundary, SentFacts = sentFacts, ToolsEnabled = offered.Count != 0,
-                Authority = new ChatAuthority(text),
+                Conversation = chat, Boundary = boundary, ToolsEnabled = offered.Count != 0,
+                Authority = authority,
                 Anchor = anchor,
                 HistoryEpoch = chat.HistoryEpoch, UsageEpoch = chat.UsageEpoch, Connection = connection, Wire = wire,
                 Stop = CancellationTokenSource.CreateLinkedTokenSource(chatLifetime.Token)
             };
             chat.LatestRun = run.Id;
             chat.Usage = new LlmChatUsage(chat.Usage.TrackingStartedAt ?? DateTimeOffset.UtcNow,
-                new LlmConnectionUsage(connection.Id, connection.DisplayName, connection.Model, run.Usage), chat.Usage.Connections);
+                new LlmConnectionUsage(connection.Id, connection.DisplayName, connection.Model, run.Usage),
+                chat.Usage.Connections, chat.Usage.PriorUsageUnknown);
             chat.Progress = new LlmChatProgress(envelope + CompanionChat.MeasureWire(wire), connection.InputBudget,
                 0, connection.MaxModelTurns, 0, connection.MaxToolCalls, 0);
             chat.ProgressConnection = connection.WireIdentity;
@@ -395,7 +399,8 @@ namespace JueMingR.TerrariaHost.Companions
                             if (room > 0 && !String.IsNullOrEmpty(delta))
                                 Volatile.Write(ref run.StreamText, prior + delta.Substring(0, Math.Min(delta.Length, room)));
                         }, token, actionReason, text, update => Volatile.Write(ref run.Progress, update),
-                        sample => run.Exchanges.Enqueue(sample)).ConfigureAwait(false);
+                        sample => run.Exchanges.Enqueue(sample), pendingFacts,
+                        delivered => run.DeliveredFacts = delivered).ConfigureAwait(false);
                 }
                 finally { chatNetwork.Release(); }
             });
@@ -694,7 +699,7 @@ namespace JueMingR.TerrariaHost.Companions
             }
             var latest = chat.LatestRun == run.Id ? new LlmConnectionUsage(connection.Id, connection.DisplayName, connection.Model, run.Usage) :
                 chat.Usage.LatestConnection;
-            chat.Usage = new LlmChatUsage(chat.Usage.TrackingStartedAt ?? DateTimeOffset.UtcNow, latest, rows);
+            chat.Usage = new LlmChatUsage(chat.Usage.TrackingStartedAt ?? DateTimeOffset.UtcNow, latest, rows, chat.Usage.PriorUsageUnknown);
             if (!chat.ReadFailed && chat.Clearing == null) WriteChat(chat);
         }
 
@@ -736,7 +741,7 @@ namespace JueMingR.TerrariaHost.Companions
                 chat.WireBoundary = run.Boundary;
                 chat.WireToolsEnabled = run.ToolsEnabled;
                 if (turn.LocalNotice != null && turn.WireJson == null) RecoverChatFacts(run);
-                else foreach (var fact in run.SentFacts) chat.PendingFacts.Remove(fact);
+                else foreach (var fact in run.DeliveredFacts) chat.PendingFacts.Remove(fact);
                 chat.WireSize = CompanionChat.MeasureWire(run.Wire);
                 chat.Wire = chat.WireSize > run.Connection.InputBudget ? new List<LlmMessage>() : run.Wire;
                 return;

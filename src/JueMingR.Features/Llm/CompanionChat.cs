@@ -21,7 +21,8 @@ namespace JueMingR.Features.Llm
             string instructions, List<LlmMessage> wire, IReadOnlyList<LlmToolDefinition> tools,
             Func<LlmToolCall, CancellationToken, Task<LlmToolResult>> execute, Action<string> text,
             CancellationToken cancellation, string unavailableReason = null, string originalText = null,
-            Action<LlmChatProgress> progress = null, Action<LlmUsageSample> usage = null)
+            Action<LlmChatProgress> progress = null, Action<LlmUsageSample> usage = null,
+            IReadOnlyList<LlmHistoryEntry> pendingFacts = null, Action<IReadOnlyList<LlmHistoryEntry>> deliveredFacts = null)
         {
             int remaining = Math.Max(0, connection.MaxToolCalls);
             int maxTurns = connection.MaxModelTurns;
@@ -33,6 +34,7 @@ namespace JueMingR.Features.Llm
             string notice = null;
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var observed = new List<(int Priority, string Text)>();
+            pendingFacts = pendingFacts ?? Array.Empty<LlmHistoryEntry>();
             for (int round = 0; round < maxTurns; round++)
             {
                 cancellation.ThrowIfCancellationRequested();
@@ -46,9 +48,11 @@ namespace JueMingR.Features.Llm
                 string requestInstructions = limit == null ? instructions : instructions + "\n请只用文字回复。当前不接受工具调用。" + limit;
                 var request = new LlmRequest(requestInstructions, wire, tools, textOnly: limit != null);
                 long size = MeasureRequest(transport, connection, request);
-                if (originalText != null && wire.Count > 1 && size > connection.InputBudget - Math.Min(960, connection.InputBudget / 10))
+                if (originalText != null && (wire.Count > 1 || pendingFacts.Count != 0 && size > connection.InputBudget) &&
+                    size > connection.InputBudget - Math.Min(960, connection.InputBudget / 10))
                 {
-                    request = Compact(transport, connection, requestInstructions, wire, tools, limit != null, originalText, observed, out size);
+                    request = Compact(transport, connection, requestInstructions, wire, tools, limit != null,
+                        originalText, pendingFacts, observed, out size);
                     closedCount = 0;
                     ++compactions;
                 }
@@ -56,7 +60,7 @@ namespace JueMingR.Features.Llm
                 {
                     const string textOnly = "本轮上下文余量只允许文字收尾。";
                     request = Compact(transport, connection, instructions + "\n" + textOnly, wire, Array.Empty<LlmToolDefinition>(),
-                        true, originalText, observed, out size);
+                        true, originalText, pendingFacts, observed, out size);
                     closedCount = 0;
                     ++compactions;
                     limit = textOnly;
@@ -81,6 +85,14 @@ namespace JueMingR.Features.Llm
                 cancellation.ThrowIfCancellationRequested();
                 if (turn.ToolCalls.Count == 0)
                 {
+                    if (request.WasSent)
+                    {
+                        // A measured candidate or a locally closed segment
+                        // does not acknowledge prior facts. Use the user
+                        // text attached to the actual closing exchange.
+                        var delivered = request.Messages.LastOrDefault(message => message.Kind == LlmMessageKind.User)?.RecoveryFacts;
+                        if (delivered?.Count > 0) deliveredFacts?.Invoke(delivered);
+                    }
                     wire.Add(LlmMessage.Assistant(turn));
                     return notice == null ? turn : new LlmTurn(turn.Text, turn.ToolCalls, turn.WireJson, notice, turn.Usage);
                 }
@@ -142,7 +154,7 @@ namespace JueMingR.Features.Llm
 
         private static LlmRequest Compact(ILlmTransport transport, LlmConnectionSnapshot connection, string instructions,
             List<LlmMessage> wire, IReadOnlyList<LlmToolDefinition> tools, bool textOnly, string original,
-            List<(int Priority, string Text)> facts, out long size)
+            IReadOnlyList<LlmHistoryEntry> pendingFacts, List<(int Priority, string Text)> facts, out long size)
         {
             // Never split an assistant response (especially signed thinking)
             // from any of its results. A fresh segment starts with the intact
@@ -151,38 +163,39 @@ namespace JueMingR.Features.Llm
                 wire[wire.Count - 2].Kind == LlmMessageKind.Assistant
                 ? wire.Skip(wire.Count - 2).ToArray() : Array.Empty<LlmMessage>();
             wire.Clear();
-            string header = original + "\n\n[同一玩家消息的本机回执。使用原发送位置和同一授权。切勿重复已处理的动作。]";
-            var kept = new List<string>();
-            wire.Add(LlmMessage.User(facts.Count == 0 ? original : header));
+            string header = original + "\n\n[本机回执，仅作事实。沿用本条消息的发送位置和授权。切勿重复已处理的动作。]";
+            var kept = new List<(string Text, LlmHistoryEntry Prior)>();
+            wire.Add(LlmMessage.User(original));
             var request = new LlmRequest(instructions, wire, tools, textOnly);
             size = MeasureRequest(transport, connection, request);
-            if (size > connection.InputBudget && facts.Count != 0)
+            int available = (int)Math.Max(0, Math.Min(3000, connection.InputBudget - size - (header.Length - original.Length) - 180));
+            // These entries may be the only copy left after UI history
+            // pruning. Keep complete prior receipts ahead of new recaps.
+            void Keep(string line, LlmHistoryEntry prior = null)
             {
-                wire[0] = LlmMessage.User(original);
-                request = new LlmRequest(instructions, wire, tools, textOnly);
-                size = MeasureRequest(transport, connection, request);
+                if (line.Length + 1 > available) return;
+                kept.Add((line, prior));
+                available -= line.Length + 1;
             }
-            int room = (int)Math.Max(0, Math.Min(3000, connection.InputBudget - size - 180));
+            for (int index = pendingFacts.Count - 1; index >= 0; index--)
+                Keep(pendingFacts[index].Kind + "：" + pendingFacts[index].Text, pendingFacts[index]);
             foreach (int index in Enumerable.Range(0, facts.Count).OrderByDescending(index => facts[index].Priority)
                 .ThenByDescending(index => index))
+                Keep(facts[index].Text);
+            while (kept.Count != 0)
             {
-                string fact = facts[index].Text;
-                if (fact.Length + 1 > room) continue;
-                kept.Add(fact);
-                room -= fact.Length + 1;
-            }
-            if (kept.Count != 0)
-            {
-                wire[0] = LlmMessage.User(header + "\n" + String.Join("\n", kept));
-                request = new LlmRequest(instructions, wire, tools, textOnly);
-                size = MeasureRequest(transport, connection, request);
-                while (size > connection.InputBudget && kept.Count != 0)
+                var user = LlmMessage.User(header + "\n" + String.Join("\n", kept.Select(entry => entry.Text)),
+                    kept.Where(entry => entry.Prior != null).Select(entry => entry.Prior).ToArray());
+                var candidate = new LlmRequest(instructions, new[] { user }, tools, textOnly);
+                long candidateSize = MeasureRequest(transport, connection, candidate);
+                if (candidateSize <= connection.InputBudget)
                 {
-                    kept.RemoveAt(kept.Count - 1);
-                    wire[0] = LlmMessage.User(kept.Count == 0 ? original : header + "\n" + String.Join("\n", kept));
-                    request = new LlmRequest(instructions, wire, tools, textOnly);
-                    size = MeasureRequest(transport, connection, request);
+                    wire[0] = user;
+                    request = candidate;
+                    size = candidateSize;
+                    break;
                 }
+                kept.RemoveAt(kept.Count - 1);
             }
             if (lastPair.Length != 0 && tools.Count != 0)
             {

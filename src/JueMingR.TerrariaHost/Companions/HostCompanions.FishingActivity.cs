@@ -28,6 +28,9 @@ namespace JueMingR.TerrariaHost.Companions
             internal readonly string SelectedMarkerId;
             internal readonly long MarkerSession;
             internal readonly Guid TalkItemWitness;
+            internal readonly string WorkReference;
+            internal readonly Point? WorkPoint;
+            internal readonly int WorkOreType;
             internal bool Valid => Gravity != 0;
 
             internal FishingAnchor(Player player, Point? seat, Tile tile)
@@ -42,16 +45,22 @@ namespace JueMingR.TerrariaHost.Companions
                 SelectedMarkerId = null;
                 MarkerSession = 0;
                 TalkItemWitness = Guid.Empty;
+                WorkReference = null; WorkPoint = null; WorkOreType = -1;
             }
             internal FishingAnchor(Vector2 feet, float gravity)
-            { Feet = BodyCenter = feet; Gravity = gravity; Seat = null; SeatType = 0; SeatFrameX = SeatFrameY = 0; SelectedMarkerId = null; MarkerSession = 0; TalkItemWitness = Guid.Empty; }
+            { Feet = BodyCenter = feet; Gravity = gravity; Seat = null; SeatType = 0; SeatFrameX = SeatFrameY = 0; SelectedMarkerId = null; MarkerSession = 0; TalkItemWitness = Guid.Empty;
+                WorkReference = null; WorkPoint = null; WorkOreType = -1; }
             internal FishingAnchor(FishingAnchor spatial, string markerId, long markerSession, Guid talkItemWitness = default(Guid))
             {
                 Feet = spatial.Feet; BodyCenter = spatial.BodyCenter; Gravity = spatial.Gravity; Seat = spatial.Seat; SeatType = spatial.SeatType;
                 SeatFrameX = spatial.SeatFrameX; SeatFrameY = spatial.SeatFrameY;
                 SelectedMarkerId = markerId; MarkerSession = markerSession;
                 TalkItemWitness = talkItemWitness;
+                WorkReference = spatial.WorkReference; WorkPoint = spatial.WorkPoint; WorkOreType = spatial.WorkOreType;
             }
+            internal FishingAnchor(FishingAnchor spatial,string workReference,Point workPoint,int oreType=-1)
+                : this(spatial,spatial.SelectedMarkerId,spatial.MarkerSession,spatial.TalkItemWitness)
+            { WorkReference=workReference; WorkPoint=workPoint; WorkOreType=oreType; }
         }
 
         internal sealed class FishingActivity

@@ -24,6 +24,8 @@ namespace JueMingR.TerrariaHost.World
             internal string Category, Title, Note, Evidence, DiskStamp;
             internal string[] Aliases = Array.Empty<string>();
             internal int Revision, TitleRevision, NoteRevision, FactRevision;
+            internal int OreTileType = -1;
+            internal ShimmerExtent ShimmerPool;
             internal long ConfirmedUtc;
             internal bool Invalid, Reported;
             internal string Reference => "memory:" + Id.ToString("N");
@@ -88,6 +90,8 @@ namespace JueMingR.TerrariaHost.World
             updated.Point = observation.Point;
             updated.Footing = observation.Footing;
             updated.Evidence = observation.Evidence;
+            updated.OreTileType = observation.OreTileType;
+            updated.ShimmerPool = observation.ShimmerPool;
             updated.DiskStamp = observation.DiskStamp;
             updated.Invalid = observation.Invalid;
             updated.Reported = observation.Reported;
@@ -161,6 +165,33 @@ namespace JueMingR.TerrariaHost.World
                 .OrderByDescending(place => place.ConfirmedUtc).Take(2).ToArray();
             return places.Length == 0 || places.Length == 2 && places[0].ConfirmedUtc == places[1].ConfirmedUtc ? null : places[0].Reference;
         }
+
+        internal IReadOnlyDictionary<int,(string Reference,Point Point)> CaptureSavedOreTargets(string title)
+        {
+            var targets = new Dictionary<int,(string,Point)>();
+            if (!Ready || live.Saved == null || live.PlaceFailure != null) return targets;
+            var places = live.Saved.Entries.Values.Where(place => place.Category == "ore" && !place.Reported && !place.Invalid &&
+                place.OreTileType >= 0 && (title == null || String.Equals(place.Title,title,StringComparison.OrdinalIgnoreCase) ||
+                place.Aliases.Contains(title,StringComparer.OrdinalIgnoreCase)));
+            if (title != null)
+            {
+                var named = places.Take(2).ToArray();
+                if (named.Length == 1) targets.Add(named[0].OreTileType,(named[0].Reference,named[0].Point));
+                return targets;
+            }
+            foreach (var material in places.GroupBy(place => place.OreTileType))
+            {
+                var latest = material.OrderByDescending(place => place.ConfirmedUtc).Take(2).ToArray();
+                if (latest.Length == 1 || latest[0].ConfirmedUtc != latest[1].ConfirmedUtc)
+                    targets.Add(material.Key,(latest[0].Reference,latest[0].Point));
+            }
+            return targets;
+        }
+
+        internal bool SavedOreTargetCurrent(string reference,Point point,int type) => Ready && live.PlaceFailure == null &&
+            MemoryId(reference,out var id) && live.Saved?.Entries.TryGetValue(id,out var durable) == true &&
+            TryGetPlace(reference,out var current) && !current.Invalid && !current.Reported && current.Category == "ore" &&
+            durable.OreTileType == type && current.OreTileType == type && durable.Point == point && current.Point == point;
 
         private static bool SearchMatch(Place place, string filter) =>
             place.Title.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -243,6 +274,8 @@ namespace JueMingR.TerrariaHost.World
                     updated.Point = reported.Value;
                     updated.Reported = true; updated.Invalid = false; updated.DiskStamp = null;
                     updated.Evidence = "对话转述的坐标，未核实原版地形。";
+                    updated.OreTileType = -1;
+                    updated.ShimmerPool = null;
                     updated.ConfirmedUtc = DateTime.UtcNow.Ticks;
                     updated.FactRevision = updated.Revision;
                 }
@@ -266,7 +299,8 @@ namespace JueMingR.TerrariaHost.World
         private static bool SameRequestedValues(Place old, string title, string note, Point? reported, Place evidence) =>
             (title == null || title.Trim() == old.Title) && (note == null || note == old.Note) &&
             (!reported.HasValue || old.Reported && reported.Value == old.Point) &&
-            (evidence == null || !old.Invalid && !old.Reported && evidence.Point == old.Point && evidence.Category == old.Category);
+            (evidence == null || !old.Invalid && !old.Reported && evidence.Point == old.Point && evidence.Category == old.Category &&
+                (evidence.ShimmerPool == null || ReferenceEquals(evidence.ShimmerPool, old.ShimmerPool)));
 
         internal string Receipt(Place place)
         {
@@ -315,7 +349,7 @@ namespace JueMingR.TerrariaHost.World
             live.Corrections[place.Id] = sight;
         }
 
-        internal Place ObservePlace(string category, Point point)
+        internal Place ObservePlace(string category, Point point, bool automatic = false)
         {
             if (!Ready || !WorldTileKnowledge.CellKnown(point.X, point.Y)) return null;
             category = NormalizeCategory(category);
@@ -325,11 +359,7 @@ namespace JueMingR.TerrariaHost.World
             switch (category)
             {
                 case "shimmer":
-                    if (tile.liquid == 0 || !tile.shimmer()) return null;
-                    var pool = ShimmerRepresentative(point);
-                    point = pool.point;
-                    evidence = "原版微光液体，代表格余量 " + Main.tile[point.X, point.Y].liquid + "/255。";
-                    break;
+                    return ObserveShimmer(point, automatic);
                 case "ore":
                     if (!tile.active() || !TileID.Sets.Ore[tile.type]) return null;
                     evidence = "现场确认矿物图格类型 " + tile.type + "。";
@@ -351,6 +381,7 @@ namespace JueMingR.TerrariaHost.World
                     break;
             }
             var place = NewPlace(live, category, point, evidence);
+            if (category == "ore") place.OreTileType = tile.type;
             WitnessPlace(place);
             return place;
         }
@@ -429,6 +460,20 @@ namespace JueMingR.TerrariaHost.World
                         .AppendLine(place.Aliases.Length != 0 ? "别名 " + String.Join("、", place.Aliases) : "")
                         .AppendLine().AppendLine(place.Note).AppendLine();
                 }
+                // Keep older canonical v1 documents readable. Only observed
+                // ore records add a typed authority trailer to the metadata.
+                var ores = book.Entries.Values.Where(place => place.OreTileType >= 0).OrderBy(place => place.Id).ToArray();
+                var pools = book.Entries.Values.Where(place => place.ShimmerPool != null).OrderBy(place => place.Id).ToArray();
+                if (ores.Length != 0 || pools.Length != 0)
+                {
+                    writer.Write(ores.Length);
+                    foreach (var ore in ores) { writer.Write(ore.Id.ToByteArray()); writer.Write(ore.OreTileType); }
+                }
+                if (pools.Length != 0)
+                {
+                    writer.Write(pools.Length);
+                    foreach (var pool in pools) { writer.Write(pool.Id.ToByteArray()); pool.ShimmerPool.Encode(writer); }
+                }
                 writer.Flush();
                 return Utf8.GetBytes(MetadataStart + Convert.ToBase64String(bytes.ToArray()) + " -->\n" + text);
             }
@@ -463,6 +508,31 @@ namespace JueMingR.TerrariaHost.World
                         new[] { place.TitleRevision, place.NoteRevision, place.FactRevision }.Any(revision => revision < 0 || revision > place.Revision))
                         throw new InvalidDataException();
                     book.Entries.Add(place.Id, place);
+                }
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    int ores = reader.ReadInt32();
+                    if (ores < 0 || ores > count) throw new InvalidDataException();
+                    for (int i = 0; i < ores; i++)
+                    {
+                        var id = new Guid(reader.ReadBytes(16));
+                        int type = reader.ReadInt32();
+                        if (!book.Entries.TryGetValue(id,out var ore) || ore.Category != "ore" || ore.Reported || ore.OreTileType >= 0 ||
+                            type < 0 || type >= TileID.Count || !TileID.Sets.Ore[type]) throw new InvalidDataException();
+                        ore.OreTileType = type;
+                    }
+                }
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    int pools = reader.ReadInt32();
+                    if (pools <= 0 || pools > count) throw new InvalidDataException();
+                    for (int i = 0; i < pools; i++)
+                    {
+                        var id = new Guid(reader.ReadBytes(16));
+                        if (!book.Entries.TryGetValue(id, out var pool) || pool.Category != "shimmer" || pool.Reported ||
+                            pool.ShimmerPool != null) throw new InvalidDataException();
+                        pool.ShimmerPool = DecodeShimmerExtent(reader, pool.Point, width, height);
+                    }
                 }
                 if (reader.BaseStream.Position != reader.BaseStream.Length || !bytes.SequenceEqual(EncodePlaces(book)))
                     throw new InvalidDataException("世界文档外部改动，原件已保留。");

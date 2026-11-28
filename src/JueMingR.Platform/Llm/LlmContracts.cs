@@ -63,19 +63,25 @@ namespace JueMingR.Platform.Llm
 
     public sealed class LlmMessage
     {
-        private LlmMessage(LlmMessageKind kind, string text, LlmTurn turn, IReadOnlyList<LlmToolResult> results)
+        private LlmMessage(LlmMessageKind kind, string text, LlmTurn turn, IReadOnlyList<LlmToolResult> results,
+            IReadOnlyList<LlmHistoryEntry> recoveryFacts = null)
         {
             Kind = kind;
             Text = text;
             Turn = turn;
             Results = results;
+            RecoveryFacts = recoveryFacts == null || recoveryFacts.Count == 0 ? (IReadOnlyList<LlmHistoryEntry>)Array.Empty<LlmHistoryEntry>() :
+                Array.AsReadOnly(recoveryFacts.ToArray());
         }
 
         public LlmMessageKind Kind { get; }
         public string Text { get; }
         public LlmTurn Turn { get; }
         public IReadOnlyList<LlmToolResult> Results { get; }
-        public static LlmMessage User(string text) => new LlmMessage(LlmMessageKind.User, text, null, null);
+        // Local receipt provenance. The provider receives only the text.
+        public IReadOnlyList<LlmHistoryEntry> RecoveryFacts { get; }
+        public static LlmMessage User(string text, IReadOnlyList<LlmHistoryEntry> recoveryFacts = null) =>
+            new LlmMessage(LlmMessageKind.User, text, null, null, recoveryFacts);
         public static LlmMessage Assistant(LlmTurn turn) => new LlmMessage(LlmMessageKind.Assistant, null, turn, null);
         public static LlmMessage ToolResults(IReadOnlyList<LlmToolResult> results) =>
             new LlmMessage(LlmMessageKind.ToolResults, null, null, Array.AsReadOnly(results.ToArray()));

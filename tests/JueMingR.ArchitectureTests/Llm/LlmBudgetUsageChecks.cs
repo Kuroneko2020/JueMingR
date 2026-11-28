@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -122,23 +123,34 @@ namespace JueMingR.ArchitectureTests
             var other = new LlmConnectionUsage(Guid.NewGuid(), "另一个连接", "fixture-other", new LlmUsageTotals().Add(new LlmUsageSample(190, 25)));
             try
             {
+                string path = Path.Combine(folder, "JueMingRData", "Llm", "history", owner.ToString("N"), profile.ToString("N") + ".json");
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllText(path, "{\"format\":\"JueMingR.Llm.PublicHistory\",\"version\":1,\"entries\":[{\"id\":\"" + Guid.NewGuid() +
+                    "\",\"kind\":\"user\",\"text\":\"旧记录\",\"time\":\"" + when.ToString("O", CultureInfo.InvariantCulture) + "\"}]}");
                 using (var store = new LlmFileStore(folder))
                 {
-                    await store.SaveHistoryAsync(owner, profile, new[] { new LlmHistoryEntry(Guid.NewGuid(), "user", "旧记录", when) }).ConfigureAwait(false);
-                    Require((await store.LoadChatArchiveAsync(owner, profile).ConfigureAwait(false)).Usage.TrackingStartedAt == null,
-                        "older archives never retroactively invent usage");
+                    var fresh = await store.LoadChatArchiveAsync(owner, Guid.NewGuid()).ConfigureAwait(false);
+                    Require(fresh.Usage.Total.Requests == 0 && !fresh.Usage.PriorUsageUnknown, "a truly new chat still has known zero usage");
+                    var imported = await store.LoadChatArchiveAsync(owner, profile).ConfigureAwait(false);
+                    Require(imported.Entries.Single().Text == "旧记录" && imported.Usage.TrackingStartedAt == null &&
+                        imported.Usage.Total.Total == null && imported.Usage.PriorUsageUnknown, "v1 visible history marks missing prior accounting");
+                    await store.SaveChatArchiveAsync(owner, profile, imported).ConfigureAwait(false);
+                    var retained = await store.LoadChatArchiveAsync(owner, profile).ConfigureAwait(false);
+                    Require(File.ReadAllText(path).Contains("\"version\":2") && retained.Usage.PriorUsageUnknown && retained.Usage.TrackingStartedAt == null,
+                        "version 2 can persist the unknown period even before a new request");
                     await store.SaveChatArchiveAsync(owner, profile, new LlmChatArchive(Array.Empty<LlmHistoryEntry>(),
-                        new LlmChatUsage(when, other, new[] { row, other }))).ConfigureAwait(false);
+                        new LlmChatUsage(when, other, new[] { row, other }, retained.Usage.PriorUsageUnknown))).ConfigureAwait(false);
                 }
                 using (var store = new LlmFileStore(folder))
                 {
                     var loaded = await store.LoadChatArchiveAsync(owner, profile).ConfigureAwait(false);
-                    Require(loaded.Entries.Count == 0 && loaded.Usage.Total.Total == 555 && loaded.Usage.Total.UnknownRequests == 1 &&
+                    Require(loaded.Entries.Count == 0 && loaded.Usage.Total.Total == 555 && loaded.Usage.Total.UnknownRequests == 1 && loaded.Usage.PriorUsageUnknown &&
                         loaded.Usage.Latest.Total == 215 && loaded.Usage.LatestConnection.ConnectionId == other.ConnectionId,
                         "connection totals survive history pruning and reopen");
                     await store.ClearHistoryAsync(owner, profile).ConfigureAwait(false);
-                    Require((await store.LoadChatArchiveAsync(owner, profile).ConfigureAwait(false)).Usage.Total.Requests == 0,
-                        "clearing the archive clears accounting at the same atomic boundary");
+                    var cleared = await store.LoadChatArchiveAsync(owner, profile).ConfigureAwait(false);
+                    Require(cleared.Usage.Total.Requests == 0 && !cleared.Usage.PriorUsageUnknown,
+                        "clearing the archive clears accounting and the prior unknown period at the same atomic boundary");
                 }
             }
             finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }

@@ -29,6 +29,8 @@ namespace NativeWorldTextProbe
             var firstFeet = first.Bottom;
             var secondFeet = second.Bottom;
             var humanFeet = human.Bottom;
+            var firstVelocity = first.velocity;
+            var secondVelocity = second.velocity;
             var oldSource = second.inventory[21];
             var firstActor = Call(host, "Owned", first);
             var secondActor = Call(host, "Owned", second);
@@ -120,14 +122,7 @@ namespace NativeWorldTextProbe
                 if (initialReads.HasValue)
                     Console.WriteLine("WORKLOAD world-memory full cells=" + initialReads + " maxReadsPerUpdate=" + maximumRead +
                         " idleUpdates=60 extraReads=0 (isolated original tile array, no FPS claim).");
-                object[] named = { "tile", "铁矿", -1 };
-                NativeQuickItemChecks.Until(() =>
-                {
-                    string state = (string)Call(host, "ResolveWorldMaterialType", named);
-                    if (state == "waiting") { tick(); return false; }
-                    Require(state == "ready" && (int)named[2] == TileID.Iron, "Chinese Iron Ore resolves to the native tile ID: " + state);
-                    return true;
-                });
+                CheckLocalizedMaterialName(host, tick);
                 var report = Material("tile", TileID.Iron, report: true);
                 Require(report.State == "waiting" && report.Value?.StartsWith("memory:", StringComparison.Ordinal) == true,
                     "a material report enters the real world document commit");
@@ -216,6 +211,9 @@ namespace NativeWorldTextProbe
                     product + ", then dry arrival kept one and saved invalidation; external file retained; different GUID isolated.");
 
                 GuestLiquid(memory, Pump, Until, Material);
+                Call(memory, "OnSessionStarted");
+                VerifyConnectedPool(memory, Main.ActiveWorldFileData, Rotate, Until);
+                VerifyPartialCacheRestart(memory, originalWorld, Rotate, Until, Material);
             }
             finally
             {
@@ -224,6 +222,9 @@ namespace NativeWorldTextProbe
                 Main.ActiveWorldFileData = originalWorld;
                 Main.tile = originalTiles;
                 first.Bottom = firstFeet; second.Bottom = secondFeet; human.Bottom = humanFeet;
+                first.velocity = firstVelocity; second.velocity = secondVelocity;
+                Call(Get(firstActor, "Behavior"), "PositionChanged", first);
+                Call(Get(secondActor, "Behavior"), "PositionChanged", second);
                 second.inventory[21] = oldSource;
                 for (int i = 0; i < Main.maxItems; i++)
                     if (Main.item[i]?.active == true && !oldDrops.Contains(Main.item[i])) Main.item[i].TurnToAir();
@@ -236,6 +237,162 @@ namespace NativeWorldTextProbe
             var tile = new Tile { type = (ushort)type };
             tile.active(true);
             return tile;
+        }
+
+        private static void CheckLocalizedMaterialName(object host, Action tick)
+        {
+            // The later chat case deliberately starts its own original shared
+            // catalog cold. This case uses the same production catalog owner
+            // with a separate snapshot and real native sample preparation.
+            var original = Get(host, "ChatKnowledge");
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var clock = (Func<long>)Get(Get(original, "Native"), "placementClock");
+            var isolated = Activator.CreateInstance(original.GetType(), flags, null, new object[] { clock }, null);
+            try
+            {
+                Call(Get(isolated, "Native"), "BindPlacementClock", clock);
+                Set(host, "ChatKnowledge", isolated);
+                object[] named = { "tile", "铁矿", -1 };
+                NativeQuickItemChecks.Until(() =>
+                {
+                    string state = (string)Call(host, "ResolveWorldMaterialType", named);
+                    if (state == "waiting") { tick(); Call(isolated, "StepChat"); return false; }
+                    Require(state == "ready" && (int)named[2] == TileID.Iron, "Chinese Iron Ore resolves to the native tile ID: " + state);
+                    return true;
+                });
+            }
+            finally
+            {
+                Set(host, "ChatKnowledge", original);
+                ((IDisposable)isolated).Dispose();
+            }
+        }
+
+        private static void VerifyConnectedPool(object memory, WorldFileData world, Action rotate, Action<Func<bool>> until)
+        {
+            Main.ActiveWorldFileData = world;
+            rotate();
+            until(() => GetOptional(memory, "live") is object session && GetOptional(session, "Saved") != null);
+            void Fill(Rectangle bounds, bool wet)
+            {
+                for (int y = bounds.Top; y < bounds.Bottom; y++)
+                    for (int x = bounds.Left; x < bounds.Right; x++)
+                    {
+                        var tile = new Tile { liquid = wet ? (byte)255 : (byte)0 };
+                        tile.shimmer(wet);
+                        Main.tile[x, y] = tile;
+                    }
+            }
+            var pool = new Rectangle(20, 68, 30, 30);
+            Fill(pool, true);
+            var left = new Point(20, 68);
+            var right = new Point(49, 97);
+            Require(Call(memory, "ObservePlace", "shimmer", left, true) == null &&
+                Call(memory, "ObservePlace", "shimmer", right, true) == null,
+                "automatic 512-cell work leaves a 900-cell component ungrouped");
+            var first = Call(memory, "ObservePlace", "shimmer", left, false);
+            var second = Call(memory, "ObservePlace", "shimmer", right, false);
+            Require(first != null && second != null && (string)Get(first, "Reference") == (string)Get(second, "Reference"),
+                "two distant original cells of the 30 by 30 artificial pool resolve to one trustworthy ID");
+            var saved = (CompanionTaskOutcome)Call(memory, "SavePlace", null, 0, "独审大池", "", "shimmer", null, first, null);
+            Require(saved.State == "waiting", "pond geometry enters the actual archive");
+            until(() => ((CompanionTaskOutcome)Call(memory, "ReadPlace", saved.Value)).State == "succeeded");
+            rotate();
+            until(() => ((CompanionTaskOutcome)Call(memory, "ReadPlace", saved.Value)).State == "succeeded");
+            object[] args = { saved.Value, null };
+            Require((bool)Call(memory, "TryGetPlace", args), "the exact old pond is recovered from a new session");
+            var reopened = args[1];
+            var close = new Rectangle(20, 68, 11, 11);
+            Fill(close, false);
+            object[] recheck = { reopened, left.ToWorldCoordinates(), null, false };
+            Require(!(bool)Call(memory, "RecheckShimmer", recheck) && !(bool)recheck[3] && Main.tile[right.X, right.Y].liquid > 0,
+                "full old footprint prevents declaring a locally dry edge an exhausted pond");
+            var remaining = Call(memory, "ObservePlace", "shimmer", right, false);
+            Require(remaining != null && (string)Get(remaining, "Reference") == saved.Value,
+                "distant remaining cells retain the original pond identity");
+            Fill(pool, false);
+            Fill(new Rectangle(52, 68, 2, 2), true); // An unrelated nearby pond does not settle this one.
+            Require(!(bool)Call(memory, "RecheckShimmer", recheck) && (bool)recheck[3] && Main.tile[52, 68].liquid == 255,
+                "complete old pond dryness is recorded without selecting the disconnected wet neighbor");
+            until(() =>
+            {
+                var read = (CompanionTaskOutcome)Call(memory, "ReadPlace", saved.Value);
+                return read.State == "succeeded" && read.Detail.Contains("已失效");
+            });
+            Console.WriteLine("PASS actual shimmer connected footprint 900 cells, same ID on opposite edges, partial drain unknown, full drain persisted without switching pools.");
+        }
+
+        private static void VerifyPartialCacheRestart(object memory, WorldFileData originalWorld, Action rotate, Action<Func<bool>> until,
+            Func<string, int, bool, CompanionTaskOutcome> material)
+        {
+            string path = Path.Combine(Path.GetDirectoryName(originalWorld.Path), "partial-index-fixture.wld");
+            Main.ActiveWorldFileData = new WorldFileData(path, false) { UniqueId = Guid.NewGuid() };
+            var privateHooks = memory.GetType().Assembly.GetType("JueMingR.TerrariaHost.World.WorldMemoryHooks", true);
+            var witness = privateHooks.GetMethod("ReadWorldBytes", BindingFlags.Static | BindingFlags.NonPublic);
+            var metadata = Main.WorldFileMetadata;
+            void WriteNativeTerrain()
+            {
+                Main.WorldFileMetadata = FileMetadata.FromCurrentSettings(FileType.World);
+                using (var writer = new BinaryWriter(File.Create(path)))
+                {
+                    // The native header, pointer and tile writers produce the
+                    // same terrain section consumed by the source witness.
+                    int header = WorldFile.SaveFileFormatHeader(writer);
+                    writer.Write((byte)0);
+                    int start = (int)writer.BaseStream.Position;
+                    int end = WorldFile.SaveWorldTiles(writer);
+                    var pointers = new int[11];
+                    pointers[0] = header; pointers[1] = start; pointers[2] = end;
+                    WorldFile.SaveHeaderPointers(writer, pointers);
+                }
+                witness.Invoke(null, new object[] { path, false });
+            }
+            try
+            {
+                var ore = new Point(109, 109);
+                int columns = (Main.maxTilesX + 49) / 50;
+                int last = ore.Y / 50 * columns + ore.X / 50;
+                string full = Main.maxTilesX * Main.maxTilesY + "/" + Main.maxTilesX * Main.maxTilesY;
+                Main.tile[ore.X, ore.Y] = Solid(TileID.Tin);
+                WriteNativeTerrain();
+                rotate();
+                until(() => material("tile", TileID.Tin, false).Detail.Contains(full));
+                Require(material("tile", TileID.Tin, false).Completed >= 1, "A contains the original material in its last page");
+                string stampA = (string)Get(Get(memory, "live"), "DiskStamp");
+                Call(memory, "OnSessionEnded");
+
+                Main.tile[ore.X, ore.Y] = new Tile();
+                WriteNativeTerrain();
+                rotate();
+                until(() =>
+                {
+                    var active = GetOptional(memory, "live");
+                    return active != null && ((HashSet<int>)Get(active, "VerifiedPages")).Count >= 6;
+                });
+                var partial = Get(memory, "live");
+                var verified = (HashSet<int>)Get(partial, "VerifiedPages");
+                string stampB = (string)Get(partial, "DiskStamp");
+                Require(stampA != stampB && verified.Count == 6 && !verified.Contains(last) && ((IDictionary)Get(partial, "Pages")).Contains(last),
+                    "B loaded historical A and independently verified only its first batch");
+                rotate();
+                until(() =>
+                {
+                    var active = GetOptional(memory, "live");
+                    return active != null && GetOptional(active, "DiskStamp") as string == stampB &&
+                        ((HashSet<int>)Get(active, "VerifiedPages")).Count >= 6;
+                });
+                var restarted = Get(memory, "live");
+                Require(((HashSet<int>)Get(restarted, "VerifiedPages")).Count == 6 &&
+                    !((HashSet<int>)Get(restarted, "VerifiedPages")).Contains(last) &&
+                    ((IDictionary)Get(restarted, "Pages")).Contains(last),
+                    "same B reentry trusts the persisted verified subset, not A's unscanned last page");
+                var pending = material("tile", TileID.Tin, false);
+                Require(pending.Completed == 0 && pending.Detail.Contains("上次见过"), "the unverified A ore is historical only");
+                until(() => material("tile", TileID.Tin, false).Detail.Contains(full));
+                Require(material("tile", TileID.Tin, false).Completed == 0, "completed B rebuild confirms the removed ore");
+                Console.WriteLine("PASS actual atomic index A to changed B, six verified pages persisted, same-stamp B reentry keeps remaining A pages historical.");
+            }
+            finally { Main.WorldFileMetadata = metadata; }
         }
 
         private static void GuestLiquid(object memory, Action pump, Action<Func<bool>> until, Func<string, int, bool, CompanionTaskOutcome> material)
@@ -291,9 +448,20 @@ namespace NativeWorldTextProbe
                         until(() => material("liquid", 3, false).Detail.Contains("20000/22000"));
                         Require(material("liquid", 3, false).Completed == 0 && Main.tile[210, 60].liquid == 255,
                             "an actual network liquid packet invalidates only the synchronized indexed page");
+                        Main.tile[199, 48].liquid = Main.tile[200, 48].liquid = 255;
+                        Main.tile[199, 48].shimmer(true); Main.tile[200, 48].shimmer(true);
+                        Require(Call(memory, "ObservePlace", "shimmer", new Point(199, 48), false) == null &&
+                            Call(memory, "ObservePlace", "shimmer", new Point(200, 48), false) == null,
+                            "a pond crossing into an unsynchronized section cannot create a trusted ID from either edge");
+                        Main.sectionManager.SetSectionLoaded(1, 0);
+                        var knownLeft = Call(memory, "ObservePlace", "shimmer", new Point(199, 48), false);
+                        var knownRight = Call(memory, "ObservePlace", "shimmer", new Point(200, 48), false);
+                        Require(knownLeft != null && knownRight != null &&
+                            (string)Get(knownLeft, "Reference") == (string)Get(knownRight, "Reference"),
+                            "when both original sections are known, both sources resolve the same verified pond");
                     }
                 }
-                Console.WriteLine("PASS guest world memory: original section admission, 20,000/22,000 coverage, live NetLiquidModule 82 drain, hidden section excluded.");
+                Console.WriteLine("PASS guest world memory: original section admission, 20,000/22,000 coverage, live NetLiquidModule 82 drain, hidden pond continuation withheld until synced.");
             }
             finally
             {

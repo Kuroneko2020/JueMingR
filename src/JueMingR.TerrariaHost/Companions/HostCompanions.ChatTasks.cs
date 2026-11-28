@@ -142,9 +142,9 @@ namespace JueMingR.TerrariaHost.Companions
                         CompleteChatQuery(command, FormatTask(GetTask(run.Boundary.Owner, run.Boundary.Profile, existing)));
                     else
                     {
-                        if (!AuthorizeChatPlan(run, extra, out var cost)) { RejectChatTool(command, cost.Denial); return true; }
-                        var updated = command.Call.Name == "append_task" ? AppendTask(identity, existing.Value, extra, run.Anchor)
-                            : ReplaceTaskTail(identity, existing.Value, extra, run.Anchor);
+                        if (!AuthorizeChatPlan(run, extra, out var cost, out var authorizedAnchor)) { RejectChatTool(command, cost.Denial); return true; }
+                        var updated = command.Call.Name == "append_task" ? AppendTask(identity, existing.Value, extra, authorizedAnchor)
+                            : ReplaceTaskTail(identity, existing.Value, extra, authorizedAnchor);
                         if (updated != null && updated.State != "rejected")
                         {
                             run.SubmittedPlans.Add(appendKey, existing.Value);
@@ -209,8 +209,8 @@ namespace JueMingR.TerrariaHost.Companions
                 CompleteChatQuery(command, FormatTask(GetTask(run.Boundary.Owner, run.Boundary.Profile, previous)));
                 return;
             }
-            if (!AuthorizeChatPlan(run, steps, out var cost)) { RejectChatTool(command, cost.Denial); return; }
-            var result = SubmitTask(identity, title.Trim(), steps, run.Anchor, Guid.ParseExact(OperationId(command), "N"));
+            if (!AuthorizeChatPlan(run, steps, out var cost, out var authorizedAnchor)) { RejectChatTool(command, cost.Denial); return; }
+            var result = SubmitTask(identity, title.Trim(), steps, authorizedAnchor, Guid.ParseExact(OperationId(command), "N"));
             if (result != null && result.TaskId != Guid.Empty)
             {
                 run.SubmittedPlans.Add(key, result.TaskId);
@@ -220,17 +220,20 @@ namespace JueMingR.TerrariaHost.Companions
             CompleteChatQuery(command, FormatTask(result), error: result == null || result.State == "rejected");
         }
 
-        private bool AuthorizeChatPlan(ChatRun run,IReadOnlyList<CompanionTaskStep> steps,out ChatAuthority.Cost cost)
+        private bool AuthorizeChatPlan(ChatRun run,IReadOnlyList<CompanionTaskStep> steps,out ChatAuthority.Cost cost,out FishingAnchor anchor)
         {
-            if (!run.Authority.Plan(steps,out cost)) return false;
+            anchor=run.Anchor;
+            if (!run.Authority.Plan(steps,out cost) || !AuthorizeChatWorldSite(run,steps,cost,ref anchor)) return false;
             foreach (var step in steps.Where(step=>step.Operation=="shimmer_item"))
             {
                 if (step.Each.Count!=0) return false;
-                if (run.Authority.ReferencesLastShimmer && (!step.Arguments.TryGetValue("target",out var target) ||
-                    !(target is string token) || token!=LastTaskMemoryShimmerReference()))
+                if (run.Authority.ReferencesLastShimmer)
                 {
-                    cost.Denial="上次的微光池还不能确定，请确认记录中的池子。";
-                    return false;
+                    string target=StepText(step.Arguments,"target");
+                    if (anchor.WorkPoint.HasValue || !run.Authority.PriorShimmerPoint.HasValue || target!=run.Authority.PriorShimmer ||
+                        !TryTaskMemoryDestination(target,out var point,out _,out _) || point!=run.Authority.PriorShimmerPoint.Value)
+                    { cost.Denial="操作地点与发话时上次记录的微光池不一致。"; return false; }
+                    anchor=new FishingAnchor(anchor,target,point);
                 }
                 if (!run.Authority.ReferencesHeld) continue;
                 if (!actors.TryGetValue(run.Boundary.Profile,out var actor) || !TryTaskTalkItem(actor,run.Anchor,out _,out var held) ||

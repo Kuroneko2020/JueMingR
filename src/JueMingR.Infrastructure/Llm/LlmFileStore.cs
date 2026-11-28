@@ -208,13 +208,14 @@ namespace JueMingR.Infrastructure.Llm
         {
             // Keep the newest complete visible records within the actual UTF-8 budget, including JSON escapes.
             var envelope = Document(HistoryFormat, "entries", System.Array.Empty<object>());
-            if (usage.TrackingStartedAt.HasValue)
-                envelope["usage"] = new Dictionary<string, object>
-                {
-                    ["since"] = usage.TrackingStartedAt.Value.ToString("O", CultureInfo.InvariantCulture),
-                    ["latest"] = UsageRow(usage.LatestConnection),
-                    ["connections"] = usage.Connections.Select(UsageRow).ToArray()
-                };
+            envelope["version"] = 2;
+            envelope["usage"] = new Dictionary<string, object>
+            {
+                ["since"] = usage.TrackingStartedAt?.ToString("O", CultureInfo.InvariantCulture),
+                ["priorUsageUnknown"] = usage.PriorUsageUnknown,
+                ["latest"] = UsageRow(usage.LatestConnection),
+                ["connections"] = usage.Connections.Select(UsageRow).ToArray()
+            };
             int remaining = HistoryBytes - Bytes(envelope, HistoryBytes).Length - 16;
             var accepted = new List<object>();
             for (int index = entries.Count - 1; index >= 0 && accepted.Count < 500; index--)
@@ -239,9 +240,10 @@ namespace JueMingR.Infrastructure.Llm
         {
             try
             {
-                object document = Read(file, HistoryFormat, "聊天历史", out identity);
+                object document = Read(file, HistoryFormat, "聊天历史", out identity, maximumVersion: 2);
                 if (document == null) return new LlmChatArchive(System.Array.Empty<LlmHistoryEntry>(), null);
-                bool tracked = Has(document, "usage");
+                bool legacy = Number(document, "version") == 1;
+                bool tracked = !legacy || Has(document, "usage");
                 Shape(document, tracked ? new[] { "format", "version", "entries", "usage" } : new[] { "format", "version", "entries" });
                 object[] rows = Records(document, "entries", 500);
                 var result = new LlmHistoryEntry[rows.Length];
@@ -256,7 +258,7 @@ namespace JueMingR.Infrastructure.Llm
                         throw Protocol();
                     result[i] = new LlmHistoryEntry(Id(Text(item, "id")), kind, text, time);
                 }
-                return new LlmChatArchive(result, tracked ? ReadUsage(Get(document, "usage")) : null);
+                return new LlmChatArchive(result, tracked ? ReadUsage(Get(document, "usage"), legacy, result.Length != 0) : null);
             }
             catch (Exception exception) when (IsDocumentError(exception))
             {
@@ -278,15 +280,23 @@ namespace JueMingR.Infrastructure.Llm
             };
         }
 
-        private static LlmChatUsage ReadUsage(object value)
+        private static LlmChatUsage ReadUsage(object value, bool legacy, bool hasEntries)
         {
-            Shape(value, "since", "latest", "connections");
-            if (!DateTimeOffset.TryParseExact(Text(value, "since"), "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out var since))
-                throw Protocol();
+            Shape(value, legacy ? new[] { "since", "latest", "connections" } : new[] { "since", "priorUsageUnknown", "latest", "connections" });
+            bool priorUsageUnknown = legacy ? hasEntries : (Get(value, "priorUsageUnknown") is bool prior ? prior : throw Protocol());
+            object start = Get(value, "since");
+            DateTimeOffset? since = null;
+            if (start != null)
+            {
+                if (!(start is string stamp) || !DateTimeOffset.TryParseExact(stamp, "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+                    throw Protocol();
+                since = parsed;
+            }
             object latest = Get(value, "latest");
             var connections = Records(value, "connections", 512).Select(ReadUsageRow).ToArray();
+            if (!since.HasValue && (legacy || latest != null || connections.Length != 0)) throw Protocol();
             if (connections.Select(row => (row.ConnectionId, row.Model)).Distinct().Count() != connections.Length) throw Protocol();
-            return new LlmChatUsage(since, latest == null ? null : ReadUsageRow(latest), connections);
+            return new LlmChatUsage(since, latest == null ? null : ReadUsageRow(latest), connections, priorUsageUnknown);
         }
 
         private static LlmConnectionUsage ReadUsageRow(object row)
@@ -432,7 +442,7 @@ namespace JueMingR.Infrastructure.Llm
         private static Dictionary<string, object> Document(string format, string section, object value) =>
             new Dictionary<string, object> { ["format"] = format, ["version"] = 1, [section] = value };
 
-        private static object Read(AtomicFileDocument file, string format, string label, out string identity)
+        private static object Read(AtomicFileDocument file, string format, string label, out string identity, int maximumVersion = 1)
         {
             PreferenceReadResult read = file.Read();
             identity = read.Identity;
@@ -443,8 +453,8 @@ namespace JueMingR.Infrastructure.Llm
                     object document = Parse(Utf8.GetString(read.Contents));
                     if (Text(document, "format") != format) throw Protocol();
                     int version = Number(document, "version");
-                    if (version > 1) throw Storage(label + "由较新版本写入，原件已保留。");
-                    if (version != 1) throw Protocol();
+                    if (version > maximumVersion) throw Storage(label + "由较新版本写入，原件已保留。");
+                    if (version < 1) throw Protocol();
                     return document;
                 case PreferenceReadStatus.Busy:
                     throw Storage(label + "已被另一个进程打开。");

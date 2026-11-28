@@ -42,7 +42,7 @@ namespace NativeWorldTextProbe
             CompanionTaskSnapshot TaskView() => (CompanionTaskSnapshot)Call(host,"GetTask",profile.OwnerId,profile.Id,null);
             string Receipts()=>String.Join(" | ",((IReadOnlyList<LlmHistoryEntry>)Get(View(),"Entries")).Reverse()
                 .Take(8).Select(entry=>entry.Text));
-            void Script(string playerText,Func<LlmRequest,int,LlmTurn> choose)
+            void Script(string playerText,Func<LlmRequest,int,LlmTurn> choose,Action afterSend=null)
             {
                 int rounds=0;
                 Exception failure=null;
@@ -53,6 +53,7 @@ namespace NativeWorldTextProbe
                 };
                 object[] args={profile.OwnerId,profile.Id,playerText,null};
                 Require((bool)Call(host,"SendChat",args),"native world request sent: "+args[3]);
+                afterSend?.Invoke();
                 NativeQuickItemChecks.Until(()=>{ Call(host,"PumpChat"); return !(bool)Get(View(),"IsRunning"); });
                 if (failure!=null) throw new InvalidOperationException("Native chat tool round " + rounds, failure);
                 Require(rounds==4,"default model turns completed with compact tool batches: "+rounds+" · "+Receipts());
@@ -66,6 +67,11 @@ namespace NativeWorldTextProbe
                 var result=request.Messages.Last().Results?.SingleOrDefault(value=>value.Id==id);
                 Require(result!=null && !result.IsError,"normal tool receipt for "+id+": "+result?.Output);
                 return result.Output;
+            }
+            void Rejected(LlmRequest request,string id,string reason)
+            {
+                var result=request.Messages.Last().Results?.SingleOrDefault(value=>value.Id==id);
+                Require(result?.IsError==true && result.Output.Contains(reason),"real tool rejection for "+id+": "+result?.Output);
             }
             string MemoryRef(string receipt)
             {
@@ -115,6 +121,7 @@ namespace NativeWorldTextProbe
                 body.Bottom=human.Bottom=new Vector2(77*16+8,55*16);
                 body.velocity=Vector2.Zero;
                 Call(Get(actor,"Behavior"),"PositionChanged",body);
+                NativeToolsChecks.Tile(55,54,TileID.Copper);
                 for(int x=76;x<=78;x++) NativeToolsChecks.Tile(x,54,TileID.Copper);
                 Pool(255);
                 Position(writer.Player,writer.Actor,77);
@@ -129,6 +136,14 @@ namespace NativeWorldTextProbe
                 NativeQuickItemChecks.Until(()=>{ PumpMemory(); return (bool)Get(ownerMemory,"Ready") &&
                     GetOptional(Get(ownerMemory,"live"),"Saved")!=null; });
                 var anchor=Call(host,"CaptureTaskSendAnchor",human);
+                Position(body,actor,55);
+                var olderObservation=(CompanionTaskOutcome)Call(host,"TryGetTaskObservation",identity,"observe_tiles",new Dictionary<string,object>
+                    { ["around"]="companion",["radius"]=4,["tile_type"]=(int)TileID.Copper },anchor);
+                Require(olderObservation.Value!=null,"older adjacent real copper can be observed as a distinct site");
+                var older=(CompanionTaskOutcome)Call(host,"WriteWorldMemory",profile.Id,null,0,"旧铜矿点","较早观察",olderObservation.Value,"ore",null);
+                Require(older.Value!=null,"older copper site has its own stable durable reference");
+                NativeQuickItemChecks.Until(()=>{ PumpMemory(); return ((CompanionTaskOutcome)Call(host,"ReadWorldMemory",older.Value)).State=="succeeded"; });
+                Position(body,actor,77);
                 var seen=(CompanionTaskOutcome)Call(host,"TryGetTaskObservation",identity,"observe_tiles",new Dictionary<string,object>
                 { ["around"]="companion",["radius"]=4,["tile_type"]=(int)TileID.Copper },anchor);
                 string miningRow=seen.Detail.Split('；').Single(row=>row.StartsWith("(77,54)",StringComparison.Ordinal));
@@ -195,9 +210,11 @@ namespace NativeWorldTextProbe
                         Require(Result(request,"mine-skill").Contains("实际入包") || Result(request,"mine-skill").Contains("真实入包"),
                             "demanded mining skill distinguishes breaking and collecting");
                         Require(Result(request,"mine-detail").Contains("验收铜矿点"),"read actual world note");
-                        return Tools(Plan("验收真实三块铜矿",Step("mine_area",("destination","memory"),("reference",foundMine),
-                            ("tile_type",(int)TileID.Copper),("product_type",(int)ItemID.CopperOre),("mode","collect"),("amount",3)),Step("stand_by")));
+                        return Tools(ToolsForMine("未委托脚边采矿","companion",null),ToolsForMine("未委托旧矿点","memory",older.Value),
+                            ToolsForMine("验收真实三块铜矿","memory",foundMine));
                     }
+                    Rejected(request,"未委托脚边采矿","位置不一致");
+                    Rejected(request,"未委托旧矿点","位置不一致");
                     Result(request,"验收真实三块铜矿");
                     return Done();
                 });
@@ -213,7 +230,7 @@ namespace NativeWorldTextProbe
                 }
                 var done=TaskView();
                 Require(done.State=="succeeded" && done.Attempts.Any(result=>result.Operation=="mine_area" && result.Completed==3) &&
-                    Enumerable.Range(76,3).All(x=>!Main.tile[x,54].active()) &&
+                    Enumerable.Range(76,3).All(x=>!Main.tile[x,54].active()) && Main.tile[55,54].active() &&
                     body.inventory.Sum(item=>item.type==ItemID.CopperOre?item.stack:0)==ore+3 && heldTool==ItemID.GoldPickaxe,
                     "native movement picked stronger eligible tool, broke three real tiles and picked up exactly three copper ore: "+done.Detail+
                     " · "+String.Join(" | ",done.Attempts.Select(result=>result.Detail))+" · "+body.Bottom+" · tool="+heldTool);
@@ -223,9 +240,37 @@ namespace NativeWorldTextProbe
                     "manual Follow reacquires from real model standby without changing the original preference");
                 Console.WriteLine("PASS native exact remembered copper order after reopening world memory and switching model ids, three tiles and items, stronger tool and manual Follow.");
 
+                LlmToolCall ToolsForMine(string id,string destination,string reference)
+                {
+                    var arguments=new Dictionary<string,object>{["destination"]=destination,["tile_type"]=(int)TileID.Copper,
+                        ["product_type"]=(int)ItemID.CopperOre,["mode"]="collect",["amount"]=3};
+                    if(reference!=null) arguments.Add("reference",reference);
+                    return Plan(id,new Dictionary<string,object>{["operation"]="mine_area",["arguments"]=arguments},Step("stand_by"));
+                }
+
                 int product=ShimmerTransforms.GetTransformToItem(ItemID.AngelStatue);
                 Require(product>0,"original build has an actual transformation for this fixture item");
-                void AskForShimmer()
+                string alternatePool=null;
+                void SaveNewPoolDuringReply()
+                {
+                    Position(writer.Player,writer.Actor,54);
+                    for(int y=48;y<=54;y++) for(int x=52;x<=56;x++)
+                    {
+                        var cell=new Tile { liquid=255 };
+                        cell.shimmer(true);
+                        Main.tile[x,y]=cell;
+                    }
+                    var observation=(CompanionTaskOutcome)Call(host,"TryGetTaskObservation",writerIdentity,"observe_tiles",new Dictionary<string,object>
+                        { ["around"]="companion",["radius"]=4,["liquid"]="shimmer" },anchor);
+                    string row=observation.Detail.Split('；').First(text=>text.StartsWith("(54,",StringComparison.Ordinal));
+                    var newPool=(CompanionTaskOutcome)Call(host,"WriteWorldMemory",writerProfile.Id,null,0,"模型等候后才保存的微光池",
+                        "另一个真实池",row.Substring(row.LastIndexOf("· ",StringComparison.Ordinal)+2).Split(' ')[0],"shimmer",null);
+                    alternatePool=newPool.Value;
+                    Require(alternatePool!=null && alternatePool!=pool,"second actual pool has a distinct stable reference");
+                    NativeQuickItemChecks.Until(()=>{ PumpMemory(); return (string)Call(host,"LastTaskMemoryShimmerReference")==alternatePool; });
+                    Position(writer.Player,writer.Actor,62);
+                }
+                void AskForShimmer(bool delayedChange=false)
                 {
                     string foundPool=null;
                     Script("去上次那个微光池，把这件物品丢进去",(request,round)=>
@@ -245,21 +290,31 @@ namespace NativeWorldTextProbe
                                 Result(request,"pool-held").Contains("当前持物 #"+ItemID.AngelStatue),"guide index and actual held type were visible");
                             foundPool=MemoryRef(Result(request,"pool-memory"));
                             Require(foundPool==pool,"chat discovered the other actor's reopened world memory");
-                            return Tools(Tool("pool-skill","read_game_skill",("key","shimmer")),
-                                Tool("pool-detail","read_world_memory",("reference",foundPool)),
+                            var skill=Tool("pool-skill","read_game_skill",("key","shimmer"));
+                            var detail=Tool("pool-detail","read_world_memory",("reference",foundPool));
+                            return delayedChange?Tools(skill,detail):Tools(skill,detail,
                                 Tool("pool-source","get_game_item_sources",("item_type",(int)ItemID.AngelStatue),("kind","shimmer")));
                         }
                         if (round==3)
                         {
                             Require(Result(request,"pool-skill").Contains("held_at_send=true") &&
                                 Result(request,"pool-detail").Contains("西侧矿道下面，从东边下去方便"),"normal tools supply guide and the other actor's actual saved note");
-                            Result(request,"pool-source");
-                            return Tools(Plan("验收微光投放",Step("shimmer_item",("target",foundPool),("item_type",(int)ItemID.AngelStatue),
-                                ("amount",1),("held_at_send",true))));
+                            if (!delayedChange) Result(request,"pool-source");
+                            var valid=Plan("验收微光投放",Step("shimmer_item",("target",foundPool),("item_type",(int)ItemID.AngelStatue),
+                                ("amount",1),("held_at_send",true)));
+                            return delayedChange?Tools(Plan("后来才记下的池",Step("shimmer_item",("target",alternatePool),
+                                    ("item_type",(int)ItemID.AngelStatue),("amount",1),("held_at_send",true))),
+                                Plan("错误手中物品",Step("shimmer_item",("target",foundPool),("item_type",(int)ItemID.StoneBlock),
+                                    ("amount",1),("held_at_send",true))),valid):Tools(valid);
+                        }
+                        if (delayedChange)
+                        {
+                            Rejected(request,"后来才记下的池","发话时上次记录的微光池不一致");
+                            Rejected(request,"错误手中物品","无法确认");
                         }
                         Result(request,"验收微光投放");
                         return Done();
-                    });
+                    },delayedChange?(Action)SaveNewPoolDuringReply:null);
                     Require(TaskView()?.State=="accepted" && (int)Call(host,"EffectiveFollow",profile)==0,
                         "native chat accepted the specific remembered pool and released Follow: "+Receipts());
                 }
@@ -272,7 +327,7 @@ namespace NativeWorldTextProbe
                 body.inventory[21]=new Item(ItemID.AngelStatue) { stack=2 };
                 body.selectedItemState.Select(21);
                 Require(body.HeldItem.CanShimmer(),"the actual selected item is natively eligible");
-                AskForShimmer();
+                AskForShimmer(delayedChange:true);
                 for(int i=0;i<780 && TaskView().IsActive;i++) WorldTick();
                 var converted=TaskView();
                 Require(converted.State=="succeeded" && converted.Attempts.Last().Completed==1 && body.inventory[21].stack==1 &&
@@ -284,6 +339,7 @@ namespace NativeWorldTextProbe
 
                 Position(body,actor,65);
                 body.selectedItemState.Select(21);
+                NativeQuickItemChecks.Until(()=>{ PumpMemory(); return (string)Call(host,"LastTaskMemoryShimmerReference")==pool; });
                 AskForShimmer();
                 WorldTick();
                 Pool(0);

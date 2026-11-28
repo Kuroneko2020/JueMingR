@@ -20,6 +20,7 @@ namespace JueMingR.TerrariaHost.World
         {
             internal readonly string Key;
             internal readonly Dictionary<int, MaterialPage> Pages;
+            internal readonly HashSet<int> Verified = new HashSet<int>();
             internal string Stamp;
             internal MaterialBook(string key, Dictionary<int, MaterialPage> pages = null)
             { Key = key; Pages = pages ?? new Dictionary<int, MaterialPage>(); }
@@ -70,6 +71,7 @@ namespace JueMingR.TerrariaHost.World
             internal Task<MaterialPage[]> Aggregate;
             internal Queue<MaterialPage> Restore;
             internal bool RestoreVerified;
+            internal HashSet<int> RestoreStampedPages;
 #if DEBUG
             internal long CellsRead;
 #endif
@@ -108,6 +110,7 @@ namespace JueMingR.TerrariaHost.World
                     {
                         session.RestoreVerified = !hooksUnavailable && session.CompleteSource && session.DiskStamp != null &&
                             session.DiskStamp == receipt.Value.Stamp;
+                        session.RestoreStampedPages = receipt.Value.Verified;
                         session.Restore = new Queue<MaterialPage>(receipt.Value.Pages.Values);
                     }
                 }
@@ -120,10 +123,12 @@ namespace JueMingR.TerrariaHost.World
                 for (int n = 0; n < 16 && session.Restore.Count != 0; n++)
                 {
                     var page = session.Restore.Dequeue();
-                    InstallPage(session, page, session.RestoreVerified && Version(session, page.Id) == 0, witness: false);
+                    InstallPage(session, page, session.RestoreVerified && session.RestoreStampedPages.Contains(page.Id) &&
+                        Version(session, page.Id) == 0, witness: false);
                 }
                 if (session.Restore.Count != 0) return;
                 session.Restore = null;
+                session.RestoreStampedPages = null;
             }
             if (!session.CompleteSource && session.NextNetworkSeed < session.Columns * session.Rows)
                 for (int n = 0; n < 48 && session.NextNetworkSeed < session.Columns * session.Rows; n++)
@@ -256,9 +261,16 @@ namespace JueMingR.TerrariaHost.World
             foreach (var sample in page.Samples)
             {
                 string category = sample.Key == LiquidBase + 3 ? "shimmer" : "ore";
-                var fact = current && witness ? ObservePlace(category, sample.Value) : null;
+                var fact = current && witness ? ObservePlace(category, sample.Value, automatic: true) : null;
+                // The material counts and sparse coordinate still exist when
+                // an unfinished shimmer component cannot identify a pool.
+                if (category == "shimmer" && fact == null) continue;
                 if (fact == null)
-                    Add(NewPlace(session, category, sample.Value, category == "ore" ? "物质索引中的矿物图格 " + sample.Key + "。" : "区域索引见过微光液体。"));
+                {
+                    var place = NewPlace(session,category,sample.Value,category == "ore" ? "物质索引中的矿物图格 " + sample.Key + "。" : "区域索引见过微光液体。");
+                    if (category == "ore") place.OreTileType = sample.Key;
+                    Add(place);
+                }
                 else Add(fact);
             }
             if (page.Temple.HasValue)
@@ -363,7 +375,9 @@ namespace JueMingR.TerrariaHost.World
             // snapshot. A changed world can still reuse historical rows while
             // the live scan replaces them.
             string stamp = session.Revision == 0 ? session.DiskStamp : null;
-            return new MaterialBook(session.Key, new Dictionary<int, MaterialPage>(session.Pages)) { Stamp = stamp };
+            var snapshot = new MaterialBook(session.Key, new Dictionary<int, MaterialPage>(session.Pages)) { Stamp = stamp };
+            if (stamp != null) snapshot.Verified.UnionWith(session.VerifiedPages);
+            return snapshot;
         }
 
         private void FinishIndex(Session session)
@@ -440,6 +454,8 @@ namespace JueMingR.TerrariaHost.World
                 (historic == 0 ? "" : " 另有上次见过 " + historic + " 格，未计入本次覆盖。") +
                 (closest == null ? "" : " 最近已复核候选 " + closest.Reference + " (" + closest.Point.X + ", " + closest.Point.Y +
                     ")，距参考点约 " + (int)Math.Sqrt(DistanceSquared(closest.Point, origin)) + " 格。") +
+                (wanted == LiquidBase + 3 && near.HasValue && closest == null ?
+                    " 已知微光图格 (" + near.Value.X + ", " + near.Value.Y + ")，池界尚未核实。" : "") +
                 (hooksUnavailable ? " 自动地形变化通知不可用，索引仅代表上次扫描。" : "") +
                 (session.IndexFailure == null ? "" : " " + session.IndexFailure);
             if (!report) return WorldResult("succeeded", detail, actual, closest?.Reference);
@@ -492,11 +508,12 @@ namespace JueMingR.TerrariaHost.World
                 using (var compressed = new DeflateStream(bytes, CompressionMode.Compress, true))
                 using (var writer = new BinaryWriter(compressed, Utf8))
                 {
-                    writer.Write("JueMingR.WorldMaterials.1"); writer.Write(book.Key); writer.Write(book.Stamp ?? "");
+                    writer.Write("JueMingR.WorldMaterials.2"); writer.Write(book.Key); writer.Write(book.Stamp ?? "");
                     writer.Write(book.Pages.Count);
                     foreach (var page in book.Pages.Values)
                     {
                         writer.Write(page.Id); writer.Write(page.Count); writer.Write(page.ConfirmedUtc);
+                        writer.Write(book.Verified.Contains(page.Id));
                         writer.Write(page.Counts.Count);
                         foreach (var row in page.Counts) { writer.Write(row.Key); writer.Write(row.Value); }
                         writer.Write(page.Samples.Count);
@@ -516,7 +533,9 @@ namespace JueMingR.TerrariaHost.World
             using (var compressed = new DeflateStream(new MemoryStream(bytes), CompressionMode.Decompress))
             using (var reader = new BinaryReader(compressed, Utf8))
             {
-                if (reader.ReadString() != "JueMingR.WorldMaterials.1" || reader.ReadString() != key) throw new InvalidDataException();
+                string format = reader.ReadString();
+                bool perPageStamp = format == "JueMingR.WorldMaterials.2";
+                if (!perPageStamp && format != "JueMingR.WorldMaterials.1" || reader.ReadString() != key) throw new InvalidDataException();
                 var book = new MaterialBook(key) { Stamp = reader.ReadString() };
                 int columns = (width + Side - 1) / Side, rows = (height + Side - 1) / Side, count = reader.ReadInt32();
                 if (count < 0 || count > columns * rows || book.Stamp.Length != 0 && book.Stamp.Length != 64) throw new InvalidDataException();
@@ -524,6 +543,13 @@ namespace JueMingR.TerrariaHost.World
                 {
                     var page = new MaterialPage { Id = reader.ReadInt32(), Count = reader.ReadInt32(), ConfirmedUtc = reader.ReadInt64() };
                     if (page.Id < 0 || page.Id >= columns * rows || page.Count <= 0 || page.Count > Side * Side) throw new InvalidDataException();
+                    // Earlier snapshots had no trustworthy page-level proof.
+                    // Load their counts as history even if the file stamp matches.
+                    if (perPageStamp && reader.ReadBoolean())
+                    {
+                        if (book.Stamp.Length == 0) throw new InvalidDataException();
+                        book.Verified.Add(page.Id);
+                    }
                     int entries = reader.ReadInt32();
                     if (entries < 0 || entries > page.Count * 3) throw new InvalidDataException();
                     for (int j = 0; j < entries; j++)

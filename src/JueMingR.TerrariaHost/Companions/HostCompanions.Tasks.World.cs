@@ -183,6 +183,10 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 if (actor.TaskTiles == null || !actor.TaskTiles.TryGetValue(execution.Text("target"),out var target))
                     return TaskOutcome("failed","目标引用已失效，请先查询该队友可观察的地形。");
+                var anchor=execution.Anchor;
+                if (anchor.WorkPoint is Point point && (point!=target.Point || anchor.WorkReference?.StartsWith("marker:",StringComparison.Ordinal)==true &&
+                    !MarkerWorkSiteCurrent(anchor.WorkReference,point)))
+                    return TaskOutcome("failed","发话时指定的位置已变化，请重新确认。");
                 string operation = execution.Text("action");
                 if (execution.Number("product_type") > 0 && operation != "mine" && operation != "axe")
                     return TaskOutcome("failed","只有开挖或砍伐可以指定要收取的实际产物。");

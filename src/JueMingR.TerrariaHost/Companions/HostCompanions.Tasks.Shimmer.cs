@@ -62,6 +62,9 @@ namespace JueMingR.TerrariaHost.Companions
                 if (remembered ? SharedWorldMemory?.TryGetPlace(target, out memory) != true || memory.Invalid || memory.Category != "shimmer" :
                     actor.TaskTiles == null || !actor.TaskTiles.TryGetValue(target, out pool) || !KnownShimmerPool(pool.Point))
                     return TaskOutcome("failed", "需要队友观察到的实际微光池，或本世界可到场复核的微光地标。");
+                if (remembered && execution.Anchor.WorkPoint is Point spoken &&
+                    (target != execution.Anchor.WorkReference || memory.Point != spoken))
+                    return TaskOutcome("failed", "发话时指定的微光池已变化，请重新确认。");
                 if (actor.Fishing != null) EndFishingActivity(actor);
                 execution.State = work = new TaskShimmerDrop { Execution = execution, Pool = pool, Type = type,
                     MemoryReference = remembered ? target : null, RememberedPoint = remembered ? memory.Point : pool.Point,

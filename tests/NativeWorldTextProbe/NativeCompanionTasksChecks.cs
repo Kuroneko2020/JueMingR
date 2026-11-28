@@ -195,7 +195,7 @@ namespace NativeWorldTextProbe
                 Finish(a,360);
                 Require(View(a).TaskId == mine.TaskId && View(a).State == "succeeded" && !Main.tile[px,py].active(),
                     "native tool input removes the same observed tile after real mining cooldown: " + View(a).Detail);
-                CheckNativeCritter(host,aid,a,first,workAnchor,tick);
+                CheckNativeCritter(host,aid,a,first,human,second,workAnchor,tick);
                 var blueprint = Get(context,"Blueprint");
                 var library = (LibraryState)Get(blueprint,"Library");
                 var chair = new Item(ItemID.WoodenChair);
@@ -365,15 +365,27 @@ namespace NativeWorldTextProbe
         }
 
         private static void CheckNativeCritter(object host,CompanionTaskIdentity identity,CompanionProfile profile,Player body,
-            object anchor,Action tick)
+            Player human,Player sibling,object anchor,Action tick)
         {
             int slot=Main.maxNPCs-2;
             var oldTarget=Main.npc[slot];
             var oldBystander=Main.npc[slot-1];
             var oldDrops=Main.item;
             var stock=body.inventory.ToArray();
+            var humanFeet=human.Bottom;
+            var humanVelocity=human.velocity;
+            var siblingFeet=sibling.Bottom;
+            var siblingVelocity=sibling.velocity;
+            var siblingActor=Call(host,"Owned",sibling);
             try
             {
+                // This scenario proves native catch and receipt by one body.
+                // Keep competing pickup bodies outside the test area; the
+                // two original NPC hitboxes deliberately still overlap.
+                float awayX=(body.Center.X>=68*16+8 ? 54 : 83)*16+8;
+                human.Bottom=sibling.Bottom=new Vector2(awayX,55*16);
+                human.velocity=sibling.velocity=Vector2.Zero;
+                Call(Get(siblingActor,"Behavior"),"PositionChanged",sibling);
                 Main.item=new WorldItem[oldDrops.Length];
                 for(int i=0;i<Main.item.Length;i++) Main.item[i]=new WorldItem { whoAmI=i };
                 var bunny=new NPC(); bunny.SetDefaults(NPCID.Bunny); bunny.whoAmI=slot;
@@ -411,6 +423,9 @@ namespace NativeWorldTextProbe
                 Call(host,"StopTask",profile.OwnerId,profile.Id,null);
                 Main.npc[slot]=oldTarget; Main.npc[slot-1]=oldBystander;
                 Main.item=oldDrops;
+                human.Bottom=humanFeet; human.velocity=humanVelocity;
+                sibling.Bottom=siblingFeet; sibling.velocity=siblingVelocity;
+                Call(Get(siblingActor,"Behavior"),"PositionChanged",sibling);
                 Array.Copy(stock,body.inventory,stock.Length);
             }
         }

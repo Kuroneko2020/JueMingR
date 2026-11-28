@@ -65,13 +65,17 @@ namespace JueMingR.Platform.Llm
     {
         private static readonly LlmUsageTotals EmptyTotals = new LlmUsageTotals();
         public static readonly LlmChatUsage Empty = new LlmChatUsage(null, null, Array.Empty<LlmConnectionUsage>());
-        public LlmChatUsage(DateTimeOffset? trackingStartedAt, LlmConnectionUsage latest, IReadOnlyList<LlmConnectionUsage> connections)
+        public LlmChatUsage(DateTimeOffset? trackingStartedAt, LlmConnectionUsage latest, IReadOnlyList<LlmConnectionUsage> connections,
+            bool priorUsageUnknown = false)
         {
             TrackingStartedAt = trackingStartedAt; LatestConnection = latest;
+            PriorUsageUnknown = priorUsageUnknown;
             Connections = Array.AsReadOnly(connections.ToArray());
             Total = connections.Aggregate(EmptyTotals, (total, row) => total.Combine(row.Totals));
         }
         public DateTimeOffset? TrackingStartedAt { get; }
+        // Legacy history had no accounting. Keep that gap even if those rows are trimmed.
+        public bool PriorUsageUnknown { get; }
         public LlmConnectionUsage LatestConnection { get; }
         public LlmUsageTotals Latest => LatestConnection?.Totals ?? EmptyTotals;
         public LlmUsageTotals Total { get; }
@@ -98,8 +102,12 @@ namespace JueMingR.Platform.Llm
 
     public sealed class LlmChatArchive
     {
+        private static readonly LlmChatUsage UnmeasuredHistory = new LlmChatUsage(null, null, Array.Empty<LlmConnectionUsage>(), true);
         public LlmChatArchive(IReadOnlyList<LlmHistoryEntry> entries, LlmChatUsage usage)
-        { Entries = Array.AsReadOnly(entries.ToArray()); Usage = usage ?? LlmChatUsage.Empty; }
+        {
+            Entries = Array.AsReadOnly(entries.ToArray());
+            Usage = usage ?? (Entries.Count == 0 ? LlmChatUsage.Empty : UnmeasuredHistory);
+        }
         public IReadOnlyList<LlmHistoryEntry> Entries { get; }
         public LlmChatUsage Usage { get; }
     }

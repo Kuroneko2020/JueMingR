@@ -136,7 +136,8 @@ namespace JueMingR.TerrariaHost.Companions
                         if (!(stop ? ChatFields(args, "mode") : ChatFields(args, "mode", "attack")) ||
                             !ChatString(args, "mode", 8, out var mode) || mode != null && mode != "follow" && mode != "stay" ||
                             !ChatBool(args, "attack", out var attack) || !stop && mode == null && !attack.HasValue) break;
-                        if (stop && !run.Authority.Stop || !run.Authority.Mode(mode, attack))
+                        if (stop && !run.Authority.Stop || !run.Authority.Mode(mode, attack) ||
+                            !stop && mode!=null && run.Authority.WorldSite!=null)
                         { RejectChatTool(command, ChatAuthority.Denied); return; }
                         ChangeChatBehavior(command, actor, mode, attack, stop);
                         return;
