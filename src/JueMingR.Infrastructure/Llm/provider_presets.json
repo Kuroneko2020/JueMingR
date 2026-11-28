@@ -1,0 +1,4318 @@
+{
+  "format": "juemingr.provider_presets",
+  "version": 1,
+  "verifiedAt": "2026-11-27",
+  "verification": "official_docs_only",
+  "protocols": [
+    {
+      "id": "openai_chat",
+      "label": "OpenAI Chat Completions",
+      "method": "POST",
+      "defaultInferencePath": "/chat/completions",
+      "contentType": "application/json",
+      "historyFormat": "messages",
+      "streamFormat": "sse_chat_delta",
+      "toolResultAssociation": "tool_call_id"
+    },
+    {
+      "id": "openai_responses",
+      "label": "OpenAI Responses",
+      "method": "POST",
+      "defaultInferencePath": "/responses",
+      "contentType": "application/json",
+      "historyFormat": "typed_input_output_items",
+      "streamFormat": "typed_sse_events",
+      "toolResultAssociation": "call_id"
+    },
+    {
+      "id": "anthropic_messages",
+      "label": "Anthropic Messages",
+      "method": "POST",
+      "defaultInferencePath": "/v1/messages",
+      "contentType": "application/json",
+      "historyFormat": "messages_with_content_blocks",
+      "streamFormat": "sse_message_and_content_block_events",
+      "toolResultAssociation": "tool_use_id"
+    }
+  ],
+  "providers": [
+    {
+      "id": "deepseek_official_chat",
+      "label": "DeepSeek（官方 API）",
+      "aliases": [
+        "DeepSeek",
+        "深度求索"
+      ],
+      "provider": "deepseek",
+      "region": "official_endpoint",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.deepseek.com",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "携带 tools 时完整回传全部历史 reasoning_content；新用户回合不能清空。",
+          "本预设采用官方根 Base；不要自动追加 /v1。"
+        ]
+      },
+      "sources": [
+        "https://api-docs.deepseek.com/",
+        "https://api-docs.deepseek.com/api/list-models/",
+        "https://api-docs.deepseek.com/guides/thinking_mode/",
+        "https://api-docs.deepseek.com/guides/tool_calls/"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "本轮只核实官方按量 API，未确认独立 Token/Coding Plan 端点；不据此推造套餐。"
+        ]
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "kimi_china_chat",
+      "label": "Kimi（月之暗面，中国站，按量 API）",
+      "aliases": [
+        "Kimi",
+        "Moonshot",
+        "月之暗面"
+      ],
+      "provider": "kimi",
+      "region": "china",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.moonshot.cn/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前思考模型完整保留 assistant 历史及 reasoning_content。",
+          "中国站与国际站 API Key 不可互用。"
+        ]
+      },
+      "sources": [
+        "https://platform.kimi.com/docs/api/chat",
+        "https://platform.kimi.com/docs/api/list-models",
+        "https://platform.kimi.com/docs/guide/use-thinking-models"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "kimi_international_chat",
+      "label": "Kimi（月之暗面，国际站，按量 API）",
+      "aliases": [
+        "Kimi",
+        "Moonshot",
+        "月之暗面"
+      ],
+      "provider": "kimi",
+      "region": "international",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.moonshot.ai/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前思考模型完整保留 assistant 历史及 reasoning_content。",
+          "中国站与国际站 API Key 不可互用。"
+        ]
+      },
+      "sources": [
+        "https://platform.kimi.ai/docs/api/chat",
+        "https://platform.kimi.ai/docs/api/list-models",
+        "https://platform.kimi.ai/docs/guide/use-thinking-models"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "glm_china_standard_chat",
+      "label": "GLM / 智谱（中国 BigModel，标准 API，按量 API）",
+      "aliases": [
+        "GLM",
+        "智谱",
+        "BigModel",
+        "Zhipu"
+      ],
+      "provider": "glm",
+      "region": "china",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮官方标准 API 文档未确认模型枚举；不自动构造 /models。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "思考+工具回合保留 reasoning_content；preserved thinking 取决于模型和参数。",
+          "使用标准 API Key，或按官方历史规则使用 Compatible Key；本模板不使用 Coding Plan 端点。"
+        ]
+      },
+      "sources": [
+        "https://docs.bigmodel.cn/cn/guide/develop/openai/introduction",
+        "https://docs.bigmodel.cn/cn/guide/capabilities/thinking-mode",
+        "https://docs.bigmodel.cn/llms.txt",
+        "https://docs.bigmodel.cn/cn/coding-plan/notice/api-key-management"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key",
+          "legacy_compatible_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "普通资源包与充值余额共用标准 API。2026-10-16 起新标准/个人套餐/团队套餐 Key 分开；更换 Base 不改变新 Key 的计费用途。历史兼容 Key 另按官方规则处理。",
+          "历史 Compatible Key 在此标准 Chat 端点按普通余额/标准资源规则计费；仅适用于该历史凭据与此协议的官方规则，不推及其他协议，不自动迁移密钥或切换计费方案。"
+        ]
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "glm_international_standard_chat",
+      "label": "GLM / Z.AI（国际站，标准 API，按量 API）",
+      "aliases": [
+        "GLM",
+        "Z.AI",
+        "ZAI",
+        "智谱国际"
+      ],
+      "provider": "glm",
+      "region": "international",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.z.ai/api/paas/v4",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "官方概览和 API 索引未确认模型枚举；不把第三方 GET /models 的 401 当作已验证支持。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "使用 Z.AI Standard API Key，或按官方历史规则使用 Compatible Key；保持标准 Chat 端点。",
+          "交错工具与 preserved thinking 保留原始 reasoning_content；不与国内凭据自动互换。",
+          "当前 function-calling 指南仅列 tool_choice=auto。"
+        ]
+      },
+      "sources": [
+        "https://docs.z.ai/api-reference/introduction",
+        "https://docs.z.ai/guides/capabilities/thinking-mode",
+        "https://docs.z.ai/guides/capabilities/function-calling",
+        "https://docs.z.ai/llms.txt",
+        "https://docs.z.ai/devpack/notice/api-key-management"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key",
+          "legacy_compatible_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "普通资源包与充值余额共用标准 API。2026-10-16 起新标准/个人套餐/团队套餐 Key 分开；更换 Base 不改变新 Key 的计费用途。历史兼容 Key 另按官方规则处理。",
+          "历史 Compatible Key 在此标准 Chat 端点按普通余额/标准资源规则计费；仅适用于该历史凭据与此协议的官方规则，不推及其他协议，不自动迁移密钥或切换计费方案。"
+        ]
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "bailian_cn_beijing_chat",
+      "label": "阿里百炼 / Qwen（北京，共享域名，按量 API）",
+      "aliases": [
+        "百炼",
+        "阿里",
+        "阿里云",
+        "Qwen",
+        "通义千问",
+        "DashScope"
+      ],
+      "provider": "alibaba_bailian",
+      "region": "cn-beijing",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "共享兼容 Base 的 /models 未确认；高级工作空间原生枚举需单独路由。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "API Key 必须匹配地域及计费方案。",
+          "preserve_thinking、reasoning_content、encrypted_content 依托管模型处理。",
+          "共享域名仍可用；官方建议生产采用工作空间域名。"
+        ]
+      },
+      "sources": [
+        "https://help.aliyun.com/zh/model-studio/base-url",
+        "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions",
+        "https://help.aliyun.com/en/model-studio/list-models",
+        "https://help.aliyun.com/zh/model-studio/cot-summary"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "bailian_ap_southeast_1_chat",
+      "label": "阿里百炼 / Qwen（新加坡，共享域名，按量 API）",
+      "aliases": [
+        "百炼",
+        "阿里",
+        "阿里云",
+        "Qwen",
+        "通义千问",
+        "DashScope"
+      ],
+      "provider": "alibaba_bailian",
+      "region": "ap-southeast-1",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "共享兼容 Base 的 /models 未确认；高级工作空间原生枚举需单独路由。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "API Key 必须匹配地域及计费方案。",
+          "preserve_thinking、reasoning_content、encrypted_content 依托管模型处理。",
+          "共享域名仍可用；官方建议生产采用工作空间域名。"
+        ]
+      },
+      "sources": [
+        "https://help.aliyun.com/zh/model-studio/base-url",
+        "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions",
+        "https://help.aliyun.com/en/model-studio/list-models",
+        "https://help.aliyun.com/zh/model-studio/cot-summary"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "bailian_cn_hongkong_chat",
+      "label": "阿里百炼 / Qwen（中国香港，共享域名，按量 API）",
+      "aliases": [
+        "百炼",
+        "阿里",
+        "阿里云",
+        "Qwen",
+        "通义千问",
+        "DashScope"
+      ],
+      "provider": "alibaba_bailian",
+      "region": "cn-hongkong",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "共享兼容 Base 的 /models 未确认；高级工作空间原生枚举需单独路由。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "API Key 必须匹配地域及计费方案。",
+          "preserve_thinking、reasoning_content、encrypted_content 依托管模型处理。",
+          "共享域名仍可用；官方建议生产采用工作空间域名。"
+        ]
+      },
+      "sources": [
+        "https://help.aliyun.com/zh/model-studio/base-url",
+        "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions",
+        "https://help.aliyun.com/en/model-studio/list-models",
+        "https://help.aliyun.com/zh/model-studio/cot-summary"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "bailian_us_east_1_chat",
+      "label": "阿里百炼 / Qwen（美国弗吉尼亚，共享域名，按量 API）",
+      "aliases": [
+        "百炼",
+        "阿里",
+        "阿里云",
+        "Qwen",
+        "通义千问",
+        "DashScope"
+      ],
+      "provider": "alibaba_bailian",
+      "region": "us-east-1",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "共享兼容 Base 的 /models 未确认；高级工作空间原生枚举需单独路由。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "API Key 必须匹配地域及计费方案。",
+          "preserve_thinking、reasoning_content、encrypted_content 依托管模型处理。",
+          "共享域名仍可用；官方建议生产采用工作空间域名。"
+        ]
+      },
+      "sources": [
+        "https://help.aliyun.com/zh/model-studio/base-url",
+        "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions",
+        "https://help.aliyun.com/en/model-studio/list-models",
+        "https://help.aliyun.com/zh/model-studio/cot-summary"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "bailian_workspace_beijing_chat",
+      "label": "阿里百炼（北京业务空间，高级模板，按量 API）",
+      "aliases": [
+        "百炼",
+        "Qwen",
+        "工作空间",
+        "Workspace"
+      ],
+      "provider": "alibaba_bailian",
+      "region": "cn-beijing",
+      "protocol": "openai_chat",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://{workspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "provider_specific",
+        "method": "GET",
+        "path": null,
+        "url": "https://{workspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/models",
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "bailian_native_models",
+        "fallback": "manual_model_id",
+        "isTemplate": true,
+        "itemsPath": "output.models",
+        "pagination": {
+          "mode": "page_number",
+          "pageParameter": "page_no",
+          "pageSizeParameter": "page_size",
+          "firstPage": 1,
+          "totalPath": "output.total"
+        },
+        "note": "单独构建原生枚举 URL，不在 compatible-mode/v1 后添加 /models；仅在工作空间填写且匹配 key 后启用。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "模板变量未填写时不可发请求。",
+          "其他工作空间地域按官方表设置；枚举路径需独立确认，不能仅替换域名推断。"
+        ]
+      },
+      "sources": [
+        "https://help.aliyun.com/zh/model-studio/base-url",
+        "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions",
+        "https://help.aliyun.com/en/model-studio/list-models",
+        "https://help.aliyun.com/zh/model-studio/cot-summary"
+      ],
+      "isTemplate": true,
+      "requiredSettings": [
+        "workspaceId"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "ark_beijing_chat",
+      "label": "火山方舟 / 豆包（北京，按量 API）",
+      "aliases": [
+        "火山方舟",
+        "方舟",
+        "豆包",
+        "Doubao",
+        "Ark",
+        "Volcengine"
+      ],
+      "provider": "volcengine_ark",
+      "region": "cn-beijing",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "模型枚举限当前账户可见模型；工具能力由具体模型元数据和测试决定。",
+          "保留 reasoning_content 与模型返回的 encrypted_content；空文本流式块仍可能有必要字段。"
+        ]
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/models-api?lang=en",
+        "https://docs.volcengine.com/docs/ark/chat-api?lang=en",
+        "https://docs.volcengine.com/docs/ark/agent-model-invocation-practice?lang=en"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "siliconflow_china_chat",
+      "label": "硅基流动（中国站）",
+      "aliases": [
+        "硅基流动",
+        "SiliconFlow"
+      ],
+      "provider": "siliconflow",
+      "region": "china",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id",
+        "query": {
+          "sub_type": "chat"
+        }
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "工具/思考控制取决于所选托管模型。",
+          "不直接继承同名上游模型直连 API 的回传规则。"
+        ]
+      },
+      "sources": [
+        "https://docs.siliconflow.cn/docs/api/models-get",
+        "https://docs.siliconflow.cn/docs/userguide/guides/function-calling",
+        "https://docs.siliconflow.cn/docs/userguide/capabilities/reasoning"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "siliconflow_international_chat",
+      "label": "硅基流动 / SiliconFlow（国际站）",
+      "aliases": [
+        "硅基流动",
+        "SiliconFlow"
+      ],
+      "provider": "siliconflow",
+      "region": "international",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.siliconflow.com/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id",
+        "query": {
+          "sub_type": "chat"
+        }
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "工具/思考控制取决于所选托管模型。",
+          "不直接继承同名上游模型直连 API 的回传规则。"
+        ]
+      },
+      "sources": [
+        "https://docs.siliconflow.com/en/userguide/quickstart",
+        "https://docs.siliconflow.com/en/api-reference/chat-completions/chat-completions",
+        "https://docs.siliconflow.com/en/api-reference/models/get-model-list"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "minimax_china_anthropic",
+      "label": "MiniMax（中国站，推荐 Anthropic，按量 API）",
+      "aliases": [
+        "MiniMax",
+        "稀宇"
+      ],
+      "provider": "minimax",
+      "region": "china",
+      "protocol": "anthropic_messages",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.minimax.cn/anthropic",
+      "inferencePath": "/v1/messages",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "Messages 官方示例为 Bearer；不自动加入 Claude 原厂版本或工作空间头。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/v1/models",
+        "url": null,
+        "auth": {
+          "mode": "api_key_header",
+          "header": "X-Api-Key",
+          "prefix": "",
+          "credentialSource": "secret_store",
+          "secretRefSource": "connection.apiKeySecretRef"
+        },
+        "responseFormat": "anthropic_models",
+        "fallback": "manual_model_id",
+        "note": "此操作官方示例为 X-Api-Key，区别于 Messages 的 Bearer 示例。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "官方推荐 Anthropic SDK。",
+          "保存完整 content 块及 thinking/signature/tool_use；当前 tool_choice 仅支持 auto。"
+        ]
+      },
+      "sources": [
+        "https://platform.minimax.cn/docs/guides/quickstart-sdk",
+        "https://platform.minimax.cn/docs/api-reference/text-anthropic-api",
+        "https://platform.minimax.cn/docs/api-reference/text-chat-anthropic",
+        "https://platform.minimax.cn/docs/api-reference/models/anthropic/list-models"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "minimax_china_chat",
+      "label": "MiniMax（中国站，Chat 兼容，按量 API）",
+      "aliases": [
+        "MiniMax",
+        "稀宇"
+      ],
+      "provider": "minimax",
+      "region": "china",
+      "protocol": "openai_chat",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://api.minimax.cn/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "工具回合保留完整 assistant 消息、reasoning_content 与 tool_calls。"
+        ]
+      },
+      "sources": [
+        "https://platform.minimax.cn/docs/api-reference/text-openai-api",
+        "https://platform.minimax.cn/docs/api-reference/models/openai/list-models"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "minimax_international_anthropic",
+      "label": "MiniMax（国际站，推荐 Anthropic，按量 API）",
+      "aliases": [
+        "MiniMax",
+        "稀宇"
+      ],
+      "provider": "minimax",
+      "region": "international",
+      "protocol": "anthropic_messages",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.minimax.io/anthropic",
+      "inferencePath": "/v1/messages",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "Messages 官方示例为 Bearer；不自动加入 Claude 原厂版本或工作空间头。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/v1/models",
+        "url": null,
+        "auth": {
+          "mode": "api_key_header",
+          "header": "X-Api-Key",
+          "prefix": "",
+          "credentialSource": "secret_store",
+          "secretRefSource": "connection.apiKeySecretRef"
+        },
+        "responseFormat": "anthropic_models",
+        "fallback": "manual_model_id",
+        "note": "此操作官方示例为 X-Api-Key，区别于 Messages 的 Bearer 示例。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "官方推荐 Anthropic SDK。",
+          "保存完整 content 块及 thinking/signature/tool_use；当前 tool_choice 仅支持 auto。"
+        ]
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/quickstart-sdk",
+        "https://platform.minimax.io/docs/api-reference/text-anthropic-api",
+        "https://platform.minimax.io/docs/api-reference/text-chat-anthropic",
+        "https://platform.minimax.io/docs/api-reference/models/anthropic/list-models"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "minimax_international_chat",
+      "label": "MiniMax（国际站，Chat 兼容，按量 API）",
+      "aliases": [
+        "MiniMax",
+        "稀宇"
+      ],
+      "provider": "minimax",
+      "region": "international",
+      "protocol": "openai_chat",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://api.minimax.io/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "工具回合保留完整 assistant 消息、reasoning_content 与 tool_calls。"
+        ]
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/api-reference/text-openai-api",
+        "https://platform.minimax.io/docs/api-reference/models/openai/list-models"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "mimo_public_payg_chat",
+      "label": "MiMo / 小米（公开按量入口，地区以控制台为准，按量 API）",
+      "aliases": [
+        "MiMo",
+        "小米",
+        "Xiaomi"
+      ],
+      "provider": "mimo",
+      "region": "account_region",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.xiaomimimo.com/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "api_key_header",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "api-key",
+        "prefix": "",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "官方支持 api-key 或 Bearer；按量 API Key 应匹配账号区域及控制台地址。",
+        "alternatives": [
+          {
+            "mode": "bearer",
+            "header": "Authorization",
+            "prefix": "Bearer "
+          }
+        ],
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "公开中英文 API 示例提供此地址，但账号 FAQ 说明地区与 Base/Key 存在对应关系。",
+          "官方建议保留完整历史 reasoning_content；不可宣传缺失必定 400。",
+          "Token Plan 的地区域名不是按量国际端点的证据。"
+        ]
+      },
+      "sources": [
+        "https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call",
+        "https://mimo.mi.com/docs/en-US/api/model/list-models",
+        "https://mimo.mi.com/docs/zh-CN/quick-start/faq/account"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "mimo_account_region_chat",
+      "label": "MiMo / 小米（其他账号地区，填写控制台地址，按量 API）",
+      "aliases": [
+        "MiMo",
+        "小米",
+        "Xiaomi",
+        "国际"
+      ],
+      "provider": "mimo",
+      "region": "account_region_requires_console",
+      "protocol": "openai_chat",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": null,
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "api_key_header",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "api-key",
+        "prefix": "",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "从同一账号区域控制台取得 Base URL 和按量 Key；不要自动重用另一地区凭据。",
+        "alternatives": [
+          {
+            "mode": "bearer",
+            "header": "Authorization",
+            "prefix": "Bearer "
+          }
+        ],
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "该账号地区的精确 API Base 和模型枚举路由尚待控制台核实；不猜造域名。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "console_required",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前记录只确认 MiMo 的公开协议能力；具体账号区域入口尚未实测。"
+        ]
+      },
+      "sources": [
+        "https://mimo.mi.com/docs/zh-CN/quick-start/summary/first-api-call",
+        "https://mimo.mi.com/docs/en-US/api/model/list-models",
+        "https://mimo.mi.com/docs/zh-CN/quick-start/faq/account"
+      ],
+      "requiredSettings": [
+        "baseUrl",
+        "accountRegion"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "openai_official_responses",
+      "label": "GPT / OpenAI（官方 API，Responses，默认）",
+      "aliases": [
+        "GPT",
+        "OpenAI"
+      ],
+      "provider": "openai",
+      "region": "official_endpoint",
+      "protocol": "openai_responses",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.openai.com/v1",
+      "inferencePath": "/responses",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前官方推荐新接入使用 Responses；部分模型工具能力只在 Responses 可用。",
+          "本模板采用官方默认入口，不提供未证实中国镜像。"
+        ]
+      },
+      "sources": [
+        "https://developers.openai.com/api/reference/overview/",
+        "https://developers.openai.com/api/reference/resources/models/methods/list",
+        "https://developers.openai.com/api/docs/guides/migrate-to-responses",
+        "https://developers.openai.com/api/docs/guides/function-calling",
+        "https://developers.openai.com/api/docs/guides/streaming-responses",
+        "https://developers.openai.com/api/docs/guides/chatgpt-api-credits"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "购买的 API 额度和已领取至相同 API 组织的合资格订阅赠送 API credits 共用本端点及该组织项目 API Key；不是 ChatGPT 登录令牌。服务端可在赠送额度用完后使用已有购买额度。"
+        ],
+        "fundingSources": [
+          "purchased_api_credits",
+          "eligible_subscription_api_credits"
+        ]
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "openai_official_chat",
+      "label": "GPT / OpenAI（官方 API，Chat Completions）",
+      "aliases": [
+        "GPT",
+        "OpenAI"
+      ],
+      "provider": "openai",
+      "region": "official_endpoint",
+      "protocol": "openai_chat",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://api.openai.com/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前官方推荐新接入使用 Responses；部分模型工具能力只在 Responses 可用。",
+          "本模板采用官方默认入口，不提供未证实中国镜像。"
+        ]
+      },
+      "sources": [
+        "https://developers.openai.com/api/reference/overview/",
+        "https://developers.openai.com/api/reference/resources/models/methods/list",
+        "https://developers.openai.com/api/docs/guides/migrate-to-responses",
+        "https://developers.openai.com/api/docs/guides/function-calling",
+        "https://developers.openai.com/api/docs/guides/streaming-responses",
+        "https://developers.openai.com/api/docs/guides/chatgpt-api-credits"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "购买的 API 额度和已领取至相同 API 组织的合资格订阅赠送 API credits 共用本端点及该组织项目 API Key；不是 ChatGPT 登录令牌。服务端可在赠送额度用完后使用已有购买额度。"
+        ],
+        "fundingSources": [
+          "purchased_api_credits",
+          "eligible_subscription_api_credits"
+        ]
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "claude_official_messages",
+      "label": "Claude / Anthropic（官方 API）",
+      "aliases": [
+        "Claude",
+        "Anthropic",
+        "克劳德"
+      ],
+      "provider": "anthropic",
+      "region": "official_endpoint",
+      "protocol": "anthropic_messages",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.anthropic.com",
+      "inferencePath": "/v1/messages",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {
+          "anthropic-version": "2026-10-21"
+        },
+        "conditionalHeaders": [
+          {
+            "name": "anthropic-workspace-id",
+            "valueSource": "profile.workspaceId",
+            "requiredWhen": "api_key_not_scoped_to_one_workspace",
+            "note": "单工作空间 key 可省略；不要虚构 workspace ID。"
+          }
+        ],
+        "note": "当前官方推荐 Bearer；x-api-key 仍为受支持的旧鉴权方式。",
+        "alternatives": [
+          {
+            "mode": "api_key_header",
+            "header": "x-api-key",
+            "prefix": ""
+          }
+        ],
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/v1/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "anthropic_models",
+        "fallback": "manual_model_id",
+        "pagination": {
+          "mode": "provider_cursor"
+        }
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "协议版本是本次官方文档值；后续升级须核实，已有用户配置不静默迁移。",
+          "完整保存 tool_use/tool_result、thinking/signature 等必要内容块。"
+        ]
+      },
+      "sources": [
+        "https://platform.claude.com/docs/en/api/overview",
+        "https://platform.claude.com/docs/en/api/models/list",
+        "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
+        "https://platform.claude.com/docs/en/build-with-claude/streaming",
+        "https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "普通 API 余额和已领取至同一 Console 组织的合资格订阅 API credits 共用本端点和该组织 API Key；服务端扣费顺序不由模板标签改变。"
+        ],
+        "fundingSources": [
+          "purchased_api_credits",
+          "eligible_subscription_api_credits"
+        ]
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "gemini_official_openai_chat",
+      "label": "Google Gemini（官方 OpenAI 兼容）",
+      "aliases": [
+        "Gemini",
+        "Google",
+        "谷歌"
+      ],
+      "provider": "google_gemini",
+      "region": "official_endpoint",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "本期只实现官方 OpenAI 兼容；不实现原生 GenerateContent。",
+          "兼容支持仍有 beta 限制；工具签名和供应商扩展须原位保留。"
+        ]
+      },
+      "sources": [
+        "https://aistudio.google.com/docs/openai",
+        "https://aistudio.google.com/docs/thought-signatures?generate-content=true"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "xai_official_responses",
+      "label": "xAI / Grok（官方 API，Responses，默认）",
+      "aliases": [
+        "xAI",
+        "Grok"
+      ],
+      "provider": "xai",
+      "region": "global",
+      "protocol": "openai_responses",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.x.ai/v1",
+      "inferencePath": "/responses",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "官方优先推荐 Responses；流式和自定义工具须按所选协议解析。"
+        ]
+      },
+      "sources": [
+        "https://docs.x.ai/developers/rest-api-reference/inference/responses",
+        "https://docs.x.ai/developers/rest-api-reference/inference/chat-completions",
+        "https://docs.x.ai/developers/rest-api-reference/inference/models",
+        "https://docs.x.ai/developers/tools/function-calling",
+        "https://docs.x.ai/developers/tools/streaming-and-sync"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "xai_official_chat",
+      "label": "xAI / Grok（官方 API，Chat Completions）",
+      "aliases": [
+        "xAI",
+        "Grok"
+      ],
+      "provider": "xai",
+      "region": "global",
+      "protocol": "openai_chat",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://api.x.ai/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "官方优先推荐 Responses；流式和自定义工具须按所选协议解析。"
+        ]
+      },
+      "sources": [
+        "https://docs.x.ai/developers/rest-api-reference/inference/responses",
+        "https://docs.x.ai/developers/rest-api-reference/inference/chat-completions",
+        "https://docs.x.ai/developers/rest-api-reference/inference/models",
+        "https://docs.x.ai/developers/tools/function-calling",
+        "https://docs.x.ai/developers/tools/streaming-and-sync"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "openrouter_official_chat",
+      "label": "OpenRouter（Chat）",
+      "aliases": [
+        "OpenRouter"
+      ],
+      "provider": "openrouter",
+      "region": "official_endpoint",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "能力还取决于模型及下游提供方；supported_parameters 可辅助筛选，不能代替工具闭环测试。",
+          "使用 OpenRouter 自己的 Key；HTTP-Referer/X-OpenRouter-Title 可选，不设为必填。"
+        ]
+      },
+      "sources": [
+        "https://openrouter.ai/docs/quickstart",
+        "https://openrouter.ai/docs/guides/features/compatibility",
+        "https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties",
+        "https://openrouter.ai/docs/guides/features/tool-calling",
+        "https://openrouter.ai/docs/api_reference/streaming"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "openrouter_official_responses",
+      "label": "OpenRouter（Responses）",
+      "aliases": [
+        "OpenRouter"
+      ],
+      "provider": "openrouter",
+      "region": "official_endpoint",
+      "protocol": "openai_responses",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "inferencePath": "/responses",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "使用当前配置单独保存的 API Key，不从其他厂商环境变量回退。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "能力还取决于模型及下游提供方；supported_parameters 可辅助筛选，不能代替工具闭环测试。",
+          "使用 OpenRouter 自己的 Key；HTTP-Referer/X-OpenRouter-Title 可选，不设为必填。"
+        ]
+      },
+      "sources": [
+        "https://openrouter.ai/docs/quickstart",
+        "https://openrouter.ai/docs/guides/features/compatibility",
+        "https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties",
+        "https://openrouter.ai/docs/guides/features/tool-calling",
+        "https://openrouter.ai/docs/api_reference/streaming"
+      ],
+      "billingPlan": {
+        "id": "standard_api",
+        "label": "按量 API / 标准资源余额",
+        "credentialKinds": [
+          "standard_api_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "general_api",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "ollama_local_chat",
+      "label": "Ollama（本机）",
+      "aliases": [
+        "Ollama",
+        "本地模型"
+      ],
+      "provider": "ollama",
+      "region": "local",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "http://localhost:11434/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "none",
+        "required": false,
+        "credentialSource": null,
+        "header": null,
+        "prefix": null,
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "Ollama 本机无需 API Key；不要把云端鉴权套到本机。"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "服务须已启动且已安装相应模型。",
+          "仅采用 /v1 OpenAI 兼容预设；不把原生 /api/chat 混进来。"
+        ]
+      },
+      "sources": [
+        "https://docs.ollama.com/api/openai-compatibility",
+        "https://docs.ollama.com/api/introduction"
+      ],
+      "billingPlan": {
+        "id": "local",
+        "label": "本机服务",
+        "credentialKinds": [
+          "local_service_token"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "local",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "lmstudio_local_chat",
+      "label": "LM Studio（本机）",
+      "aliases": [
+        "LM Studio",
+        "LMStudio",
+        "本地模型"
+      ],
+      "provider": "lmstudio",
+      "region": "local",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "http://localhost:1234/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "optional_bearer",
+        "required": false,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "默认无鉴权；本机服务启用 API Token 后必须发送 Bearer。",
+        "requiredWhen": "server_api_token_auth_enabled",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "documented",
+        "method": "GET",
+        "path": "/models",
+        "url": null,
+        "auth": {
+          "mode": "inherit_provider_auth"
+        },
+        "responseFormat": "openai_models",
+        "fallback": "manual_model_id"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "服务须已启动并准备所选模型；工具能力依模型而定。",
+          "不混用原生 /api/v1/* 与 OpenAI 兼容 /v1/*。"
+        ]
+      },
+      "sources": [
+        "https://lmstudio.ai/docs/developer/openai-compat",
+        "https://lmstudio.ai/docs/developer/core/authentication",
+        "https://lmstudio.ai/docs/developer/openai-compat/tools"
+      ],
+      "billingPlan": {
+        "id": "local",
+        "label": "本机服务",
+        "credentialKinds": [
+          "local_service_token"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "local",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "custom_openai_chat",
+      "label": "自定义（OpenAI Chat Completions）",
+      "aliases": [
+        "自定义",
+        "Custom"
+      ],
+      "provider": "custom",
+      "region": "user_defined",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": true,
+      "baseUrl": null,
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "user_configured",
+        "required": null,
+        "credentialSource": "secret_store",
+        "header": null,
+        "prefix": null,
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "allowedModes": [
+          "bearer",
+          "api_key_header",
+          "none"
+        ],
+        "note": "用户明确指定地址、鉴权和额外头；不从其他配置继承 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "未知服务端不能因协议名相同就假设支持模型枚举；高级设置可明确添加已确认的枚举路由。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "unverified",
+      "capabilities": {
+        "verification": "unverified",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "unknown",
+        "streaming": "unknown",
+        "clientTools": "unknown",
+        "notes": [
+          "协议适配器可用不代表用户指定服务端具备相同全部能力。"
+        ]
+      },
+      "sources": [
+        "https://developers.openai.com/api/reference/overview/"
+      ],
+      "requiredSettings": [
+        "baseUrl",
+        "model",
+        "authMode"
+      ],
+      "billingPlan": {
+        "id": "user_defined",
+        "label": "由服务端与凭据决定",
+        "credentialKinds": [
+          "user_defined"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "user_defined",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "custom_openai_responses",
+      "label": "自定义（OpenAI Responses）",
+      "aliases": [
+        "自定义",
+        "Custom"
+      ],
+      "provider": "custom",
+      "region": "user_defined",
+      "protocol": "openai_responses",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": null,
+      "inferencePath": "/responses",
+      "auth": {
+        "mode": "user_configured",
+        "required": null,
+        "credentialSource": "secret_store",
+        "header": null,
+        "prefix": null,
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "allowedModes": [
+          "bearer",
+          "api_key_header",
+          "none"
+        ],
+        "note": "用户明确指定地址、鉴权和额外头；不从其他配置继承 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "未知服务端不能因协议名相同就假设支持模型枚举；高级设置可明确添加已确认的枚举路由。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "unverified",
+      "capabilities": {
+        "verification": "unverified",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "unknown",
+        "streaming": "unknown",
+        "clientTools": "unknown",
+        "notes": [
+          "协议适配器可用不代表用户指定服务端具备相同全部能力。"
+        ]
+      },
+      "sources": [
+        "https://developers.openai.com/api/reference/overview/"
+      ],
+      "requiredSettings": [
+        "baseUrl",
+        "model",
+        "authMode"
+      ],
+      "billingPlan": {
+        "id": "user_defined",
+        "label": "由服务端与凭据决定",
+        "credentialKinds": [
+          "user_defined"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "user_defined",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "custom_anthropic_messages",
+      "label": "自定义（Anthropic Messages）",
+      "aliases": [
+        "自定义",
+        "Custom"
+      ],
+      "provider": "custom",
+      "region": "user_defined",
+      "protocol": "anthropic_messages",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": null,
+      "inferencePath": "/v1/messages",
+      "auth": {
+        "mode": "user_configured",
+        "required": null,
+        "credentialSource": "secret_store",
+        "header": null,
+        "prefix": null,
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "allowedModes": [
+          "bearer",
+          "api_key_header",
+          "none"
+        ],
+        "note": "用户明确指定地址、鉴权和额外头；不从其他配置继承 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "未知服务端不能因协议名相同就假设支持模型枚举；高级设置可明确添加已确认的枚举路由。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "unverified",
+      "capabilities": {
+        "verification": "unverified",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "unknown",
+        "streaming": "unknown",
+        "clientTools": "unknown",
+        "notes": [
+          "协议适配器可用不代表用户指定服务端具备相同全部能力。"
+        ]
+      },
+      "sources": [
+        "https://platform.claude.com/docs/en/api/overview"
+      ],
+      "requiredSettings": [
+        "baseUrl",
+        "model",
+        "authMode"
+      ],
+      "billingPlan": {
+        "id": "user_defined",
+        "label": "由服务端与凭据决定",
+        "credentialKinds": [
+          "user_defined"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": []
+      },
+      "usagePolicy": {
+        "status": "user_defined",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "状态表示模板用途分类，不代表本次完成真实推理或游戏联调。"
+      }
+    },
+    {
+      "id": "glm_china_coding_chat",
+      "label": "GLM / 智谱 BigModel 中国（Coding Plan，适用工具说明）",
+      "aliases": [
+        "GLM",
+        "智谱",
+        "BigModel",
+        "Zhipu",
+        "Coding Plan",
+        "coding_plan"
+      ],
+      "provider": "glm",
+      "region": "china",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前指定工具范围不等于自建游戏客户端获得套餐权益；本批保留可见说明与地址，游戏直连使用标准 API。",
+          "新建 Key 类型决定标准/个人/团队计费。历史兼容 Key 的旧端点和套餐历史规则单独保留，不自动迁移。",
+          "Key 前缀不是可靠的计费或权益验证。"
+        ]
+      },
+      "sources": [
+        "https://docs.bigmodel.cn/cn/coding-plan/notice/api-key-management",
+        "https://docs.bigmodel.cn/cn/coding-plan/faq",
+        "https://docs.bigmodel.cn/cn/coding-plan/tool/others"
+      ],
+      "billingPlan": {
+        "id": "coding_plan",
+        "label": "Coding Plan",
+        "credentialKinds": [
+          "personal_plan_key",
+          "team_plan_key",
+          "legacy_compatible_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "新建 Key 类型决定标准/个人/团队计费。历史兼容 Key 的旧端点和套餐历史规则单独保留，不自动迁移。",
+          "Key 前缀不是可靠的计费或权益验证。"
+        ]
+      },
+      "usagePolicy": {
+        "status": "reference_only",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "当前指定工具范围不等于自建游戏客户端获得套餐权益；本批保留可见说明与地址，游戏直连使用标准 API。"
+      }
+    },
+    {
+      "id": "glm_international_coding_chat",
+      "label": "GLM / Z.AI 国际（Coding Plan，适用工具说明）",
+      "aliases": [
+        "GLM",
+        "Z.AI",
+        "ZAI",
+        "智谱国际",
+        "Coding Plan",
+        "coding_plan"
+      ],
+      "provider": "glm",
+      "region": "international",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.z.ai/api/coding/paas/v4",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前指定工具范围不等于自建游戏客户端获得套餐权益；本批保留可见说明与地址，游戏直连使用标准 API。",
+          "新建 Key 类型决定标准/个人/团队计费。历史兼容 Key 的旧端点和套餐历史规则单独保留，不自动迁移。",
+          "Key 前缀不是可靠的计费或权益验证。"
+        ]
+      },
+      "sources": [
+        "https://docs.z.ai/devpack/notice/api-key-management",
+        "https://docs.z.ai/devpack/tool/others"
+      ],
+      "billingPlan": {
+        "id": "coding_plan",
+        "label": "Coding Plan",
+        "credentialKinds": [
+          "personal_plan_key",
+          "team_plan_key",
+          "legacy_compatible_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "新建 Key 类型决定标准/个人/团队计费。历史兼容 Key 的旧端点和套餐历史规则单独保留，不自动迁移。",
+          "Key 前缀不是可靠的计费或权益验证。"
+        ]
+      },
+      "usagePolicy": {
+        "status": "reference_only",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "当前指定工具范围不等于自建游戏客户端获得套餐权益；本批保留可见说明与地址，游戏直连使用标准 API。"
+      }
+    },
+    {
+      "id": "kimi_code_china_chat",
+      "label": "Kimi Code（中国，会员套餐说明）",
+      "aliases": [
+        "Kimi",
+        "Moonshot",
+        "月之暗面",
+        "Kimi Code 会员",
+        "kimi_code"
+      ],
+      "provider": "kimi",
+      "region": "china",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.kimi.com/coding/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "Kimi Code 与开放平台独立；本轮未确认自建游戏客户端的套餐适用性，首批展示说明，不能伪装官方客户端启用。",
+          "会员 Key 与开放平台 Key 不互换；套餐模型 ID 不自动使用按量模型 ID。"
+        ]
+      },
+      "sources": [
+        "https://www.kimi.com/code/docs/en/",
+        "https://www.kimi.com/code/docs/en/kimi-code/error-reference.html",
+        "https://www.kimi.com/code/docs/en/kimi-code/community-guidelines.html"
+      ],
+      "billingPlan": {
+        "id": "kimi_code",
+        "label": "Kimi Code 会员",
+        "credentialKinds": [
+          "kimi_code_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "会员 Key 与开放平台 Key 不互换；套餐模型 ID 不自动使用按量模型 ID。"
+        ]
+      },
+      "usagePolicy": {
+        "status": "reference_only",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "Kimi Code 与开放平台独立；本轮未确认自建游戏客户端的套餐适用性，首批展示说明，不能伪装官方客户端启用。"
+      }
+    },
+    {
+      "id": "kimi_code_international_chat",
+      "label": "Kimi Code（国际，会员套餐说明）",
+      "aliases": [
+        "Kimi",
+        "Moonshot",
+        "月之暗面",
+        "Kimi Code 会员",
+        "kimi_code"
+      ],
+      "provider": "kimi",
+      "region": "international",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.kimi.ai/coding/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "Kimi Code 与开放平台独立；本轮未确认自建游戏客户端的套餐适用性，首批展示说明，不能伪装官方客户端启用。",
+          "会员 Key 与开放平台 Key 不互换；套餐模型 ID 不自动使用按量模型 ID。"
+        ]
+      },
+      "sources": [
+        "https://www.kimi.com/code/docs/en/",
+        "https://www.kimi.com/code/docs/en/kimi-code/error-reference.html",
+        "https://www.kimi.com/code/docs/en/kimi-code/community-guidelines.html"
+      ],
+      "billingPlan": {
+        "id": "kimi_code",
+        "label": "Kimi Code 会员",
+        "credentialKinds": [
+          "kimi_code_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "会员 Key 与开放平台 Key 不互换；套餐模型 ID 不自动使用按量模型 ID。"
+        ]
+      },
+      "usagePolicy": {
+        "status": "reference_only",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "Kimi Code 与开放平台独立；本轮未确认自建游戏客户端的套餐适用性，首批展示说明，不能伪装官方客户端启用。"
+      }
+    },
+    {
+      "id": "mimo_token_cn_chat",
+      "label": "MiMo / 小米（Token Plan · 中国，编程用途说明）",
+      "aliases": [
+        "MiMo",
+        "小米",
+        "Xiaomi",
+        "Token Plan",
+        "token_plan"
+      ],
+      "provider": "mimo",
+      "region": "cn",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://token-plan-cn.xiaomimimo.com/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "api_key_header",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "api-key",
+        "prefix": "",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "alternatives": [
+          {
+            "mode": "bearer",
+            "header": "Authorization",
+            "prefix": "Bearer "
+          }
+        ],
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前个人/团队 Token Plan 规则排除明显非 Coding 的自定义应用；本批游戏直连使用按量 API，套餐信息保持可见。",
+          "个人 Key 提示 tp-，团队席位 Key 提示 ttp-，与按量 sk- 不混用；集群以本人控制台为准，前缀只辅助识别。",
+          "套餐集群域名不能用于推导其它地区的按量域名。"
+        ]
+      },
+      "sources": [
+        "https://mimo.mi.com/docs/zh-CN/tokenplan/Token%20Plan/quick-access",
+        "https://mimo.mi.com/docs/zh-CN/tokenplan/Token%20Plan/subscription",
+        "https://mimo.mi.com/docs/zh-CN/tokenplan/Token%20Plan/team"
+      ],
+      "billingPlan": {
+        "id": "token_plan",
+        "label": "Token Plan",
+        "credentialKinds": [
+          "personal_token_plan_key",
+          "team_seat_token_plan_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "个人 Key 提示 tp-，团队席位 Key 提示 ttp-，与按量 sk- 不混用；集群以本人控制台为准，前缀只辅助识别。",
+          "套餐集群域名不能用于推导其它地区的按量域名。"
+        ]
+      },
+      "usagePolicy": {
+        "status": "reference_only",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "当前个人/团队 Token Plan 规则排除明显非 Coding 的自定义应用；本批游戏直连使用按量 API，套餐信息保持可见。"
+      }
+    },
+    {
+      "id": "mimo_token_sgp_chat",
+      "label": "MiMo / 小米（Token Plan · 新加坡，编程用途说明）",
+      "aliases": [
+        "MiMo",
+        "小米",
+        "Xiaomi",
+        "Token Plan",
+        "token_plan"
+      ],
+      "provider": "mimo",
+      "region": "sgp",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://token-plan-sgp.xiaomimimo.com/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "api_key_header",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "api-key",
+        "prefix": "",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "alternatives": [
+          {
+            "mode": "bearer",
+            "header": "Authorization",
+            "prefix": "Bearer "
+          }
+        ],
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前个人/团队 Token Plan 规则排除明显非 Coding 的自定义应用；本批游戏直连使用按量 API，套餐信息保持可见。",
+          "个人 Key 提示 tp-，团队席位 Key 提示 ttp-，与按量 sk- 不混用；集群以本人控制台为准，前缀只辅助识别。",
+          "套餐集群域名不能用于推导其它地区的按量域名。"
+        ]
+      },
+      "sources": [
+        "https://mimo.mi.com/docs/zh-CN/tokenplan/Token%20Plan/quick-access",
+        "https://mimo.mi.com/docs/zh-CN/tokenplan/Token%20Plan/subscription",
+        "https://mimo.mi.com/docs/zh-CN/tokenplan/Token%20Plan/team"
+      ],
+      "billingPlan": {
+        "id": "token_plan",
+        "label": "Token Plan",
+        "credentialKinds": [
+          "personal_token_plan_key",
+          "team_seat_token_plan_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "个人 Key 提示 tp-，团队席位 Key 提示 ttp-，与按量 sk- 不混用；集群以本人控制台为准，前缀只辅助识别。",
+          "套餐集群域名不能用于推导其它地区的按量域名。"
+        ]
+      },
+      "usagePolicy": {
+        "status": "reference_only",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "当前个人/团队 Token Plan 规则排除明显非 Coding 的自定义应用；本批游戏直连使用按量 API，套餐信息保持可见。"
+      }
+    },
+    {
+      "id": "mimo_token_ams_chat",
+      "label": "MiMo / 小米（Token Plan · 欧洲，编程用途说明）",
+      "aliases": [
+        "MiMo",
+        "小米",
+        "Xiaomi",
+        "Token Plan",
+        "token_plan"
+      ],
+      "provider": "mimo",
+      "region": "ams",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://token-plan-ams.xiaomimimo.com/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "api_key_header",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "api-key",
+        "prefix": "",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "alternatives": [
+          {
+            "mode": "bearer",
+            "header": "Authorization",
+            "prefix": "Bearer "
+          }
+        ],
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前个人/团队 Token Plan 规则排除明显非 Coding 的自定义应用；本批游戏直连使用按量 API，套餐信息保持可见。",
+          "个人 Key 提示 tp-，团队席位 Key 提示 ttp-，与按量 sk- 不混用；集群以本人控制台为准，前缀只辅助识别。",
+          "套餐集群域名不能用于推导其它地区的按量域名。"
+        ]
+      },
+      "sources": [
+        "https://mimo.mi.com/docs/zh-CN/tokenplan/Token%20Plan/quick-access",
+        "https://mimo.mi.com/docs/zh-CN/tokenplan/Token%20Plan/subscription",
+        "https://mimo.mi.com/docs/zh-CN/tokenplan/Token%20Plan/team"
+      ],
+      "billingPlan": {
+        "id": "token_plan",
+        "label": "Token Plan",
+        "credentialKinds": [
+          "personal_token_plan_key",
+          "team_seat_token_plan_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "个人 Key 提示 tp-，团队席位 Key 提示 ttp-，与按量 sk- 不混用；集群以本人控制台为准，前缀只辅助识别。",
+          "套餐集群域名不能用于推导其它地区的按量域名。"
+        ]
+      },
+      "usagePolicy": {
+        "status": "reference_only",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "当前个人/团队 Token Plan 规则排除明显非 Coding 的自定义应用；本批游戏直连使用按量 API，套餐信息保持可见。"
+      }
+    },
+    {
+      "id": "minimax_china_subscription_anthropic",
+      "label": "MiniMax（中国 · M Plan / 旧 Token Plan）",
+      "aliases": [
+        "MiniMax",
+        "稀宇",
+        "M Plan / 历史 Token Plan",
+        "subscription"
+      ],
+      "provider": "minimax",
+      "region": "china",
+      "protocol": "anthropic_messages",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.minimax.cn/anthropic",
+      "inferencePath": "/v1/messages",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前官方支持一般兼容 AI 工具，按个人交互用途提供配置；未做本游戏套餐实测，不承诺生产或无限后台调用。",
+          "同区 Base 与按量相同，但订阅 Key 独立；当前订阅前缀示例 sk-cp-，普通 API Key 前缀不作猜测。",
+          "订阅额度及适用积分包独立于按量余额；旧 Token Plan 权益不由客户端强制迁移。"
+        ]
+      },
+      "sources": [
+        "https://platform.minimax.cn/docs/guides/quickstart-preparation",
+        "https://platform.minimax.cn/docs/m-plan/faq",
+        "https://platform.minimax.cn/docs/m-plan/other-tools",
+        "https://platform.minimax.cn/docs/m-plan/token-plan-notice"
+      ],
+      "billingPlan": {
+        "id": "subscription",
+        "label": "M Plan / 历史 Token Plan",
+        "credentialKinds": [
+          "subscription_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "同区 Base 与按量相同，但订阅 Key 独立；当前订阅前缀示例 sk-cp-，普通 API Key 前缀不作猜测。",
+          "订阅额度及适用积分包独立于按量余额；旧 Token Plan 权益不由客户端强制迁移。"
+        ],
+        "sameEndpointAs": "minimax_china_anthropic",
+        "acceptedAccountPlans": [
+          "m_plan",
+          "legacy_token_plan"
+        ]
+      },
+      "usagePolicy": {
+        "status": "personal_interactive_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "当前官方支持一般兼容 AI 工具，按个人交互用途提供配置；未做本游戏套餐实测，不承诺生产或无限后台调用。"
+      },
+      "modelSuggestions": {
+        "verifiedAt": "2026-11-27",
+        "kind": "official_docs_snapshot",
+        "notEntitlementProof": true,
+        "models": [
+          "MiniMax-M3.1-Flash"
+        ],
+        "defaultSelection": null,
+        "note": "当前 M Plan 文档候选，旧 Token Plan 具体可用模型按原权益/控制台核实。"
+      }
+    },
+    {
+      "id": "minimax_china_subscription_chat",
+      "label": "MiniMax（中国 · M Plan / 旧 Token Plan）",
+      "aliases": [
+        "MiniMax",
+        "稀宇",
+        "M Plan / 历史 Token Plan",
+        "subscription"
+      ],
+      "provider": "minimax",
+      "region": "china",
+      "protocol": "openai_chat",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://api.minimax.cn/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前官方支持一般兼容 AI 工具，按个人交互用途提供配置；未做本游戏套餐实测，不承诺生产或无限后台调用。",
+          "同区 Base 与按量相同，但订阅 Key 独立；当前订阅前缀示例 sk-cp-，普通 API Key 前缀不作猜测。",
+          "订阅额度及适用积分包独立于按量余额；旧 Token Plan 权益不由客户端强制迁移。"
+        ]
+      },
+      "sources": [
+        "https://platform.minimax.cn/docs/guides/quickstart-preparation",
+        "https://platform.minimax.cn/docs/m-plan/faq",
+        "https://platform.minimax.cn/docs/m-plan/other-tools",
+        "https://platform.minimax.cn/docs/m-plan/token-plan-notice"
+      ],
+      "billingPlan": {
+        "id": "subscription",
+        "label": "M Plan / 历史 Token Plan",
+        "credentialKinds": [
+          "subscription_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "同区 Base 与按量相同，但订阅 Key 独立；当前订阅前缀示例 sk-cp-，普通 API Key 前缀不作猜测。",
+          "订阅额度及适用积分包独立于按量余额；旧 Token Plan 权益不由客户端强制迁移。"
+        ],
+        "sameEndpointAs": "minimax_china_chat",
+        "acceptedAccountPlans": [
+          "m_plan",
+          "legacy_token_plan"
+        ]
+      },
+      "usagePolicy": {
+        "status": "personal_interactive_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "当前官方支持一般兼容 AI 工具，按个人交互用途提供配置；未做本游戏套餐实测，不承诺生产或无限后台调用。"
+      },
+      "modelSuggestions": {
+        "verifiedAt": "2026-11-27",
+        "kind": "official_docs_snapshot",
+        "notEntitlementProof": true,
+        "models": [
+          "MiniMax-M3.1-Flash"
+        ],
+        "defaultSelection": null,
+        "note": "当前 M Plan 文档候选，旧 Token Plan 具体可用模型按原权益/控制台核实。"
+      }
+    },
+    {
+      "id": "minimax_international_subscription_anthropic",
+      "label": "MiniMax（国际 · M Plan / 旧 Token Plan）",
+      "aliases": [
+        "MiniMax",
+        "稀宇",
+        "M Plan / 历史 Token Plan",
+        "subscription"
+      ],
+      "provider": "minimax",
+      "region": "international",
+      "protocol": "anthropic_messages",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://api.minimax.io/anthropic",
+      "inferencePath": "/v1/messages",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前官方支持一般兼容 AI 工具，按个人交互用途提供配置；未做本游戏套餐实测，不承诺生产或无限后台调用。",
+          "同区 Base 与按量相同，但订阅 Key 独立；当前订阅前缀示例 sk-cp-，普通 API Key 前缀不作猜测。",
+          "订阅额度及适用积分包独立于按量余额；旧 Token Plan 权益不由客户端强制迁移。"
+        ]
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/quickstart-preparation",
+        "https://platform.minimax.io/docs/m-plan/faq",
+        "https://platform.minimax.io/docs/m-plan/other-tools",
+        "https://platform.minimax.io/docs/m-plan/token-plan-notice"
+      ],
+      "billingPlan": {
+        "id": "subscription",
+        "label": "M Plan / 历史 Token Plan",
+        "credentialKinds": [
+          "subscription_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "同区 Base 与按量相同，但订阅 Key 独立；当前订阅前缀示例 sk-cp-，普通 API Key 前缀不作猜测。",
+          "订阅额度及适用积分包独立于按量余额；旧 Token Plan 权益不由客户端强制迁移。"
+        ],
+        "sameEndpointAs": "minimax_international_anthropic",
+        "acceptedAccountPlans": [
+          "m_plan",
+          "legacy_token_plan"
+        ]
+      },
+      "usagePolicy": {
+        "status": "personal_interactive_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "当前官方支持一般兼容 AI 工具，按个人交互用途提供配置；未做本游戏套餐实测，不承诺生产或无限后台调用。"
+      },
+      "modelSuggestions": {
+        "verifiedAt": "2026-11-27",
+        "kind": "official_docs_snapshot",
+        "notEntitlementProof": true,
+        "models": [
+          "MiniMax-M3.1-Flash"
+        ],
+        "defaultSelection": null,
+        "note": "当前 M Plan 文档候选，旧 Token Plan 具体可用模型按原权益/控制台核实。"
+      }
+    },
+    {
+      "id": "minimax_international_subscription_chat",
+      "label": "MiniMax（国际 · M Plan / 旧 Token Plan）",
+      "aliases": [
+        "MiniMax",
+        "稀宇",
+        "M Plan / 历史 Token Plan",
+        "subscription"
+      ],
+      "provider": "minimax",
+      "region": "international",
+      "protocol": "openai_chat",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://api.minimax.io/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "当前官方支持一般兼容 AI 工具，按个人交互用途提供配置；未做本游戏套餐实测，不承诺生产或无限后台调用。",
+          "同区 Base 与按量相同，但订阅 Key 独立；当前订阅前缀示例 sk-cp-，普通 API Key 前缀不作猜测。",
+          "订阅额度及适用积分包独立于按量余额；旧 Token Plan 权益不由客户端强制迁移。"
+        ]
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/quickstart-preparation",
+        "https://platform.minimax.io/docs/m-plan/faq",
+        "https://platform.minimax.io/docs/m-plan/other-tools",
+        "https://platform.minimax.io/docs/m-plan/token-plan-notice"
+      ],
+      "billingPlan": {
+        "id": "subscription",
+        "label": "M Plan / 历史 Token Plan",
+        "credentialKinds": [
+          "subscription_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "同区 Base 与按量相同，但订阅 Key 独立；当前订阅前缀示例 sk-cp-，普通 API Key 前缀不作猜测。",
+          "订阅额度及适用积分包独立于按量余额；旧 Token Plan 权益不由客户端强制迁移。"
+        ],
+        "sameEndpointAs": "minimax_international_chat",
+        "acceptedAccountPlans": [
+          "m_plan",
+          "legacy_token_plan"
+        ]
+      },
+      "usagePolicy": {
+        "status": "personal_interactive_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "当前官方支持一般兼容 AI 工具，按个人交互用途提供配置；未做本游戏套餐实测，不承诺生产或无限后台调用。"
+      },
+      "modelSuggestions": {
+        "verifiedAt": "2026-11-27",
+        "kind": "official_docs_snapshot",
+        "notEntitlementProof": true,
+        "models": [
+          "MiniMax-M3.1-Flash"
+        ],
+        "defaultSelection": null,
+        "note": "当前 M Plan 文档候选，旧 Token Plan 具体可用模型按原权益/控制台核实。"
+      }
+    },
+    {
+      "id": "bailian_cn_beijing_token_chat",
+      "label": "百炼 / Model Studio（北京 · Token Plan）",
+      "aliases": [
+        "百炼",
+        "阿里",
+        "阿里云",
+        "Qwen",
+        "通义千问",
+        "DashScope",
+        "Token Plan",
+        "token_plan"
+      ],
+      "provider": "alibaba_bailian",
+      "region": "cn-beijing",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "厂商限定符合条件 AI 工具的交互使用，本游戏适用性未单独确认；显示官方范围，保持真实客户端身份，不作后台批量使用。",
+          "与按量、Coding Plan 及其它地区分别保存专属 Key。",
+          "可能与 Coding Plan 共用 sk-sp 前缀提示，不能凭前缀自动决定服务方案。"
+        ]
+      },
+      "sources": [
+        "https://help.aliyun.com/zh/model-studio/base-url",
+        "https://help.aliyun.com/zh/model-studio/token-plan-permissions-and-usage",
+        "https://help.aliyun.com/zh/model-studio/codex"
+      ],
+      "billingPlan": {
+        "id": "token_plan",
+        "label": "Token Plan",
+        "credentialKinds": [
+          "token_plan_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "与按量、Coding Plan 及其它地区分别保存专属 Key。",
+          "可能与 Coding Plan 共用 sk-sp 前缀提示，不能凭前缀自动决定服务方案。"
+        ],
+        "documentedProtocols": [
+          "openai_chat",
+          "openai_responses",
+          "anthropic_messages"
+        ]
+      },
+      "usagePolicy": {
+        "status": "interactive_tools_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "厂商限定符合条件 AI 工具的交互使用，本游戏适用性未单独确认；显示官方范围，保持真实客户端身份，不作后台批量使用。"
+      }
+    },
+    {
+      "id": "bailian_cn_beijing_token_responses",
+      "label": "百炼 / Model Studio（北京 · Token Plan）",
+      "aliases": [
+        "百炼",
+        "阿里",
+        "阿里云",
+        "Qwen",
+        "通义千问",
+        "DashScope",
+        "Token Plan",
+        "token_plan"
+      ],
+      "provider": "alibaba_bailian",
+      "region": "cn-beijing",
+      "protocol": "openai_responses",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      "inferencePath": "/responses",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "厂商限定符合条件 AI 工具的交互使用，本游戏适用性未单独确认；显示官方范围，保持真实客户端身份，不作后台批量使用。",
+          "与按量、Coding Plan 及其它地区分别保存专属 Key。",
+          "可能与 Coding Plan 共用 sk-sp 前缀提示，不能凭前缀自动决定服务方案。"
+        ]
+      },
+      "sources": [
+        "https://help.aliyun.com/zh/model-studio/base-url",
+        "https://help.aliyun.com/zh/model-studio/token-plan-permissions-and-usage",
+        "https://help.aliyun.com/zh/model-studio/codex"
+      ],
+      "billingPlan": {
+        "id": "token_plan",
+        "label": "Token Plan",
+        "credentialKinds": [
+          "token_plan_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "与按量、Coding Plan 及其它地区分别保存专属 Key。",
+          "可能与 Coding Plan 共用 sk-sp 前缀提示，不能凭前缀自动决定服务方案。"
+        ],
+        "documentedProtocols": [
+          "openai_chat",
+          "openai_responses",
+          "anthropic_messages"
+        ]
+      },
+      "usagePolicy": {
+        "status": "interactive_tools_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "厂商限定符合条件 AI 工具的交互使用，本游戏适用性未单独确认；显示官方范围，保持真实客户端身份，不作后台批量使用。"
+      }
+    },
+    {
+      "id": "bailian_cn_beijing_coding_chat",
+      "label": "百炼 / Model Studio（北京 · Coding Plan）",
+      "aliases": [
+        "百炼",
+        "阿里",
+        "阿里云",
+        "Qwen",
+        "通义千问",
+        "DashScope",
+        "Coding Plan",
+        "coding_plan"
+      ],
+      "provider": "alibaba_bailian",
+      "region": "cn-beijing",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://coding.dashscope.aliyuncs.com/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "官方限制支持的编程工具交互使用，本游戏客户端适用性未确认；显示具体范围，不把协议兼容当作已支持。",
+          "Coding Plan 不支持 Responses；有 Chat 和 Anthropic 兼容协议。",
+          "同区域 Token Plan、Coding Plan、普通 API 的 Key 不自动互换。"
+        ]
+      },
+      "sources": [
+        "https://help.aliyun.com/zh/model-studio/base-url",
+        "https://help.aliyun.com/zh/model-studio/coding-plan-faq"
+      ],
+      "billingPlan": {
+        "id": "coding_plan",
+        "label": "Coding Plan",
+        "credentialKinds": [
+          "coding_plan_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "Coding Plan 不支持 Responses；有 Chat 和 Anthropic 兼容协议。",
+          "同区域 Token Plan、Coding Plan、普通 API 的 Key 不自动互换。"
+        ],
+        "documentedProtocols": [
+          "openai_chat",
+          "anthropic_messages"
+        ],
+        "unsupportedProtocols": [
+          "openai_responses"
+        ]
+      },
+      "usagePolicy": {
+        "status": "interactive_tools_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "官方限制支持的编程工具交互使用，本游戏客户端适用性未确认；显示具体范围，不把协议兼容当作已支持。"
+      }
+    },
+    {
+      "id": "bailian_ap_southeast_1_token_chat",
+      "label": "百炼 / Model Studio（新加坡 · Token Plan）",
+      "aliases": [
+        "百炼",
+        "阿里",
+        "阿里云",
+        "Qwen",
+        "通义千问",
+        "DashScope",
+        "Token Plan",
+        "token_plan"
+      ],
+      "provider": "alibaba_bailian",
+      "region": "ap-southeast-1",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "厂商限定符合条件 AI 工具的交互使用，本游戏适用性未单独确认；显示官方范围，保持真实客户端身份，不作后台批量使用。",
+          "与按量、Coding Plan 及其它地区分别保存专属 Key。",
+          "可能与 Coding Plan 共用 sk-sp 前缀提示，不能凭前缀自动决定服务方案。"
+        ]
+      },
+      "sources": [
+        "https://www.alibabacloud.com/help/en/model-studio/base-url",
+        "https://help.aliyun.com/zh/model-studio/token-plan-permissions-and-usage",
+        "https://help.aliyun.com/zh/model-studio/codex"
+      ],
+      "billingPlan": {
+        "id": "token_plan",
+        "label": "Token Plan",
+        "credentialKinds": [
+          "token_plan_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "与按量、Coding Plan 及其它地区分别保存专属 Key。",
+          "可能与 Coding Plan 共用 sk-sp 前缀提示，不能凭前缀自动决定服务方案。"
+        ],
+        "documentedProtocols": [
+          "openai_chat",
+          "openai_responses",
+          "anthropic_messages"
+        ]
+      },
+      "usagePolicy": {
+        "status": "interactive_tools_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "厂商限定符合条件 AI 工具的交互使用，本游戏适用性未单独确认；显示官方范围，保持真实客户端身份，不作后台批量使用。"
+      }
+    },
+    {
+      "id": "bailian_ap_southeast_1_token_responses",
+      "label": "百炼 / Model Studio（新加坡 · Token Plan）",
+      "aliases": [
+        "百炼",
+        "阿里",
+        "阿里云",
+        "Qwen",
+        "通义千问",
+        "DashScope",
+        "Token Plan",
+        "token_plan"
+      ],
+      "provider": "alibaba_bailian",
+      "region": "ap-southeast-1",
+      "protocol": "openai_responses",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+      "inferencePath": "/responses",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "厂商限定符合条件 AI 工具的交互使用，本游戏适用性未单独确认；显示官方范围，保持真实客户端身份，不作后台批量使用。",
+          "与按量、Coding Plan 及其它地区分别保存专属 Key。",
+          "可能与 Coding Plan 共用 sk-sp 前缀提示，不能凭前缀自动决定服务方案。"
+        ]
+      },
+      "sources": [
+        "https://www.alibabacloud.com/help/en/model-studio/base-url",
+        "https://help.aliyun.com/zh/model-studio/token-plan-permissions-and-usage",
+        "https://help.aliyun.com/zh/model-studio/codex"
+      ],
+      "billingPlan": {
+        "id": "token_plan",
+        "label": "Token Plan",
+        "credentialKinds": [
+          "token_plan_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "与按量、Coding Plan 及其它地区分别保存专属 Key。",
+          "可能与 Coding Plan 共用 sk-sp 前缀提示，不能凭前缀自动决定服务方案。"
+        ],
+        "documentedProtocols": [
+          "openai_chat",
+          "openai_responses",
+          "anthropic_messages"
+        ]
+      },
+      "usagePolicy": {
+        "status": "interactive_tools_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "厂商限定符合条件 AI 工具的交互使用，本游戏适用性未单独确认；显示官方范围，保持真实客户端身份，不作后台批量使用。"
+      }
+    },
+    {
+      "id": "bailian_ap_southeast_1_coding_chat",
+      "label": "百炼 / Model Studio（新加坡 · Coding Plan）",
+      "aliases": [
+        "百炼",
+        "阿里",
+        "阿里云",
+        "Qwen",
+        "通义千问",
+        "DashScope",
+        "Coding Plan",
+        "coding_plan"
+      ],
+      "provider": "alibaba_bailian",
+      "region": "ap-southeast-1",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://coding-intl.dashscope.aliyuncs.com/v1",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "官方限制支持的编程工具交互使用，本游戏客户端适用性未确认；显示具体范围，不把协议兼容当作已支持。",
+          "Coding Plan 不支持 Responses；有 Chat 和 Anthropic 兼容协议。",
+          "同区域 Token Plan、Coding Plan、普通 API 的 Key 不自动互换。"
+        ]
+      },
+      "sources": [
+        "https://www.alibabacloud.com/help/en/model-studio/base-url",
+        "https://www.alibabacloud.com/help/en/model-studio/coding-plan-faq"
+      ],
+      "billingPlan": {
+        "id": "coding_plan",
+        "label": "Coding Plan",
+        "credentialKinds": [
+          "coding_plan_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "Coding Plan 不支持 Responses；有 Chat 和 Anthropic 兼容协议。",
+          "同区域 Token Plan、Coding Plan、普通 API 的 Key 不自动互换。"
+        ],
+        "documentedProtocols": [
+          "openai_chat",
+          "anthropic_messages"
+        ],
+        "unsupportedProtocols": [
+          "openai_responses"
+        ]
+      },
+      "usagePolicy": {
+        "status": "interactive_tools_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "官方限制支持的编程工具交互使用，本游戏客户端适用性未确认；显示具体范围，不把协议兼容当作已支持。"
+      }
+    },
+    {
+      "id": "ark_beijing_coding_plan_chat",
+      "label": "火山方舟（北京 · Coding Plan）",
+      "aliases": [
+        "火山方舟",
+        "方舟",
+        "豆包",
+        "Doubao",
+        "Ark",
+        "Volcengine",
+        "Coding Plan",
+        "coding_plan"
+      ],
+      "provider": "volcengine_ark",
+      "region": "cn-beijing",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/coding/v3",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "套餐限定支持的 AI 工具；本游戏适用性未单独验证，显示官方范围，不以普通模型枚举证明套餐权益。",
+          "套餐模型发现属于另一个需云 Access Key 签名的管理 API；本批不索取 AK/SK，不拼推理 Base 的 /models。"
+        ]
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/coding-plan-personal-ai-opencode?lang=zh",
+        "https://docs.volcengine.com/docs/ark/coding-plan-personal-faq?lang=zh"
+      ],
+      "billingPlan": {
+        "id": "coding_plan",
+        "label": "Coding Plan",
+        "credentialKinds": [
+          "ark_api_key_with_coding_subscription"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "套餐模型发现属于另一个需云 Access Key 签名的管理 API；本批不索取 AK/SK，不拼推理 Base 的 /models。",
+          "此模式使用方舟普通 API Key 配合已开通 Coding Plan；地址不可自动切回按量 /api/v3。"
+        ],
+        "documentedProtocols": [
+          "openai_chat",
+          "openai_responses",
+          "anthropic_messages"
+        ]
+      },
+      "usagePolicy": {
+        "status": "interactive_tools_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "套餐限定支持的 AI 工具；本游戏适用性未单独验证，显示官方范围，不以普通模型枚举证明套餐权益。"
+      },
+      "modelSuggestions": {
+        "verifiedAt": "2026-11-27",
+        "kind": "official_docs_snapshot",
+        "notEntitlementProof": true,
+        "models": [
+          "ark-code-latest"
+        ],
+        "defaultSelection": null,
+        "note": "该别名可能跟随控制台选模，不是固定具体模型；实际模型范围以本套餐当前权益为准。"
+      }
+    },
+    {
+      "id": "ark_beijing_coding_plan_responses",
+      "label": "火山方舟（北京 · Coding Plan）",
+      "aliases": [
+        "火山方舟",
+        "方舟",
+        "豆包",
+        "Doubao",
+        "Ark",
+        "Volcengine",
+        "Coding Plan",
+        "coding_plan"
+      ],
+      "provider": "volcengine_ark",
+      "region": "cn-beijing",
+      "protocol": "openai_responses",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/coding/v3",
+      "inferencePath": "/responses",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "套餐限定支持的 AI 工具；本游戏适用性未单独验证，显示官方范围，不以普通模型枚举证明套餐权益。",
+          "套餐模型发现属于另一个需云 Access Key 签名的管理 API；本批不索取 AK/SK，不拼推理 Base 的 /models。"
+        ]
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/coding-plan-personal-ai-opencode?lang=zh",
+        "https://docs.volcengine.com/docs/ark/coding-plan-personal-faq?lang=zh"
+      ],
+      "billingPlan": {
+        "id": "coding_plan",
+        "label": "Coding Plan",
+        "credentialKinds": [
+          "ark_api_key_with_coding_subscription"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "套餐模型发现属于另一个需云 Access Key 签名的管理 API；本批不索取 AK/SK，不拼推理 Base 的 /models。",
+          "此模式使用方舟普通 API Key 配合已开通 Coding Plan；地址不可自动切回按量 /api/v3。"
+        ],
+        "documentedProtocols": [
+          "openai_chat",
+          "openai_responses",
+          "anthropic_messages"
+        ]
+      },
+      "usagePolicy": {
+        "status": "interactive_tools_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "套餐限定支持的 AI 工具；本游戏适用性未单独验证，显示官方范围，不以普通模型枚举证明套餐权益。"
+      },
+      "modelSuggestions": {
+        "verifiedAt": "2026-11-27",
+        "kind": "official_docs_snapshot",
+        "notEntitlementProof": true,
+        "models": [
+          "ark-code-latest"
+        ],
+        "defaultSelection": null,
+        "note": "该别名可能跟随控制台选模，不是固定具体模型；实际模型范围以本套餐当前权益为准。"
+      }
+    },
+    {
+      "id": "ark_beijing_agent_plan_chat",
+      "label": "火山方舟（北京 · Agent Plan）",
+      "aliases": [
+        "火山方舟",
+        "方舟",
+        "豆包",
+        "Doubao",
+        "Ark",
+        "Volcengine",
+        "Agent Plan",
+        "agent_plan"
+      ],
+      "provider": "volcengine_ark",
+      "region": "cn-beijing",
+      "protocol": "openai_chat",
+      "defaultForProvider": true,
+      "advanced": false,
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/plan/v3",
+      "inferencePath": "/chat/completions",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "套餐限定支持的 AI 工具；本游戏适用性未单独验证，显示官方范围，不以普通模型枚举证明套餐权益。",
+          "套餐模型发现属于另一个需云 Access Key 签名的管理 API；本批不索取 AK/SK，不拼推理 Base 的 /models。"
+        ]
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/agent-plan-personal-other-tools?lang=zh",
+        "https://docs.volcengine.com/docs/ark/agent-plan-personal-opencode?lang=en",
+        "https://docs.volcengine.com/docs/ark/agent-plan-personal-plan-overview?lang=zh"
+      ],
+      "billingPlan": {
+        "id": "agent_plan",
+        "label": "Agent Plan",
+        "credentialKinds": [
+          "agent_plan_dedicated_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "套餐模型发现属于另一个需云 Access Key 签名的管理 API；本批不索取 AK/SK，不拼推理 Base 的 /models。",
+          "控制台可设置超额后付费，同一 Base/Key 可能继续计费；客户端不替用户开启，也不保证服务端绝不扣额外费用。"
+        ],
+        "documentedProtocols": [
+          "openai_chat",
+          "openai_responses",
+          "anthropic_messages"
+        ]
+      },
+      "usagePolicy": {
+        "status": "interactive_tools_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "套餐限定支持的 AI 工具；本游戏适用性未单独验证，显示官方范围，不以普通模型枚举证明套餐权益。"
+      },
+      "modelSuggestions": {
+        "verifiedAt": "2026-11-27",
+        "kind": "official_docs_snapshot",
+        "notEntitlementProof": true,
+        "models": [
+          "ark-code-latest"
+        ],
+        "defaultSelection": null,
+        "note": "该别名可能跟随控制台选模，不是固定具体模型；实际模型范围以本套餐当前权益为准。"
+      }
+    },
+    {
+      "id": "ark_beijing_agent_plan_responses",
+      "label": "火山方舟（北京 · Agent Plan）",
+      "aliases": [
+        "火山方舟",
+        "方舟",
+        "豆包",
+        "Doubao",
+        "Ark",
+        "Volcengine",
+        "Agent Plan",
+        "agent_plan"
+      ],
+      "provider": "volcengine_ark",
+      "region": "cn-beijing",
+      "protocol": "openai_responses",
+      "defaultForProvider": false,
+      "advanced": true,
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/plan/v3",
+      "inferencePath": "/responses",
+      "auth": {
+        "mode": "bearer",
+        "required": true,
+        "credentialSource": "secret_store",
+        "header": "Authorization",
+        "prefix": "Bearer ",
+        "extraHeaders": {},
+        "conditionalHeaders": [],
+        "note": "凭据必须匹配当前服务方案和地区；秘密值从当前连接引用解析，不自动复用按量或其他方案的 Key。",
+        "secretRefSource": "connection.apiKeySecretRef"
+      },
+      "modelsDiscovery": {
+        "status": "manual_only",
+        "method": null,
+        "path": null,
+        "url": null,
+        "auth": null,
+        "responseFormat": null,
+        "fallback": "manual_model_id",
+        "reason": "本轮未证实套餐凭据的模型枚举契约；使用带日期的官方候选或手填，不借用标准 API 或云管理 AK/SK。"
+      },
+      "defaultModel": null,
+      "endpointVerification": "official_docs_only",
+      "capabilities": {
+        "verification": "official_docs_only",
+        "runtimeTested": false,
+        "dependsOnModel": true,
+        "textGeneration": "documented_model_dependent",
+        "streaming": "documented_model_dependent",
+        "clientTools": "documented_model_dependent",
+        "notes": [
+          "套餐限定支持的 AI 工具；本游戏适用性未单独验证，显示官方范围，不以普通模型枚举证明套餐权益。",
+          "套餐模型发现属于另一个需云 Access Key 签名的管理 API；本批不索取 AK/SK，不拼推理 Base 的 /models。"
+        ]
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/agent-plan-personal-other-tools?lang=zh",
+        "https://docs.volcengine.com/docs/ark/agent-plan-personal-opencode?lang=en",
+        "https://docs.volcengine.com/docs/ark/agent-plan-personal-plan-overview?lang=zh"
+      ],
+      "billingPlan": {
+        "id": "agent_plan",
+        "label": "Agent Plan",
+        "credentialKinds": [
+          "agent_plan_dedicated_key"
+        ],
+        "clientMayAutomaticallySwitchPlan": false,
+        "notes": [
+          "套餐模型发现属于另一个需云 Access Key 签名的管理 API；本批不索取 AK/SK，不拼推理 Base 的 /models。",
+          "控制台可设置超额后付费，同一 Base/Key 可能继续计费；客户端不替用户开启，也不保证服务端绝不扣额外费用。"
+        ],
+        "documentedProtocols": [
+          "openai_chat",
+          "openai_responses",
+          "anthropic_messages"
+        ]
+      },
+      "usagePolicy": {
+        "status": "interactive_tools_conditional",
+        "gameRuntimeTested": false,
+        "automaticModelWakeups": false,
+        "note": "套餐限定支持的 AI 工具；本游戏适用性未单独验证，显示官方范围，不以普通模型枚举证明套餐权益。"
+      },
+      "modelSuggestions": {
+        "verifiedAt": "2026-11-27",
+        "kind": "official_docs_snapshot",
+        "notEntitlementProof": true,
+        "models": [
+          "ark-code-latest"
+        ],
+        "defaultSelection": null,
+        "note": "该别名可能跟随控制台选模，不是固定具体模型；实际模型范围以本套餐当前权益为准。"
+      }
+    }
+  ],
+  "billingPlanRules": {
+    "defaultProtocolScope": "provider + region + billingPlan.id",
+    "isBillingLabelAProviderChargeGuarantee": false,
+    "neverAutomaticallyFallbackToPayg": true,
+    "sameConnectionMayShareFundingSources": true,
+    "keyPrefixIsHintOnly": true,
+    "referenceOnlyMakesGameRequests": false,
+    "conditionalRequiresExtraApprovalCheckbox": false,
+    "usageStatusMeaning": "reference_only 显示来源和区别但不启用本批游戏直连；conditional 可配置个人交互并如实提示范围未针对本游戏验证，不新增审批流程。",
+    "groupingFields": [
+      "provider",
+      "region",
+      "billingPlan.id",
+      "protocol"
+    ],
+    "templateIdentityField": "id",
+    "connectionIdentityField": "connectionId",
+    "groupingFieldsAreNotUnique": true
+  },
+  "uiSelectionOrder": [
+    "provider",
+    "billingPlan.id",
+    "region",
+    "credential",
+    "model"
+  ]
+}

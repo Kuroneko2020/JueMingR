@@ -28,8 +28,10 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         internal RelationIndex Recipes { get; private set; }
         internal IReadOnlyList<ItemRelation> RecipeValues { get { return recipes.AsReadOnly(); } }
         internal long Revision { get; private set; }
-        internal string Status { get; private set; } = "打开查询页后准备资料";
+        internal string Status { get; private set; } = "等待查询需求";
         internal bool Ready { get { return Catalog != null && Recipes != null && !dirty; } }
+        internal bool CatalogCurrent { get { return Catalog != null && !dirty; } }
+        internal bool CaptureUnavailable { get { return !dirty && failures >= 3; } }
         internal bool PlacementReady { get { return !dirty && (placementCursor >= ItemID.Count || itemCursor >= ItemID.Count); } }
         internal int PlacementProgress { get { return itemCursor + placementCursor; } }
         internal long PlacementGeneration { get; private set; }

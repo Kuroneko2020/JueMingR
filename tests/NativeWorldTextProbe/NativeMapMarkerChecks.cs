@@ -162,9 +162,24 @@ namespace NativeWorldTextProbe
                 pick(); var position = option(); frame((int)position.X, (int)position.Y, true, false, Keys.None, null); frame((int)position.X, (int)position.Y, false, false, Keys.None, null);
                 Until(() => { Call(context, "UpdateRuntime"); return !library.Busy; });
                 Require(library.Saved.Records.Count == 1 && library.Saved.Records[0].X == 113.5 && library.Saved.Records[0].Y == 54.5, "actual shared physical input commits frozen continuous point once");
-                var record = library.Saved.Records[0]; Main.mapFullscreenScale = float.NaN; neutral(); Require((bool)Call(host, "Locate", record.Id), "locate command accepted"); neutral();
+                var record = library.Saved.Records[0]; Main.mapFullscreenScale = float.NaN; neutral(); Require((bool)Call(host, "Locate", record.Id), "locate command accepted");
+                Require(GetOptional(host, "TaskSelectedMarker") == null, "a saved marker and a pending Locate alone identify no selected task destination");
+                neutral();
                 Require(Main.mapFullscreen && Main.mapFullscreenScale == 2.5f && Main.mapFullscreenPos == new Vector2(113.5f, 54.5f), "locate uses native default for invalid zoom and never snaps the marker");
                 Require(Main.LocalPlayer.position == new Vector2(1600, 800), "locate never moves the player");
+                Require((string)Get(host, "TaskSelectedMarker") == record.Id, "confirmed native Locate makes the current saved marker available to a companion task");
+                var worldBefore = Main.ActiveWorldFileData;
+                try
+                {
+                    Main.ActiveWorldFileData = new Terraria.IO.WorldFileData(Path.Combine(rootDummy, "located-marker-other.wld"), false) { UniqueId = Guid.NewGuid() };
+                    Call(context, "UpdateRuntime");
+                    Require(GetOptional(host, "TaskSelectedMarker") == null, "a world change retires the selected task destination");
+                }
+                finally
+                {
+                    Main.ActiveWorldFileData = worldBefore;
+                    Until(() => { Call(context, "UpdateRuntime"); return library.Loaded && GetOptional(host, "Counter") != null; });
+                }
             }
             finally { worker.GetField("postfixContext", Flags).SetValue(null, oldContext); worker.GetField("hookCommitted", Flags).SetValue(null, oldCommitted); Main.mapFullscreen = false; }
         }

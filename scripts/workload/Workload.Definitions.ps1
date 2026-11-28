@@ -23,6 +23,29 @@ function Get-WorkloadLeafChecks {
         # These leaves are called only by the companion CPU dispatcher. Shared
         # NativeChecks/Program/fixture inputs retain their existing propagation.
         'tests/Companions/CompanionCoreChecks.cs'=@('CompanionCoreChecks')
+        'tests/JueMingR.ArchitectureTests/Llm/LlmConnectionChecks.cs'=@('LlmConnections')
+        'tests/JueMingR.ArchitectureTests/Llm/LlmBudgetUsageChecks.cs'=@('LlmConnections')
+        'tests/NativeWorldTextProbe/NativeCompanionChatBudgetChecks.cs'=@('native-CompanionFishingLineCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCommandSemanticsChecks.cs'=@('native-CompanionFishingLineCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionWorldMemoryChecks.cs'=@('native-CompanionFishingLineCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionWorldMemoryRuntimeChecks.cs'=@('native-CompanionFishingLineCpu')
+        'src/JueMingR.TerrariaHost/F5/ChatDraftLayout.cs'=@('native-CompanionChatUiCpu','native-CompanionConfigVisual','native-CompanionFishingLineCpu')
+        'src/JueMingR.TerrariaHost/World/WorldMemory.cs'=@('native-CompanionFishingLineCpu')
+        'src/JueMingR.TerrariaHost/World/WorldMemory.Catalog.cs'=@('native-CompanionFishingLineCpu')
+        'src/JueMingR.TerrariaHost/World/WorldMemory.Materials.cs'=@('native-CompanionFishingLineCpu')
+        'src/JueMingR.TerrariaHost/World/WorldMemory.Shimmer.cs'=@('native-CompanionFishingLineCpu')
+        'src/JueMingR.TerrariaHost/World/WorldMemoryHooks.cs'=@('native-CompanionFishingLineCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionChatChecks.cs'=@('native-CompanionFishingLineCpu','native-CompanionWormholeCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionChatUiChecks.cs'=@('native-CompanionChatUiCpu','native-CompanionConfigVisual','native-CompanionFishingLineCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionTasksChecks.cs'=@('native-CompanionFishingLineCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionResourceTaskChecks.cs'=@('native-CompanionFishingLineCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionCraftWireChecks.cs'=@('native-CompanionFishingLineCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionServiceTaskChecks.cs'=@('native-CompanionFishingLineCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionShimmerTaskChecks.cs'=@('native-CompanionFishingLineCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionDukeTaskChecks.cs'=@('native-CompanionFishingLineCpu')
+        'tests/NativeWorldTextProbe/NativeCompanionEnvironmentChecks.cs'=@('native-CompanionEnvironmentCpu')
+        'tests/NativeWorldTextProbe/NativeInformationLocalizationChecks.cs'=@('native-InformationCpu')
+        'tests/NativeWorldTextProbe/NativeInformationBiomeChecks.cs'=@('native-InformationCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFishingUiChecks.cs'=@('native-CompanionFishingUiCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFishingLineChecks.cs'=@('native-CompanionFishingLineCpu','native-CompanionWormholeCpu')
         'tests/NativeWorldTextProbe/NativeCompanionFishingOpeningChecks.cs'=@('native-CompanionFishingLineCpu','native-CompanionWormholeCpu')
@@ -710,9 +733,11 @@ function Get-WorkloadNativeScopes {
         'CompanionNavigationCpu'=@('companion-host','shared-host');
         'CompanionResourceBarsVisual'=@('companion-host','shared-host');
         'CompanionCreationInputVisual'=@('companion-host','shared-host');
-        'CompanionConfigVisual'=@('companion-host','shared-host');
+        'CompanionConfigVisual'=@('llm-host','companion-host','shared-host');
         'CompanionFishingUiCpu'=@('companion-host','fishing-host','shared-host');
-        'CompanionFishingLineCpu'=@('companion-host','fishing-host','items','recovery-host','shared-host');
+        'CompanionChatUiCpu'=@('llm-host','companion-host','shared-host');
+        'CompanionEnvironmentCpu'=@('companion-host','shared-host','biomes','combat-host');
+        'CompanionFishingLineCpu'=@('llm-host','companion-host','fishing-host','items','recovery-host','shared-host');
         'CompanionFishingWorldCpu'=@('companion-host','fishing-host','shared-host');
         'CompanionExitVisual'=@('companion-host','shared-host');
         'CompanionFontVisual'=@('companion-host','shared-host');

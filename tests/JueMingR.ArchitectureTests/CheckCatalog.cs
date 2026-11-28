@@ -17,6 +17,7 @@ namespace JueMingR.ArchitectureTests
         static CheckCatalog()
         {
             Add("CompanionCoreChecks", "companion-host", (root, failures) => CompanionCoreChecks.Check(failures));
+            Add("LlmConnections", "llm-host", (root, failures) => LlmConnectionChecks.Run(failures));
             Add("RuntimeFailureChecks", "shared-host", (root, failures) => RuntimeFailureChecks.Check(failures));
             Add("PreferenceDeadlineChecks", "preferences", (root, failures) => PreferenceDeadlineChecks.Check(failures));
             Add("OpenedDeadlineChecks", "records", (root, failures) => OpenedDeadlineChecks.Check(failures));

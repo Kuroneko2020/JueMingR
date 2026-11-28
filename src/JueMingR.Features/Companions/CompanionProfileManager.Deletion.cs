@@ -45,10 +45,13 @@ namespace JueMingR.Features.Companions
             return true;
         }
 
-        public void FailDeletionBindings(Guid owner, Guid id)
+        public void FailDeletionBindings(Guid owner, Guid id) =>
+            FailDeletionCleanup(owner, id, "人物档案已删除，快捷键清理失败，可重试。");
+
+        public void FailDeletionCleanup(Guid owner, Guid id, string reason)
         {
             if (!TryGetDeletion(owner, id, out var state) || state.Busy || !state.Receipt.FilesRemoved || state.Receipt.Error != null) return;
-            ChangeDeletion(state, true, "人物档案已删除，快捷键清理失败，可重试。");
+            ChangeDeletion(state, true, reason);
         }
 
         public void FinishDeletion(Guid owner, Guid id)

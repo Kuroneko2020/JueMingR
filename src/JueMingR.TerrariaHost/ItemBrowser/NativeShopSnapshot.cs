@@ -15,18 +15,30 @@ namespace JueMingR.TerrariaHost.ItemBrowser
         private int failures;
         private string captureTime;
         private object player, world;
+        private bool hardMode, day;
+        private int moon, progress, questCount;
         internal RelationIndex Index { get; private set; }
         internal string Status { get; private set; } = "商店尚未读取；点击刷新获取本次条件下的商品";
         internal long Revision { get; private set; }
         internal bool Busy { get { return next > 0; } }
+        internal bool Partial => failures > 0;
+        internal bool ChatCurrent => Index != null && player != null && ReferenceEquals(player, Main.LocalPlayer) &&
+            ReferenceEquals(world, Main.ActiveWorldFileData) && hardMode == Main.hardMode && day == Main.dayTime &&
+            moon == Main.moonPhase && progress == ShopProgress() && questCount == Main.LocalPlayer.anglerQuestsFinished;
 #if DEBUG
         internal long ShopReads;
 #endif
         internal void Request()
         {
-            player = Main.LocalPlayer; world = Main.ActiveWorldFileData; next = 1; failures = 0; captureTime = DateTime.Now.ToString("HH:mm:ss"); values.Clear(); Index = null; Revision++;
+            player = Main.LocalPlayer; world = Main.ActiveWorldFileData; hardMode = Main.hardMode; day = Main.dayTime;
+            moon = Main.moonPhase; progress = ShopProgress(); questCount = Main.LocalPlayer?.anglerQuestsFinished ?? 0;
+            next = 1; failures = 0; captureTime = DateTime.Now.ToString("HH:mm:ss"); values.Clear(); Index = null; Revision++;
             Status = "正在分批读取商店；结果为各店读取时的条件快照";
         }
+
+        private static int ShopProgress() => (NPC.downedBoss1 ? 1 : 0) | (NPC.downedBoss2 ? 2 : 0) |
+            (NPC.downedBoss3 ? 4 : 0) | (NPC.downedMechBossAny ? 8 : 0) | (NPC.downedPlantBoss ? 16 : 0) |
+            (NPC.downedGolemBoss ? 32 : 0) | (NPC.downedPirates ? 64 : 0) | (NPC.downedMoonlord ? 128 : 0);
         internal void Clear()
         { next = 0; values.Clear(); Index = null; Revision++; Status = "世界或角色已变化，请重新读取商店"; }
         internal void Step(bool requested)

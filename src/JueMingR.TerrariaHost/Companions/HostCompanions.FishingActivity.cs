@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.Chat;
@@ -16,6 +17,52 @@ namespace JueMingR.TerrariaHost.Companions
         private int fishingActors;
         internal bool WantsFishingBackground => fishingActors != 0;
 
+        internal readonly struct FishingAnchor
+        {
+            internal readonly Vector2 Feet;
+            internal readonly Vector2 BodyCenter;
+            internal readonly float Gravity;
+            internal readonly Point? Seat;
+            internal readonly ushort SeatType;
+            internal readonly short SeatFrameX, SeatFrameY;
+            internal readonly string SelectedMarkerId;
+            internal readonly long MarkerSession;
+            internal readonly Guid TalkItemWitness;
+            internal readonly string WorkReference;
+            internal readonly Point? WorkPoint;
+            internal readonly int WorkOreType;
+            internal bool Valid => Gravity != 0;
+
+            internal FishingAnchor(Player player, Point? seat, Tile tile)
+            {
+                Feet = CompanionNativeContact.Feet(player);
+                BodyCenter = player.Center;
+                Gravity = player.gravDir;
+                Seat = seat;
+                SeatType = tile?.type ?? 0;
+                SeatFrameX = tile?.frameX ?? 0;
+                SeatFrameY = tile?.frameY ?? 0;
+                SelectedMarkerId = null;
+                MarkerSession = 0;
+                TalkItemWitness = Guid.Empty;
+                WorkReference = null; WorkPoint = null; WorkOreType = -1;
+            }
+            internal FishingAnchor(Vector2 feet, float gravity)
+            { Feet = BodyCenter = feet; Gravity = gravity; Seat = null; SeatType = 0; SeatFrameX = SeatFrameY = 0; SelectedMarkerId = null; MarkerSession = 0; TalkItemWitness = Guid.Empty;
+                WorkReference = null; WorkPoint = null; WorkOreType = -1; }
+            internal FishingAnchor(FishingAnchor spatial, string markerId, long markerSession, Guid talkItemWitness = default(Guid))
+            {
+                Feet = spatial.Feet; BodyCenter = spatial.BodyCenter; Gravity = spatial.Gravity; Seat = spatial.Seat; SeatType = spatial.SeatType;
+                SeatFrameX = spatial.SeatFrameX; SeatFrameY = spatial.SeatFrameY;
+                SelectedMarkerId = markerId; MarkerSession = markerSession;
+                TalkItemWitness = talkItemWitness;
+                WorkReference = spatial.WorkReference; WorkPoint = spatial.WorkPoint; WorkOreType = spatial.WorkOreType;
+            }
+            internal FishingAnchor(FishingAnchor spatial,string workReference,Point workPoint,int oreType=-1)
+                : this(spatial,spatial.SelectedMarkerId,spatial.MarkerSession,spatial.TalkItemWitness)
+            { WorkReference=workReference; WorkPoint=workPoint; WorkOreType=oreType; }
+        }
+
         internal sealed class FishingActivity
         {
             internal readonly Vector2 RequestedFeet;
@@ -26,6 +73,11 @@ namespace JueMingR.TerrariaHost.Companions
             internal short SeatFrameX, SeatFrameY;
             internal bool Hold, SeatPending, Seated, Reported, AnnouncedSeat, AnnouncedBlocked, AnnouncedWater;
             internal int GearNotice, Candidate, Approach;
+            internal string ChatTaskId;
+            internal Guid? OwnerTaskId;
+            internal Action ChatNeedsBait, ChatEnded, ChatCastConfirmed;
+            internal DukeFishing Duke;
+            internal bool ChatBaitAnnounced;
             internal uint NextSeat, NextTerrain, NextPondCheck, NextTerrainRequest, NextFreshSearch, BlockedAt, RetryOriginalAt;
             internal Vector2 BlockedFeet;
             internal Point? AwaitingTile;
@@ -40,10 +92,16 @@ namespace JueMingR.TerrariaHost.Companions
             internal uint LastDefenseThreat;
             internal string Status;
             internal readonly Func<int, int, Tile> ReadWaterTile;
-            internal FishingActivity(Player at)
+            internal FishingActivity(Player at) : this(new FishingAnchor(at, null, null)) { }
+
+            internal FishingActivity(FishingAnchor at)
             {
-                RequestedFeet = FeetGoal = CompanionNativeContact.Feet(at);
-                Gravity = at.gravDir;
+                RequestedFeet = FeetGoal = at.Feet;
+                Gravity = at.Gravity;
+                Seat = at.Seat;
+                SeatType = at.SeatType;
+                SeatFrameX = at.SeatFrameX;
+                SeatFrameY = at.SeatFrameY;
                 ReadWaterTile = ReadTile;
             }
 
@@ -83,46 +141,85 @@ namespace JueMingR.TerrariaHost.Companions
                 return Result(false, "当前原版钓鱼接口不可用。" + CompanionHooks.FishingUnavailable.Message);
             if (!TryFishingActor(ownerId, id, out var actor) || enabled && (!owner.active || owner.dead))
                 return Result(false, "当前不能切换钓鱼模式。");
+            InvalidateChatAction(id, "已采用手动钓鱼设置，撤回待执行的模型指令。");
+            bool wasFishing = FishingActive(actor);
+            RetireTaskForActor(actor, "玩家已手动修改钓鱼活动。");
+            if (!enabled && wasFishing && !FishingActive(actor)) return RestoreFishingFollow(actor);
             if (enabled == FishingActive(actor)) return true;
             if (!enabled) return EndFishingActivity(actor, follow: true);
-            // Freeze the owner's feet and tile identity in the same input
-            // callback. Saving, changing selection, and moving never recapture it.
-            var activity = new FishingActivity(owner);
-            if (owner.sitting.isSitting)
+            BeginFishingActivity(actor, CaptureFishingAnchor(owner));
+            return Result(true, "");
+        }
+
+        // Capture as a value at the originating input. At execution, normal
+        // fishing revalidates this seat in the same world without resampling
+        // the owner's later location.
+        private static FishingAnchor CaptureFishingAnchor(Player at)
+        {
+            if (at.sitting.isSitting)
             {
-                Point seat = SeatCell(owner);
-                if (ReadFishingTile(seat.X, seat.Y) is Tile tile && owner.sitting.TryGetSittingBlock(owner, out _))
-                {
-                    activity.Seat = seat;
-                    activity.SeatType = tile.type;
-                    activity.SeatFrameX = tile.frameX;
-                    activity.SeatFrameY = tile.frameY;
-                }
+                Point seat = SeatCell(at);
+                if (ReadFishingTile(seat.X, seat.Y) is Tile tile && at.sitting.TryGetSittingBlock(at, out _))
+                    return new FishingAnchor(at, seat, tile);
             }
+            return new FishingAnchor(at, null, null);
+        }
+
+        private FishingActivity BeginFishingActivity(Actor actor, FishingAnchor anchor)
+        {
+            var activity = new FishingActivity(anchor);
             actor.Fishing = activity;
             actor.AutoTeleport?.ResetObservation();
             fishingActors++;
             actor.Behavior.Navigator.IntentChanged(actor.Mobility);
-            return Result(true, "");
+            return activity;
         }
 
         private static bool FishingActive(Actor actor) => actor.Fishing != null;
         private static int FishingLiquid(Actor actor) => actor.Fishing?.Pond?.Liquid ?? -1;
         private bool FishingPagePauses(Actor actor) => fishingPageOwner == actor.Profile.OwnerId && fishingPageId == actor.Profile.Id;
-        private static bool FishingFollowsOwner(Actor actor) => actor.Fishing == null && actor.Preferences.Follow;
+        private static bool FishingFollowsOwner(Actor actor) => actor.Fishing == null &&
+            (actor.TaskTravel?.FollowOwner ?? (actor.TaskWork?.Independent != true && actor.Preferences.Follow));
 
-        private bool EndFishingActivity(Actor actor, bool follow = false, bool retire = false)
+        internal int EffectiveFollow(CompanionProfile profile) => actors.TryGetValue(profile.Id,out var actor) &&
+            actor.Ready && !actor.Closing ? (FishingFollowsOwner(actor) ? 1 : 0) : profile.SettingValue(CompanionSetting.Follow);
+
+        internal bool SetManualFollow(Guid ownerId,Guid id,bool follow) => ApplyFollowSetting(ownerId,id,follow,true);
+
+        private bool ApplyFollowSetting(Guid ownerId,Guid id,bool follow,bool manual)
+        {
+            var profile = SettingProfile(ownerId,id);
+            if (profile == null || IsFishing(ownerId,id)) return false;
+            if (actors.TryGetValue(id,out var actor))
+            {
+                RetireTaskForActor(actor,manual?"已交回玩家手动跟随控制。":"已按玩家当前消息修改跟随设置。");
+                if (manual) InvalidateChatAction(id,"已采用玩家手动跟随控制。");
+            }
+            var preferences = profile.Behavior;
+            if (preferences.Follow == follow) return true;
+            preferences.Follow = follow;
+            return ApplyBehavior(id,preferences,manual:false);
+        }
+
+        private bool EndFishingActivity(Actor actor, bool follow = false, bool retire = false, bool movingFishingTask = false)
         {
             if (actor.Fishing == null && !retire) return true;
             var previous = actor.Fishing;
             if (previous != null) { actor.Fishing = null; fishingActors--; }
+            if (previous?.Duke != null) dukeFishingActors--;
             if (previous?.Seated == true) StandFromFishingSeat(actor);
             StopFishingLine(actor, retire);
             actor.Behavior.Navigator.IntentChanged(actor.Mobility);
-            if (!follow || actor.Preferences.Follow) return true;
+            if (!movingFishingTask) previous?.ChatEnded?.Invoke();
+            return !follow || RestoreFishingFollow(actor);
+        }
+
+        private bool RestoreFishingFollow(Actor actor)
+        {
+            if (actor.Preferences.Follow) return true;
             var preferences = actor.Profile.Behavior;
             preferences.Follow = true;
-            return SetBehavior(actor.Profile.Id, preferences);
+            return ApplyBehavior(actor.Profile.Id, preferences, manual: false);
         }
 
         private void FishingArrivedByWormhole(Actor actor, bool automatic)
@@ -146,10 +243,15 @@ namespace JueMingR.TerrariaHost.Companions
                 return;
             }
             bool stop = actor.Preferences.TeleportStopsFishing;
-            EndFishingActivity(actor, follow: stop);
+            EndFishingActivity(actor, follow: stop, movingFishingTask: !stop);
             if (!stop)
             {
-                actor.Fishing = new FishingActivity(actor.Body);
+                actor.Fishing = new FishingActivity(actor.Body)
+                {
+                    ChatTaskId = activity.ChatTaskId, ChatNeedsBait = activity.ChatNeedsBait,
+                    ChatEnded = activity.ChatEnded, ChatBaitAnnounced = activity.ChatBaitAnnounced,
+                    ChatCastConfirmed = activity.ChatCastConfirmed, OwnerTaskId = activity.OwnerTaskId
+                };
                 fishingActors++;
             }
         }
@@ -366,7 +468,7 @@ namespace JueMingR.TerrariaHost.Companions
                 }
                 return;
             }
-            FishingNativeBait(actor.Body, out int baitPower, out _);
+            FishingActivityBait(actor, out int baitPower, out _);
             if (baitPower <= 0) return;
             activity.Status = "正在寻找可钓水域";
             if (!activity.Scanned)
@@ -391,7 +493,8 @@ namespace JueMingR.TerrariaHost.Companions
                         activity.Measuring = null;
                     }
                 }
-                if (activity.Pond.Eligible && TryFishingRod(actor, activity.Pond.Liquid, out var rod))
+                if (activity.Pond.Eligible && (activity.Duke == null || activity.Pond.Count > 1000 && activity.Pond.Liquid == 0 &&
+                    DukeCoastalColumn(entry.Cell.X)) && TryFishingRod(actor, activity.Pond.Liquid, out var rod))
                 {
                     if (activity.Cast == null || !activity.Cast.Matches(actor.Body, rod))
                         activity.Cast = new CompanionFishingCast(actor.Body, rod, entry);
@@ -441,10 +544,11 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if (unchecked((int)(now - activity.NextPondCheck)) < 0) return true;
             var measuring = activity.RecheckingPond ?? (activity.RecheckingPond = new CompanionFishingWater.Pond(activity.Cast.Entry.Cell));
-            if (measuring.ValidateMinimum(ref budget, activity.ReadWaterTile) != CompanionFishingWater.Result.Ready) return true;
+            int minimum = activity.Duke == null ? 75 : 1001;
+            if (measuring.ValidateMinimum(ref budget, activity.ReadWaterTile,minimum) != CompanionFishingWater.Result.Ready) return true;
             activity.RecheckingPond = null;
             activity.NextPondCheck = now + 120;
-            return measuring.Eligible;
+            return measuring.Count >= minimum && (activity.Duke == null || measuring.Liquid == 0);
         }
 
         private bool RequestFishingTerrain()
@@ -501,6 +605,9 @@ namespace JueMingR.TerrariaHost.Companions
             if (wetType != activity.Pond.Liquid || !CompanionFishingWater.WithinCircle(activity.Water.Center,
                 new Vector2(bobber.Center.X, (row + 1) * 16 - tile.liquid / 16))) return false;
             activity.CastConfirmed = true;
+            var notified = activity.ChatCastConfirmed;
+            activity.ChatCastConfirmed = null;
+            notified?.Invoke();
             activity.AnnouncedWater = false;
             if (!activity.Reported && SayFishing(actor, FishingLocationText(actor.Body, wetType))) activity.Reported = true;
             return true;
@@ -511,8 +618,16 @@ namespace JueMingR.TerrariaHost.Companions
             var activity = actor.Fishing;
             if (activity == null || !activity.Hold || activity.SeatPending) return;
             int notice = rod ? 1 : bait ? 2 : 0;
+            if (!bait) activity.ChatBaitAnnounced = false;
             if (notice == 0) { activity.GearNotice = 0; return; }
             activity.Status = rod ? "缺少鱼竿" : "缺少可用鱼饵";
+            if (notice == 2 && activity.ChatNeedsBait != null)
+            {
+                if (!activity.ChatBaitAnnounced) activity.ChatNeedsBait();
+                activity.ChatBaitAnnounced = true;
+                activity.GearNotice = notice;
+                return;
+            }
             if (activity.GearNotice != notice && SayFishing(actor, rod ? "我需要一根鱼竿。" : "我需要可用的鱼饵。")) activity.GearNotice = notice;
         }
 

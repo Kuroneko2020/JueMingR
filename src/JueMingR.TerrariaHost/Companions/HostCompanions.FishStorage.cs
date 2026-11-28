@@ -40,6 +40,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             internal Actor Actor;
             internal int Type, Prefix, Mode;
+            internal int BeforeTaskInventory;
+            internal Item Overflow;
             internal long Generation;
             internal bool Produced;
         }
@@ -113,12 +115,14 @@ namespace JueMingR.TerrariaHost.Companions
         {
             int mode = a.Preferences.Fishing.StoreMode;
             var line = a.FishingLine;
-            if (mode == 0 || mode == 2 && ActorQuestType(a) != type || Main.ServerSideCharacter ||
-                !line.PullReceived || !FishingActivityOwns(a, bobber, out var tracked) || !tracked.Pullable ||
+            if (Main.ServerSideCharacter || !line.PullReceived || !FishingActivityOwns(a, bobber, out var tracked) || !tracked.Pullable ||
                 !FishingObservation.Live(tracked.Body, a.Body) || type <= 0 || type >= ItemID.Count ||
                 type >= ItemID.CopperCoin && type <= ItemID.PlatinumCoin)
                 return null;
-            return new FishingGrant { Actor = a, Type = type, Mode = mode, Generation = a.Generation };
+            int prior = TaskCatchBefore(a,type);
+            if (mode == 2 && ActorQuestType(a) != type) mode = 0;
+            if (mode == 0 && prior < 0) return null;
+            return new FishingGrant { Actor = a, Type = type, Mode = mode, Generation = a.Generation, BeforeTaskInventory = prior };
         }
 
         internal void FinishFishingGrant(FishingGrant grant)
@@ -126,7 +130,8 @@ namespace JueMingR.TerrariaHost.Companions
             if (grant == null || !grant.Produced || grant.Actor.Closing || grant.Generation != grant.Actor.Generation) return;
             var a = grant.Actor;
             a.Dirty = true;
-            if (grant.Mode != a.Preferences.Fishing.StoreMode) return;
+            RecordTaskCatch(a,grant.Type,grant.BeforeTaskInventory,grant.Overflow);
+            if (grant.Mode == 0 || grant.Mode != a.Preferences.Fishing.StoreMode) return;
             var line = a.FishingLine;
             if (line.Storage == null) line.Storage = new CompanionFishStorage();
             var state = line.Storage;

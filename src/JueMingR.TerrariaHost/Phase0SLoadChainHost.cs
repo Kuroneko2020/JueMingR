@@ -9,6 +9,8 @@ using System.Text;
 using System.Threading;
 using HarmonyLib;
 using JueMingR.Features.Biomes;
+using JueMingR.Features.Llm;
+using JueMingR.Infrastructure.Llm;
 using JueMingR.TerrariaHost.F5;
 using JueMingR.TerrariaHost.Settings;
 using Microsoft.Xna.Framework;
@@ -976,7 +978,23 @@ namespace JueMingR.TerrariaHost
                     Combat=new Combat.HostCombat(gameDirectory,Tools);runtime.SharedRuntime.AddFeature(Combat);
                     Combat.Handoff.Attach(Processing,QuickItems);
                     Afk=new AfkMode.HostAfkMode(gameDirectory,Tools);Afk.Attach(QuickItems,Processing);runtime.SharedRuntime.AddFeature(Afk);
-                    Companions=new Companions.HostCompanions(gameDirectory){OwnerOperations=items.Ownership,OwnerItems=items};runtime.SharedRuntime.AddFeature(Companions);
+                    var worldMemory = new World.WorldMemory(gameDirectory);
+                    runtime.SharedRuntime.AddFeature(worldMemory);
+                    Companions=new Companions.HostCompanions(gameDirectory){OwnerOperations=items.Ownership,OwnerItems=items,SharedWorldMemory=worldMemory};runtime.SharedRuntime.AddFeature(Companions);
+                    try
+                    {
+                        var presets = LlmPresetCatalog.Load();
+                        var store = new LlmFileStore(gameDirectory);
+                        var transport = new LlmHttpTransport();
+                        var connections = new LlmConnections(presets, store, transport,
+                            (connection, token) => CompanionChat.TestToolsAsync(transport, connection, token));
+                        Companions.ConfigureChat(connections, transport, store);
+                    }
+                    catch (Exception)
+                    {
+                        // Model configuration is optional. A local model
+                        // dependency failure must leave manual companions available.
+                    }
                     var humanFishingBackground = Tools.FishingBackgroundDemand;
                     Tools.FishingBackgroundDemand = () => humanFishingBackground?.Invoke() == true || Companions.WantsFishingBackground;
                     CombatObservation=new Combat.HostCombatObservation(gameDirectory,runtime.SharedRuntime,Input,nativeNpcs,predictionHostHash==null?null:new Combat.Prediction.PredictionLaunchIdentity(predictionHostHash,gameDirectory),PackageId,exactPredictionComparison,hiddenAccess){LayerStatus=entityLayerStatus};runtime.SharedRuntime.AddFeature(CombatObservation);
@@ -998,6 +1016,20 @@ namespace JueMingR.TerrariaHost
                 if (footprintPackage) { Footprints = new Footprints.HostFootprints(gameDirectory, runtime.SharedRuntime, itemProbe, Input); runtime.SharedRuntime.AddFeature(Footprints); }
                 notes = new Notes.HostNotes(gameDirectory);
                 if (PackageId.StartsWith("item-browser-", StringComparison.Ordinal) || quickPackage) Browser = new ItemBrowser.HostItemBrowser(gameDirectory, worldTiles, Input);
+                if (Companions != null)
+                {
+                    Companions.ChatKnowledge = Browser?.Knowledge;
+                    Companions.TaskSelectedMarker = () => MapFeatures?.TaskSelectedMarker;
+                    Companions.TaskBlueprint = () => Blueprint;
+                    Companions.TaskMarkers = () =>
+                    {
+                        var map = MapFeatures;
+                        var saved = map?.Markers.Saved;
+                        return map != null && map.OwnershipCurrent && map.Markers.Loaded && saved?.Pair == map.Pair
+                            ? saved?.Records ?? Array.Empty<JueMingR.Features.MapMarkers.MarkerRecord>()
+                            : Array.Empty<JueMingR.Features.MapMarkers.MarkerRecord>();
+                    };
+                }
                 if (hotkeyPackage) ShortFeedback = new Feedback.LocalShortFeedback(runtime.SharedRuntime, Input);
                 if (Companions != null && ShortFeedback != null)
                     Companions.ManualRecallFeedback = (id, text, succeeded) =>

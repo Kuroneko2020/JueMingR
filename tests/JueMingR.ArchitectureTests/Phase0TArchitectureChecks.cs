@@ -161,7 +161,11 @@ namespace JueMingR.ArchitectureTests
                 "JueMingR.Features.Notes.NoteEditor", "JueMingR.Features.Notes.NotesTextLayout",
                 "JueMingR.Features.Notes.NotesTextLine", "JueMingR.Features.Notes.NotesFeature",
                 "JueMingR.Features.Notes.NotesWorkspace", "JueMingR.Features.Notes.NotesAction",
-                "JueMingR.Features.Notes.NotesActionKind"
+                "JueMingR.Features.Notes.NotesActionKind",
+                "JueMingR.Features.Llm.LlmConnections", "JueMingR.Features.Llm.CompanionChat",
+                "JueMingR.Features.Llm.StrategyDependency", "JueMingR.Features.Llm.BossPreparationChoice",
+                "JueMingR.Features.Llm.CompanionStrategyFacts", "JueMingR.Features.Llm.CompanionStrategy",
+                "JueMingR.Features.Llm.CompanionGameStrategy"
             };
             if (!expected.SetEquals(features.GetExportedTypes().Select(type => type.FullName)))
             {

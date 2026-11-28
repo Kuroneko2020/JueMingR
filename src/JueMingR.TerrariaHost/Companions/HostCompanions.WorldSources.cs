@@ -72,11 +72,9 @@ namespace JueMingR.TerrariaHost.Companions
                 int y=Math.Max(10,Math.Min(Main.maxTilesY-11,(int)(a.Body.Center.Y/16)));
                 if(TryRequestTerrain(x,y,a.Body.team))return;
             }
+            if (RequestEnvironmentTerrain()) return;
             if (RequestFishingTerrain()) return;
-            var pending=nurseTerrainRequest;
-            nurseTerrainRequest=null;
-            if(pending.HasValue && nurseTerrainSession==session && HasActors)
-                TryRequestTerrain(pending.Value.X,pending.Value.Y,nurseTerrainTeam);
+            RequestTaskTerrain();
         }
         private static int TerrainKey(int sectionX,int sectionY)
         {

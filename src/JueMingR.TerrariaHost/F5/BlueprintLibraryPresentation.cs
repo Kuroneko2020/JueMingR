@@ -974,7 +974,7 @@ namespace JueMingR.TerrariaHost.F5
         {
             if (!Visible || !ready) return;
             renderer.Draw(parts, view, matrix, shell.Scroll, hovered, armed, previews, editView,
-                !dirty && Editable && host.Input.CanPrepareText && TextInput.HasCurrentEditorLease && !TextInput.OtherTextOwner &&
+                !dirty && Editable && TextInput.CanPresentEditor(host.Input, Editor) &&
                 Same(view, shell.Layout.Viewport.Offset(shell.X, shell.Y)) && matrix == Main.UIScaleMatrix &&
                 scroll == shell.Scroll && layoutGeneration == shell.Layout.Generation, mode == View.Capture ? captureHeaderHeight + BlueprintLibraryLayout.HeaderGap : 0);
             if (mode == View.Capture)

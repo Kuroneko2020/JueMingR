@@ -183,6 +183,7 @@ override	JUEMINGR_COMPANION_NAV_COMPARISON
 selector	JUEMINGR_COMPANION_NAV_FOCUS
 override	JUEMINGR_COMPANION_EXIT_COMPARISON
 override	JUEMINGR_COMPANION_WORMHOLE_COMPARISON
+override	JUEMINGR_COMPANION_AI_UI_CANDIDATE
 selector	JUEMINGR_EYE_COMBO_ONLY
 selector	JUEMINGR_EYE_COMBO_SCENE
 selector	JUEMINGR_FLIGHT_BOUNDARY_ONLY
@@ -432,6 +433,9 @@ leaf	CompanionShowcaseVisual	companions-showcase
 leaf	CompanionResourceBarsVisual	companions-resource-bars
 leaf	CompanionCreationInputVisual	companions-creation-input
 leaf	CompanionConfigVisual	companions-config
+leaf	CompanionChatUiCpu	companions-chat-ui
+leaf	CompanionEnvironmentCpu	companions-environment
+override	JUEMINGR_COMPANION_ENVIRONMENT_CANDIDATE
 leaf	CompanionFishingUiCpu	companions-fishing-ui
 leaf	CompanionFishingLineCpu	companions-fishing-line
 leaf	CompanionFishingWorldCpu	companions-fishing-world

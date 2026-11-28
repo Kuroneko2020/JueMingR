@@ -21,6 +21,7 @@ namespace JueMingR.TerrariaHost.Blueprint
         internal BlueprintProjectionView QualificationRequestedView;
         internal long QualificationRequestedRevision=-1;
         internal BlueprintProjectionMatchState Match;
+        internal bool CompletedByWorldMatch;
         internal BlueprintProjectionView SourceFailureView;
         internal BlueprintProjectionView DrawFailureView;
         internal long SourceFailureCapability;
@@ -183,7 +184,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             // has sealed its committed snapshot before this resource release.
             hoikBases.Clear();hoikInventory=null;hoikPick=null;hoikPickSlot=-1;
             projectionCapacityRevision++; ClearProjectionPoint();
-            Library?.CloseProjection(); projectionTransaction++; projectionSceneRevision++; ClearProjectionEditor(); projectionEditKind = BlueprintProjectionEditKind.None;
+            Library?.CloseProjection(); taskProjectionReads.Clear(); projectionTransaction++; projectionSceneRevision++; ClearProjectionEditor(); projectionEditKind = BlueprintProjectionEditKind.None;
             foreach (var item in projectionScene) DisposeProjectionData(item); projectionScene.Clear();
             ClearProjectionMatchWork(); projectionChanges.Clear(); projectionMatchWatches.Clear(); projectionMatchPriority = null; projectionMatchTickSet = false;
             projectionMatchSource = null; projectionMatchTiles = projectionMatchSections = null;
@@ -204,6 +205,7 @@ namespace JueMingR.TerrariaHost.Blueprint
             while (Library.TryTakeProjectionReceipt(out receipt))
             {
                 if (receipt.Identity == null || receipt.Identity.SessionGeneration != generation) continue;
+                if (AcceptTaskProjectionRead(receipt)) continue;
                 if (TakePersistedProjectionReceipt(receipt)) continue;
                 var item = FindProjection(receipt.Identity); if (item == null) continue;
                 if (receipt.Kind == BlueprintProjectionReceiptKind.Failed)

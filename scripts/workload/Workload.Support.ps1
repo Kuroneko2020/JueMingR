@@ -62,7 +62,7 @@ function Get-WorkloadRoute {
     [void]$groups.Add('core')
     if ($Paths -contains '@full') {
         $Paths=@($Paths | Where-Object {$_ -cne '@full'})+@('src/JueMingR.TerrariaHost/Input/HostInputState.cs')
-        foreach($group in @('legacy-worker','workload-tools','package-tools','input-boundary')){[void]$groups.Add($group)}
+        foreach($group in @('legacy-worker','workload-tools','package-tools','input-boundary','llm-host')){[void]$groups.Add($group)}
     }
     $unknown = @()
     foreach ($path in $Paths) {
@@ -82,6 +82,7 @@ function Get-WorkloadRoute {
             continue
         }
         switch -Regex ($path) {
+            '^src/JueMingR\.(Features|Infrastructure|Platform)/Llm/' { [void]$groups.Add('llm-host'); continue }
             '^src/[^/]+/Companions/|^src/JueMingR.TerrariaHost/F5/Companion|^tests/Companions/|^tests/NativeWorldTextProbe/NativeCompanion' { [void]$groups.Add('companion-host'); continue }
             # Deployment changes select package/tool consumers, not every game
             # feature. The production CLR/Setup mechanisms have explicit fixture

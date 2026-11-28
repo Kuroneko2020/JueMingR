@@ -2,6 +2,7 @@ using System;
 using System.Text;
 using JueMingR.Features.Text;
 using JueMingR.Features.Notes;
+using JueMingR.TerrariaHost.F5;
 using JueMingR.TerrariaHost.Notes;
 using Microsoft.Xna.Framework.Input;
 using ReLogic.OS;
@@ -22,6 +23,7 @@ namespace JueMingR.TerrariaHost.Input
         private TextEditBuffer bound;
         private TextEditBuffer prepared;
         private bool leased, priorBlock, previousComposition, enterTail, escapeTail, keyboardTail;
+        private bool chatEnterTaken;
         private int repeatTicks;
         private Keys pendingNavigation;
         private long navigationRevision;
@@ -40,6 +42,10 @@ namespace JueMingR.TerrariaHost.Input
         // The native token is cleared by outer Updates that may skip input but
         // still Draw. Presentation may retain only this exact editor's lease.
         internal bool HasCurrentEditorLease { get { return leased && bound != null && ReferenceEquals(bound, workspace.Editor); } }
+        // A skipped input phase may leave a valid visual edit with a null native
+        // token. Only the input phase may claim that token or consume characters.
+        internal bool CanPresentEditor(HostInputState input, TextEditBuffer editor) =>
+            ReferenceEquals(editor, bound) && HasCurrentEditorLease && input.CanPrepareText && !OtherTextOwner;
         internal bool OwnsTextToken { get { return ReferenceEquals(Main.CurrentInputTextTakerOverride, owner); } }
         internal bool HasComposition { get { return leased && (Composition.Length != 0 || ime.Candidates || pendingHighSurrogate != 0); } }
         internal bool OtherTextOwner
@@ -88,7 +94,11 @@ namespace JueMingR.TerrariaHost.Input
         { ProcessSample(active, layout, physicalSample, focused, null); }
         internal void AfterSampleForImportName(bool active, KeyboardState physicalSample, bool focused, HostInputState input)
         { ProcessSample(active, null, physicalSample, focused, input); }
-        private void ProcessSample(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused, HostInputState importNameInput)
+        internal void AfterSampleForCompanion(bool active, ChatDraftLayout layout, KeyboardState physicalSample, bool focused,
+            HostInputState input, bool sendOnEnter)
+        { ProcessSample(active, null, physicalSample, focused, input, sendOnEnter, layout); }
+        private void ProcessSample(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused,
+            HostInputState textCommandInput, bool sendOnEnter = false, ChatDraftLayout chatLayout = null)
         {
             sample = physicalSample;
             if (!focused) { Release(false); return; }
@@ -103,23 +113,25 @@ namespace JueMingR.TerrariaHost.Input
                 if (imePriority && sample.IsKeyDown(Keys.Escape)) escapeTail = true;
                 if (sample.IsKeyUp(Keys.Enter)) enterTail = false;
                 if (sample.IsKeyUp(Keys.Escape)) escapeTail = false;
-                ProcessText(imePriority || enterTail, imePriority || escapeTail, importNameInput);
+                ProcessText(imePriority || enterTail, imePriority || escapeTail, textCommandInput, sendOnEnter);
                 if (HasComposition) workspace.PreserveUncommittedInput(bound);
-                if (workspace.Editor != null && !imePriority) ProcessKeys(layout);
+                if (workspace.Editor != null && !imePriority) ProcessKeys(layout, chatLayout);
                 if (leased && workspace.Editor != null) PlayerInput.WritingText = true;
                 previousComposition = composing;
                 // Raw shortcuts earlier in the next Update consume this cached state.
                 // Never restore consumed keys after Update and replay them there.
-                Main.keyState = default(KeyboardState); keyboardTail = importNameInput == null && HostKeyboardActions.HasHeldOperationKey(sample);
+                Main.keyState = default(KeyboardState); keyboardTail = textCommandInput == null && HostKeyboardActions.HasHeldOperationKey(sample);
             }
             else if (keyboardTail && !OtherTextOwner)
             {
                 keyboardTail = HostKeyboardActions.HasHeldOperationKey(sample);
                 Main.keyState = default(KeyboardState);
             }
+            if (!leased && sample.IsKeyDown(Keys.Enter)) chatEnterTaken = true;
+            if (sample.IsKeyUp(Keys.Enter)) chatEnterTaken = false;
             previous = sample;
         }
-        private void ProcessText(bool suppressEnter, bool suppressEscape, HostInputState importNameInput)
+        private void ProcessText(bool suppressEnter, bool suppressEscape, HostInputState textCommandInput, bool sendOnEnter)
         {
             committed.Clear(); bool enter = false, escape = false;
             int count = Math.Min(Main.keyCount, Math.Min(Main.keyInt.Length, Main.keyString.Length));
@@ -138,16 +150,27 @@ namespace JueMingR.TerrariaHost.Input
             // A queued IME confirmation/cancel stays with the same text owner.
             if (escape)
             {
-                importNameInput?.ConsumeImportNameKey(Keys.Escape);
+                textCommandInput?.ConsumeTextCommandKey(Keys.Escape);
                 if (!suppressEscape) { Release(true); workspace.CancelEdit(); return; }
             }
             if (!enter) return;
-            importNameInput?.ConsumeImportNameKey(Keys.Enter);
+            textCommandInput?.ConsumeTextCommandKey(Keys.Enter);
+            // A held Enter may queue repeated characters, including after an
+            // IME confirmation. Admit at most one command until physical release.
+            if (sendOnEnter)
+            {
+                bool taken = chatEnterTaken;
+                chatEnterTaken = true;
+                if (suppressEnter || taken || previous.IsKeyDown(Keys.Enter) && !sample.IsKeyDown(Keys.Enter)) return;
+                if (sample.IsKeyDown(Keys.LeftShift) || sample.IsKeyDown(Keys.RightShift)) bound.Insert("\n");
+                else if (!HasComposition) workspace.RequestFinish();
+                return;
+            }
             if (suppressEnter) return;
             if (bound.SingleLine) { FinishComposition(false); if (!HasComposition) workspace.RequestFinish(); }
             else bound.Insert("\n");
         }
-        private void ProcessKeys(NotesTextLayout layout)
+        private void ProcessKeys(NotesTextLayout layout, ChatDraftLayout chatLayout)
         {
             TextEditBuffer editor = workspace.Editor; if (editor == null) return;
             bool control = sample.IsKeyDown(Keys.LeftControl) || sample.IsKeyDown(Keys.RightControl);
@@ -180,7 +203,7 @@ namespace JueMingR.TerrariaHost.Input
             { pendingNavigation = navigation; navigationRevision = editor.Revision; navigationCaret = editor.Caret; navigationSelection = editor.CaretRevision; navigationExtend = shift; }
             // Notes titles are single-line documents but may wrap visually;
             // only the map's unwrapped field has no Notes layout to navigate.
-            if (editor.SingleLine && layout == null && navigation != Keys.None)
+            if (editor.SingleLine && layout == null && chatLayout == null && navigation != Keys.None)
             {
                 if (navigation == Keys.Home) editor.MoveTo(0, shift);
                 else if (navigation == Keys.End) editor.MoveTo(editor.Text.Length, shift);
@@ -188,6 +211,13 @@ namespace JueMingR.TerrariaHost.Input
             }
             if (pendingNavigation == Keys.None) return;
             if (editor.Revision != navigationRevision || editor.Caret != navigationCaret || editor.CaretRevision != navigationSelection) { pendingNavigation = Keys.None; return; }
+            if (chatLayout != null)
+            {
+                if (!ReferenceEquals(chatLayout.Text, editor.Text)) return;
+                chatLayout.Navigate(editor, pendingNavigation, navigationExtend);
+                pendingNavigation = Keys.None;
+                return;
+            }
             if (layout == null || !ReferenceEquals(layout.Text, editor.Text) || !layout.CanLocate(editor.Caret)) return;
             int target = pendingNavigation == Keys.Up ? layout.Vertical(editor.Caret, -1) : pendingNavigation == Keys.Down ? layout.Vertical(editor.Caret, 1) :
                 pendingNavigation == Keys.Home ? layout.LineHome(editor.Caret) : layout.LineEnd(editor.Caret);

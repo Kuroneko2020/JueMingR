@@ -48,6 +48,7 @@ namespace JueMingR.TerrariaHost.F5
             rightSlot = null;
             CancelSelectionModes();
             RetireConfigurationInput();
+            LeaveAiPage();
             Invalidate();
             // A challenge projects the new controls under an existing physical
             // press. That press cannot become an admission on this new dialog.

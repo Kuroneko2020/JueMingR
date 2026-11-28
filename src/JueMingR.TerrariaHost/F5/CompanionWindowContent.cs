@@ -25,6 +25,7 @@ namespace JueMingR.TerrariaHost.F5
         }
         private void BuildSelected(float row)
         {
+            if (page >= ChatPage) { BuildAiPage(row); return; }
             var body = host.GetBody(selected);
             RefreshAvailability(body);
             field = default(F5Rect); contentY = bodyView.Y - bodyOffset;

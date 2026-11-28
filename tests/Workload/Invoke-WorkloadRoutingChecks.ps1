@@ -29,7 +29,14 @@ $continuationProviders=@{
     'tests/NativeWorldTextProbe/NativeCoinUseChecks.cs'=@('native-CoinDepositCpu','native-CoinConsumersCpu');
     'tests/NativeWorldTextProbe/NativeCoinContinuationChecks.cs'=@('native-CoinDepositCpu','native-CoinContinuationCpu');
     'tests/NativeWorldTextProbe/NativeViewOriginalChecks.cs'=@('native-AfkOuterBackground');
-    'tests/NativeWorldTextProbe/NativeAfkOuterBackgroundChecks.cs'=@('native-AfkOuterBackground')
+    'tests/NativeWorldTextProbe/NativeAfkOuterBackgroundChecks.cs'=@('native-AfkOuterBackground');
+    'tests/JueMingR.ArchitectureTests/Llm/LlmBudgetUsageChecks.cs'=@('LlmConnections');
+    'tests/NativeWorldTextProbe/NativeCompanionChatBudgetChecks.cs'=@('native-CompanionFishingLineCpu');
+    'tests/NativeWorldTextProbe/NativeCompanionCommandSemanticsChecks.cs'=@('native-CompanionFishingLineCpu');
+    'tests/NativeWorldTextProbe/NativeCompanionWorldMemoryChecks.cs'=@('native-CompanionFishingLineCpu');
+    'tests/NativeWorldTextProbe/NativeCompanionWorldMemoryRuntimeChecks.cs'=@('native-CompanionFishingLineCpu');
+    'src/JueMingR.TerrariaHost/F5/ChatDraftLayout.cs'=@('native-CompanionChatUiCpu','native-CompanionConfigVisual','native-CompanionFishingLineCpu');
+    'src/JueMingR.TerrariaHost/World/WorldMemory.Materials.cs'=@('native-CompanionFishingLineCpu')
 }
 foreach($path in $continuationProviders.Keys){
     $before=[pscustomobject]@{inputs=@($path+':A')};$after=[pscustomobject]@{inputs=@($path+':B')}
@@ -549,7 +556,7 @@ try {
     Assert-Route ($identity.fingerprint -cne (Get-WorkloadIdentity $fixtureRoot).fingerprint) 'untracked bytes belong to build identity'
     Assert-Route ($null -ne (Get-WorkloadChanges $fixtureRoot 'missing-baseline').reason) 'missing baseline is an explicit unresolved risk'
     # Exercise the actual executable plan, not script text or a duplicate dispatcher.
-    $catalog = @('FishingChecks|fishing-host','ProcessingChecks|processing-host','HotkeyCoreChecks|hotkeys','OnboardingChecks|about-host','CombatChecks|combat-host')
+    $catalog = @('FishingChecks|fishing-host','ProcessingChecks|processing-host','HotkeyCoreChecks|hotkeys','OnboardingChecks|about-host','CombatChecks|combat-host','LlmConnections|llm-host')
     foreach($path in @('src/JueMingR.Features/Combat/CombatSettings.cs','src/JueMingR.TerrariaHost/Combat/CombatUse.cs','src/JueMingR.TerrariaHost/F5/CombatIntervalDrag.cs','tests/NativeWorldTextProbe/CombatNetworkFixture.cs')) {
         $local = Get-WorkloadRoute @($path)
         Assert-Route ((@($local.groups) -join ',') -ceq 'combat-host,core') ('combat leaf classification: '+$path)
@@ -579,6 +586,25 @@ try {
     foreach ($expected in @('native-PageCompositionCpu','fixture-focus-input','fixture-hotkeys-popup','HotkeyCoreChecks')) { Assert-Route ($names -contains $expected) ('page actual consumer ' + $expected) }
     foreach ($excluded in @('native-FishingCpu','native-ToolsCpu','native-ProcessingCpu','FishingChecks')) { Assert-Route ($names -notcontains $excluded) ('page excludes unrelated execution ' + $excluded) }
     $all = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog (Get-WorkloadRoute @('@full')).groups)
+    $llmRoute = Get-WorkloadRoute @('src/JueMingR.Infrastructure/Llm/provider_presets.json','src/JueMingR.Platform/Llm/LlmConfiguration.cs')
+    $llmPlan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog $llmRoute.groups)
+    Assert-Route ($llmRoute.unknown.Count -eq 0 -and $llmRoute.groups -contains 'llm-host') 'provider data and model contracts select the actual model owner'
+    foreach ($name in @('LlmConnections','native-CompanionChatUiCpu','native-CompanionFishingLineCpu')) {
+        Assert-Route ($llmPlan.name -contains $name -and $all.name -contains $name) ('model consumer stays in Related and Full: '+$name)
+    }
+    Assert-Route ((Get-WorkloadExpectedNativeLeaf 'native-CompanionChatUiCpu') -ceq 'companions-chat-ui') 'chat UI requires the expected actual native leaf'
+    foreach ($fixture in @('Tasks','ResourceTask','CraftWire','ServiceTask','ShimmerTask','DukeTask','ChatUi')) {
+        Assert-Route (@(Get-WorkloadPathChecks "tests/NativeWorldTextProbe/NativeCompanion${fixture}Checks.cs") -contains 'native-CompanionFishingLineCpu') `
+            ('companion task fixture reaches the shared native task consumer: '+$fixture)
+    }
+    $environmentRoute = Get-WorkloadRoute @('src/JueMingR.TerrariaHost/Companions/HostCompanions.Environment.cs','tests/NativeWorldTextProbe/NativeCompanionEnvironmentChecks.cs')
+    $environmentPlan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog $environmentRoute.groups)
+    Assert-Route ($environmentRoute.unknown.Count -eq 0 -and $environmentPlan.name -contains 'native-CompanionEnvironmentCpu' -and
+        (Get-WorkloadExpectedNativeLeaf 'native-CompanionEnvironmentCpu') -ceq 'companions-environment') 'environment changes invoke the actual companion ecology and protocol leaf'
+    Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeInformationLocalizationChecks.cs') -join '|') -ceq 'native-InformationCpu') `
+        'localization fixture changes require the existing full information consumer'
+    Assert-Route ((@(Get-WorkloadPathChecks 'tests/NativeWorldTextProbe/NativeInformationBiomeChecks.cs') -join '|') -ceq 'native-InformationCpu') `
+        'information biome fixture changes require the existing full information consumer'
     $packageRoute = Get-WorkloadRoute @('scripts/verify-existing-package.ps1')
     $packagePlan = @(Get-WorkloadPlan $repositoryRoot (Join-Path $fixtureRoot 'checks') 'architecture.exe' $catalog $packageRoute.groups)
     Assert-Route ($packagePlan.Count -eq 1 -and $packagePlan[0].name -ceq 'workload-PackageVerification' -and $packagePlan[0].project -ceq '' -and $packagePlan[0].arguments[-1] -ceq (Join-Path $repositoryRoot 'tests/Phase0S/Invoke-PackageVerificationChecks.ps1')) 'standalone package tool has exactly its actual PowerShell check'

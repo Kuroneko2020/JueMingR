@@ -14,6 +14,27 @@ namespace NativeWorldTextProbe
     {
         internal static int Run(string content, string output, string scope)
         {
+            if (scope == "CompanionEnvironmentCpu")
+            {
+                string candidate = Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_ENVIRONMENT_CANDIDATE");
+                if (candidate != null && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT") != null)
+                    throw new InvalidOperationException("An isolated environment comparison cannot qualify the formal scope.");
+                Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user");
+                Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(NativeCompanionEnvironmentChecks.Run, processing: true, shortFeedback: true, candidateAssembly: candidate);
+                NativeScopeDispatch.Enter("companions-environment");
+                return 0;
+            }
+            if (scope == "CompanionChatUiCpu")
+            {
+                Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user");
+                Directory.CreateDirectory(Terraria.Program.SavePath);
+                NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
+                NativeQuickItemChecks.Run(NativeCompanionChatUiChecks.Run, processing: true, shortFeedback: true, candidateAssembly: IsolatedCompanionAiUiCandidate());
+                NativeScopeDispatch.Enter("companions-chat-ui");
+                return 0;
+            }
             if (scope == "CompanionFishingUiCpu" || scope == "CompanionFishingWorldCpu" || scope == "CompanionFishingLineCpu" || scope == "CompanionFishingLineRelease")
             {
                 Terraria.Program.SavePath = Path.Combine(Path.GetFullPath(output), "isolated-user");
@@ -54,7 +75,15 @@ namespace NativeWorldTextProbe
                 string comparison=Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_WORMHOLE_COMPARISON");
                 if(comparison!=null && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT")!=null)
                     throw new InvalidOperationException("Explicit configuration comparisons have no formal scope qualification.");
-                NativeQuickItemChecks.Run(context=>{using(var graphics=new ProbeGraphics(content))NativeCompanionConfigurationChecks.Run(context,graphics,output);NativeScopeDispatch.Enter("companions-config");},processing:true,shortFeedback:true,candidateAssembly:comparison);return 0;
+                NativeQuickItemChecks.Run(context =>
+                {
+                    using (var graphics = new ProbeGraphics(content))
+                    {
+                        NativeCompanionConfigurationChecks.Run(context, graphics, output);
+                        if (comparison == null) NativeCompanionChatUiChecks.Draw(context, graphics, output);
+                    }
+                    NativeScopeDispatch.Enter("companions-config");
+                }, processing: true, shortFeedback: true, candidateAssembly: comparison ?? IsolatedCompanionAiUiCandidate()); return 0;
             }
             if(scope=="CompanionExitVisual")
             {
@@ -1065,6 +1094,14 @@ namespace NativeWorldTextProbe
             NativeTestAudio.Install(typeof(Terraria.Main).Assembly);
             return Check(content, output, scope);
         }
+        private static string IsolatedCompanionAiUiCandidate()
+        {
+            string candidate = Environment.GetEnvironmentVariable("JUEMINGR_COMPANION_AI_UI_CANDIDATE");
+            if (candidate != null && Environment.GetEnvironmentVariable("JUEMINGR_WORKLOAD_SCOPE_CONTEXT") != null)
+                throw new InvalidOperationException("An isolated UI comparison cannot qualify the formal scope.");
+            return candidate;
+        }
+
         private static void CombatRelease(object context)
         {NativeCombatChecks.Run(context);NativeCombatFacingChecks.Run(context);NativeCombatHitChecks.Run(context);NativeCombatReportChecks.Run(context);NativeCombatUiChecks.Run(context);NativeCombatObservationChecks.Release(context);NativeCombatBodyChecks.Run(context);}
         [MethodImpl(MethodImplOptions.NoInlining)]

@@ -11,10 +11,12 @@ namespace JueMingR.Features.ItemBrowser
         private readonly CatalogItem[] byType, byName;
         private readonly Dictionary<int, CatalogItem> items;
         public int Count { get { return byType.Length; } }
+        public IReadOnlyList<CatalogItem> ByType { get; }
         public BrowserCatalog(CatalogItem[] values)
         {
             if (values == null) throw new ArgumentNullException(nameof(values));
             byType = values.OrderBy(v => v.Type).ToArray();
+            ByType = Array.AsReadOnly(byType);
             items = byType.ToDictionary(v => v.Type);
             byName = byType.OrderBy(v => v.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(v => v.Type).ToArray();
         }

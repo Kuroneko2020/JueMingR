@@ -162,7 +162,16 @@ namespace NativeWorldTextProbe
                 var echo=ReadKinds(ownerWire.Client.GetStream(),0,1).First(p=>p[2]==45);Apply(echo,256);
                 Require(actorBody.team==5 && human.team==humanTeam && other.team==otherTeam,"late old primary team echo cannot revert current owned intent or affect another role");
                 Healing(host, actor, actorBody, other, human, observerSlot, sourcePlayers, server, ownerWire.Client, aiPeer);
-                SlotGeneration(host, observerSlot, ownerWire);
+                var originalSections = Main.sectionManager;
+                try
+                {
+                    // The fixture initialized actual tiles before joining. Represent that
+                    // already received client terrain during the real 154 -> 12 fence.
+                    Main.sectionManager = new WorldSections(Netplay.GetSectionX(Main.maxTilesX - 1) + 1, Netplay.GetSectionY(Main.maxTilesY - 1) + 1);
+                    Main.sectionManager.SetAllSectionsLoaded();
+                    SlotGeneration(host, observerSlot, ownerWire);
+                }
+                finally { Main.sectionManager = originalSections; }
                 DeathThenRecall(host, id, actor, actorBody, sourcePlayers, server, aiPeer, true);
                 var ordinaryId = ((IEnumerable)Get(host,"Profiles")).Cast<CompanionProfile>().Single(p => p.Name == other.name).Id;
                 var ordinaryActor = Call(host, "Owned", other);

@@ -12,7 +12,6 @@ namespace JueMingR.TerrariaHost.Companions
 {
     internal static partial class CompanionHooks
     {
-        private static AccessTools.FieldRef<SceneMetrics> playerScene;
         private static readonly Harmony fishingHarmony = new Harmony("JueMingR.Companions.Fishing");
         internal static Exception FishingUnavailable { get; private set; }
         internal static ItemNearbyStorage.NativeChestStack FishingChestStack { get; private set; }
@@ -21,11 +20,10 @@ namespace JueMingR.TerrariaHost.Companions
         {
             try
             {
-                playerScene = AccessTools.StaticFieldRefAccess<SceneMetrics>(AccessTools.Field(typeof(Main), "_playerSceneMetrics"));
                 FishingChestStack = new ItemNearbyStorage.NativeChestStack();
                 PatchFishing(typeof(Player), "Fishing_GetBait", transpiler: nameof(FishingBaitReads));
-                PatchFishing(typeof(Player), "ItemCheck_CheckFishingBobber_ConsumeBait", nameof(FishingBaitDebit));
-                PatchFishing(typeof(Player), nameof(Player.UpdateBiomes), nameof(FishingBiomesBefore), finalizer: nameof(FishingBiomesAfter));
+                PatchFishing(typeof(Player), "ItemCheck_CheckFishingBobber_ConsumeBait", nameof(FishingBaitDebit), nameof(FishingBaitDebitAfter));
+                PatchFishing(typeof(Player), "ItemCheck_CheckFishingBobber_PullBobber", postfix:nameof(DukePullAfter));
                 PatchFishing(typeof(Projectile), nameof(Projectile.FishingCheck), nameof(FishingCheckBefore));
                 PatchFishing(typeof(Projectile), "FishingCheck_ProbeForQuestFish", transpiler: nameof(FishingQuestRead));
                 PatchFishing(typeof(PopupText), nameof(PopupText.AssignAsSonarText), nameof(HumanSonarCursor));
@@ -63,8 +61,13 @@ namespace JueMingR.TerrariaHost.Companions
         private static void FishingProductBefore(Player __instance, Item __0, out HostCompanions.FishingGrant __state) =>
             __state = FishingHooks.BeforeNativeProduct(__instance, __0);
 
-        private static void FishingProductAfter(HostCompanions.FishingGrant __state, bool __runOriginal)
-        { if (__runOriginal && __state != null) __state.Produced = true; }
+        private static void FishingProductAfter(HostCompanions.FishingGrant __state, Item __result,bool __runOriginal)
+        {
+            if (!__runOriginal || __state == null) return;
+            __state.Produced = true;
+            if (__state.BeforeTaskInventory >= 0 && __result != null && !__result.IsAir)
+                __state.Overflow = __result.Clone();
+        }
 
         private static Exception FishingItemCheckFinal(Player __instance, Exception __exception)
         {
@@ -78,9 +81,9 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static bool CompanionFishingStorageHold(Player p, int slot)
         {
-            if (slot < 0 || slot >= 50 || !p.inventoryChestStack[slot]) return false;
+            if (slot < 0 || slot >= p.inventoryChestStack.Length || !p.inventoryChestStack[slot]) return false;
             var a = host?.Owned(p);
-            return a != null && HostCompanions.FishingSourceHeld(a, slot);
+            return a != null && (host.TaskChestSourceHeld(a, slot) || slot < 50 && HostCompanions.FishingSourceHeld(a, slot));
         }
 
         internal static HostCompanions FishingHost => host;
@@ -97,7 +100,7 @@ namespace JueMingR.TerrariaHost.Companions
                     continue;
                 }
                 // Preserve the two native passes, including their ordering
-                // and chosen stack. Only this actor's Truffle Worm is invisible.
+                // and chosen stack. Only a task-bound explicit summon can expose a worm.
                 var player = new CodeInstruction(OpCodes.Ldarg_0);
                 player.labels.AddRange(instruction.labels);
                 player.blocks.AddRange(instruction.blocks);
@@ -110,39 +113,36 @@ namespace JueMingR.TerrariaHost.Companions
 
         private static int FishingBaitPower(Item item, Player p)
         {
-            if (item.type != ItemID.TruffleWorm) return item.bait;
-            var a = host?.Owned(p);
-            return a != null && (host.FishingActorActive(a) || a.FishingLine.Ending) ? 0 : item.bait;
+            if (item.type != ItemID.TruffleWorm && host?.HasDukeFishing != true) return item.bait;
+            var a = CurrentActor;
+            if (!ReferenceEquals(a?.Body,p)) a = host?.Owned(p);
+            if (a?.Fishing?.Duke != null) return host.DukeFishingBaitPower(a,item);
+            return item.type == ItemID.TruffleWorm && a != null && (host.FishingActorActive(a) || a.FishingLine.Ending) ? 0 : item.bait;
         }
 
-        private static bool FishingBaitDebit(Player __instance, Projectile __0, ref int __1, ref bool __result)
+        private static bool FishingBaitDebit(Player __instance, Projectile __0, ref int __1, ref bool __result,
+            out HostCompanions.DukeFishing __state)
         {
+            __state = null;
             var a = host?.Owned(__instance);
             if (a == null || !host.FishingActorActive(a) && !a.FishingLine.Ending) return true;
             // Protect against a stale native bite marker as well as current
             // bait admission, and do not collect a neighbouring pool's catch.
-            if (__0.localAI[2] != ItemID.TruffleWorm && host.FishingDebitAllowed(a, __0)) return true;
+            if (host.FishingDebitAllowed(a, __0))
+            {
+                if (__0.localAI[2] != ItemID.TruffleWorm && a.Fishing?.Duke == null) return true;
+                if (__0.localAI[2] == ItemID.TruffleWorm && (__state = host.AdmitDukeDebit(a,__0)) != null) return true;
+            }
             __1 = 0;
             __result = false;
             return false;
         }
 
-        private static bool FishingBiomesBefore(Player __instance, out SceneMetrics __state)
-        {
-            __state = null;
-            var a = host?.Owned(__instance);
-            if (a == null || !host.FishingActorActive(a)) return true;
-            if (!host.FishingSceneReady(a)) return false;
-            __state = playerScene();
-            playerScene() = a.FishingLine.Scene;
-            return true;
-        }
+        private static void FishingBaitDebitAfter(int __1,bool __result,HostCompanions.DukeFishing __state)
+        { if (__state != null && __result && __1 == ItemID.TruffleWorm) host.DukeNativeBaitConsumed(__state); }
 
-        private static Exception FishingBiomesAfter(SceneMetrics __state, Exception __exception)
-        {
-            if (__state != null) playerScene() = __state;
-            return __exception;
-        }
+        private static void DukePullAfter(Player __instance,int __1)
+        { if (__1 == ItemID.TruffleWorm && host?.Owned(__instance) is HostCompanions.Actor actor) host.DukeNativePullFinished(actor); }
 
         private static bool FishingCheckBefore(Projectile __instance)
         {
@@ -199,37 +199,15 @@ namespace JueMingR.TerrariaHost.Companions
             power = type = 0;
         }
 
-        internal bool FishingSceneReady(Actor a)
-        {
-            var line = a.FishingLine;
-            var center = a.Body.Center.ToTileCoordinates();
-            if (line.SceneCenter == center && Main.GameUpdateCount < line.NextScene) return line.SceneKnown;
-            line.SceneCenter = center;
-            line.SceneKnown = NurseBiomeTerrainKnown(a.Body, request: true);
-            line.NextScene = Main.GameUpdateCount + (line.SceneKnown ? 60u : 12u);
-            if (!line.SceneKnown) return false;
-            if (line.Scene == null) line.Scene = new SceneMetrics();
-            line.Scene.Scan(new SceneMetricsScanSettings { BiomeScanCenterPositionInWorld = a.Body.Center, PerspectivePlayer = a.Body });
-            return true;
-        }
-
-        private bool RefreshFishingZones(Actor a)
-        {
-            if (!FishingSceneReady(a)) return false;
-            if (ReferenceEquals(CompanionHooks.CurrentActor, a)) a.Body.UpdateBiomes();
-            else using (CompanionHooks.Enter(a, a.Aim)) a.Body.UpdateBiomes();
-            return true;
-        }
-
         internal bool FishingCheckAllowed(Actor a, Projectile b)
         {
             if (FishingActivityOwns(a, b, out var tracked))
             {
-                // UpdateBiomes consumes the actor scene and refreshes the
-                // actual body's Zones before native fishing conditions read.
-                return !a.FishingLine.Ending && tracked.Qualified && RefreshFishingZones(a) && FishingEnteredLiquid(a, b);
+                // A qualifying bobber uses the same body Zones as NPC AI.
+                return !a.FishingLine.Ending && tracked.Qualified && RefreshActorEnvironment(a) && FishingEnteredLiquid(a, b) &&
+                    (a.Fishing?.Duke == null || ReferenceEquals(a.FishingLine.CastActivity,a.Fishing) && DukeEligibleBobber(a,b));
             }
-            return !a.FishingLine.Ending;
+            return !a.FishingLine.Ending && a.Fishing?.Duke == null;
         }
 
         internal bool FishingDebitAllowed(Actor a, Projectile b)

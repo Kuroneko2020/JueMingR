@@ -77,6 +77,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool RetryDeletion(Guid owner, Guid id) => manager.RetryDeletion(owner, id);
         internal void FinishDeletion(Guid owner, Guid id) => manager.FinishDeletion(owner, id);
         internal void FailDeletionBindings(Guid owner, Guid id) => manager.FailDeletionBindings(owner, id);
+        internal void FailDeletionCleanup(Guid owner, Guid id, string reason) => manager.FailDeletionCleanup(owner, id, reason);
         internal bool TryReserve(CompanionProfile profile, out long generation) { return manager.TryReserve(profile.Id, out generation); }
         internal void Release(CompanionProfile profile, long generation) { manager.Release(profile.Id, generation); }
         internal bool OwnsActivation(Guid id, long generation) { return manager.OwnsActivation(id, generation); }
@@ -144,11 +145,14 @@ namespace JueMingR.TerrariaHost.Companions
         internal void EndPlay(Player body) { File(body).PausePlayTimer(); }
         internal CompanionProfile CaptureAndSave(Guid id, Player body, long activation)
         { return CapturePreferencesAndSave(id, body, activation, null); }
-        internal CompanionProfile CapturePreferencesAndSave(Guid id, Player body, long activation, CompanionBehavior preferences)
+        internal CompanionProfile CapturePreferencesAndSave(Guid id, Player body, long activation, CompanionBehavior preferences,
+            ulong resolvedStorageSlots = 0)
         {
             var current = manager.FindActivated(id, activation);
             if (current == null) throw new InvalidOperationException("队友实例已失效，未保存旧身体。");
-            var revised = current.Revise(Capture(body), preferences); manager.Update(revised, activation); return revised;
+            var revised = current.Revise(Capture(body), preferences, resolvedStorageSlots: resolvedStorageSlots);
+            manager.Update(revised, activation);
+            return revised;
         }
         internal CompanionProfile SetOfflineTeam(Guid id, int team)
         {

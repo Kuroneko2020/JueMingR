@@ -25,11 +25,22 @@ namespace JueMingR.TerrariaHost.F5
             var b = Vector2.Transform(new Vector2(clip.Right, clip.Bottom), inverse);
             return new F5Rect(a.X, a.Y, b.X - a.X, b.Y - a.Y);
         }
+        internal static bool TryImeAnchor(F5Rect caret, F5Rect clip, Matrix frozen, Matrix currentUi, out Vector2 anchor)
+        {
+            anchor = default(Vector2);
+            if (!(caret.Width > 0 && caret.Height > 0 && caret.X >= clip.X && caret.Right <= clip.Right &&
+                caret.Y >= clip.Y && caret.Bottom <= clip.Bottom && frozen.M11 > 0 && currentUi.M11 > 0)) return false;
+            var physical = Vector2.Transform(new Vector2(caret.X, caret.Bottom), frozen);
+            var logical = Vector2.Transform(physical, Matrix.Invert(currentUi));
+            // The native candidate panel applies its 32-unit offset in UI coordinates.
+            anchor = new Vector2(logical.X, logical.Y + 32);
+            return !float.IsNaN(anchor.X) && !float.IsNaN(anchor.Y) && !float.IsInfinity(anchor.X) && !float.IsInfinity(anchor.Y);
+        }
         internal static void Panel(SpriteBatch batch, Texture2D pixel, Texture2D skin, F5Rect rect)
         { UiSurface.Panel(batch, pixel, rect, skin, new Color(232, 232, 232)); }
-        internal static void Text(SpriteBatch batch, DynamicSpriteFont font, F5Element element, Color color, bool scaledOutline = false)
+        internal static void Text(SpriteBatch batch, DynamicSpriteFont font, F5Element element, Color color, bool scaledOutline = false, float x = 0, float y = 0)
         {
-            var origin = new Vector2(element.Rect.X - element.TextSize.OffsetX, element.Rect.Y - element.TextSize.OffsetY);
+            var origin = new Vector2(x + element.Rect.X - element.TextSize.OffsetX, y + element.Rect.Y - element.TextSize.OffsetY);
             if (scaledOutline) DrawScaledOutline(batch, font, element.Text, origin, color, element.TextScale);
             else Utils.DrawBorderStringFourWay(batch, font, element.Text, origin.X, origin.Y, color, Color.Black, Vector2.Zero, element.TextScale);
         }

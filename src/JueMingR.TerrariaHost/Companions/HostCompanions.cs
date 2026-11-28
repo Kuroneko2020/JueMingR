@@ -18,6 +18,7 @@ namespace JueMingR.TerrariaHost.Companions
     {
         internal sealed class Actor
         {
+            internal ulong TaskChestResolvedDepositSlots;
             internal CompanionProfile Profile;internal Player Body,Previous;
             private CompanionProfile preferencesSource;
             private CompanionBehavior preferences;
@@ -35,7 +36,15 @@ namespace JueMingR.TerrariaHost.Companions
             internal readonly CompanionCombatState Combat = new CompanionCombatState();
             internal readonly CompanionSupplyState Supplies = new CompanionSupplyState();
             internal FishingActivity Fishing;
+            internal TaskJob TaskWork;
+            internal TaskTravel TaskTravel;
+            internal TaskCombat TaskCombat;
+            internal Guid TaskControlId;
+            internal TaskWorldHand TaskWorldHand;
+            internal Dictionary<string,TargetTile> TaskTiles;
+            internal Vector2? TaskLastFeet;
             internal readonly CompanionFishingLine FishingLine = new CompanionFishingLine();
+            internal readonly ActorEnvironment Environment = new ActorEnvironment();
             internal FurnitureRecovery Furniture;
             internal int DyeSwapCounter;
             internal CompanionConnection Connection;internal long Generation;
@@ -73,7 +82,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal int[] NetworkSlotIds;
             internal int ReservedSlot=-1;
             internal long PrimarySlotFence, PrimarySlotDeadline;
-            internal bool PrimarySlotConfirmed, PrimarySlotSawJoin, BirthSubmitted;
+            internal bool PrimarySlotConfirmed, PrimarySlotSawJoin, BirthSubmitted, ReservedBodySpawned;
             internal int SyncMana=-1;internal uint NextPublish;
             internal readonly SourceFlow WorldSource=new SourceFlow();
             internal readonly Queue<object> PendingStrikes=new Queue<object>();
@@ -210,8 +219,20 @@ namespace JueMingR.TerrariaHost.Companions
             if (QueueRecallForFishStorage(a)) return Result(true, "存鱼正在结算，确认后收回人物。");
             return CloseActor(a,null);
         }
+        internal void CloseFaultedBody(Actor actor,Exception failure)
+        {
+            actor.Faulted=true;
+            // Detach before vanilla's next NPC pass can select a body whose
+            // update has stopped. The ordinary close keeps save retry intact.
+            if(!actor.Closing)CloseActor(actor,"人物更新失败："+failure.Message);
+        }
         private bool CloseActor(Actor a,string failure)
         {
+            RetireTaskForActor(a, "队友已收回或连接结束。");
+            RetireWorldHand(a);
+            a.TaskLastFeet = null;
+            a.TaskTiles = null;
+            InvalidateChatAction(a.Profile.Id, "队友已收回或停止活动，已撤回待执行的模型指令。");
             if(failure!=null)a.TerminalFailure=failure;
             a.Closing=true;a.Body.controlUseItem=false;a.Body.channel=false;
             try
@@ -240,8 +261,15 @@ namespace JueMingR.TerrariaHost.Companions
         }
         private void Detach(Actor a)
         {
+            if (a.TaskWork != null || a.TaskTravel != null || a.TaskCombat != null)
+                RetireTaskForActor(a, "队友身体已退出。");
+            RetireWorldHand(a);
+            a.TaskLastFeet = null;
+            a.TaskTiles = null;
             RetireJoinFeedback(a);
             a.AutoTeleport=null;
+            a.Environment.Tiles=null;
+            a.Environment.PublishedConnection=null;
             a.TeamPending=false;a.TeamConnection=null;
             CancelCompanionItemOnce(a);
             CancelItemGestureForActor(a);
@@ -280,6 +308,7 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool Reset(Guid id)
         {
             if(Find(id)==null)return false;
+            InvalidateChatAction(id, "队友数据正在清空，已撤回待执行的模型指令。");
             if(actors.TryGetValue(id,out var actor))
             {
                 resetAfterRecall.Add(id);
@@ -291,13 +320,22 @@ namespace JueMingR.TerrariaHost.Companions
         internal bool RestoreBehavior(Guid id){return SetBehavior(id,new CompanionBehavior());}
         internal bool SaveFailed(Guid id){Actor a;return Find(id)!=null && (HasPendingItemCapture(id) || profiles.SaveFailed(id) || actors.TryGetValue(id,out a) && (a.TeamSavePending || a.Closing && !a.CloseCaptured));}
         internal bool RetrySave(Guid id){if(Find(id)==null)return false;try{Actor a;if(actors.TryGetValue(id,out a) && a.Closing && !a.CloseCaptured)return CloseActor(a,a.TerminalFailure);if(HasPendingItemCapture(id))return RetryItemCapture(id);if(a!=null && a.TeamSavePending)return SaveTeam(a);profiles.RetrySave(id);return Result(true,"正在重试保存。");}catch(Exception e){return Result(false,e.Message);}}
-        internal bool SetBehavior(Guid id,CompanionBehavior behavior)
+        internal bool SetBehavior(Guid id,CompanionBehavior behavior) => ApplyBehavior(id, behavior, manual: true);
+        private bool ApplyBehavior(Guid id,CompanionBehavior behavior,bool manual)
         {
-            if (System.Threading.Thread.CurrentThread.ManagedThreadId != itemThread || Find(id) == null) return false;
+            if (System.Threading.Thread.CurrentThread.ManagedThreadId != itemThread) return false;
+            var profile = Find(id);
+            if (profile == null) return false;
             try
             {
                 if (actors.TryGetValue(id, out var fishingActor) && FishingActive(fishingActor) && behavior.Follow != fishingActor.Preferences.Follow)
                     return Result(false, "正在钓鱼");
+                if (manual && (behavior.Follow != (profile.SettingValue(CompanionSetting.Follow) != 0) ||
+                    behavior.AttackEnabled != (profile.SettingValue(CompanionSetting.Attack) != 0)))
+                {
+                    if (actors.TryGetValue(id, out var intentActor)) RetireTaskForActor(intentActor, "玩家已手动修改队友行为。");
+                    InvalidateChatAction(id, "已采用手动行为设置，撤回待执行的模型指令。");
+                }
                 if (actors.TryGetValue(id, out var a) && !a.Closing)
                 {
                     CaptureActorState(a, behavior);
@@ -313,13 +351,15 @@ namespace JueMingR.TerrariaHost.Companions
         public void OnSessionEnded()
         {
             RetireArchiveIdentity();
+            PumpDukeFishing(retiring:true);
             SetFishingPage(Guid.Empty, Guid.Empty);
             navigationWorld.Reset();
             navigationActive=false;
-            owner=null;world=null;EndPasswordSession();prediction.EndWorld();CompanionThreatField.Reset();EndRetiringConnectionSession();steam.Dispose();ClearWorldSources();
+            owner=null;world=null;taskNpcWitnesses.Clear();taskTalkItems.Clear();taskTalkItemOrder.Clear();EndPasswordSession();prediction.EndWorld();CompanionThreatField.Reset();EndRetiringConnectionSession();steam.Dispose();ClearWorldSources();
         }
         private void RetireArchiveIdentity()
         {
+            RetireChatIdentity();
             ownerTrail?.BreakSegment();
             ownerTrail=null;
             F5.CompanionCreationSession.DisposeFor(this);
@@ -361,10 +401,16 @@ namespace JueMingR.TerrariaHost.Companions
             F5.CompanionCreationSession.Validate(this);
             ValidateItemGesture();
             profiles.Pump();
+            if (chatSettingWrites.Count!=0) PumpChatSettingWrites();
             if(savingCreation!=Guid.Empty && profiles.IsSaved(savingCreation)){savingCreation=Guid.Empty;if(Feedback=="正在保存新人物。")Feedback="";}
-            foreach(var closing in actors.Values.Where(a=>a.Closing && a.CloseCaptured).ToArray())if(profiles.IsSaved(closing.Profile.Id))Release(closing,true);if(failed)return;
+            PumpTaskChestReceipts();
+            foreach(var closing in actors.Values.Where(a=>a.Closing && a.CloseCaptured).ToArray())
+                if(!WaitingForTaskChestActor(closing) && profiles.IsSaved(closing.Profile.Id))Release(closing,true);
+            if(failed)return;
             steam.Pump();
             PumpRetiringConnections();
+            PumpChat();
+            PumpDukeFishing();
             if(!ArchiveIdentityCurrent())return;
             FlushItemSync();
             FlushSourceRequests();RequestSharedTerrain();
@@ -419,8 +465,9 @@ namespace JueMingR.TerrariaHost.Companions
                 try
                 {
                     if(a.Closing)continue;
-                    if(a.Faulted && FishingActive(a)){CloseActor(a,a.Status);continue;}
+                    if(a.Faulted){CloseActor(a,a.Status);continue;}
                     if(a.Connection!=null){PumpConnection(a);if(a.Connection?.Finished==true){CloseActor(a,a.Connection.Error??"连接已结束");continue;}}
+                    PumpTask(a);
                     if(a.AutoTeleport?.HasCandidate==true)ConsumeAutoTeleport(a);
                     UpdatePasswordAttempt(a);
                     PublishTeam(a);
@@ -440,10 +487,10 @@ namespace JueMingR.TerrariaHost.Companions
         internal void ObserveOwnerWarp(Player player)
         { if (ReferenceEquals(owner, player)) ownerTrail?.BreakSegment(); }
         public void FailClosed(){OnSessionEnded();failed=true;}
-        private void Exit(object sender,EventArgs args){Dispose();}
+        private void Exit(object sender,EventArgs args){DisposeChat(processExit:true);Dispose();}
         // CLR shutdown never reads native objects. Normal game-thread leaving
         // captures characters first; disposal only drains accepted bytes/locks.
-        public void Dispose(){AppDomain.CurrentDomain.ProcessExit-=Exit;ClearRetiringConnections();steam.Dispose();profiles.Dispose();}
+        public void Dispose(){AppDomain.CurrentDomain.ProcessExit-=Exit;DisposeChat();ClearRetiringConnections();steam.Dispose();profiles.Dispose();}
         internal Actor Owned(Player p){Actor a;return p!=null && bodies.TryGetValue(p,out a) && p.whoAmI>=0 && p.whoAmI<Main.maxPlayers && ReferenceEquals(Main.player[p.whoAmI],p)?a:null;}
         internal Actor OwnedSlot(int slot){Actor a;return slots.TryGetValue(slot,out a) && ReferenceEquals(Owned(a.Body),a)?a:null;}
     }

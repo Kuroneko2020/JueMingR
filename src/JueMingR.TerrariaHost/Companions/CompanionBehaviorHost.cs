@@ -23,6 +23,11 @@ namespace JueMingR.TerrariaHost.Companions
         private Vector2 openingPosition, enemyAtOpening;
         private PredictionTerrain.CellLease openingTerrain;
         internal CompanionOwnerTrail OwnerTrail { private get; set; }
+        internal HostCompanions.TaskTravel TaskTravel { private get; set; }
+        internal HostCompanions.TaskCombat TaskCombat { private get; set; }
+        internal bool? EffectiveFollow { private get; set; }
+
+        internal void ResumeStandbyAt(Player body) => anchor=body.Center;
 
         internal void PositionChanged(Player body)
         {
@@ -53,7 +58,8 @@ namespace JueMingR.TerrariaHost.Companions
             NPC combatTarget, bool closeCombat, bool canAttack, Item pursuitWeapon, CompanionMobilityState mobility,
             bool maintainMeleeApproach = false, HostCompanions.FishingActivity fishing = null)
         {
-            var currentOwner = fishing == null && behavior.Follow && owner != null && owner.active && !owner.dead ? owner : null;
+            var currentOwner = fishing == null && (EffectiveFollow ?? (TaskTravel?.FollowOwner ?? behavior.Follow)) &&
+                owner != null && owner.active && !owner.dead ? owner : null;
             bool segmentChanged = Navigator.ObserveOwnerTrail(OwnerTrail, mobility);
             if (!initialized || !ReferenceEquals(goalOwner, currentOwner))
             {
@@ -73,8 +79,13 @@ namespace JueMingR.TerrariaHost.Companions
             bool hasPose = currentOwner != null && OwnerTrail?.TryGetCurrent(out pose) == true;
             Vector2 center = hasPose ? pose.Center : currentOwner?.Center ?? anchor;
             if (fishing != null) center = fishing.FeetGoal - new Vector2(0, body.height * .5f * body.gravDir);
+            else if (TaskTravel != null && !TaskTravel.FollowOwner)
+                center = TaskTravel.Feet - new Vector2(0, body.height * .5f * body.gravDir);
             Vector2 follow = center, velocity = hasPose ? pose.Velocity : currentOwner?.velocity ?? Vector2.Zero;
-            float spacing = currentOwner == null ? (fishing == null ? 0f : 8f) : 34f;
+            // A fixed task is reached on its selected floor within one body
+            // width. Requiring a pixel-perfect stop disagrees with the native
+            // ground action's braking and can replan around a stationary body.
+            float spacing = currentOwner != null ? 34f : fishing != null ? 8f : TaskTravel != null ? body.width : 0f;
             bool needsAir = body.wet && body.breath < body.breathMax / 3 && !body.gills && !mobility.Observed.BreathProtected;
             if (!body.wet) { lastAir = body.Center; hasAir = true; }
             bool lava = body.lavaWet && !body.lavaImmune && (!mobility.Observed.Ready || mobility.Observed.LavaTime <= 24);
@@ -143,7 +154,7 @@ namespace JueMingR.TerrariaHost.Companions
         private bool TryCombatPosition(Player body, Vector2 follow, NPC target, Item weapon, bool closeCombat,
             bool allowSightProbe, out Vector2 position)
         {
-            const int leash = 320;
+            float leash = TaskCombat?.Radius ?? 320f;
             position = body.Center;
             if (Vector2.DistanceSquared(position, follow) > leash * leash) return false;
             Vector2 enemy = target.Center + target.netOffset;

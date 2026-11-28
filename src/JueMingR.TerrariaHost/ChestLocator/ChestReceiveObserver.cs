@@ -36,6 +36,16 @@ namespace JueMingR.TerrariaHost.ChestLocator
         internal long LocalMutation { get; private set; }
         private long tick;
         internal long Tick { get { return Interlocked.Read(ref tick); } set { Interlocked.Exchange(ref tick, value); } }
+        internal static bool TaskContentsCurrent(Chest chest)
+        {
+            var observer = current;
+            if (observer == null || !observer.Ready || chest == null) return false;
+            lock (observer.gate)
+                return observer.Trusted && !observer.coverageLost && Volatile.Read(ref observer.contamination) == 0 &&
+                    observer.receipts.Count == 0 && ReferenceEquals(observer.connection, Netplay.Connection) &&
+                    ReferenceEquals(observer.world, Main.ActiveWorldFileData) && ReferenceEquals(observer.chests, Main.chest) &&
+                    ReferenceEquals(observer.tiles, Main.tile) && observer.Knowledge.Complete(chest.index, chest, chest.x, chest.y);
+        }
         internal ChestReceiveObserver()
         {
             try
