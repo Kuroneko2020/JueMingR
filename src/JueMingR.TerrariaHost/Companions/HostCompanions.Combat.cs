@@ -155,7 +155,7 @@ namespace JueMingR.TerrariaHost.Companions
             return target != null && target.whoAmI >= 0 && target.whoAmI < Main.maxNPCs &&
                 ReferenceEquals(Main.npc[target.whoAmI], target) && target.generation == generation &&
                 ((CombatSelection.Receives(target, false) && !target.townNPC && !NPCID.Sets.IsTownPet[target.type] &&
-                    !NPCID.Sets.CountsAsCritter[target.type]) || TaskLacewingTarget(a,target,generation)) &&
+                    !NPCID.Sets.CountsAsCritter[target.type]) || TaskLacewingTarget(a,target,generation) || AreaCombatTarget(a,target,generation)) &&
                 TaskAllowsTarget(a, target, generation) &&
                 ObservedNpcCombatReady(target) && !PredictionDead(a, target) &&
                 (a.Fishing == null || a.Fishing.Threats.Contains(target, generation)) &&
@@ -363,7 +363,7 @@ namespace JueMingR.TerrariaHost.Companions
         private bool CurrentAttack(Actor a, CompanionAttackChoice choice, out int manaCost, out Vector2 point, bool afterShapeExit = false)
         {
             manaCost = 0; point = a.Body.Center;
-            return choice.SameWeapon(a.Body) && TargetCurrent(a, choice.Target, choice.TargetGeneration) &&
+            return choice.SameWeapon(a.Body) && TargetCurrent(a, choice.Target, choice.TargetGeneration) && AreaCombatWeapon(a,choice.Target,choice.Weapon) &&
                 LegalResources(a,choice.Slot,choice.Weapon,out manaCost,afterShapeExit) &&
                 AttackLine(a, choice, new CompanionShotGeometry(a.Body, choice.Weapon), out point);
         }
@@ -474,6 +474,7 @@ namespace JueMingR.TerrariaHost.Companions
             for (int i = 0; i < state.NearbyCount; i++)
             {
                 var target = state.Nearby[i];
+                if (!AreaCombatWeapon(a,target,weapon)) continue;
                 float distance = state.Distances[i];
                 // Distance is primary. Close-range fit and the current hand
                 // give only a modest margin, preventing equal-score swaps.

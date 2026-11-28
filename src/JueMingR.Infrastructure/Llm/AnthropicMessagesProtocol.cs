@@ -13,6 +13,7 @@ namespace JueMingR.Infrastructure.Llm
         private readonly SortedDictionary<int, Block> blocks = new SortedDictionary<int, Block>();
         private bool started;
         private string stopReason;
+        private long? uncachedInput, cacheRead, cacheWrite, output;
 
         public override Dictionary<string, object> Encode(LlmConnectionSnapshot connection, LlmConnectionSettings settings, LlmRequest request)
         {
@@ -54,9 +55,12 @@ namespace JueMingR.Infrastructure.Llm
 
         public override LlmTurn Decode(object response)
         {
+            ReadResponseUsage(response);
             ThrowEmbeddedError(response);
             return Finish(Array(Get(response, "content")), Text(response, "stop_reason"));
         }
+
+        public override void ReadResponseUsage(object response) => ReadUsage(Get(response, "usage"), finalOutput: true);
 
         public override bool Accept(string eventName, string data, Action<string> delta, out LlmTurn turn)
         {
@@ -69,6 +73,7 @@ namespace JueMingR.Infrastructure.Llm
             {
                 if (started) throw Protocol();
                 started = true;
+                ReadUsage(Get(Get(frame, "message"), "usage"), finalOutput: false);
                 stopReason = Text(Get(frame, "message"), "stop_reason");
                 int offset = 0;
                 foreach (object content in Array(Get(Get(frame, "message"), "content")))
@@ -130,6 +135,7 @@ namespace JueMingR.Infrastructure.Llm
             else if (type == "message_delta")
             {
                 stopReason = Text(Get(frame, "delta"), "stop_reason") ?? stopReason;
+                ReadUsage(Get(frame, "usage"), finalOutput: true);
             }
             else if (type == "message_stop")
             {
@@ -146,7 +152,20 @@ namespace JueMingR.Infrastructure.Llm
             return block;
         }
 
-        private static LlmTurn Finish(object[] content, string reason)
+        private void ReadUsage(object data, bool finalOutput)
+        {
+            if (Map(data) == null) return;
+            uncachedInput = UsageAmount(data, "input_tokens") ?? uncachedInput;
+            cacheRead = UsageAmount(data, "cache_read_input_tokens") ?? cacheRead;
+            cacheWrite = UsageAmount(data, "cache_creation_input_tokens") ?? cacheWrite;
+            if (finalOutput) output = UsageAmount(data, "output_tokens") ?? output;
+            // Anthropic counts uncached, read and written input separately.
+            // message_start's output is preliminary until a cumulative delta.
+            long? input = uncachedInput.HasValue ? uncachedInput + (cacheRead ?? 0) + (cacheWrite ?? 0) : null;
+            ObservedUsage = new LlmUsageSample(input, output, cacheRead: cacheRead, cacheWrite: cacheWrite);
+        }
+
+        private LlmTurn Finish(object[] content, string reason)
         {
             if (reason != "end_turn" && reason != "tool_use" && reason != "stop_sequence")
                 throw Incomplete();

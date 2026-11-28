@@ -55,7 +55,7 @@ namespace JueMingR.TerrariaHost.Companions
             var behavior = profile.Behavior;
             switch (setting)
             {
-                case CompanionSetting.Follow: behavior.Follow = !behavior.Follow; break;
+                case CompanionSetting.Follow: SetManualFollow(ownerId,id,EffectiveFollow(profile)==0); return;
                 case CompanionSetting.Attack: behavior.AttackEnabled = !behavior.AttackEnabled; break;
                 // Off preserves the last mode, so the same chord can resume it.
                 case CompanionSetting.Life: behavior.HealthRecoveryEnabled = !behavior.HealthRecoveryEnabled; break;

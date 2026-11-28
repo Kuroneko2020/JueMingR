@@ -22,6 +22,7 @@
     <EmbeddedResource Include="About\Assets\alipay.jpg" LogicalName="JueMingR.About.alipay.jpg" />
     <EmbeddedResource Include="F5\Icons\tab-icons.alpha" LogicalName="JueMingR.F5.TabIcons.alpha" />
     <EmbeddedResource Include="F5\Icons\NOTICE.md" LogicalName="JueMingR.F5.TabIcons.NOTICE" />
+    <EmbeddedResource Include="Companions\GameSkills\*.md" LogicalName="JueMingR.GameSkills.%(Filename).md" />
   </ItemGroup>
 
   <ItemGroup>

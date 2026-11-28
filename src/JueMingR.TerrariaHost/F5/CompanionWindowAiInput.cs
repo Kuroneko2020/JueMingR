@@ -95,6 +95,7 @@ namespace JueMingR.TerrariaHost.F5
                 chatHistoryView = chatHistoryView.Offset(x, y);
                 chatDraftRect = chatDraftRect.Offset(x, y);
                 chatTaskHeading = chatTaskHeading.Offset(x, y);
+                chatUsageFooter = chatUsageFooter.Offset(x, y);
             }
             else
             {

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
@@ -24,6 +25,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal int AuxiliarySlot = -1, AuxiliaryStack, Facing;
             internal ArrivalSearch PickupSite;
             internal bool ApproachingProduct;
+            internal bool EffectConfirmed;
             internal NPC Critter;
             internal int CritterGeneration;
             internal uint CritterDeadline;
@@ -82,6 +84,27 @@ namespace JueMingR.TerrariaHost.Companions
             internal TileFact Fact { get; }
         }
 
+        private static readonly (string Id,string Label,string Requirements)[] WorldActions =
+        {
+            ("mine","挖矿、采矿、挖方块","已查看的方块、实际可到达和足够原版镐力的工具。需要掉落物时指定 product_type，入包才算收取。多个同类矿格可用 mine_area。"),
+            ("axe","砍树、伐木","已查看的树木格和有斧力的工具。需要木材入包时指定 product_type。"),
+            ("hammer","锤半砖、整形、斜坡","已查看、可锤形的方块和有锤力的工具。"),
+            ("remove_wall","拆墙、敲墙","已查看、可拆除的墙和有锤力的工具。"),
+            ("place_tile","放方块、放家具","已查看的自然落点、队友实际持有的物品及原版支撑、占地和朝向条件。"),
+            ("place_wall","放墙、铺墙","已查看的格，队友持有原版墙物品及可连接的落点。"),
+            ("paint_tile","刷漆、涂方块","已查看的方块、漆刷及指定颜色的颜料。"),
+            ("paint_wall","刷墙、涂墙","已查看的墙、漆滚及指定颜色的颜料。"),
+            ("coat_tile","涂层、方块涂层","已查看的方块和原版涂层工具与材料。"),
+            ("coat_wall","涂层、墙涂层","已查看的墙和原版涂层工具与材料。"),
+            ("scrape_tile","刮漆、刮方块漆","已查看的方块和漆铲。"), ("scrape_wall","刮墙漆","已查看的墙和漆铲。"),
+            ("place_wire","布线、接线","已查看的目标、电线与可用布线工具。"),
+            ("cut_wire","剪线、拆线路","已查看的线路及可用切线工具。"),
+            ("liquid","倒水、舀水、处理液体","已查看的目标格和匹配的实际容器与液体条件。"),
+            ("place_actuator","安制动器","已查看的目标、可用制动器及装设工具。"),
+            ("actuate","使用制动器","已查看的制动器和原版切换工具。"),
+            ("switch","拉开关、拨开关","已查看且实际可操作的原版开关。")
+        };
+
         partial void RegisterWorldTaskOperations()
         {
             RegisterTaskObservation("observe_tiles",
@@ -93,14 +116,13 @@ namespace JueMingR.TerrariaHost.Companions
             RegisterTaskOperation("world_use",
                 "Walk into real reach and use a companion item on an observed tile. Mining can wait for actual actor inventory gain when product_type is set.",
                 WorldUseTask, CancelWorldUse, new TaskField("target","string",true,1,64),
-                new TaskField("action","string",true,1,24,"mine","axe","hammer","remove_wall","place_tile","place_wall",
-                    "paint_tile","paint_wall","coat_tile","coat_wall","scrape_tile","scrape_wall",
-                    "place_wire","cut_wire","liquid","place_actuator","actuate","switch"),
+                new TaskField("action","string",true,1,24,WorldActions.Select(action=>action.Id).ToArray()),
                 new TaskField("item_type","integer",false,1,ItemID.Count - 1),
                 new TaskField("product_type","integer",false,1,ItemID.Count - 1),
                 new TaskField("paint","integer",false,1,byte.MaxValue), new TaskField("coating","integer",false,1,2));
             RegisterBlueprintTaskOperations();
             RegisterCritterTaskOperation();
+            RegisterMiningTaskOperation();
         }
 
         private CompanionTaskOutcome ObserveWorkTiles(TaskExecution execution)
@@ -137,7 +159,9 @@ namespace JueMingR.TerrariaHost.Companions
             }
             return TaskOutcome(rowCount == 0 && unknown != 0 ? "waiting" : "succeeded",
                 (rowCount == 0 ? "已知范围没有匹配格。" : String.Join("；",found)) +
-                (unknown > 0 ? " 部分地形尚未收到。" : "") + (next >= 0 ? " 下一页 offset=" + next : ""),
+                "；范围中心 ("+center.X+","+center.Y+")，"+(here?"发送时主人":"当前队友")+"，横竖各 ±"+radius+
+                " 格，当前世界刻 "+Main.GameUpdateCount+"，本页 offset="+start+"。"+
+                (unknown > 0 ? " 本页 "+unknown+" 格地形尚未收到。" : "") + (next >= 0 ? " 下一页 offset=" + next : ""),
                 rowCount, rowCount == 1 && next < 0 ? only : null);
         }
 
@@ -212,7 +236,7 @@ namespace JueMingR.TerrariaHost.Companions
             bool switchClick = work.Operation == "switch";
             if (switchClick && (!current.Active || current.Inactive || current.Type != TileID.Switches && current.Type != TileID.Lever))
                 return TaskOutcome("failed","该目标不是当前可点击的开关或拉杆。");
-            int slot = switchClick ? -1 : WorldToolSlot(actor,work.Operation,itemType,current);
+            int slot = switchClick ? -1 : WorldToolSlot(actor,work.Operation,itemType,current,work.Point);
             if (slot < 0 && !switchClick) return TaskOutcome("failed","队友缺少目标适用且可用的物品。");
             var item = slot < 0 ? null : actor.Body.inventory[slot];
             int auxiliary = WorldAuxiliarySlot(actor,work.Operation,work.ExpectedPaint,work.ExpectedCoating);
@@ -291,24 +315,36 @@ namespace JueMingR.TerrariaHost.Companions
                 SupplyAdmitted(actor,body.inventory,0,slot,ownsSelected:slot==body.selectedItem) ? slot : -2;
         }
 
-        private int WorldToolSlot(Actor actor, string operation, int requested, TileFact tile)
+        private static readonly Func<Player,int,int,int,int,Tile,int> NativePickDamage =
+            (Func<Player,int,int,int,int,Tile,int>)Delegate.CreateDelegate(typeof(Func<Player,int,int,int,int,Tile,int>),
+                typeof(Player).GetMethod("GetPickaxeDamage",BindingFlags.Instance|BindingFlags.NonPublic));
+
+        private int WorldToolSlot(Actor actor, string operation, int requested, TileFact tile, Point point)
         {
+            int best = -1, bestDamage = 0;
             for (int slot = 0; slot < CompanionBehavior.MainInventorySlots; slot++)
             {
                 Item item = actor.Body.inventory[slot];
                 if (item == null || item.IsAir || item.favorited && item.consumable ||
                     requested != 0 && item.type != requested ||
                     !SupplyAdmitted(actor,actor.Body.inventory,0,slot,ownsSelected: slot == actor.Body.selectedItem)) continue;
-                if (FitsWorldOperation(item,operation,tile)) return slot;
+                if (!FitsWorldOperation(item,operation,tile)) continue;
+                if (operation != "mine") return slot;
+                if (!WorldGen.CanKillTile(point.X,point.Y)) return -1;
+                // Ordinary terrain has no object re-anchoring or hit-buffer
+                // writes in the native pick-power calculation.
+                int damage = Main.tileFrameImportant[tile.Type] ? item.pick :
+                    NativePickDamage(actor.Body,point.X,point.Y,item.pick,-1,Main.tile[point.X,point.Y]);
+                if (damage>bestDamage) { best=slot; bestDamage=damage; }
             }
-            return -1;
+            return best;
         }
 
         private static bool FitsWorldOperation(Item item, string operation, TileFact tile)
         {
             switch (operation)
             {
-                case "mine": return tile.Active && item.pick > 0 && !item.channel;
+                case "mine": return tile.Active && item.pick > 0 && (!item.channel || IsMiningDrill(item));
                 case "axe": return tile.Active && item.axe > 0 && !item.channel;
                 case "hammer": return tile.Active && item.hammer > 0 && !item.channel;
                 case "remove_wall": return !tile.Active && tile.Wall > 0 && item.hammer > 0 && !item.channel;
@@ -334,6 +370,9 @@ namespace JueMingR.TerrariaHost.Companions
                 default: return false;
             }
         }
+
+        private static bool IsMiningDrill(Item item) => item.channel && item.pick>0 &&
+            (item.shoot==ProjectileID.LaserDrill || ContentSamples.ProjectilesByType.TryGetValue(item.shoot,out var shot) && shot.aiStyle==20);
 
         private void CancelWorldUse(TaskExecution execution)
         {
@@ -367,7 +406,16 @@ namespace JueMingR.TerrariaHost.Companions
             var hand = actor.TaskWorldHand;
             if (hand == null) return false;
             hand.Pressed = false;
-            if (!canPress || hand.Cancelled || actor.TaskWork?.Paused == true || !FreeHand(actor.Body) ||
+            if (!canPress || hand.Cancelled || actor.TaskWork?.Paused == true) return true;
+            if (hand.Operation=="mine" && hand.Submitted && hand.Source!=null && IsMiningDrill(hand.Source) &&
+                !hand.SentToWorld && hand.Pulses<24 && actor.Body.channel && actor.Body.selectedItem==hand.Slot && WorldHandCurrent(actor,hand))
+            {
+                // Hold the ordinary native channel on the same validated tile.
+                // Moving, cancellation and actual tile changes release it.
+                actor.Body.controlUseItem=hand.Pressed=true;
+                return true;
+            }
+            if (!FreeHand(actor.Body) ||
                 !actor.Body.releaseUseItem || unchecked((int)(Main.GameUpdateCount - hand.RetryAt)) < 0) return true;
             if (hand.SentToWorld || hand.CritterContact || hand.Pulses >= 24 || hand.Critter != null &&
                 (hand.Pulses >= 8 || unchecked((int)(Main.GameUpdateCount-hand.CritterDeadline)) >= 0)) return true;
@@ -425,10 +473,24 @@ namespace JueMingR.TerrariaHost.Companions
             if (hand.Critter != null) hand.Facing = point.X < actor.Body.Center.X ? -1 : 1;
             if (hand.Facing != 0 && actor.Body.direction != hand.Facing) actor.Body.ChangeDir(hand.Facing);
             hand.NativeAt = Main.GameUpdateCount;
-            hand.RetryAt = Main.GameUpdateCount + 10;
-            hand.Pulses++;
+            if (unchecked((int)(Main.GameUpdateCount-hand.RetryAt))>=0)
+            {
+                hand.RetryAt = Main.GameUpdateCount + 10;
+                hand.Pulses++;
+            }
             hand.Submitted = true;
             hand.Execution.MarkSubmitted();
+            return true;
+        }
+
+        private bool TryMiningProjectileAim(Actor actor,Projectile projectile,out Vector2 point)
+        {
+            point=default;
+            var hand=actor.TaskWorldHand;
+            if (hand?.Source==null || hand.Operation!="mine" || hand.Cancelled || !hand.Submitted ||
+                projectile.type!=ProjectileID.LaserDrill || hand.Source.shoot!=projectile.type ||
+                actor.Body.selectedItem!=hand.Slot || !WorldHandCurrent(actor,hand)) return false;
+            point=new Vector2(hand.Point.X*16+8,hand.Point.Y*16+8);
             return true;
         }
 
@@ -480,6 +542,7 @@ namespace JueMingR.TerrariaHost.Companions
             CompanionTaskOutcome outcome = null;
             bool actualEffect = hand.Submitted && changed && WorldEffectMatches(hand,actual) &&
                 hand.ObjectPlaced?.Invoke() != false && authoritative;
+            hand.EffectConfirmed |= actualEffect;
             if (actualEffect && hand.ProductType > 0 && obtained == 0 && !hand.Cancelled &&
                 actor.TaskWork?.Paused != true && actor.TaskTravel?.Temporary != true)
                 ApproachTaskProduct(actor,hand);

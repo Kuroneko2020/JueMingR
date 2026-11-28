@@ -18,6 +18,36 @@ namespace JueMingR.TerrariaHost.Companions
         internal Func<string> TaskSelectedMarker = () => null;
         private FishingAnchor CaptureTaskSendAnchor(Player player) =>
             new FishingAnchor(CaptureFishingAnchor(player), TaskSelectedMarker(), session);
+        // The immutable request contains only an opaque key. Live inventory
+        // objects remain in this bounded game-thread table.
+        private readonly Dictionary<Guid,(Actor Actor,int Slot,Item Item,int Type,int Stack,bool OwnerMatched)> taskTalkItems =
+            new Dictionary<Guid,(Actor,int,Item,int,int,bool)>();
+        private readonly Queue<Guid> taskTalkItemOrder = new Queue<Guid>();
+
+        private FishingAnchor CaptureChatTaskAnchor(Player player,Guid profileId)
+        {
+            var anchor=CaptureTaskSendAnchor(player);
+            if (!actors.TryGetValue(profileId,out var actor) || !SupplyActorReady(actor)) return anchor;
+            int slot=actor.Body.selectedItem;
+            if (slot<0 || slot>=CompanionBehavior.MainInventorySlots) return anchor;
+            var held=actor.Body.inventory[slot];
+            if (held==null || held.IsAir || held.favorited || TaskResourceSlotBlocked(actor,false,CompanionInventoryArea.Inventory,slot)) return anchor;
+            var key=Guid.NewGuid();
+            taskTalkItems.Add(key,(actor,slot,held,held.type,held.stack,player.HeldItem?.type==held.type || Main.mouseItem?.type==held.type));
+            taskTalkItemOrder.Enqueue(key);
+            if (taskTalkItemOrder.Count>128) taskTalkItems.Remove(taskTalkItemOrder.Dequeue());
+            return new FishingAnchor(anchor,anchor.SelectedMarkerId,anchor.MarkerSession,key);
+        }
+
+        private bool TryTaskTalkItem(Actor actor,FishingAnchor anchor,out int slot,out Item item)
+        {
+            slot=-1; item=null;
+            if (anchor.MarkerSession!=session || !taskTalkItems.TryGetValue(anchor.TalkItemWitness,out var witness) ||
+                !ReferenceEquals(witness.Actor,actor) || !ReferenceEquals(actor.Body.inventory[witness.Slot],witness.Item) ||
+                witness.Item.type!=witness.Type || witness.Item.stack!=witness.Stack || witness.Item.favorited ||
+                TaskResourceSlotBlocked(actor,false,CompanionInventoryArea.Inventory,witness.Slot)) return false;
+            slot=witness.Slot; item=witness.Item; return true;
+        }
         private readonly Dictionary<int,TaskNpcWitness> taskNpcWitnesses = new Dictionary<int,TaskNpcWitness>();
 
         private sealed class TaskNpcWitness
@@ -40,7 +70,7 @@ namespace JueMingR.TerrariaHost.Companions
             internal NPC Target;
             internal int Generation;
             internal float Radius;
-            internal bool HoldFire, GuardOwner, LacewingEvent;
+            internal bool HoldFire, GuardOwner, LacewingEvent, AreaFriendly;
             internal Vector2 Center;
         }
 
@@ -59,7 +89,7 @@ namespace JueMingR.TerrariaHost.Companions
         private void RegisterMovementTaskOperations()
         {
             TaskField destination = new TaskField("destination", "string", true, 1, 24, "here", "owner", "bed",
-                "world_spawn", "left_ocean", "right_ocean", "marker", "selected", "task_target", "departure", "reference");
+                "world_spawn", "left_ocean", "right_ocean", "marker", "selected", "task_target", "departure", "reference", "memory");
             TaskField reference = new TaskField("reference", "string", false, 1, 120);
             RegisterTaskOperation("move_to", "Reach an observed destination on the real body. Here means the send-time location. Use a returned reference for NPCs or a saved map marker.",
                 TravelTask, CancelTravelTask, destination, reference);
@@ -81,12 +111,15 @@ namespace JueMingR.TerrariaHost.Companions
                 new TaskField("leash_tiles","integer",false,4,100));
             RegisterTaskOperation("cease_fire", "Release combat input and temporarily hold fire without changing saved preferences.",
                 HoldFireTask);
+            RegisterAreaCombat();
             RegisterTaskObservation("observe_destinations", "Find valid landmark references and saved map names for this world.", DestinationObservation,
                 new TaskField("filter"));
             RegisterTaskObservation("observe_npcs", "Read nearby observed target names and NPC instance references.", NpcTaskObservation,
-                new TaskField("filter"));
+                new TaskField("filter"),new TaskField("around","string",false,1,12,"here","companion"),
+                new TaskField("radius","integer",false,1,100),new TaskField("offset","integer",false,0,200));
             RegisterTaskObservation("has_item", "Check actual main inventory for the requested quantity.", HasTaskItem,
                 new TaskField("item_type","integer",true,1,ItemID.Count - 1), new TaskField("quantity","integer",false,1,9999));
+            RegisterTaskObservation("observe_settings","查询当前队友的常规与钓鱼设置、可用名称和合法值。", ReadChatSettings);
         }
 
         private CompanionTaskOutcome DestinationObservation(TaskExecution execution)
@@ -102,6 +135,9 @@ namespace JueMingR.TerrariaHost.Companions
                     if (references.Count < 12 && name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
                         references.Add((name, PylonTaskReference(pylon)));
                 }
+            if (references.Count < 12)
+                references.AddRange(FindTaskMemoryDestinations(filter, CompanionNativeContact.Feet(execution.Actor.Body).ToTileCoordinates())
+                    .Take(12-references.Count));
             string details = String.Join("；", references.Select(place => place.Name + " → " + place.Ref));
             string defaults = filter.Length == 0 ?
                 "可用地点引用：发送点 here、主人 owner、队友出发点 departure、床 bed、世界出生 world_spawn、左海岸 left_ocean、右海岸 right_ocean。" : "";
@@ -117,6 +153,11 @@ namespace JueMingR.TerrariaHost.Companions
         {
             string filter = execution.Text("filter", "");
             var actor = execution.Actor;
+            bool here=execution.Text("around")=="here";
+            if (here && !execution.Anchor.Valid) return TaskOutcome("rejected","发送时没有有效的位置。");
+            Vector2 center=here?execution.Anchor.BodyCenter:actor.Body.Center;
+            int radius=execution.Number("radius",100),offset=execution.Number("offset");
+            float range=radius*16f;
             var nearby = new List<NPC>();
             var table = TaskNpcTable;
             if (table == null) return TaskOutcome("waiting", "正在等待当前世界的 NPC 观察。");
@@ -124,14 +165,17 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 var npc = table[i];
                 if (!TaskNpcObserved(npc) ||
-                    Vector2.DistanceSquared(actor.Body.Center, npc.Center) > 1600f * 1600f ||
+                    Vector2.DistanceSquared(center,npc.Center+npc.netOffset)>range*range ||
                     npc.FullName.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) continue;
                 nearby.Add(npc);
             }
-            var rows = nearby.OrderBy(npc => Vector2.DistanceSquared(actor.Body.Center, npc.Center)).Take(12).ToArray();
-            return TaskOutcome("succeeded", rows.Length == 0 ? "当前观测范围内没有匹配 NPC。" : "找到 " + nearby.Count + " 个，显示：" +
-                String.Join("；", rows.Select(npc => npc.FullName + (npc.friendly ? "（友好）" : "（敌对）") + " → " + NpcTaskReference(npc))),
-                nearby.Count, nearby.Count == 1 ? NpcTaskReference(rows[0]) : null);
+            var rows=nearby.OrderBy(npc=>Vector2.DistanceSquared(center,npc.Center+npc.netOffset)).Skip(offset).Take(12).ToArray();
+            var cell=center.ToTileCoordinates();
+            return TaskOutcome("succeeded", (rows.Length==0 ? "本页没有匹配生物。" : "已观察到 " + nearby.Count+" 个，显示：" +
+                String.Join("；",rows.Select(npc=>npc.FullName+(npc.friendly?"（友好）":"（敌对）")+" → "+NpcTaskReference(npc))))+
+                "；"+(here?"发送时主人":"当前队友")+"中心 ("+cell.X+","+cell.Y+")，半径 "+radius+" 格，当前世界刻 "+Main.GameUpdateCount+
+                "；"+(Main.netMode==1?"仅当前联机观测。":"当前本地世界生物。")+(offset+12<nearby.Count?"下一页 offset="+(offset+12):""),
+                nearby.Count, nearby.Count == 1 && rows.Length == 1 ? NpcTaskReference(rows[0]) : null);
         }
 
         private string NpcTaskReference(NPC npc)
@@ -307,7 +351,14 @@ namespace JueMingR.TerrariaHost.Companions
                     site.Name = selected.Name; site.Reference = "marker:" + selected.Id;
                     break;
                 case "marker":
+                case "memory":
                 case "reference":
+                    if (destination == "memory" || destination == "reference" && reference?.StartsWith("memory:",StringComparison.Ordinal) == true)
+                    {
+                        if (!TryTaskMemoryDestination(reference,out var remembered,out string name,out error)) return false;
+                        feet = remembered.ToWorldCoordinates(8,0); site.Name = name; site.Reference = reference;
+                        break;
+                    }
                     if (reference?.StartsWith("pylon:", StringComparison.Ordinal) == true && Main.PylonSystem?.Pylons != null)
                     {
                         foreach (var pylon in Main.PylonSystem.Pylons)
@@ -418,6 +469,7 @@ namespace JueMingR.TerrariaHost.Companions
             var actor = execution.Actor;
             if (actor.Fishing != null) EndFishingActivity(actor);
             actor.TaskControlId = execution.Job.Id;
+            execution.Job.KeepControl = execution.StepIndex == execution.Job.Steps.Count - 1;
             SetTaskTravel(actor, new TaskTravel { Feet = CompanionNativeContact.Feet(actor.Body), Arrived = true, Name = "当前位置" });
             return TaskOutcome("succeeded", "已切换为原地待命。");
         }
@@ -427,12 +479,16 @@ namespace JueMingR.TerrariaHost.Companions
             var actor = execution.Actor;
             if (actor.Fishing != null) EndFishingActivity(actor);
             actor.TaskControlId = execution.Job.Id;
+            execution.Job.KeepControl = execution.StepIndex == execution.Job.Steps.Count - 1;
             SetTaskTravel(actor, new TaskTravel { FollowOwner = true, Name = "主人" });
             return TaskOutcome("succeeded", "已开始跟随主人。");
         }
 
         private void ClearTaskControl(Actor actor)
         {
+            // Restoring a persisted off preference must hold here, without
+            // sending the body back to where it was before the independent job.
+            if (actor.TaskControlId!=Guid.Empty && !actor.Profile.Behavior.Follow) actor.Behavior.ResumeStandbyAt(actor.Body);
             actor.TaskControlId = Guid.Empty;
             SetTaskTravel(actor,null);
             if (actor.TaskCombat != null)
@@ -450,7 +506,8 @@ namespace JueMingR.TerrariaHost.Companions
                 var state = actor.TaskWork?.Current?.State;
                 var projection = state as BlueprintWork;
                 var site = state as ArrivalSearch ?? (state as TaskFish)?.Site ?? (state as WorldUse)?.Arrival ??
-                    (state as TaskCritter)?.Site ?? projection?.Work?.Arrival;
+                    (state as TaskCritter)?.Site ?? (state as TaskMineArea)?.Work?.Arrival ??
+                    (state as TaskMineArea)?.Travel?.State as ArrivalSearch ?? (state as TaskClearArea)?.Travel?.State as ArrivalSearch ?? projection?.Work?.Arrival;
                 if ((site?.Awaiting ?? projection?.Awaiting) is Point point && TryRequestTerrain(point.X, point.Y, actor.Body.team)) return true;
             }
             return false;

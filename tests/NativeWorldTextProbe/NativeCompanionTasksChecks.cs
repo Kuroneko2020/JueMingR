@@ -80,6 +80,7 @@ namespace NativeWorldTextProbe
                 first.inventory[0] = new Item(ItemID.WoodFishingPole);
                 NativeCompanionServiceTaskChecks.Run(host,human,first,tick);
                 NativeCompanionResourceTaskChecks.Run(host,human,first,tick);
+                NativeCompanionWorldMemoryChecks.Run(host,human,first,second,tick);
                 var frozen = Capture(human);
                 var nearest = human.Bottom;
                 var job = Start(aid,"去发送点",frozen,Node("move_to",("destination","here")),Node("follow_owner"));

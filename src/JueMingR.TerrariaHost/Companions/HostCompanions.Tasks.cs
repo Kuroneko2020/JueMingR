@@ -63,6 +63,8 @@ namespace JueMingR.TerrariaHost.Companions
             internal uint EvaluatingSince, NextTick;
             internal bool WaitingForCondition;
             internal bool Paused;
+            internal bool Independent;
+            internal bool KeepControl;
             internal TaskTravel PausedTravel;
             internal TaskCombat PausedCombat;
             internal TaskExecution Current;
@@ -172,10 +174,17 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 Command = commandId, Identity = identity, Title = String.IsNullOrWhiteSpace(title) ? "队友任务" : title.Trim(),
                 Steps = new List<CompanionTaskStep>(steps), StepAnchors = Enumerable.Repeat(sendAnchor, steps.Count).ToList(),
-                Departure = CompanionNativeContact.Feet(actor.Body)
+                Departure = CompanionNativeContact.Feet(actor.Body), Independent = steps.Any(IndependentTaskStep)
             };
             if (job.Title.Length > 100) job.Title = job.Title.Substring(0, 100);
             actor.TaskWork = job;
+            if (job.Independent)
+            {
+                // Suppress Follow from admission through substeps. A model
+                // failure or rejected replacement never changes that lease.
+                actor.Behavior.Navigator.IntentChanged(actor.Mobility);
+                actor.AutoTeleport?.ResetObservation();
+            }
             taskLedger.Add(job.Id, job);
             taskOrder.Enqueue(job.Id);
             taskLatest[(identity.OwnerId, identity.ProfileId)] = job.Id;
@@ -183,6 +192,10 @@ namespace JueMingR.TerrariaHost.Companions
             PublishTask(job, true);
             return job.View;
         }
+
+        private static bool IndependentTaskStep(CompanionTaskStep step) => step.Operation == "move_to" ||
+            step.Operation == "mine_area" || step.Operation == "clear_area" || step.Operation == "world_use" ||
+            step.Operation == "build_projection" || step.Operation == "shimmer_item" || step.Operation == "catch_critter";
 
         internal CompanionTaskSnapshot AppendTask(CompanionTaskIdentity identity, Guid taskId,
             IReadOnlyList<CompanionTaskStep> steps, FishingAnchor sendAnchor) =>
@@ -212,6 +225,12 @@ namespace JueMingR.TerrariaHost.Companions
             }
             job.Steps.AddRange(steps);
             job.StepAnchors.AddRange(Enumerable.Repeat(sendAnchor, steps.Count));
+            if (!job.Independent && steps.Any(IndependentTaskStep))
+            {
+                job.Independent = true;
+                actor.Behavior.Navigator.IntentChanged(actor.Mobility);
+                actor.AutoTeleport?.ResetObservation();
+            }
             job.Detail = "已更新后续步骤。";
             PublishTask(job, true);
             return job.View;
@@ -283,6 +302,8 @@ namespace JueMingR.TerrariaHost.Companions
         {
             bool had = actor.TaskWork != null || actor.TaskTravel != null || actor.TaskCombat != null;
             if (actor.TaskWork != null) EndTask(actor, actor.TaskWork, "cancelled", reason);
+            else if (actor.TaskControlId!=Guid.Empty && taskLedger.TryGetValue(actor.TaskControlId,out var held))
+                ChangeTask(held,"cancelled",reason,true);
             ClearTaskControl(actor);
             return had;
         }
@@ -545,7 +566,8 @@ namespace JueMingR.TerrariaHost.Companions
                     job.Receipts[step.ReceiptIndex] = new CompanionTaskAttempt(step.AttemptId, step.StepIndex, step.Iteration,
                         step.Operation, TaskOutcome("cancelled", "未开始的动作已撤回。"));
             }
-            if (state != "succeeded" && actor.TaskControlId == job.Id) ClearTaskControl(actor);
+            if ((state != "succeeded" || job.Independent && !job.KeepControl) && actor.TaskControlId == job.Id)
+                ClearTaskControl(actor);
             PublishTask(job, true);
         }
 

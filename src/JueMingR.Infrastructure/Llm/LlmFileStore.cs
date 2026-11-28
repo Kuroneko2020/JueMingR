@@ -16,7 +16,7 @@ using static JueMingR.Infrastructure.Llm.LlmJson;
 
 namespace JueMingR.Infrastructure.Llm
 {
-    public sealed class LlmFileStore : ILlmStore, IDisposable
+    public sealed class LlmFileStore : ILlmStore, ILlmChatArchiveStore, IDisposable
     {
         private const int SettingsBytes = 2 * 1024 * 1024;
         private const int SecretsBytes = 2 * 1024 * 1024;
@@ -140,37 +140,43 @@ namespace JueMingR.Infrastructure.Llm
             return true;
         });
 
-        public Task<IReadOnlyList<LlmHistoryEntry>> LoadHistoryAsync(Guid owner, Guid profile) =>
-            RunAsync<IReadOnlyList<LlmHistoryEntry>>(historyWork, () =>
+        public async Task<IReadOnlyList<LlmHistoryEntry>> LoadHistoryAsync(Guid owner, Guid profile) =>
+            (await LoadChatArchiveAsync(owner, profile).ConfigureAwait(false)).Entries;
+
+        public Task<LlmChatArchive> LoadChatArchiveAsync(Guid owner, Guid profile) =>
+            RunAsync(historyWork, () =>
             {
                 string path = HistoryPath(owner, profile);
                 using (var file = new AtomicFileDocument(path, HistoryBytes, true))
                 {
-                    IReadOnlyList<LlmHistoryEntry> entries = ReadHistory(file, path, out string identity);
+                    var archive = ReadHistory(file, path, out string identity);
                     AcceptHistoryIdentity(path, identity);
-                    return entries;
+                    return archive;
                 }
             });
 
         public Task SaveHistoryAsync(Guid owner, Guid profile, IReadOnlyList<LlmHistoryEntry> entries)
         {
             LlmHistoryEntry[] accepted = entries.ToArray();
-            return RunAsync(historyWork, () => WriteHistory(owner, profile, accepted, false));
+            return RunAsync(historyWork, () => WriteHistory(owner, profile, accepted, null, false));
         }
 
-        public Task ClearHistoryAsync(Guid owner, Guid profile) =>
-            RunAsync(historyWork, () => WriteHistory(owner, profile, System.Array.Empty<LlmHistoryEntry>(), true));
+        public Task SaveChatArchiveAsync(Guid owner, Guid profile, LlmChatArchive archive) =>
+            RunAsync(historyWork, () => WriteHistory(owner, profile, archive.Entries, archive.Usage, false));
 
-        private bool WriteHistory(Guid owner, Guid profile, IReadOnlyList<LlmHistoryEntry> entries, bool clear)
+        public Task ClearHistoryAsync(Guid owner, Guid profile) =>
+            RunAsync(historyWork, () => WriteHistory(owner, profile, System.Array.Empty<LlmHistoryEntry>(), LlmChatUsage.Empty, true));
+
+        private bool WriteHistory(Guid owner, Guid profile, IReadOnlyList<LlmHistoryEntry> entries, LlmChatUsage usage, bool clear)
         {
             string path = HistoryPath(owner, profile);
             if (protectedHistories.Contains(path)) throw Storage("聊天历史受保护，未覆盖原件。");
             using (var file = new AtomicFileDocument(path, HistoryBytes, true))
             {
-                ReadHistory(file, path, out string identity);
+                var existing = ReadHistory(file, path, out string identity);
                 AcceptHistoryIdentity(path, identity);
                 if (clear && identity == "missing") return true;
-                byte[] bytes = EncodeHistory(entries);
+                byte[] bytes = EncodeHistory(entries, usage ?? existing.Usage);
                 try
                 {
                     string committed = Commit(file, identity, bytes, "聊天历史");
@@ -198,10 +204,18 @@ namespace JueMingR.Infrastructure.Llm
             historyIdentities[path] = identity;
         }
 
-        private static byte[] EncodeHistory(IReadOnlyList<LlmHistoryEntry> entries)
+        private static byte[] EncodeHistory(IReadOnlyList<LlmHistoryEntry> entries, LlmChatUsage usage)
         {
             // Keep the newest complete visible records within the actual UTF-8 budget, including JSON escapes.
-            int remaining = HistoryBytes - 256;
+            var envelope = Document(HistoryFormat, "entries", System.Array.Empty<object>());
+            if (usage.TrackingStartedAt.HasValue)
+                envelope["usage"] = new Dictionary<string, object>
+                {
+                    ["since"] = usage.TrackingStartedAt.Value.ToString("O", CultureInfo.InvariantCulture),
+                    ["latest"] = UsageRow(usage.LatestConnection),
+                    ["connections"] = usage.Connections.Select(UsageRow).ToArray()
+                };
+            int remaining = HistoryBytes - Bytes(envelope, HistoryBytes).Length - 16;
             var accepted = new List<object>();
             for (int index = entries.Count - 1; index >= 0 && accepted.Count < 500; index--)
             {
@@ -217,16 +231,18 @@ namespace JueMingR.Infrastructure.Llm
                 accepted.Add(row);
             }
             accepted.Reverse();
-            return Bytes(Document(HistoryFormat, "entries", accepted), HistoryBytes);
+            envelope["entries"] = accepted;
+            return Bytes(envelope, HistoryBytes);
         }
 
-        private IReadOnlyList<LlmHistoryEntry> ReadHistory(AtomicFileDocument file, string path, out string identity)
+        private LlmChatArchive ReadHistory(AtomicFileDocument file, string path, out string identity)
         {
             try
             {
                 object document = Read(file, HistoryFormat, "聊天历史", out identity);
-                if (document == null) return System.Array.Empty<LlmHistoryEntry>();
-                Shape(document, "format", "version", "entries");
+                if (document == null) return new LlmChatArchive(System.Array.Empty<LlmHistoryEntry>(), null);
+                bool tracked = Has(document, "usage");
+                Shape(document, tracked ? new[] { "format", "version", "entries", "usage" } : new[] { "format", "version", "entries" });
                 object[] rows = Records(document, "entries", 500);
                 var result = new LlmHistoryEntry[rows.Length];
                 for (int i = 0; i < rows.Length; i++)
@@ -240,13 +256,59 @@ namespace JueMingR.Infrastructure.Llm
                         throw Protocol();
                     result[i] = new LlmHistoryEntry(Id(Text(item, "id")), kind, text, time);
                 }
-                return result;
+                return new LlmChatArchive(result, tracked ? ReadUsage(Get(document, "usage")) : null);
             }
             catch (Exception exception) when (IsDocumentError(exception))
             {
                 protectedHistories.Add(path);
                 throw ForDocument(exception, "聊天历史");
             }
+        }
+
+        private static object UsageRow(LlmConnectionUsage row)
+        {
+            if (row == null) return null;
+            var count = row.Totals;
+            return new Dictionary<string, object>
+            {
+                ["id"] = row.ConnectionId.ToString("D"), ["connection"] = row.Connection, ["model"] = row.Model,
+                ["requests"] = count.Requests, ["unknown"] = count.UnknownRequests,
+                ["input"] = count.Input, ["output"] = count.Output, ["total"] = count.Total, ["read"] = count.CacheRead,
+                ["write"] = count.CacheWrite, ["reasoning"] = count.Reasoning
+            };
+        }
+
+        private static LlmChatUsage ReadUsage(object value)
+        {
+            Shape(value, "since", "latest", "connections");
+            if (!DateTimeOffset.TryParseExact(Text(value, "since"), "O", CultureInfo.InvariantCulture, DateTimeStyles.None, out var since))
+                throw Protocol();
+            object latest = Get(value, "latest");
+            var connections = Records(value, "connections", 512).Select(ReadUsageRow).ToArray();
+            if (connections.Select(row => (row.ConnectionId, row.Model)).Distinct().Count() != connections.Length) throw Protocol();
+            return new LlmChatUsage(since, latest == null ? null : ReadUsageRow(latest), connections);
+        }
+
+        private static LlmConnectionUsage ReadUsageRow(object row)
+        {
+            Shape(row, "id", "connection", "model", "requests", "unknown", "input", "output", "total", "read", "write", "reasoning");
+            string connection = Text(row, "connection"), model = Text(row, "model");
+            if (connection == null || connection.Length > 240 || model == null || model.Length > 240) throw Protocol();
+            long requests = UsageCounter(row, "requests") ?? throw Protocol();
+            long unknown = UsageCounter(row, "unknown") ?? throw Protocol();
+            if (unknown > requests) throw Protocol();
+            return new LlmConnectionUsage(Id(Text(row, "id"), emptyAllowed: true), connection, model,
+                new LlmUsageTotals(requests, unknown, UsageCounter(row, "input"), UsageCounter(row, "output"),
+                    UsageCounter(row, "total"), UsageCounter(row, "read"), UsageCounter(row, "write"), UsageCounter(row, "reasoning")));
+        }
+
+        private static long? UsageCounter(object row, string name)
+        {
+            object raw = Get(row, name);
+            if (raw == null) return null;
+            if (raw is int integer && integer >= 0) return integer;
+            if (raw is long longer && longer >= 0) return longer;
+            throw Protocol();
         }
 
         private string HistoryPath(Guid owner, Guid profile)

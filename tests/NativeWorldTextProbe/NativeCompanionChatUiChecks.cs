@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -11,8 +12,11 @@ using System.Threading.Tasks;
 using JueMingR.Platform.Hotkeys;
 using JueMingR.Platform.Companions;
 using JueMingR.Platform.Llm;
+using JueMingR.Features.Llm;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using ReLogic.Graphics;
 using Terraria;
 using Terraria.GameInput;
 using static NativeWorldTextProbe.NativeInformationChecks;
@@ -131,6 +135,7 @@ namespace NativeWorldTextProbe
                     var body = Call(host, "GetBody", id);
                     var actor = Call(host, "Owned", body);
                     var profile = (CompanionProfile)Get(actor, "Profile");
+                    CheckBudgetPicture(profile);
                     var identity = new CompanionTaskIdentity(profile.OwnerId, id, (long)Get(host, "session"), (long)Get(actor, "Generation"), profile.DataEpoch);
                     var anchor = host.GetType().GetMethod("CaptureFishingAnchor", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { Main.LocalPlayer });
                     var need = new CompanionTaskCondition("has_item", new Dictionary<string, object>
@@ -160,6 +165,73 @@ namespace NativeWorldTextProbe
                         ((CompanionProfile)Get(actor, "Profile")).Behavior.Follow == follows && Control("chat-stop-task:" + task.TaskId) == null,
                         "the real viewed task stop retires the completed standby and preserves Follow");
                     Console.WriteLine("PASS native rendered task bar, expandable receipt and physical stop after entering standby.");
+                }
+
+                void CheckBudgetPicture(CompanionProfile profile)
+                {
+                    var format = window.GetType().GetMethod("FormatChatTokens", BindingFlags.Static | BindingFlags.NonPublic);
+                    string Tokens(long? total, long missing = 0, long count = 1) => (string)format.Invoke(null, new object[] { new LlmUsageTotals(count, missing, total: total) });
+                    Require(Tokens(null, 0, 0) == "0 tokens" && Tokens(null, 1) == "—" && Tokens(999) == "999 tokens" &&
+                        Tokens(1000) == "1k tokens" && Tokens(1249) == "1.2k tokens" && Tokens(3400000) == "3.4m tokens" &&
+                        Tokens(999950) == "1m tokens" && Tokens(999950, 1, 2) == "999.9k+ tokens" && Tokens(1260, 1, 2) == "1.2k+ tokens",
+                        "only the footer abbreviates large totals and never rounds a partial lower bound upward");
+                    var fixture = NativeCompanionChatChecks.Attach(host);
+                    try
+                    {
+                        object View() => Call(host, "GetChat", profile.OwnerId, profile.Id);
+                        void SendKnown(string text, LlmUsageSample sample)
+                        {
+                            fixture.Remote.Reply = request => Task.FromResult(new LlmTurn("答复完成。", Array.Empty<LlmToolCall>(),
+                                "{\"role\":\"assistant\",\"content\":\"答复完成。\"}", usage: sample));
+                            object[] arguments = { profile.OwnerId, profile.Id, text, null };
+                            Require((bool)Call(host, "SendChat", arguments), "real Host sends the controlled usage request: " + arguments[3]);
+                            NativeQuickItemChecks.Until(() => { Call(host, "PumpChat"); return !(bool)Get(View(), "IsRunning"); });
+                        }
+                        NativeQuickItemChecks.Until(() => { Call(host, "PumpChat"); return (bool)Get(View(), "CanSend"); });
+                        SendKnown("说说库存。", new LlmUsageSample(300, 40, cacheRead: 22));
+                        var connections = (LlmConnections)Get(host, "ChatConnections");
+                        var alternate = connections.Edit();
+                        connections.ApplyPreset(alternate, "deepseek_official_chat");
+                        alternate.DisplayName = "换用连接"; alternate.Model = "deepseek-next"; alternate.ApiKey = "local-footer-model-test";
+                        connections.SaveAndUseAsync(alternate, profile.OwnerId, profile.Id).GetAwaiter().GetResult();
+                        SendKnown("还有用量记录吗？", new LlmUsageSample(190, null, 215, reasoning: 9));
+                        Resize(700, 500, 1f); Open("profile:" + profile.Id); Open("chat");
+                        var progress = (LlmChatProgress)Get(View(), "Progress");
+                        var usage = (LlmChatUsage)Get(View(), "Usage");
+                        string Footer() => (string)Get(window, "chatUsageLine");
+                        string percent = (100d * progress.EstimatedInput / progress.InputLimit).ToString("0", CultureInfo.InvariantCulture);
+                        Require(usage.Connections.Count == 2 && Footer() == "当前上下文 " + percent + "% · 总用量 555+ tokens",
+                            "actual footer includes one estimate and the current chat's known cumulative lower bound across both connections: " + Footer());
+                        void AssertFooterFits()
+                        {
+                            var rect = Get(window, "chatUsageFooter");
+                            var copy = Get(Control("chat-copy-status"), "Rect");
+                            var send = Get(Control("chat-send"), "Rect");
+                            var measured = Call(window, "MeasureOutlined", Footer(), .65f);
+                            Require((float)Get(copy, "Right") < (float)Get(rect, "X") && (float)Get(rect, "Right") < (float)Get(send, "X") &&
+                                (float)Get(rect, "Y") == (float)Get(send, "Y") && (float)Get(rect, "Y") > (float)Get(Get(window, "chatDraftRect"), "Bottom") &&
+                                (float)Get(rect, "Width") >= (float)Get(measured, "Width") && Control("chat-usage") == null,
+                                "the only usage line fits the original footer between copy status and send without a detail control");
+                        }
+                        AssertFooterFits(); Image("chat-usage-footer-100");
+                        Resize(700, 500, 1.15f);
+                        AssertFooterFits(); Image("chat-usage-footer-115");
+                        Call(host, "RestartChatContext", profile.OwnerId, profile.Id);
+                        Resize(700, 500, 1f);
+                        Require(Footer().EndsWith("总用量 555+ tokens", StringComparison.Ordinal), "context reset preserves the same chat's cumulative usage");
+                        Require((bool)Call(host, "Create", "空用量队友"), "actual roster supplies another independent conversation");
+                        var other = (Guid)Get(host, "LastCreatedId");
+                        NativeQuickItemChecks.Until(() => { Call(host, "Update", 0UL); return (bool)Call(archive, "IsSaved", other); });
+                        Resize(700, 500, 1f); Open("profile:" + other);
+                        Require(Footer().EndsWith("总用量 0 tokens", StringComparison.Ordinal), "selecting another actor immediately shows its actual zero total");
+                        Open("profile:" + profile.Id);
+                        Call(window, "Close"); Call(window, "Toggle", Get(layout, "Viewport")); Resize(700, 500, 1f);
+                        Open("profile:" + profile.Id); Open("chat");
+                        Require(Footer().EndsWith("总用量 555+ tokens", StringComparison.Ordinal), "reopening returns to the correct actor's existing total");
+                        Resize(960, 640, 1f);
+                        Console.WriteLine("PASS actual chat footer: one line at two scales, two connections with a partial cumulative total, actor switch, reopen and context reset.");
+                    }
+                    finally { fixture.Restore(); }
                 }
             }
             finally { Call(window, "Close"); NativeToolsUiChecks.Mouse(Vector2.Zero, false); }
@@ -303,6 +375,113 @@ namespace NativeWorldTextProbe
                         if (a[y * (int)screen.X + x] != b[y * (int)screen.X + x]) return false;
                 return true;
             }
+            void CheckDraftGeometry(float uiScale)
+            {
+                Main.UIScale = uiScale; Prepare();
+                var field = Rect("chat-draft");
+                float originX = (float)Get(field, "X") + 7, originY = (float)Get(field, "Y") + 3;
+                var at = new Vector2(originX, originY + 3);
+                Click(at);
+                var buffer = (JueMingR.Features.Text.TextEditBuffer)Get(ai, "Editor");
+                void Replace(string value)
+                {
+                    buffer.SelectAll();
+                    Sample(at, press: value);
+                    if (value.Length == 0) { buffer.DeleteSelection(); Prepare(); }
+                }
+                var font = graphics.Font;
+                const float glyphScale = .76f;
+                var sample = Enumerable.Range(33, 94).Select(c => (char)c).Concat("你好，世界ＭｅＢ正方Ｔ·；？！关大小开语");
+                var widths = sample.Select(c => new { Glyph = c, Gap = Math.Abs(font.CharacterSpacing + font.GetCharacterMetrics(c).KernedWidth - font.MeasureString(c.ToString()).X) });
+                var widest = widths.OrderByDescending(g => g.Gap).First();
+                string mixed = "你好，世界 MiW " + (widest.Gap > .05f ? new string(widest.Glyph, 8) : "") + " ";
+                if (uiScale == 1f)
+                    Console.WriteLine("CHAT FONT original MouseText continuation max tested metric gap=" + widest.Gap + " glyph=" + widest.Glyph + " spacing=" + font.CharacterSpacing);
+                Replace(mixed);
+                Require(buffer.Text == mixed && buffer.Caret == mixed.Length, "original input commits mixed text and both trailing spaces at the true logical end");
+                Draw();
+                float firstCaret = Anchor().X;
+                var chatLayout = Get(window, "chatDraftLayout");
+                var lines = (IList)Get(chatLayout, "Lines");
+                var size = Get(Get(lines[0], "Label"), "TextSize");
+                float nativeOrigin = originX - (float)Get(size, "OffsetX");
+
+                // A second, independent native draw projects the next glyph
+                // after the committed line. Read ink rather than using CaretX.
+                // Subtract the chosen glyph's known line-start adjustment.
+                var batch = (SpriteBatch)Get(graphics, "batch");
+                const char marker = 'H';
+                Color[] Reference(string textValue) => graphics.Pixels(() =>
+                    batch.DrawString(font, textValue, new Vector2(100, 100), Color.White, 0f, Vector2.Zero, glyphScale, SpriteEffects.None, 0f),
+                    Main.UIScaleMatrix, (int)screen.X, (int)screen.Y);
+                int InkLeft(Color[] a, Color[] b)
+                {
+                    for (int x = 85; x < (int)screen.X - 12; x++)
+                        for (int y = 89; y < 170; y++)
+                            if (a[y * (int)screen.X + x] != b[y * (int)screen.X + x]) return x;
+                    throw new InvalidOperationException("Native glyph did not draw a discriminator pixel");
+                }
+                var metric = font.GetCharacterMetrics(marker);
+                float markerAdjustment = (font.CharacterSpacing + metric.KernedWidth - metric.KernedWidthOnNewLine) * glyphScale;
+                float actualScale = Main.UIScaleMatrix.M11;
+                float Pen(string value) => (InkLeft(Reference(value + marker), Reference(value)) - InkLeft(Reference(marker.ToString()), Reference(""))) / actualScale - markerAdjustment;
+                float end = Pen(mixed);
+                float isolated = buffer.Boundaries.Zip(buffer.Boundaries.Skip(1), (a, b) => font.MeasureString(mixed.Substring(a, b - a)).X * glyphScale).Sum();
+                Require(Math.Abs(firstCaret - nativeOrigin - end) <= 1.5f / actualScale,
+                    "chat caret agrees with independent native next-glyph ink, including trailing spaces: " + firstCaret + " vs " + (nativeOrigin + end));
+                if (widest.Gap >= 1f)
+                    Require(Math.Abs(isolated - end) > 3f, "the independent native ruler discriminates the prior isolated-character geometry");
+                Console.WriteLine("CHAT DRAFT native measured ui=" + uiScale + " old-isolated=" + isolated + " next-glyph=" + end + " caret=" + (firstCaret - nativeOrigin));
+
+                const int between = 5;
+                float hit = Pen(mixed.Substring(0, between));
+                var middle = new Vector2(nativeOrigin + hit, at.Y);
+                Click(middle);
+                Sample(middle, press: "插");
+                Require(buffer.Text == mixed.Insert(between, "插"), "actual pointer places a queued character at the gap following the Chinese phrase");
+                Replace("前e\u0301后X");
+                Draw();
+                chatLayout = Get(window, "chatDraftLayout");
+                lines = (IList)Get(chatLayout, "Lines");
+                size = Get(Get(lines[0], "Label"), "TextSize");
+                nativeOrigin = originX - (float)Get(size, "OffsetX");
+                var selected = new Vector2(nativeOrigin + Pen("前"), at.Y);
+                Click(selected);
+                Sample(selected, keys: new[] { Keys.LeftShift, Keys.Right });
+                Require(buffer.SelectedText == "e\u0301", "physical Shift+Right selects the full combining text element");
+                var before = Draw();
+                Require(Enumerable.Range((int)(selected.X * actualScale), 15).Any(x => before[(int)((originY + 1) * actualScale) * (int)screen.X + x] == new Color(62, 101, 170)),
+                    "the selected text element has a visible native selection rectangle");
+                Sample(selected); Sample(selected, press: "中");
+                Require(buffer.Text == "前中后X", "queued native input replaces the physically selected element exactly once");
+
+                string wide = String.Concat(Enumerable.Repeat("W你", 48));
+                Replace(wide);
+                chatLayout = Get(window, "chatDraftLayout");
+                lines = (IList)Get(chatLayout, "Lines");
+                Require(lines.Count > 1, "large committed phrase wraps in the real chat composer");
+                var last = lines[lines.Count - 1];
+                string visual = (string)Get(Get(last, "Label"), "Text");
+                size = Get(Get(last, "Label"), "TextSize");
+                Draw();
+                Require(buffer.Caret == wide.Length && Math.Abs(Anchor().X - (originX - (float)Get(size, "OffsetX") + Pen(visual))) <= 1.5f / actualScale,
+                    "final wrapped row restarts the native first-bearing rule at the visible caret");
+                var stable = Get(window, "chatDraftLayout");
+                Sample(at);
+                Require(ReferenceEquals(stable, Get(window, "chatDraftLayout")), "an empty sample retains the actual measured draft lines");
+                string fourLines = String.Join("\n", Enumerable.Repeat("系同一行", 4));
+                buffer.SelectAll();
+                Require(buffer.Insert(fourLines), "fixture places a known four-line draft");
+                Prepare();
+                buffer.MoveTo(0); buffer.Insert("首");
+                buffer.MoveTo(buffer.Text.Length); buffer.Insert("末");
+                Prepare();
+                var changed = (IList)Get(Get(window, "chatDraftLayout"), "Lines");
+                Require((string)Get(Get(changed[0], "Label"), "Text") == "首系同一行" &&
+                    (string)Get(Get(changed[changed.Count - 1], "Label"), "Text") == "系同一行末",
+                    "two edits before presentation refresh cannot share a stale prefix before the last edit");
+                Replace("");
+            }
             void Check(string label, object field)
             {
                 var at = NativeToolsUiChecks.Point(field);
@@ -350,6 +529,8 @@ namespace NativeWorldTextProbe
                 imeField.SetValue(text, ime.GetTransparentProxy());
                 Main.screenWidth = (int)screen.X; Main.screenHeight = (int)screen.Y; Main.UIScale = 1.15f;
                 PlayerInput.CacheOriginalScreenDimensions(); Prepare();
+                CheckDraftGeometry(1f);
+                CheckDraftGeometry(1.15f);
                 Check("chat", Rect("chat-draft"));
                 var chat = (JueMingR.Features.Text.TextEditBuffer)Get(ai, "Editor");
                 Sample(NativeToolsUiChecks.Point(Rect("chat-draft")), keys: new[] { Keys.LeftShift, Keys.Enter }, press: "\r");

@@ -24,6 +24,41 @@ namespace JueMingR.Infrastructure.Llm
         public abstract Dictionary<string, object> Encode(LlmConnectionSnapshot connection, LlmConnectionSettings settings, LlmRequest request);
         public abstract LlmTurn Decode(object response);
         public abstract bool Accept(string eventName, string data, Action<string> delta, out LlmTurn turn);
+        public LlmUsageSample ObservedUsage { get; protected set; }
+        public abstract void ReadResponseUsage(object response);
+
+        protected void ObserveUsage(LlmUsageSample sample)
+        {
+            // Streaming events are cumulative snapshots of one request.
+            // Preserve fields omitted from a later snapshot without summing events.
+            if (sample == null) return;
+            var previous = ObservedUsage;
+            ObservedUsage = new LlmUsageSample(sample.Input ?? previous?.Input, sample.Output ?? previous?.Output,
+                sample.Total ?? (sample.Input == null && sample.Output == null ? previous?.Total : null),
+                sample.CacheRead ?? previous?.CacheRead, sample.CacheWrite ?? previous?.CacheWrite,
+                sample.Reasoning ?? previous?.Reasoning);
+        }
+
+        protected static long? UsageAmount(object data, string field)
+        {
+            object value = Get(data, field);
+            if (value is int integer && integer >= 0) return integer;
+            if (value is long longer && longer >= 0 && longer <= int.MaxValue) return longer;
+            return null;
+        }
+
+        protected static LlmUsageSample ReadOpenAiUsage(object data, bool chat)
+        {
+            if (Map(data) == null) return null;
+            string input = chat ? "prompt_tokens" : "input_tokens";
+            string output = chat ? "completion_tokens" : "output_tokens";
+            var cached = UsageAmount(Get(data, input + "_details"), "cached_tokens");
+            // DeepSeek reports prompt_tokens inclusive of its cache split,
+            // same as OpenAI's cached_tokens detail within input.
+            return new LlmUsageSample(UsageAmount(data, input), UsageAmount(data, output), UsageAmount(data, "total_tokens"),
+                cached ?? (chat ? UsageAmount(data, "prompt_cache_hit_tokens") : null), null,
+                UsageAmount(Get(data, output + "_details"), "reasoning_tokens"));
+        }
 
         protected static Dictionary<string, object> Obj(params object[] pairs)
         {
@@ -66,11 +101,11 @@ namespace JueMingR.Infrastructure.Llm
             return value;
         }
 
-        protected static LlmTurn CompleteTurn(string text, List<LlmToolCall> calls, object wire)
+        protected LlmTurn CompleteTurn(string text, List<LlmToolCall> calls, object wire)
         {
             if (calls.Count > 32 || calls.Select(call => call.Id).Distinct(StringComparer.Ordinal).Count() != calls.Count)
                 throw Protocol();
-            return new LlmTurn(text ?? "", calls, Write(wire));
+            return new LlmTurn(text ?? "", calls, Write(wire), usage: ObservedUsage);
         }
 
         protected static void ThrowEmbeddedError(object message)

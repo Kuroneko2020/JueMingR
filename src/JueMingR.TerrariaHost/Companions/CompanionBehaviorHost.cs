@@ -25,6 +25,9 @@ namespace JueMingR.TerrariaHost.Companions
         internal CompanionOwnerTrail OwnerTrail { private get; set; }
         internal HostCompanions.TaskTravel TaskTravel { private get; set; }
         internal HostCompanions.TaskCombat TaskCombat { private get; set; }
+        internal bool? EffectiveFollow { private get; set; }
+
+        internal void ResumeStandbyAt(Player body) => anchor=body.Center;
 
         internal void PositionChanged(Player body)
         {
@@ -55,7 +58,7 @@ namespace JueMingR.TerrariaHost.Companions
             NPC combatTarget, bool closeCombat, bool canAttack, Item pursuitWeapon, CompanionMobilityState mobility,
             bool maintainMeleeApproach = false, HostCompanions.FishingActivity fishing = null)
         {
-            var currentOwner = fishing == null && (TaskTravel?.FollowOwner ?? behavior.Follow) &&
+            var currentOwner = fishing == null && (EffectiveFollow ?? (TaskTravel?.FollowOwner ?? behavior.Follow)) &&
                 owner != null && owner.active && !owner.dead ? owner : null;
             bool segmentChanged = Navigator.ObserveOwnerTrail(OwnerTrail, mobility);
             if (!initialized || !ReferenceEquals(goalOwner, currentOwner))

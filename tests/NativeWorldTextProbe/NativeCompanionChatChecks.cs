@@ -326,6 +326,11 @@ namespace NativeWorldTextProbe
                 var initialFollow = ((CompanionProfile)Get(actor, "Profile")).Behavior;
                 initialFollow.Follow = true;
                 Require((bool)Call(host, "SetBehavior", profile.Id, initialFollow), "single-entry history fixture starts in real follow mode");
+                bool TemporarilyStaying()
+                {
+                    var current = (CompanionProfile)Get(actor, "Profile");
+                    return current.Behavior.Follow && (int)Call(host, "EffectiveFollow", current) == 0;
+                }
                 int exchanges = 0;
                 remote.Reply = request =>
                 {
@@ -340,18 +345,16 @@ namespace NativeWorldTextProbe
                 };
                 Sent("先看看状态，然后在这里等。");
                 Ended();
-                Require(exchanges == 2 && Entries().Single().Kind == "status" &&
-                    !((CompanionProfile)Get(actor, "Profile")).Behavior.Follow,
-                    "local finish limits the visible history and never dispatches the extra follow action");
+                Require(exchanges == 2 && Entries().Single().Kind == "status" && TemporarilyStaying(),
+                    "local finish limits visible history, retains the temporary stay and never dispatches the extra follow action");
                 LlmRequest recoveredFacts = null;
                 remote.Reply = request => { recoveredFacts = request; return Task.FromResult(textReply()); };
                 Sent("刚才看到了什么，后来做了什么？");
                 Ended();
                 Require(recoveredFacts?.Messages.Last().Text.Contains("生命 ") == true &&
                     recoveredFacts.Messages.Last().Text.Contains("移动：待命") &&
-                    !recoveredFacts.Messages.Any(message => message.Kind == LlmMessageKind.ToolResults) &&
-                    !((CompanionProfile)Get(actor, "Profile")).Behavior.Follow,
-                    "single-entry history recovers both native facts without replaying tools or private protocol blocks");
+                    !recoveredFacts.Messages.Any(message => message.Kind == LlmMessageKind.ToolResults) && TemporarilyStaying(),
+                    "single-entry history recovers both native facts without replaying tools, protocol blocks or altering the saved Follow preference");
                 Console.WriteLine("PASS native companion chat anchor, real activity, notices, manual replacement, closed wire recovery, one debit per message, use settlement and retried deletion.");
             }
             finally

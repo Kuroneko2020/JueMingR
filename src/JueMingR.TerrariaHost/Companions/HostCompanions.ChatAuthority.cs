@@ -34,12 +34,12 @@ namespace JueMingR.TerrariaHost.Companions
                 @"^(?:请问|想知道|我想知道|去查|去看一下|查|看看|看一下|告诉我|说明|介绍|如果|假如|假设|例如|比如|只是|先别|别|不要|不许|无需|不必|不用|能否|能不能|可以吗|是否|怎么|怎样|如何|要不要|会不会|为什么|什么|how\b|what\b|why\b|if\b|suppose\b|tell me\b|show me\b|check\b|do not\b|don't\b|can\b|could\b|would\b)",
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             private static readonly Regex Prefix = new Regex(
-                @"^(?:(?:请|麻烦|拜托|帮我|让队友|你先|你|先|然后|再次|再|就|现在|直接|实际|可以|please\b|then\b|go and\b)\s*)+",
+                @"^(?:(?:那你|那么你|那就|请|麻烦|拜托|帮我|让队友|你先|你|先|然后|再次|再|就|现在|直接|实际|可以|please\b|then\b|go and\b)\s*)+",
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             private static readonly Regex Question = new Regex(@"怎么|如何|怎样|是否|有哪些|有没有|能不能|会不会|是不是|要不要|有什么",
                 RegexOptions.CultureInvariant);
             private static readonly Regex Hypothesis = new Regex(
-                @"^(?:如果|假如|假设|例如|比如|if\b|suppose\b|for example\b)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+                @"^(?:如果|假如|假设|要是|例如|比如|if\b|suppose\b|for example\b)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             private static readonly Regex Negative = new Regex(@"不要(?!超过)|不允许|不许|不准|不能|禁止|别动|别用|别拿|无需|不必|\bdo not\b|\bdon't\b|\bwithout\b",
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             private static readonly Regex BudgetPhrase = new Regex(
@@ -59,6 +59,8 @@ namespace JueMingR.TerrariaHost.Companions
                 @"(?<name>[^。！？]+?)(?:给商人)?[。.!]?$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             private static readonly Regex Coast = new Regex(@"^(?:去|到|在)?(?:左|右)?海(?:岸|边)(?:就)?(?<action>钓|等|待命)",
                 RegexOptions.CultureInvariant);
+            private static readonly Regex RadiusPhrase = new Regex(@"(?:半径|周围|附近)\s*(?<count>[0-9一二两三四五六七八九十百零]+)\s*(?:图格|格)",RegexOptions.CultureInvariant);
+            private static readonly Regex WorkCount = new Regex(@"(?<count>[0-9一二两三四五六七八九十百零]+)\s*(?:块|格|面|棵|根|件)",RegexOptions.CultureInvariant);
 
             internal ChatAuthority(string raw)
             {
@@ -89,10 +91,15 @@ namespace JueMingR.TerrariaHost.Companions
             private bool Fish => Starts("钓", "fish", "cast", "去钓", "到这里钓") || CoastAction("钓") ||
                 Contains("改成钓鱼", "到了就钓", "到了钓", "在这里钓", "在这钓", "开始钓");
             private bool Move => Starts("去", "到", "回", "走", "跟", "带路", "go", "move", "walk", "return", "follow", "come") ||
-                Contains("停止后回来", "停下后回来", "完成后回来", "结束后回来");
+                Contains("停止后回来", "停下后回来", "完成后回来", "结束后回来", "回来跟我", "回来跟着我");
             private bool Wait => Starts("等", "待命", "留在", "站着", "wait", "stay", "stand by") || CoastAction("等") || CoastAction("待命") ||
                 Contains("在这里等", "在那里等", "位置等我", "到达后等", "到达后待命", "回来等我");
             private bool Attack => Starts("攻击", "打", "战斗", "守", "保卫", "attack", "fight", "guard", "defend");
+            private bool ClearArea => Contains("清场","clear out") || Contains("怪","敌人","生物") &&
+                Contains("清掉","清理","杀了","杀掉","打掉");
+            private bool IncludeFriendly => Contains("包括友好","连同友好","连友好","也打友好","including friendly");
+            private bool Mine => Starts("挖","采矿","开采","mine","dig") || Move && Contains("挖","采矿","开采") ||
+                Starts("用","使用") && Contains("挖掉","挖开","开采");
             private bool Prepare => Starts("准备打", "准备挑战", "备战", "prepare for");
             private bool Use => Starts("用", "使用", "喝", "吃", "挥", "丢", "投", "use", "drink", "eat", "swing", "consume") ||
                 Contains("连续用", "连续使用");
@@ -102,6 +109,25 @@ namespace JueMingR.TerrariaHost.Companions
             private bool SpendNearby => Contains("附近箱", "旁边的箱", "附近储存", "nearby chest", "nearby storage");
             internal bool Recall => (Starts("召回", "传送到我", "回我身边", "recall") || Use) && Contains("虫洞", "wormhole");
             internal bool FishActivity => Fish;
+            internal bool ReferencesHeld => Contains("这件物品", "这件东西", "手里这件", "手上这件", "this item");
+            internal bool NamesActorHand => Contains("你手里", "你手上", "你拿着", "you are holding");
+            internal bool ReferencesLastShimmer => Contains("上次那个微光", "上次的微光", "之前那个微光", "last shimmer");
+
+            internal bool Setting(string label,int value)
+            {
+                if (value==0) return HasSettingDirective(label,"关闭","关掉","关上","关了","停用","禁用");
+                if (label=="生命恢复") return value==2?HasSettingDirective(label,"设为智能","改为智能","切到智能"):
+                    HasSettingDirective(label,"设为快速","改为快速","切到快速");
+                if (label=="自动存放鱼") return value==2?HasSettingDirective(label,"设为任务鱼","改为任务鱼","只存任务鱼"):
+                    HasSettingDirective(label,"设为所有","改为所有","存放所有");
+                return HasSettingDirective(label,"开启","打开","启用","设为普通","改为普通");
+            }
+
+            private bool HasSettingDirective(string label,params string[] verbs) => clauses.Any(clause =>
+                clause.IndexOf(label,StringComparison.Ordinal)>=0 &&
+                (StartsWith(clause,"以后") || StartsWith(clause,"把") || StartsWith(clause,label) ||
+                 verbs.Any(verb=>StartsWith(clause,verb))) &&
+                verbs.Any(verb=>clause.IndexOf(verb,StringComparison.Ordinal)>=0));
             internal bool Mode(string movement, bool? attack) => (movement == null || movement == "follow" && Move ||
                 movement == "stay" && Wait) && (!attack.HasValue ||
                 (attack.Value ? Attack : Stop || Starts("停火", "cease fire", "hold fire")));
@@ -172,6 +198,13 @@ namespace JueMingR.TerrariaHost.Companions
                     else foreach (var binding in step.Each)
                         if (!Step(step.Operation, MergeTaskArguments(step.Arguments, binding), 1, cost)) return false;
                 }
+                if (Mine && steps.Any(step=>step.Operation=="mine_area" || step.Operation=="world_use"))
+                {
+                    if (Contains("在那里等","在那等","留在那里") && steps.Last().Operation!="stand_by") return false;
+                    if (Contains("回来跟我","回来跟着我") && (steps.Count<2 || steps.Last().Operation!="follow_owner" ||
+                        steps[steps.Count-2].Operation!="move_to" || !steps[steps.Count-2].Arguments.TryGetValue("destination",out var back) ||
+                        (back as string)!="owner")) return false;
+                }
                 return cost.Copper == 0 || budget >= 0 && cost.Copper + committed.Copper <= budget;
             }
 
@@ -193,7 +226,11 @@ namespace JueMingR.TerrariaHost.Companions
                     case "follow_owner": return Move;
                     case "stand_by": return Wait;
                     case "fish_at": return Fish;
-                    case "attack_npc": case "guard": return Attack;
+                    case "attack_npc": return Attack && !ClearArea;
+                    case "guard": return Attack && !ClearArea && RadiusWithin(args,"leash_tiles");
+                    case "clear_area":
+                        return ClearArea && repeats==1 && RadiusWithin(args,"radius",require:true) &&
+                            Flag(args,"include_friendly")==IncludeFriendly && Reserve(cost,"area clear",0,1,1);
                     case "cease_fire": return Stop || Starts("停火", "cease fire", "hold fire");
                     case "recall_to_owner": return Recall && Reserve(cost, "recall", 0, repeats, 1);
                     case "use_item":
@@ -239,7 +276,9 @@ namespace JueMingR.TerrariaHost.Companions
                     case "nurse_heal": return Starts("治疗", "找护士", "去找护士", "去护士", "heal", "visit the nurse") && Spend(args, repeats, cost);
                     case "turn_in_angler": return Starts("交任务", "交鱼", "提交", "找渔夫", "turn in") || Contains("交给渔夫", "提交给渔夫");
                     case "build_projection": return Starts("建", "施工", "照蓝图", "按蓝图", "build", "construct");
-                    case "world_use": return args.TryGetValue("action", out var action) && World(action as string);
+                    case "mine_area": return AuthorizedMining(args,repeats,cost);
+                    case "world_use": return args.TryGetValue("action", out var action) && World(action as string) &&
+                        Reserve(cost,"world edit",0,repeats,RequestedNumber(WorkCount,1));
                     case "open_container":
                         return Starts("打开", "开袋", "开匣", "拆袋", "open") &&
                             args.TryGetValue("item_type", out var container) && container is int containerType &&
@@ -248,11 +287,55 @@ namespace JueMingR.TerrariaHost.Companions
                                 AuthorizedCount(NamedUse, containerType, NamedWithoutCount(containerType) ? 1 : 0)) &&
                             (!args.TryGetValue("allow_key", out var key) || key is bool useKey && (!useKey || Contains("钥匙", "key")));
                     case "extract_item": return Starts("提炼", "萃取", "extract");
-                    case "shimmer_item": return Starts("微光", "投入微光", "丢进微光", "shimmer");
+                    case "shimmer_item": return AuthorizedShimmer(args,repeats,cost);
                     case "use_furniture": return Starts("坐", "睡", "起身", "设置床", "sit", "sleep", "set spawn", "stand up");
                     case "catch_critter": return Starts("捕捉", "捉", "抓", "catch");
                     default: return false;
                 }
+            }
+
+            private static bool Flag(IReadOnlyDictionary<string,object> args,string name) =>
+                args.TryGetValue(name,out var value) && value is bool flag && flag;
+
+            private bool AuthorizedShimmer(IReadOnlyDictionary<string,object> args,int repeats,Cost cost)
+            {
+                if (repeats!=1 || !(Starts("微光","投入微光","丢进微光","shimmer") || Move && Contains("微光") &&
+                    Contains("丢进去","投进去","处理这件")) || !args.TryGetValue("item_type",out var item) || !(item is int type) ||
+                    !args.TryGetValue("amount",out var raw) || !(raw is int count)) return false;
+                if (ReferencesHeld) return count==1 && Flag(args,"held_at_send") && Reserve(cost,"held shimmer",0,1,1);
+                return !Flag(args,"held_at_send") && Reserve(cost,"shimmer",type,count,
+                    AuthorizedCount(NamedUse,type,Contains(Lang.GetItemNameValue(type),ItemID.Search.GetName(type))?1:0));
+            }
+
+            private int RequestedNumber(Regex pattern,int fallback)
+            {
+                foreach(string clause in clauses)
+                {
+                    var match=pattern.Match(clause);
+                    if (match.Success) return CoinNumber(match.Groups["count"].Value);
+                }
+                return fallback;
+            }
+
+            private bool RadiusWithin(IReadOnlyDictionary<string,object> args,string name,bool require=false)
+            {
+                int radius=RequestedNumber(RadiusPhrase,-1);
+                return args.TryGetValue(name,out var raw) ? raw is int requested && (radius<0 ? !require && requested<=18 : requested==radius) :
+                    radius<0 && !require;
+            }
+
+            private bool AuthorizedMining(IReadOnlyDictionary<string,object> args,int repeats,Cost cost)
+            {
+                if (!Mine || repeats!=1 || !args.TryGetValue("amount",out var raw) || !(raw is int amount) || amount!=RequestedNumber(WorkCount,1) ||
+                    !args.TryGetValue("tile_type",out var tile) || !(tile is int tileType)) return false;
+                bool collect=args.TryGetValue("mode",out var mode) && (mode as string)=="collect";
+                bool wantsBlocks=Contains("挖掉","破坏","拆掉","清掉") && !Contains("带回","拿到","收集","入包");
+                if (collect==wantsBlocks) return false;
+                if (collect && (!args.TryGetValue("product_type",out var item) || !(item is int product) ||
+                    !MiningProductMatches(tileType,product) || !Contains(Lang.GetItemNameValue(product),ItemID.Search.GetName(product),
+                        product==ItemID.CopperOre ? "铜矿" : null))) return false;
+                return Reserve(cost,"world edit",0,amount,amount) &&
+                    (!args.TryGetValue("radius",out var radius) || radius is int r && r<=RequestedNumber(RadiusPhrase,8));
             }
 
             private bool NamedWithoutCount(int type) => clauses.Any(clause => new[] { "打开", "开袋", "开匣", "拆袋", "open" }
@@ -276,8 +359,10 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 switch (action)
                 {
-                    case "mine": case "axe": case "hammer": case "remove_wall":
-                        return Starts("挖", "砍", "拆", "敲", "矿", "mine", "dig", "cut", "break", "remove");
+                    case "mine": return Mine;
+                    case "axe": return Starts("砍","伐","cut") || Move && Contains("砍树","伐木");
+                    case "hammer": return Starts("敲","锤","hammer");
+                    case "remove_wall": return Starts("拆墙","拆这段墙","敲墙","去掉墙","remove wall");
                     case "place_tile": case "place_wall":
                         return Starts("放", "摆", "铺", "建", "搭", "place", "build", "lay");
                     case "paint_tile": case "paint_wall": case "coat_tile": case "coat_wall":

@@ -20,6 +20,8 @@ namespace JueMingR.TerrariaHost.Companions
                 "\"offset\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":58}"),
             ChatTool("set_behavior", "Set following or staying and/or change whether the companion attacks.",
                 "\"mode\":{\"type\":\"string\",\"enum\":[\"follow\",\"stay\"]},\"attack\":{\"type\":\"boolean\"}"),
+            ChatTool("set_companion_setting", "更改并保存这名队友的一项设置。先用 observe_settings 查名称和值，仅在玩家明确要求时提交。",
+                "\"setting\":{\"type\":\"string\"},\"value\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":2}",",\"required\":[\"setting\",\"value\"]"),
             ChatTool("start_fishing", "Start the existing fishing activity at the feet/seat captured when the user sent this message.",
                 "\"notify_no_bait\":{\"type\":\"boolean\"}"),
             ChatTool("stop_activity", "Stop fishing and optionally set the subsequent movement mode.",
@@ -109,8 +111,9 @@ namespace JueMingR.TerrariaHost.Companions
                         if (!ChatFields(args)) break;
                         string time = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
                         string movement = actor.Fishing != null ? actor.Fishing.Status ?? "正在前往钓位" :
-                            actor.Preferences.Follow ? "跟随" : "待命";
+                            actor.TaskWork?.Independent == true ? actor.TaskWork.Detail : FishingFollowsOwner(actor) ? "跟随" : "待命";
                         CompleteChatQuery(command, actor.Body.name + "，" + movement +
+                            "，跟随主人：" + (FishingFollowsOwner(actor) ? "开" : "关") +
                             "，自动攻击：" + (actor.Preferences.AttackEnabled ? "开" : "关") +
                             "，生命 " + actor.Body.statLife + "/" + actor.Body.statLifeMax2 +
                             "，魔力 " + actor.Body.statMana + "/" + actor.Body.statManaMax2 +
@@ -142,6 +145,11 @@ namespace JueMingR.TerrariaHost.Companions
                         if (!run.Authority.FishActivity) { RejectChatTool(command, ChatAuthority.Denied); return; }
                         StartChatFishing(command, actor, notify == true);
                         return;
+                    case "set_companion_setting":
+                        if (!ChatFields(args,"setting","value") || !ChatString(args,"setting",48,out var setting) || setting==null ||
+                            !ReadChatInt(args,"value",-1,0,2,out int value) || value<0) break;
+                        SetChatSetting(command,actor,setting,value);
+                        return;
                     case "use_item_once":
                         if (!ChatFields(args, "source", "stay_after_teleport") || !ChatString(args, "source", 32, out var source) ||
                             source == null || !ChatBool(args, "stay_after_teleport", out var stay)) break;
@@ -163,6 +171,10 @@ namespace JueMingR.TerrariaHost.Companions
                         return;
                 }
                 if (DispatchChatTaskTool(command) || DispatchChatKnowledgeTool(command, actor)) return;
+                bool dispatched = false;
+                DispatchChatWorldMemoryTool(command,actor,ref dispatched);
+                if (dispatched) return;
+                if (TryDispatchSkillChatTool(command)) return;
                 RejectChatTool(command, "工具名称或参数不受支持。");
             }
             catch (Exception)
@@ -174,6 +186,8 @@ namespace JueMingR.TerrariaHost.Companions
                 else RejectChatTool(command, "无法读取当前队友状态。");
             }
         }
+
+        partial void DispatchChatWorldMemoryTool(ChatCommand command, Actor actor, ref bool dispatched);
 
         private static bool ChatFields(IReadOnlyDictionary<string, object> args, params string[] allowed)
         {
@@ -209,11 +223,13 @@ namespace JueMingR.TerrariaHost.Companions
         private void CompleteChatQuery(ChatCommand command, string text, string publicText = null, bool error = false)
         {
             AddChatEntry(command.Run.Conversation, "query", publicText ?? text, factOwner: command.Run);
-            command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, text, error));
+            command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, text, error,recoveryFact:publicText ?? ShortChatFact(text)));
         }
 
+        private static string ShortChatFact(string text) => text.Length<=600 ? text : text.Substring(0,600);
+
         private static void RejectChatTool(ChatCommand command, string text) =>
-            command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, "rejected：" + text, true));
+            command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, "rejected：" + text, true,recoveryFact:ShortChatFact(text)));
 
         // A result card is visible at admission and replaced in-place on
         // settlement. Cancellation may retire the requesting model and still
@@ -223,7 +239,8 @@ namespace JueMingR.TerrariaHost.Companions
             var run = command.Run;
             if (dedup != null && run.Consumed.TryGetValue(dedup, out var previous))
             {
-                command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, previous.Output(), previous.IsError));
+                command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, previous.Output(), previous.IsError,
+                    recoveryFact:previous.Label(),repeated:true));
                 return null;
             }
             var result = new ChatResult { Id = OperationId(command), State = "accepted", Title = text };
@@ -252,7 +269,7 @@ namespace JueMingR.TerrariaHost.Companions
             var run = command.Run;
             if (!waitForNative) run.Conversation.PendingActions--;
             if (run.Conversation.Current == run) run.Conversation.Status = "正在继续模型回复。";
-            command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, result.Output(), result.IsError));
+            command.Reply.TrySetResult(new LlmToolResult(command.Call.Id, result.Output(), result.IsError,recoveryFact:result.Label()));
         }
 
         private void UpdateChatAction(ChatRun run, ChatResult result, string state, string text, bool recover = false)
@@ -270,8 +287,7 @@ namespace JueMingR.TerrariaHost.Companions
         {
             var action = NewChatAction(command, "切换活动");
             command.Run.Conversation.ControlEpoch++;
-            if ((stop || mode != null) && GetTask(actor.Profile.OwnerId, actor.Profile.Id)?.IsActive == true)
-                StopTask(actor.Profile.OwnerId, actor.Profile.Id);
+            if (stop || mode != null) RetireTaskForActor(actor,"按当前明确指令结束上一个活动。");
             bool endedFishing = false;
             if ((stop || mode != null) && actor.Fishing != null)
             {
@@ -279,14 +295,15 @@ namespace JueMingR.TerrariaHost.Companions
                 EndFishingActivity(actor);
             }
             var behavior = actor.Profile.Behavior;
-            if (mode != null) behavior.Follow = mode == "follow";
+            if (mode=="stay" || stop && mode==null) StandByAfterActivity(actor);
+            if (mode=="follow") behavior.Follow=true;
             if (attack.HasValue) behavior.AttackEnabled = attack.Value;
-            bool changed = mode != null || attack.HasValue;
+            bool changed = mode=="follow" || attack.HasValue;
             if (changed && !ApplyBehavior(actor.Profile.Id, behavior, manual: false))
                 CompleteChatAction(command, action, "failed", "未能应用队友行为。" + (endedFishing ? "钓鱼已停止。" : ""));
             else
                 CompleteChatAction(command, action, "succeeded", (endedFishing ? "当前钓鱼已停止。" : "") +
-                    "移动：" + (behavior.Follow ? "跟随" : "待命") + "，自动攻击：" + (behavior.AttackEnabled ? "开" : "关") + "。");
+                    "移动：" + (FishingFollowsOwner(actor) ? "跟随" : "待命") + "，自动攻击：" + (behavior.AttackEnabled ? "开" : "关") + "。");
         }
 
         internal bool StopChatActivity(Guid ownerId, Guid profileId)
@@ -294,18 +311,19 @@ namespace JueMingR.TerrariaHost.Companions
             if (ChatProfile(ownerId, profileId) == null || !TryFishingActor(ownerId, profileId, out var actor))
                 return false;
             InvalidateChatAction(profileId, "已停止当前活动的待执行模型指令。");
-            StopTask(ownerId, profileId);
+            bool following=FishingFollowsOwner(actor);
+            RetireTaskForActor(actor,"玩家已停止当前活动。");
             bool fishing = actor.Fishing != null;
             if (fishing && !EndFishingActivity(actor)) return false;
-            var behavior = actor.Profile.Behavior;
-            bool following = behavior.Follow;
-            behavior.Follow = false;
-            if (following && !ApplyBehavior(profileId, behavior, manual: false)) return false;
+            StandByAfterActivity(actor);
             if ((fishing || following) && chats.TryGetValue((ownerId, profileId), out var chat))
                 AddChatEntry(chat, "status", fishing ? "玩家已停止钓鱼，队友原地待命。" : "玩家已让队友原地待命。",
                     recover: true);
             return true;
         }
+
+        private void StandByAfterActivity(Actor actor) => SetTaskTravel(actor,new TaskTravel
+        { Feet=CompanionNativeContact.Feet(actor.Body),Arrived=true,Name="停止活动后待命" });
 
         private void InvalidateChatAction(Guid profileId, string reason)
         {

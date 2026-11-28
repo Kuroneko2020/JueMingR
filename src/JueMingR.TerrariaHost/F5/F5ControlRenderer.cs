@@ -38,9 +38,9 @@ namespace JueMingR.TerrariaHost.F5
         }
         internal static void Panel(SpriteBatch batch, Texture2D pixel, Texture2D skin, F5Rect rect)
         { UiSurface.Panel(batch, pixel, rect, skin, new Color(232, 232, 232)); }
-        internal static void Text(SpriteBatch batch, DynamicSpriteFont font, F5Element element, Color color, bool scaledOutline = false)
+        internal static void Text(SpriteBatch batch, DynamicSpriteFont font, F5Element element, Color color, bool scaledOutline = false, float x = 0, float y = 0)
         {
-            var origin = new Vector2(element.Rect.X - element.TextSize.OffsetX, element.Rect.Y - element.TextSize.OffsetY);
+            var origin = new Vector2(x + element.Rect.X - element.TextSize.OffsetX, y + element.Rect.Y - element.TextSize.OffsetY);
             if (scaledOutline) DrawScaledOutline(batch, font, element.Text, origin, color, element.TextScale);
             else Utils.DrawBorderStringFourWay(batch, font, element.Text, origin.X, origin.Y, color, Color.Black, Vector2.Zero, element.TextScale);
         }

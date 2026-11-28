@@ -33,6 +33,8 @@ namespace JueMingR.Infrastructure.Llm
                 }
             }
             var body = Obj("model", settings.Model, "messages", messages, "stream", settings.Stream);
+            if (settings.Stream && connection.Preset.Provider == "openai" && connection.Endpoint.IdnHost == "api.openai.com")
+                body["stream_options"] = Obj("include_usage", true);
             string maxName = connection.Preset.Provider == "openai" ? "max_completion_tokens" : "max_tokens";
             SetOptions(body, settings, maxName, "stop");
             if (request.Tools.Count != 0)
@@ -57,10 +59,13 @@ namespace JueMingR.Infrastructure.Llm
 
         public override LlmTurn Decode(object response)
         {
+            ReadResponseUsage(response);
             ThrowEmbeddedError(response);
             object choice = Array(Get(response, "choices")).FirstOrDefault(row => Number(row, "index", 0) == 0);
             return Finish(RequireMap(Get(choice, "message")), Text(choice, "finish_reason"));
         }
+
+        public override void ReadResponseUsage(object response) => ObserveUsage(ReadOpenAiUsage(Get(response, "usage"), chat: true));
 
         public override bool Accept(string eventName, string data, Action<string> delta, out LlmTurn turn)
         {
@@ -72,6 +77,7 @@ namespace JueMingR.Infrastructure.Llm
                 return true;
             }
             object frame = Parse(data);
+            ReadResponseUsage(frame);
             ThrowEmbeddedError(frame);
             foreach (object choice in Array(Get(frame, "choices")))
             {
@@ -100,7 +106,7 @@ namespace JueMingR.Infrastructure.Llm
             return false;
         }
 
-        private static LlmTurn Finish(Dictionary<string, object> message, string reason)
+        private LlmTurn Finish(Dictionary<string, object> message, string reason)
         {
             if (reason != "stop" && reason != "tool_calls") throw Incomplete();
             if (Text(message, "role") != "assistant") throw Protocol();

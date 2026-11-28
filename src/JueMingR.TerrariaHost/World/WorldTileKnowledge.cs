@@ -1,3 +1,4 @@
+using System;
 using Terraria;
 
 namespace JueMingR.TerrariaHost.World
@@ -33,15 +34,16 @@ namespace JueMingR.TerrariaHost.World
     {
         private readonly object tiles,sections,connection,socket,world;
         private readonly int width,height,mode,worldId;
-        private WorldTileSource(object tiles,object sections,object connection,object socket,object world,int width,int height,int mode,int worldId)
-        {this.tiles=tiles;this.sections=sections;this.connection=connection;this.socket=socket;this.world=world;this.width=width;this.height=height;this.mode=mode;this.worldId=worldId;}
+        private readonly Guid uniqueId;
+        private WorldTileSource(object tiles,object sections,object connection,object socket,object world,int width,int height,int mode,int worldId,Guid uniqueId)
+        {this.tiles=tiles;this.sections=sections;this.connection=connection;this.socket=socket;this.world=world;this.width=width;this.height=height;this.mode=mode;this.worldId=worldId;this.uniqueId=uniqueId;}
         internal static WorldTileSource Capture()
         {
             var client=Main.netMode==1?Netplay.Connection:null;
             // The world owner can be cleared while the retiring tile array
             // remains installed. Native Main.worldID dereferences that owner.
             var world = Main.ActiveWorldFileData;
-            return new WorldTileSource(Main.tile,Main.netMode==1?Main.sectionManager:null,client,client?.Socket,world,Main.maxTilesX,Main.maxTilesY,Main.netMode,world?.WorldId ?? 0);
+            return new WorldTileSource(Main.tile,Main.netMode==1?Main.sectionManager:null,client,client?.Socket,world,Main.maxTilesX,Main.maxTilesY,Main.netMode,world?.WorldId ?? 0,world?.UniqueId ?? Guid.Empty);
         }
         internal bool Current
         {
@@ -49,7 +51,7 @@ namespace JueMingR.TerrariaHost.World
             {
                 var activeWorld = Main.ActiveWorldFileData;
                 return activeWorld != null && tiles != null && ReferenceEquals(tiles, Main.tile) && width == Main.maxTilesX && height == Main.maxTilesY &&
-                    mode == Main.netMode && ReferenceEquals(world, activeWorld) && worldId == activeWorld.WorldId &&
+                    mode == Main.netMode && ReferenceEquals(world, activeWorld) && worldId == activeWorld.WorldId && uniqueId == activeWorld.UniqueId &&
                     (mode != 1 || ReferenceEquals(sections, Main.sectionManager) && ReferenceEquals(connection, Netplay.Connection) && ReferenceEquals(socket, Netplay.Connection?.Socket));
             }
         }

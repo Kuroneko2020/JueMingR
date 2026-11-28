@@ -19,6 +19,11 @@ namespace JueMingR.Platform.Llm
         Service, Timeout, Incomplete, Protocol, Network, Storage, Balance, Quota, PlanExpired
     }
 
+    public interface ILlmRequestMeter
+    {
+        long MeasureRequest(LlmConnectionSnapshot connection, LlmRequest request);
+    }
+
     // Errors crossing into UI contain fixed local messages only, never remote error text or exception details.
     public sealed class LlmException : Exception
     {
@@ -48,6 +53,10 @@ namespace JueMingR.Platform.Llm
         public IReadOnlyList<LlmToolDefinition> Tools { get; }
         // A provider may still emit tools. The runner always enforces this intent locally.
         public bool TextOnly { get; }
+        public bool WasSent { get; private set; }
+        public LlmUsageSample ReportedUsage { get; private set; }
+        public void MarkSent() => WasSent = true;
+        public void ReportUsage(LlmUsageSample usage) => ReportedUsage = usage;
     }
 
     public enum LlmMessageKind { User, Assistant, ToolResults }
@@ -74,12 +83,13 @@ namespace JueMingR.Platform.Llm
 
     public sealed class LlmTurn
     {
-        public LlmTurn(string text, IReadOnlyList<LlmToolCall> toolCalls, string wireJson, string localNotice = null)
+        public LlmTurn(string text, IReadOnlyList<LlmToolCall> toolCalls, string wireJson, string localNotice = null, LlmUsageSample usage = null)
         {
             Text = text;
             ToolCalls = Array.AsReadOnly(toolCalls.ToArray());
             WireJson = wireJson;
             LocalNotice = localNotice;
+            Usage = usage;
         }
 
         public string Text { get; }
@@ -87,6 +97,7 @@ namespace JueMingR.Platform.Llm
         // Only the transport reads this content. Keep it inside the model's current in-memory wire segment.
         public string WireJson { get; }
         public string LocalNotice { get; }
+        public LlmUsageSample Usage { get; }
     }
 
     public sealed class LlmToolDefinition
@@ -117,14 +128,18 @@ namespace JueMingR.Platform.Llm
 
     public sealed class LlmToolResult
     {
-        public LlmToolResult(string id, string output, bool isError = false)
+        public LlmToolResult(string id, string output, bool isError = false, string recoveryFact = null, bool repeated = false)
         {
             Id = id; Output = output; IsError = isError;
+            RecoveryFact = recoveryFact;
+            Repeated = repeated;
         }
 
         public string Id { get; }
         public string Output { get; }
         public bool IsError { get; }
+        public string RecoveryFact { get; }
+        public bool Repeated { get; }
     }
 
     public sealed class LlmHistoryEntry

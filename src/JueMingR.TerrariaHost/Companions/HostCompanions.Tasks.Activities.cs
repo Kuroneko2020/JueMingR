@@ -278,8 +278,8 @@ namespace JueMingR.TerrariaHost.Companions
             actor.TaskCombat?.LacewingEvent == true && ReferenceEquals(actor.TaskCombat.Target,target) && actor.TaskCombat.Generation==generation &&
             target.active && target.life>0 && !target.dontTakeDamage && !target.immortal;
 
-        private static bool TaskAttackEnabled(Actor actor) => actor.TaskCombat == null ? actor.Preferences.AttackEnabled :
-            !actor.TaskCombat.HoldFire;
+        private static bool TaskAttackEnabled(Actor actor) => actor.TaskCombat == null ?
+            actor.TaskWork?.Current?.Operation!="clear_area" && actor.Preferences.AttackEnabled : !actor.TaskCombat.HoldFire;
 
         private CompanionTaskOutcome RecallTask(TaskExecution execution)
         {

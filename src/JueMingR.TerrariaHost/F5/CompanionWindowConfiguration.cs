@@ -222,7 +222,8 @@ namespace JueMingR.TerrariaHost.F5
         {
             bool occupied = setting == CompanionSetting.Follow && host.IsFishing(profile.OwnerId, profile.Id);
             bool activity = setting == CompanionSetting.FishingMode;
-            int mode = activity ? (host.IsFishing(profile.OwnerId, profile.Id) ? 1 : 0) : behavior.SettingValue(setting);
+            int mode = activity ? (host.IsFishing(profile.OwnerId, profile.Id) ? 1 : 0) :
+                setting == CompanionSetting.Follow ? host.EffectiveFollow(profile) : behavior.SettingValue(setting);
             bool automaticTeleport = setting == CompanionSetting.AutoTeleportEnabled;
             bool available = !occupied && (activity ? mode != 0 || host.CanStartFishing(profile.OwnerId, profile.Id)
                 : !CompanionBehavior.IsFishingSetting(setting) || host.CanUseFishingPreferences(profile.Id));
@@ -285,6 +286,11 @@ namespace JueMingR.TerrariaHost.F5
         {
             var profile = CurrentProfile();
             if (profile == null || setting == CompanionSetting.Follow && host.IsFishing(profile.OwnerId, profile.Id)) return;
+            if (setting == CompanionSetting.Follow)
+            {
+                Command(() => host.SetManualFollow(profile.OwnerId,profile.Id,value!=0));
+                return;
+            }
             if (CompanionBehavior.IsFishingSetting(setting))
             {
                 Command(() => host.SetFishingControl(profile.OwnerId, profile.Id, setting, value));

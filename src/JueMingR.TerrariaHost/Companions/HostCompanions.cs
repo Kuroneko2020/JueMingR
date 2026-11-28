@@ -355,7 +355,7 @@ namespace JueMingR.TerrariaHost.Companions
             SetFishingPage(Guid.Empty, Guid.Empty);
             navigationWorld.Reset();
             navigationActive=false;
-            owner=null;world=null;taskNpcWitnesses.Clear();EndPasswordSession();prediction.EndWorld();CompanionThreatField.Reset();EndRetiringConnectionSession();steam.Dispose();ClearWorldSources();
+            owner=null;world=null;taskNpcWitnesses.Clear();taskTalkItems.Clear();taskTalkItemOrder.Clear();EndPasswordSession();prediction.EndWorld();CompanionThreatField.Reset();EndRetiringConnectionSession();steam.Dispose();ClearWorldSources();
         }
         private void RetireArchiveIdentity()
         {
@@ -401,6 +401,7 @@ namespace JueMingR.TerrariaHost.Companions
             F5.CompanionCreationSession.Validate(this);
             ValidateItemGesture();
             profiles.Pump();
+            if (chatSettingWrites.Count!=0) PumpChatSettingWrites();
             if(savingCreation!=Guid.Empty && profiles.IsSaved(savingCreation)){savingCreation=Guid.Empty;if(Feedback=="正在保存新人物。")Feedback="";}
             PumpTaskChestReceipts();
             foreach(var closing in actors.Values.Where(a=>a.Closing && a.CloseCaptured).ToArray())

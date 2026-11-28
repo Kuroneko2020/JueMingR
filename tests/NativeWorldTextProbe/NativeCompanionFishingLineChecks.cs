@@ -211,6 +211,9 @@ namespace NativeWorldTextProbe
                 NativeCompanionTasksChecks.Run(context, host, input, human, first, second, () => Step(context, input, first, second));
                 NativeCompanionDukeTaskChecks.Run(host, human, first, () => Step(context,input,first,second));
                 NativeCompanionChatChecks.Run(host, human, first, a, () => Step(context, input, first, second));
+                NativeCompanionChatBudgetChecks.Run(host, first, a, () => Step(context, input, first, second));
+                NativeCompanionWorldMemoryRuntimeChecks.Run(host,human,first,a,() => Step(context,input,first,second));
+                NativeCompanionCommandSemanticsChecks.Run(host,human,first,a,() => Step(context,input,first,second));
             }
             finally
             {

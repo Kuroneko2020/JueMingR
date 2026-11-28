@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,12 +14,19 @@ using static JueMingR.Infrastructure.Llm.LlmJson;
 
 namespace JueMingR.Infrastructure.Llm
 {
-    public sealed class LlmHttpTransport : ILlmTransport, ILlmConnectionValidator, IDisposable
+    public sealed class LlmHttpTransport : ILlmTransport, ILlmRequestMeter, ILlmConnectionValidator, IDisposable
     {
         private readonly HttpClient system = MakeClient(true);
         private readonly HttpClient direct = MakeClient(false);
         private readonly Func<LlmConnectionSnapshot, HttpMessageHandler> handlerFactory;
         private readonly SemaphoreSlim slots = new SemaphoreSlim(4);
+        private sealed class PreparedRequest
+        {
+            internal LlmConnectionSnapshot Connection;
+            internal string Body;
+        }
+        private readonly ConditionalWeakTable<LlmRequest, PreparedRequest> measuredBodies =
+            new ConditionalWeakTable<LlmRequest, PreparedRequest>();
 
         public LlmHttpTransport() : this(null) { }
 
@@ -37,18 +45,28 @@ namespace JueMingR.Infrastructure.Llm
             Action<string> onText, CancellationToken cancellation) =>
             Task.Run(() => CompleteCoreAsync(connection, request, onText, cancellation), cancellation);
 
-        private async Task<LlmTurn> CompleteCoreAsync(LlmConnectionSnapshot connection, LlmRequest request,
-            Action<string> onText, CancellationToken cancellation)
+        public long MeasureRequest(LlmConnectionSnapshot connection, LlmRequest request) =>
+            Prepare(connection, request).Length;
+
+        private string Prepare(LlmConnectionSnapshot connection, LlmRequest request)
+        {
+            var prepared = measuredBodies.GetValue(request,
+                draft => new PreparedRequest { Connection = connection, Body = EncodeRequest(connection, draft) });
+            // Reusing a DTO with a different connection must never borrow
+            // the first connection's model or advanced request parameters.
+            return ReferenceEquals(prepared.Connection, connection) ? prepared.Body : EncodeRequest(connection, request);
+        }
+
+        private static string EncodeRequest(LlmConnectionSnapshot connection, LlmRequest request)
         {
             if (connection.Preset.Policy == "reference_only" || connection.Endpoint == null)
                 throw LlmHttpOptions.Configuration("此连接无法发起推理请求。");
             LlmConnectionSettings settings = connection.CopySettings();
             var options = new LlmHttpOptions(connection, settings);
-            LlmProtocol protocol = LlmProtocol.For(settings.Protocol);
             string json;
             try
             {
-                Dictionary<string, object> body = protocol.Encode(connection, settings, request);
+                Dictionary<string, object> body = LlmProtocol.For(settings.Protocol).Encode(connection, settings, request);
                 foreach (var parameter in options.Parameters) body.Add(parameter.Key, parameter.Value);
                 json = Write(body);
             }
@@ -58,7 +76,17 @@ namespace JueMingR.Infrastructure.Llm
             }
             if (Encoding.UTF8.GetByteCount(json) > MaximumBytes)
                 throw new LlmException(LlmFailure.Protocol, "本轮上下文超过连接可发送的大小，请新开会话。");
+            return json;
+        }
 
+        private async Task<LlmTurn> CompleteCoreAsync(LlmConnectionSnapshot connection, LlmRequest request,
+            Action<string> onText, CancellationToken cancellation)
+        {
+            var settings = connection.CopySettings();
+            var options = new LlmHttpOptions(connection, settings);
+            var protocol = LlmProtocol.For(settings.Protocol);
+            string json = Prepare(connection, request);
+            measuredBodies.Remove(request);
             var redactor = new LlmPublicText(options.SensitiveValues);
             void Visible(string text)
             {
@@ -67,19 +95,24 @@ namespace JueMingR.Infrastructure.Llm
                 if (safe.Length != 0) onText(safe);
             }
 
-            LlmTurn result = await WithClientAsync(connection, settings, cancellation, (client, total) =>
-                ExchangeAsync(client, connection, settings, options, connection.Endpoint, json, total, async reader =>
-                {
-                    if (settings.Stream) return await reader.ReadEventsAsync(protocol, Visible).ConfigureAwait(false);
-                    return protocol.Decode(Parse(await reader.ReadBodyAsync().ConfigureAwait(false)));
-                })).ConfigureAwait(false);
+            LlmTurn result;
+            try
+            {
+                result = await WithClientAsync(connection, settings, cancellation, (client, total) =>
+                    ExchangeAsync(client, connection, settings, options, connection.Endpoint, json, total, async reader =>
+                    {
+                        if (settings.Stream) return await reader.ReadEventsAsync(protocol, Visible).ConfigureAwait(false);
+                        return protocol.Decode(Parse(await reader.ReadBodyAsync().ConfigureAwait(false)));
+                    }, request.MarkSent, protocol.ReadResponseUsage)).ConfigureAwait(false);
+            }
+            finally { request.ReportUsage(protocol.ObservedUsage); }
             cancellation.ThrowIfCancellationRequested();
             if (settings.Stream && onText != null)
             {
                 string tail = redactor.Flush();
                 if (tail.Length != 0) onText(tail);
             }
-            return new LlmTurn(redactor.Final(result.Text), result.ToolCalls, result.WireJson);
+            return new LlmTurn(redactor.Final(result.Text), result.ToolCalls, result.WireJson, usage: result.Usage);
         }
 
         public Task<IReadOnlyList<LlmModelInfo>> DiscoverAsync(LlmConnectionSnapshot connection, CancellationToken cancellation) =>
@@ -205,7 +238,7 @@ namespace JueMingR.Infrastructure.Llm
 
         private static async Task<T> ExchangeAsync<T>(HttpClient client, LlmConnectionSnapshot connection,
             LlmConnectionSettings settings, LlmHttpOptions options, Uri uri, string body,
-            CancellationToken total, Func<LlmResponseReader, Task<T>> consume)
+            CancellationToken total, Func<LlmResponseReader, Task<T>> consume, Action sent = null, Action<object> errorUsage = null)
         {
             bool discovery = body == null;
             for (int attempt = 0; ; attempt++)
@@ -222,8 +255,10 @@ namespace JueMingR.Infrastructure.Llm
                             if (!discovery) request.Content = new StringContent(body, Encoding.UTF8, "application/json");
                             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(
                                 !discovery && settings.Stream ? "text/event-stream" : "application/json"));
-                            using (HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token)
-                                .ConfigureAwait(false))
+                            deadline.Token.ThrowIfCancellationRequested();
+                            var responseTask = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+                            sent?.Invoke();
+                            using (HttpResponseMessage response = await responseTask.ConfigureAwait(false))
                             {
                                 gotHeaders = true;
                                 int status = (int)response.StatusCode;
@@ -236,7 +271,7 @@ namespace JueMingR.Infrastructure.Llm
                                 {
                                     if (status >= 400 && status < 500)
                                     {
-                                        LlmException classified = await ClassifyHttpErrorAsync(response, status, deadline, settings.IdleSeconds).ConfigureAwait(false);
+                                        LlmException classified = await ClassifyHttpErrorAsync(response, status, deadline, settings.IdleSeconds, errorUsage).ConfigureAwait(false);
                                         if (classified != null) throw classified;
                                     }
                                     throw Status(status, discovery, connection.Preset.Provider);
@@ -249,6 +284,7 @@ namespace JueMingR.Infrastructure.Llm
                                     if (!discovery && settings.Stream && string.Equals(contentType, "application/json", StringComparison.OrdinalIgnoreCase))
                                     {
                                         object error = Parse(await reader.ReadBodyAsync().ConfigureAwait(false));
+                                        errorUsage?.Invoke(error);
                                         ProtocolError(error);
                                         throw new LlmException(LlmFailure.Protocol, "服务没有按配置返回流式事件。");
                                     }
@@ -276,7 +312,7 @@ namespace JueMingR.Infrastructure.Llm
         }
 
         private static async Task<LlmException> ClassifyHttpErrorAsync(HttpResponseMessage response, int status,
-            CancellationTokenSource deadline, int idleSeconds)
+            CancellationTokenSource deadline, int idleSeconds, Action<object> usage)
         {
             if (response.Content == null) return null;
             try
@@ -285,7 +321,10 @@ namespace JueMingR.Infrastructure.Llm
                 using (var reader = new LlmResponseReader(stream, deadline.Token, deadline, idleSeconds))
                 {
                     string body = await reader.ReadBodyAsync(16384).ConfigureAwait(false);
-                    return body == null ? null : LlmProviderFailure.Classify(Parse(body), status);
+                    if (body == null) return null;
+                    object error = Parse(body);
+                    usage?.Invoke(error);
+                    return LlmProviderFailure.Classify(error, status);
                 }
             }
             catch (Exception exception) when (exception is LlmException || LlmHttpOptions.IsJsonError(exception))

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using JueMingR.Platform.Companions;
+using JueMingR.TerrariaHost.World;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.DataStructures;
@@ -24,6 +25,10 @@ namespace JueMingR.TerrariaHost.Companions
         {
             internal TaskExecution Execution;
             internal TargetTile Pool;
+            internal string MemoryReference;
+            internal Point RememberedPoint;
+            internal Point? RememberedFooting;
+            internal long MemoryEpoch;
             internal ArrivalSearch Arrival;
             internal Item Item;
             internal int Slot, Type, Batch, ResultType, ResultStack, Confirmed;
@@ -32,14 +37,15 @@ namespace JueMingR.TerrariaHost.Companions
             internal WorldItem Dropped;
             internal HashSet<WorldItem> OlderItems;
             internal readonly Dictionary<int, int> Products = new Dictionary<int, int>();
-            internal bool Submitted, Cancelled, Converted, TimedOut, NativeDropAttempted, NativeDropAccepted;
+            internal bool Submitted, Cancelled, Converted, TimedOut, NativeDropAttempted, NativeDropAccepted, PoolReady;
         }
 
         private void RegisterTaskShimmer()
         {
-            RegisterTaskOperation("shimmer_item", "让队友走到已观察的微光池，投入指定数量的可微光物品并观察原版结果。",
+            RegisterTaskOperation("shimmer_item", "让队友走到已观察的微光池或当前世界共享的 memory: 地标，到场复核后投入指定数量并观察原版结果。",
                 ShimmerTaskItem, CancelTaskShimmer, new TaskField("target", required: true, min: 1, max: 64),
-                new TaskField("item_type", "integer", true, 1, ItemID.Count - 1), new TaskField("amount", "integer", true, 1, 99999));
+                new TaskField("item_type", "integer", true, 1, ItemID.Count - 1), new TaskField("amount", "integer", true, 1, 99999),
+                new TaskField("held_at_send", "boolean"));
         }
 
         private CompanionTaskOutcome ShimmerTaskItem(TaskExecution execution)
@@ -49,10 +55,17 @@ namespace JueMingR.TerrariaHost.Companions
             if (!(execution.State is TaskShimmerDrop work))
             {
                 if (taskShimmerDrops.ContainsKey(actor)) return TaskOutcome("waiting", "正在确认队友先前投入微光的物品。");
-                if (actor.TaskTiles == null || !actor.TaskTiles.TryGetValue(execution.Text("target"), out var pool) ||
-                    !KnownShimmerPool(pool.Point)) return TaskOutcome("failed", "需要该队友已观察到的实际微光池。");
+                string target = execution.Text("target");
+                bool remembered = target?.StartsWith("memory:", StringComparison.Ordinal) == true;
+                TargetTile pool = default;
+                WorldMemory.Place memory = null;
+                if (remembered ? SharedWorldMemory?.TryGetPlace(target, out memory) != true || memory.Invalid || memory.Category != "shimmer" :
+                    actor.TaskTiles == null || !actor.TaskTiles.TryGetValue(target, out pool) || !KnownShimmerPool(pool.Point))
+                    return TaskOutcome("failed", "需要队友观察到的实际微光池，或本世界可到场复核的微光地标。");
                 if (actor.Fishing != null) EndFishingActivity(actor);
-                execution.State = work = new TaskShimmerDrop { Execution = execution, Pool = pool, Type = type };
+                execution.State = work = new TaskShimmerDrop { Execution = execution, Pool = pool, Type = type,
+                    MemoryReference = remembered ? target : null, RememberedPoint = remembered ? memory.Point : pool.Point,
+                    RememberedFooting = memory?.Footing, MemoryEpoch = remembered ? SharedWorldMemory.Epoch : 0 };
             }
             if (work.Converted)
             {
@@ -68,11 +81,26 @@ namespace JueMingR.TerrariaHost.Companions
             }
             if (Main.GameUpdateCount - execution.StartedAt > 3600)
                 return TaskShimmerResult(work, work.Confirmed > 0 ? "partial" : "failed", "未在任务期限内完成微光处理。");
-            if (!KnownShimmerPool(work.Pool.Point)) return TaskShimmerResult(work, work.Confirmed > 0 ? "partial" : "failed", "原目标已无可确认的微光。");
+            if (work.MemoryReference != null)
+            {
+                var outcome = RefreshTaskShimmerMemory(execution, work);
+                if (outcome != null) return outcome;
+            }
+            else if (!KnownShimmerPool(work.Pool.Point))
+                return TaskShimmerResult(work, work.Confirmed > 0 ? "partial" : "failed", "原目标已无可确认的微光。");
             if (!TryTaskShimmerPosition(execution, work, out var travel)) return travel;
+            if (work.MemoryReference != null && CompanionNativeContact.ObservedSupport(actor.Body))
+                SharedWorldMemory.RecordShimmerFooting(work.MemoryReference, CompanionNativeContact.Feet(actor.Body).ToTileCoordinates());
             if (!FishingHandFree(actor.Body) || actor.Body.IsStackingItems()) return TaskOutcome("waiting", "等队友结束手中操作再投入。", work.Confirmed);
             var body = actor.Body;
-            int slot = Enumerable.Range(0, 50).Where(i => body.inventory[i].type == type && !body.inventory[i].IsAir &&
+            int slot;
+            if (execution.Flag("held_at_send"))
+            {
+                if (amount != 1 || !TryTaskTalkItem(actor, execution.Anchor, out slot, out var spokenItem) || spokenItem.type != type ||
+                    TaskResourceSlotBlocked(actor, false, CompanionInventoryArea.Inventory, slot))
+                    return TaskShimmerResult(work, "failed", "发话时指向的那件队友物品已变化，未改用其他背包物品。");
+            }
+            else slot = Enumerable.Range(0, CompanionBehavior.MainInventorySlots).Where(i => body.inventory[i].type == type && !body.inventory[i].IsAir &&
                 !body.inventory[i].favorited && !TaskResourceSlotBlocked(actor, false, CompanionInventoryArea.Inventory, i)).DefaultIfEmpty(-1).First();
             if (slot < 0) return TaskShimmerResult(work, work.Confirmed > 0 ? "partial" : "failed", "队友没有更多可投入的指定物品。");
             var item = body.inventory[slot];
@@ -163,7 +191,7 @@ namespace JueMingR.TerrariaHost.Companions
         private bool TryTaskShimmerPosition(TaskExecution execution, TaskShimmerDrop work, out CompanionTaskOutcome outcome)
         {
             var actor = execution.Actor;
-            var point = work.Pool.Point;
+            var point = work.MemoryReference == null || work.PoolReady ? work.Pool.Point : work.RememberedPoint;
             Vector2 destination = point.ToWorldCoordinates();
             Vector2 center = actor.Body.Center;
             outcome = null;
@@ -173,7 +201,10 @@ namespace JueMingR.TerrariaHost.Companions
             {
                 SetTaskTravel(actor, null);
                 int side = center.X < destination.X ? -1 : 1;
-                work.Arrival = new ArrivalSearch { X = point.X + side * 3, Y = point.Y, HorizontalRadius = 4, VerticalRadius = 4, Name = "微光池边" };
+                bool findingRememberedPool = work.MemoryReference != null && !work.PoolReady;
+                var hint = findingRememberedPool ? work.RememberedFooting : null;
+                work.Arrival = new ArrivalSearch { X = hint?.X ?? point.X + side * 3, Y = hint?.Y ?? point.Y + (findingRememberedPool ? 4 : 0),
+                    HorizontalRadius = 4, VerticalRadius = 4, Name = "微光池边" };
             }
             if (actor.TaskTravel == null)
             {
@@ -188,6 +219,39 @@ namespace JueMingR.TerrariaHost.Companions
             outcome = TaskOutcome(actor.TaskTravel.Arrived ? "failed" : "running",
                 actor.TaskTravel.Arrived ? "当前站位不能把物品合法投入该池。" : "正在接近微光池。", work.Confirmed);
             return false;
+        }
+
+        private CompanionTaskOutcome RefreshTaskShimmerMemory(TaskExecution execution, TaskShimmerDrop work)
+        {
+            string failure = work.Confirmed > 0 ? "partial" : "failed";
+            if (SharedWorldMemory?.Epoch != work.MemoryEpoch || SharedWorldMemory.TryGetPlace(work.MemoryReference, out var place) != true ||
+                place.Point != work.RememberedPoint)
+                return TaskShimmerResult(work, failure, "任务中的原微光地标已变化，未改用别处投放。");
+            var actor = execution.Actor;
+            bool reachedBank = work.Arrival != null && actor.TaskTravel?.Arrived == true && !actor.TaskTravel.Temporary;
+            // The saved point represents the whole pool, often at the top of
+            // a tall water column. Arriving at the real bank admits rechecking
+            // the pool even when that display point is above throw range.
+            if (!place.Invalid && !work.PoolReady && !reachedBank &&
+                Vector2.DistanceSquared(actor.Body.Center, place.Point.ToWorldCoordinates()) > 112 * 112)
+            {
+                if (!TryTaskShimmerPosition(execution, work, out var travel)) return travel;
+            }
+            bool invalid = place.Invalid;
+            if (place.Invalid || !SharedWorldMemory.RecheckShimmer(place, actor.Body.Center, out Point wet, out invalid))
+                return TaskShimmerResult(work, failure, place.Invalid || invalid ?
+                    "到场复核：原微光池已干涸，已更新共享地点，未投放这批物品。" :
+                    "队友尚无法在原地标核实同一微光池，未投放这批物品。");
+            // Persistence carries a destination and evidence only. This
+            // actor witnesses an actual tile in this session before DropItem.
+            work.Pool = new TargetTile(wet, new TileFact(Main.tile[wet.X, wet.Y]));
+            if (!work.PoolReady && work.Arrival != null)
+            {
+                work.Arrival = null;
+                SetTaskTravel(actor, null);
+            }
+            work.PoolReady = true;
+            return null;
         }
 
         private static bool KnownShimmerPool(Point point)

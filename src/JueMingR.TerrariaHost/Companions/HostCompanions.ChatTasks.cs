@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using JueMingR.Platform.Companions;
 using JueMingR.Platform.Llm;
@@ -48,6 +49,8 @@ namespace JueMingR.TerrariaHost.Companions
         };
 
         private static readonly IReadOnlyDictionary<string, object> NoOperationArguments = new Dictionary<string, object>();
+        private readonly ConditionalWeakTable<ChatRun,Dictionary<string,string>> capabilityQueries =
+            new ConditionalWeakTable<ChatRun,Dictionary<string,string>>();
 
         private CompanionTaskIdentity TaskIdentity(ChatBoundary boundary) => new CompanionTaskIdentity(boundary.Owner, boundary.Profile,
             boundary.WorldSession, boundary.Activation, boundary.DataEpoch);
@@ -64,18 +67,39 @@ namespace JueMingR.TerrariaHost.Companions
                         !ReadChatInt(args, "offset", 0, 0, 1000, out int offset)) break;
                     var capabilities = GetTaskCapabilities().Where(tool => String.IsNullOrEmpty(filter) ||
                         tool.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        tool.Description.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
-                    var names = capabilities.Skip(offset).Take(10).Select(tool => tool.Name);
-                    CompleteChatQuery(command, "已登记 " + capabilities.Length + " 项能力。\n" + String.Join("\n", names) +
-                        (offset + 10 < capabilities.Length ? "\n下一页 offset=" + (offset + 10) : ""), "查看已登记的游戏能力。");
+                        tool.Description.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0 || LocalTaskLabel(tool.Name).Contains(filter))
+                        .Select(tool=>tool.Name+LocalTaskLabel(tool.Name)).Concat(GetTaskCapabilities().Any(tool=>tool.Name=="world_use") ?
+                            WorldActions.Where(action=>MatchesWorldAction(action.Id,action.Label,filter))
+                                .Select(action=>"world_use/"+action.Id+" · "+action.Label) : Enumerable.Empty<string>()).ToArray();
+                    CompleteCapabilityQuery(command,"list:"+(filter??"")+":"+offset,
+                        "已登记 " + capabilities.Length + " 个匹配入口。\n" + String.Join("\n",capabilities.Skip(offset).Take(10))+
+                        (offset+10<capabilities.Length?"\n下一页 offset="+(offset+10):""),"查看已登记的游戏能力。");
                     return true;
                 case "describe_capability":
                     if (!ChatFields(args, "operation") || !ChatString(args, "operation", 64, out var requested) || requested == null) break;
-                    var capability = GetTaskCapabilities().FirstOrDefault(tool => tool.Name == requested);
+                    var actionInfo = WorldActions.FirstOrDefault(action=>requested=="world_use/"+action.Id ||
+                        action.Id==requested || action.Label.Split('、').Contains(requested));
+                    var capability = GetTaskCapabilities().FirstOrDefault(tool => tool.Name == (actionInfo.Id!=null?"world_use":requested) ||
+                        actionInfo.Id==null && LocalTaskLabel(tool.Name)==" · "+requested);
                     if (capability == null)
                         RejectChatTool(command, "没有登记该能力。使用 list_capabilities 查找当前候选。");
-                    else CompleteChatQuery(command, capability.Name + " · " + capability.Description + "\n参数：" + capability.SchemaJson,
-                        "查看游戏能力 " + capability.Name + " 的原生执行约束。");
+                    else
+                    {
+                        string label=capability.Name+(actionInfo.Id==null?LocalTaskLabel(capability.Name):"/"+actionInfo.Id+" · "+actionInfo.Label);
+                        string details=actionInfo.Id==null?capability.Description:actionInfo.Requirements+" 参数 action="+actionInfo.Id+"。";
+                        if (actionInfo.Id=="mine" && actors.TryGetValue(run.Boundary.Profile,out var workActor))
+                        {
+                            int pick=0;
+                            for(int slot=0;slot<CompanionBehavior.MainInventorySlots;slot++)
+                            {
+                                var item=workActor.Body.inventory[slot];
+                                if (item.pick>pick && SupplyAdmitted(workActor,workActor.Body.inventory,0,slot,ownsSelected:slot==workActor.Body.selectedItem)) pick=item.pick;
+                            }
+                            details += pick>0?" 当前已可选镐力最高为 "+pick+"，还需根据所选矿物检查可挖条件。":" 当前队友没有可用的镐力工具。";
+                        }
+                        CompleteCapabilityQuery(command,"describe:"+capability.Name+":"+actionInfo.Id,
+                            label+" · "+details+"\n参数："+capability.SchemaJson,"查看 "+label+" 的原生执行条件。");
+                    }
                     return true;
                 case "get_task":
                 case "stop_task":
@@ -118,7 +142,7 @@ namespace JueMingR.TerrariaHost.Companions
                         CompleteChatQuery(command, FormatTask(GetTask(run.Boundary.Owner, run.Boundary.Profile, existing)));
                     else
                     {
-                        if (!run.Authority.Plan(extra, out var cost)) { RejectChatTool(command, cost.Denial); return true; }
+                        if (!AuthorizeChatPlan(run, extra, out var cost)) { RejectChatTool(command, cost.Denial); return true; }
                         var updated = command.Call.Name == "append_task" ? AppendTask(identity, existing.Value, extra, run.Anchor)
                             : ReplaceTaskTail(identity, existing.Value, extra, run.Anchor);
                         if (updated != null && updated.State != "rejected")
@@ -142,6 +166,39 @@ namespace JueMingR.TerrariaHost.Companions
             return true;
         }
 
+        private static bool MatchesWorldAction(string id,string label,string filter) => String.IsNullOrEmpty(filter) ||
+            id.IndexOf(filter,StringComparison.OrdinalIgnoreCase)>=0 || label.Contains(filter) ||
+            ("world_use/"+id).IndexOf(filter,StringComparison.OrdinalIgnoreCase)>=0;
+
+        private static string LocalTaskLabel(string name)
+        {
+            switch(name)
+            {
+                case "clear_area": return " · 半径清场";
+                case "mine_area": return " · 区域采矿";
+                case "observe_tiles": return " · 查看地形";
+                case "observe_npcs": return " · 查看生物";
+                case "observe_settings": return " · 查看队友设置";
+                case "move_to": return " · 前往地点";
+                case "stand_by": return " · 原地待命";
+                case "follow_owner": return " · 跟随主人";
+                default: return "";
+            }
+        }
+
+        private void CompleteCapabilityQuery(ChatCommand command,string key,string text,string summary)
+        {
+            var seen=capabilityQueries.GetOrCreateValue(command.Run);
+            if (seen.TryGetValue(key,out var old) && String.Equals(text,old,StringComparison.Ordinal))
+            {
+                command.Reply.TrySetResult(new LlmToolResult(command.Call.Id,"本轮已查到同一详情。"+ShortChatFact(text),
+                    recoveryFact:ShortChatFact(text),repeated:true));
+                return;
+            }
+            seen[key]=text;
+            CompleteChatQuery(command,text,summary);
+        }
+
         private void SubmitChatTask(ChatCommand command, CompanionTaskIdentity identity, string title,
             IReadOnlyList<CompanionTaskStep> steps)
         {
@@ -152,7 +209,7 @@ namespace JueMingR.TerrariaHost.Companions
                 CompleteChatQuery(command, FormatTask(GetTask(run.Boundary.Owner, run.Boundary.Profile, previous)));
                 return;
             }
-            if (!run.Authority.Plan(steps, out var cost)) { RejectChatTool(command, cost.Denial); return; }
+            if (!AuthorizeChatPlan(run, steps, out var cost)) { RejectChatTool(command, cost.Denial); return; }
             var result = SubmitTask(identity, title.Trim(), steps, run.Anchor, Guid.ParseExact(OperationId(command), "N"));
             if (result != null && result.TaskId != Guid.Empty)
             {
@@ -161,6 +218,30 @@ namespace JueMingR.TerrariaHost.Companions
                 run.Conversation.ControlEpoch++;
             }
             CompleteChatQuery(command, FormatTask(result), error: result == null || result.State == "rejected");
+        }
+
+        private bool AuthorizeChatPlan(ChatRun run,IReadOnlyList<CompanionTaskStep> steps,out ChatAuthority.Cost cost)
+        {
+            if (!run.Authority.Plan(steps,out cost)) return false;
+            foreach (var step in steps.Where(step=>step.Operation=="shimmer_item"))
+            {
+                if (step.Each.Count!=0) return false;
+                if (run.Authority.ReferencesLastShimmer && (!step.Arguments.TryGetValue("target",out var target) ||
+                    !(target is string token) || token!=LastTaskMemoryShimmerReference()))
+                {
+                    cost.Denial="上次的微光池还不能确定，请确认记录中的池子。";
+                    return false;
+                }
+                if (!run.Authority.ReferencesHeld) continue;
+                if (!actors.TryGetValue(run.Boundary.Profile,out var actor) || !TryTaskTalkItem(actor,run.Anchor,out _,out var held) ||
+                    (!taskTalkItems[run.Anchor.TalkItemWitness].OwnerMatched && !run.Authority.NamesActorHand) ||
+                    !step.Arguments.TryGetValue("item_type",out var type) || !(type is int id) || held.type!=id)
+                {
+                    cost.Denial="无法确认‘这件物品’是队友手里的哪一件。请写明物品名称，或让队友持有它再发送。";
+                    return false;
+                }
+            }
+            return true;
         }
 
         private static bool ReadTaskGuid(IReadOnlyDictionary<string, object> args, out Guid? taskId)
@@ -195,9 +276,9 @@ namespace JueMingR.TerrariaHost.Companions
         private static bool ReadTaskSteps(IReadOnlyDictionary<string, object> args, out IReadOnlyList<CompanionTaskStep> steps)
         {
             steps = null;
-            if (!args.TryGetValue("steps", out var raw) || !(raw is object[] values) || values.Length == 0 || values.Length > MaxTaskSteps) return false;
-            var result = new CompanionTaskStep[values.Length];
-            for (int i = 0; i < values.Length; i++)
+            if (!args.TryGetValue("steps", out var raw) || !(raw is IReadOnlyList<object> values) || values.Count == 0 || values.Count > MaxTaskSteps) return false;
+            var result = new CompanionTaskStep[values.Count];
+            for (int i = 0; i < values.Count; i++)
             {
                 if (!(values[i] is IReadOnlyDictionary<string, object> step) || !ChatFields(step, "operation", "arguments", "repeat", "condition", "each") ||
                     !ChatString(step, "operation", 64, out var operation) || String.IsNullOrWhiteSpace(operation) ||
@@ -215,7 +296,7 @@ namespace JueMingR.TerrariaHost.Companions
                 IReadOnlyList<IReadOnlyDictionary<string, object>> each = null;
                 if (step.TryGetValue("each", out var list))
                 {
-                    if (!(list is object[] members) || members.Length == 0 || members.Length > 64 ||
+                    if (!(list is IReadOnlyList<object> members) || members.Count == 0 || members.Count > 64 ||
                         members.Any(member => !(member is IReadOnlyDictionary<string, object>))) return false;
                     each = members.Cast<IReadOnlyDictionary<string, object>>().ToArray();
                 }

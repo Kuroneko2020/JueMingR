@@ -29,7 +29,14 @@ $continuationProviders=@{
     'tests/NativeWorldTextProbe/NativeCoinUseChecks.cs'=@('native-CoinDepositCpu','native-CoinConsumersCpu');
     'tests/NativeWorldTextProbe/NativeCoinContinuationChecks.cs'=@('native-CoinDepositCpu','native-CoinContinuationCpu');
     'tests/NativeWorldTextProbe/NativeViewOriginalChecks.cs'=@('native-AfkOuterBackground');
-    'tests/NativeWorldTextProbe/NativeAfkOuterBackgroundChecks.cs'=@('native-AfkOuterBackground')
+    'tests/NativeWorldTextProbe/NativeAfkOuterBackgroundChecks.cs'=@('native-AfkOuterBackground');
+    'tests/JueMingR.ArchitectureTests/Llm/LlmBudgetUsageChecks.cs'=@('LlmConnections');
+    'tests/NativeWorldTextProbe/NativeCompanionChatBudgetChecks.cs'=@('native-CompanionFishingLineCpu');
+    'tests/NativeWorldTextProbe/NativeCompanionCommandSemanticsChecks.cs'=@('native-CompanionFishingLineCpu');
+    'tests/NativeWorldTextProbe/NativeCompanionWorldMemoryChecks.cs'=@('native-CompanionFishingLineCpu');
+    'tests/NativeWorldTextProbe/NativeCompanionWorldMemoryRuntimeChecks.cs'=@('native-CompanionFishingLineCpu');
+    'src/JueMingR.TerrariaHost/F5/ChatDraftLayout.cs'=@('native-CompanionChatUiCpu','native-CompanionConfigVisual','native-CompanionFishingLineCpu');
+    'src/JueMingR.TerrariaHost/World/WorldMemory.Materials.cs'=@('native-CompanionFishingLineCpu')
 }
 foreach($path in $continuationProviders.Keys){
     $before=[pscustomobject]@{inputs=@($path+':A')};$after=[pscustomobject]@{inputs=@($path+':B')}

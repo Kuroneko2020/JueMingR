@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using JueMingR.Features.Notes;
 using JueMingR.Features.Text;
@@ -7,6 +8,7 @@ using JueMingR.Platform.Llm;
 using JueMingR.TerrariaHost.Companions;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
+using ReLogic.Graphics;
 using Terraria;
 using Terraria.GameContent;
 using TextElements = JueMingR.Features.Text.TextElements;
@@ -16,6 +18,7 @@ namespace JueMingR.TerrariaHost.F5
     internal sealed partial class CompanionWindow
     {
         private const float ChatScale = .76f, ChatStatusScale = .65f;
+        private static readonly string[] ChatTokenUnits = { "", "k", "m", "b", "t", "q", "qi" };
         private sealed class ChatDraft
         {
             internal TextEditBuffer Text = NewChatDraft();
@@ -35,11 +38,17 @@ namespace JueMingR.TerrariaHost.F5
         private CompanionChatView chatView;
         private IReadOnlyList<LlmHistoryEntry> chatEntries;
         private string chatStream;
-        private NotesTextLayout chatDraftLayout, chatStreamLayout;
+        private ChatDraftLayout chatDraftLayout;
+        private DynamicSpriteFont chatDraftFont;
+        private F5Element chatCompositionLabel;
+        private float chatCompositionPen;
+        private NotesTextLayout chatStreamLayout;
         private F5Element[] chatStreamLines = Array.Empty<F5Element>();
-        private F5Element[] chatDraftLines = Array.Empty<F5Element>();
-        private F5Rect chatHistoryView, chatDraftRect;
-        private float chatOffset, chatMaximum, chatDraftOffset, chatDraftWidth, chatHistoryWidth, chatLineHeight;
+        private F5Rect chatHistoryView, chatDraftRect, chatUsageFooter;
+        private LlmChatProgress shownChatProgress;
+        private LlmChatUsage shownChatUsage;
+        private string chatUsageLine;
+        private float chatOffset, chatMaximum, chatDraftOffset, chatDraftWidth, chatHistoryWidth, chatLineHeight, chatDraftLineHeight, chatDraftUiScale;
         private int chatHistorySkin = -1, chatConfirmation;
         private bool followChat = true, chatInputShift;
 
@@ -85,9 +94,12 @@ namespace JueMingR.TerrariaHost.F5
             chatOwner = chatProfile = Guid.Empty;
             chatConfirmation = 0;
             ResetChatTask();
+            shownChatProgress = null;
+            shownChatUsage = null;
+            chatUsageLine = null;
             chatView = null;
             chatDraftLayout = null;
-            chatDraftLines = Array.Empty<F5Element>();
+            chatCompositionLabel = null;
             chatDraftOffset = 0;
             chatStream = null;
             chatStreamLayout = null;
@@ -99,7 +111,7 @@ namespace JueMingR.TerrariaHost.F5
         private void BuildChat(float row)
         {
             ObserveChat();
-            chatHistoryView = chatDraftRect = default(F5Rect);
+            chatHistoryView = chatDraftRect = chatUsageFooter = default(F5Rect);
             chatTaskHeading = default(F5Rect);
             float width = Math.Min(760, bodyView.Width - 24);
             float x = bodyView.X + (bodyView.Width - width) / 2, top = bodyView.Y;
@@ -143,7 +155,47 @@ namespace JueMingR.TerrariaHost.F5
                 ShowNotice(aiInput.TryCopy(status) ? "已复制当前状态。" : "无法复制当前状态。")));
             actions.Add(connected ? ChatAction("send", "发送", () => SendChat(), chatView.CanSend, blur: false)
                 : ChatAction("configure", "去设置模型", OpenModelSetupFromChat));
+            int firstAction = controls.Count;
             BuildAiActions(x, actionTop, width, bodyView, actions.ToArray(), alignLastRight: true);
+            if (controls.Count == firstAction + actions.Count)
+            {
+                // Use the space left by this row's actual hit rectangles. The
+                // meter never takes space from a button or participates in input.
+                F5Rect last = controls[controls.Count - 1].Rect;
+                float left = x;
+                for (int i = firstAction; i < controls.Count - 1; i++)
+                    if (controls[i].Rect.Y == last.Y) left = controls[i].Rect.Right + 8;
+                chatUsageFooter = new F5Rect(left, last.Y, Math.Max(0, last.X - left - 8), last.Height);
+            }
+        }
+
+        private void PrepareChatUsage()
+        {
+            var progress = chatView?.Progress;
+            var usage = chatView?.Usage ?? LlmChatUsage.Empty;
+            if (ReferenceEquals(shownChatProgress, progress) && ReferenceEquals(shownChatUsage, usage)) return;
+            shownChatProgress = progress;
+            shownChatUsage = usage;
+            string percent = progress == null || progress.InputLimit <= 0 ? "—" :
+                (100d * progress.EstimatedInput / progress.InputLimit).ToString("0", CultureInfo.InvariantCulture) + "%";
+            chatUsageLine = "当前上下文 " + percent + " · 总用量 " + FormatChatTokens(usage.Total);
+        }
+
+        private static string FormatChatTokens(LlmUsageTotals total)
+        {
+            if (total.Requests == 0) return "0 tokens";
+            if (!total.Total.HasValue) return "—";
+            decimal compact = total.Total.Value;
+            bool partial = total.UnknownRequests > 0;
+            int unit = 0;
+            for (; compact >= 1000m && unit < ChatTokenUnits.Length - 1; unit++) compact /= 1000m;
+            if (unit > 0)
+            {
+                // A partial sum is a lower bound, including at a suffix boundary.
+                compact = partial ? Math.Floor(compact * 10m) / 10m : Math.Round(compact, 1, MidpointRounding.AwayFromZero);
+                if (compact >= 1000m && unit < ChatTokenUnits.Length - 1) { compact /= 1000m; unit++; }
+            }
+            return compact.ToString("0.#", CultureInfo.InvariantCulture) + ChatTokenUnits[unit] + (partial ? "+" : "") + " tokens";
         }
 
         private float BuildChatActions(float x, float top, float width)
@@ -199,9 +251,8 @@ namespace JueMingR.TerrariaHost.F5
             aiInput.EditChat(currentChatDraft.Text);
             if (chatDraftLayout == null) return;
             float x = pointer.X - chatDraftRect.X - 7;
-            int line = (int)((pointer.Y - chatDraftRect.Y - 3 + chatDraftOffset) / chatLineHeight);
-            int offset = chatDraftLayout.Hit(x, line);
-            if (offset >= 0) currentChatDraft.Text.MoveTo(offset, chatInputShift);
+            int line = (int)Math.Floor((pointer.Y - chatDraftRect.Y - 3 + chatDraftOffset) / chatLineHeight);
+            chatDraftLayout.Click(currentChatDraft.Text, x, line, chatInputShift);
         }
 
         private bool SendChat()
@@ -258,11 +309,12 @@ namespace JueMingR.TerrariaHost.F5
             if (currentChatDraft == null || chatDraftRect.Width <= 16) return;
             chatLineHeight = Math.Max(21, (FontAssets.MouseText?.Value?.LineSpacing ?? rowHeight) * ChatScale + 2);
             PrepareChatTaskDetails();
+            PrepareChatUsage();
             float historyWidth = Math.Max(1, chatHistoryView.Width - 20);
             if (chatHistoryWidth != historyWidth || chatHistorySkin != skin)
             {
                 chatBlocks.Clear(); chatEntries = null; chatStream = null; chatStreamLayout = null;
-                chatStreamLines = chatDraftLines = Array.Empty<F5Element>();
+                chatStreamLines = Array.Empty<F5Element>();
                 chatDraftLayout = null; chatHistoryWidth = historyWidth; chatHistorySkin = skin;
             }
             var entries = chatView?.Entries;
@@ -288,16 +340,30 @@ namespace JueMingR.TerrariaHost.F5
 
             TextEditBuffer draft = currentChatDraft.Text;
             float draftWidth = chatDraftRect.Width - 16;
-            if (chatDraftLayout == null || chatDraftWidth != draftWidth || !ReferenceEquals(chatDraftLayout.Text, draft.Text))
+            var font = FontAssets.MouseText?.Value;
+            if (font != chatDraftFont || chatDraftWidth != draftWidth || chatDraftLineHeight != chatLineHeight || chatDraftUiScale != matrix.M11)
+            { chatDraftLayout = null; chatCompositionLabel = null; }
+            if (chatDraftLayout == null || !ReferenceEquals(chatDraftLayout.Text, draft.Text))
             {
-                chatDraftLayout = new NotesTextLayout(draft.Text, draftWidth, ChatGlyphWidth, draft.Boundaries, chatDraftLayout, draft.LastChangeStart);
-                while (!chatDraftLayout.Complete) chatDraftLayout.Continue(8192);
-                chatDraftLines = ChatLines(chatDraftLayout, chatLineHeight, chatDraftLines);
+                chatDraftLayout = new ChatDraftLayout(draft, font, ChatScale, draftWidth, chatLineHeight, MeasureOutlined, chatDraftLayout);
                 chatDraftWidth = draftWidth;
+                chatDraftLineHeight = chatLineHeight;
+                chatDraftUiScale = matrix.M11;
+                chatDraftFont = font;
             }
-            int caretLine = chatDraftLayout.LineOf(draft.Caret);
+            int caretLine = chatDraftLayout.CurrentLine(draft);
             chatDraftOffset = Math.Max(0, Math.Min(caretLine * chatLineHeight,
                 Math.Max(chatDraftOffset, (caretLine + 1) * chatLineHeight - chatDraftRect.Height + 7)));
+            string composition = aiInput.Composition;
+            if (composition.Length == 0) chatCompositionLabel = null;
+            else if (chatCompositionLabel?.Text != composition)
+            {
+                var size = MeasureOutlined(composition, ChatScale);
+                chatCompositionLabel = new F5Element(F5ElementKind.Text, new F5Rect(3, 0, size.Width, chatLineHeight),
+                    composition, size, ChatScale, F5Command.None);
+                chatCompositionPen = 3 - size.OffsetX + (font == null ? size.Width :
+                    ChatDraftLayout.Advance(font, composition, 0, composition.Length, true) * ChatScale);
+            }
         }
 
         private void UpdateChatHistory(IReadOnlyList<LlmHistoryEntry> entries)
@@ -418,8 +484,11 @@ namespace JueMingR.TerrariaHost.F5
             if (chatTaskHeading.Width > 0) renderer.Pass(matrix, bodyView, DrawChatTaskHeading);
             if (chatHistoryView.Height > 0) renderer.Pass(matrix, chatHistoryView, chatTaskDetails ? (Action)DrawChatTaskDetails : DrawChatHistory);
             renderer.Pass(matrix, chatDraftRect, DrawChatDraft);
-            renderer.Pass(matrix, panel, () => ScrollIndicator(chatHistoryView, (int)(chatTaskDetails ? chatTaskOffset : chatOffset),
-                (int)(chatTaskDetails ? chatTaskMaximum : chatMaximum)));
+            renderer.Pass(matrix, panel, () =>
+            {
+                ScrollIndicator(chatHistoryView, (int)(chatTaskDetails ? chatTaskOffset : chatOffset), (int)(chatTaskDetails ? chatTaskMaximum : chatMaximum));
+                if (chatUsageFooter.Width > 20) renderer.Text(chatUsageLine, chatUsageFooter, Color.LightSteelBlue, ChatStatusScale);
+            });
         }
 
         private void DrawChatHistory()
@@ -482,27 +551,27 @@ namespace JueMingR.TerrariaHost.F5
             {
                 var line = chatDraftLayout.Lines[i];
                 float top = y + i * chatLineHeight;
-                if (editingChat && draft.HasSelection && line.Start <= draft.SelectionEnd && line.End >= draft.SelectionStart)
+                if (editingChat && draft.HasSelection && chatDraftLayout.Start(line) < draft.SelectionEnd && chatDraftLayout.End(line) > draft.SelectionStart)
                 {
-                    float a = draft.SelectionStart <= line.Start ? 0 : chatDraftLayout.CaretX(draft.SelectionStart);
-                    float b = draft.SelectionEnd >= line.End ? chatDraftLines[i].Rect.Width : chatDraftLayout.CaretX(draft.SelectionEnd);
+                    float a = chatDraftLayout.X(line, draft.SelectionStart);
+                    float b = chatDraftLayout.X(line, draft.SelectionEnd);
                     if (b > a) Fill(new F5Rect(x + a, top, b - a, chatLineHeight), new Color(62, 101, 170));
                 }
-                renderer.Label(Move(chatDraftLines[i], x, y));
+                renderer.Label(line.Label, x, y);
             }
             if (!editingChat) return;
-            float caretX = x + chatDraftLayout.CaretX(draft.Caret);
-            float caretY = y + chatDraftLayout.LineOf(draft.Caret) * chatLineHeight;
-            string composition = aiInput.Composition;
-            if (composition.Length > 0)
+            int caretLine = chatDraftLayout.CurrentLine(draft);
+            float caretX = x + chatDraftLayout.X(chatDraftLayout.Lines[caretLine], draft.Caret);
+            float caretY = y + caretLine * chatLineHeight;
+            if (chatCompositionLabel != null)
             {
-                float width = Math.Min(chatDraftRect.Width - 8, ChatGlyphWidth(composition) + 8);
+                float width = Math.Max(chatCompositionLabel.Rect.Right, chatCompositionPen) + 2;
                 float left = Math.Min(caretX, chatDraftRect.Right - width - 2);
                 Fill(new F5Rect(left, caretY, width, chatLineHeight), new Color(20, 31, 49));
-                renderer.Text(composition, new F5Rect(left + 3, caretY, width - 6, chatLineHeight), Color.Gold, ChatScale);
+                renderer.Label(chatCompositionLabel, left, caretY, Color.Gold);
                 // The composition strip is painted above the committed text.
                 // Its end is the visible caret while the candidate is edited.
-                caretX = left + width - 2;
+                caretX = left + chatCompositionPen;
             }
             var caret = new F5Rect(caretX, caretY, 1, chatLineHeight - 2);
             Fill(caret, Color.White);

@@ -978,7 +978,9 @@ namespace JueMingR.TerrariaHost
                     Combat=new Combat.HostCombat(gameDirectory,Tools);runtime.SharedRuntime.AddFeature(Combat);
                     Combat.Handoff.Attach(Processing,QuickItems);
                     Afk=new AfkMode.HostAfkMode(gameDirectory,Tools);Afk.Attach(QuickItems,Processing);runtime.SharedRuntime.AddFeature(Afk);
-                    Companions=new Companions.HostCompanions(gameDirectory){OwnerOperations=items.Ownership,OwnerItems=items};runtime.SharedRuntime.AddFeature(Companions);
+                    var worldMemory = new World.WorldMemory(gameDirectory);
+                    runtime.SharedRuntime.AddFeature(worldMemory);
+                    Companions=new Companions.HostCompanions(gameDirectory){OwnerOperations=items.Ownership,OwnerItems=items,SharedWorldMemory=worldMemory};runtime.SharedRuntime.AddFeature(Companions);
                     try
                     {
                         var presets = LlmPresetCatalog.Load();

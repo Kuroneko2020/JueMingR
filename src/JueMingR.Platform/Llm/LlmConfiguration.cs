@@ -256,4 +256,10 @@ namespace JueMingR.Platform.Llm
         Task SaveHistoryAsync(Guid owner, Guid profile, IReadOnlyList<LlmHistoryEntry> entries);
         Task ClearHistoryAsync(Guid owner, Guid profile);
     }
+
+    public interface ILlmChatArchiveStore
+    {
+        Task<LlmChatArchive> LoadChatArchiveAsync(Guid owner, Guid profile);
+        Task SaveChatArchiveAsync(Guid owner, Guid profile, LlmChatArchive archive);
+    }
 }

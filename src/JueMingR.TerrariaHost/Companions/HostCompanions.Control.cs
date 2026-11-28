@@ -80,6 +80,7 @@ namespace JueMingR.TerrariaHost.Companions
             a.Behavior.OwnerTrail=FishingFollowsOwner(a)?ObserveFollowOwner():null;
             a.Behavior.TaskTravel = a.TaskTravel;
             a.Behavior.TaskCombat = a.TaskCombat;
+            a.Behavior.EffectiveFollow = FishingFollowsOwner(a);
             var frame=a.Behavior.DecideMobility(p,owner,behavior,planning,movementTarget,pursuit.CloseCombat,clearOpening,pursuit.Weapon,
                 a.Mobility, maintainMeleeApproach, taskPaused ? null : a.Fishing);
             if (a.TaskTravel != null)
@@ -95,7 +96,7 @@ namespace JueMingR.TerrariaHost.Companions
             mobilityHand=StageMobility(a,frame,manualSupply || !frame.EmergencyHand && (heldSlot>=0 || buff || a.TaskWorldHand != null),
                 handless && (manualCommand != null || attackAfterExit), valid && !manualSupply, out var delivery) || mobilityHand;
             a.Behavior.RecordMovementDelivery(delivery);
-            if (behavior.AutoTeleportEnabled && behavior.AutoTeleportBlockedEnabled && behavior.Follow && fishing == null)
+            if (behavior.AutoTeleportEnabled && behavior.AutoTeleportBlockedEnabled && FishingFollowsOwner(a))
                 CaptureAutoTeleportMovement(a, delivery, frame.TemporaryGoal);
 
             bool taskWorldHand = StageWorldTaskHand(a, !mobilityHand && !manualSupply && !frame.TemporaryGoal && heldSlot < 0);
@@ -330,6 +331,7 @@ namespace JueMingR.TerrariaHost.Companions
         }
         internal Vector2 ProjectileAim(Actor a,Projectile projectile)
         {
+            if(projectile.type==Terraria.ID.ProjectileID.LaserDrill && TryMiningProjectileAim(a,projectile,out var miningPoint))return miningPoint;
             if(projectile.type!=633)return a.Aim;
             var view=new HostPrismSteering.View(a.Body.Center-new Vector2(960,540),1920,1080,1);
             return HostPrismSteering.PointInView(a.Body.RotatedRelativePoint(a.Body.MountedCenter),projectile.velocity,a.Aim,a.Body.gravDir,view);
@@ -347,6 +349,7 @@ namespace JueMingR.TerrariaHost.Companions
             // Inventory changes must not use the previous accessory result.
             if(!a.Body.dead)a.TileReachPending=false;
             AfterWorldTaskHand(a);
+            ObserveClearAreaAttack(a);
             AfterFishingBody(a);
             UpdateCompanionFurniture(a);
             var hand=a.Combat.Hand;

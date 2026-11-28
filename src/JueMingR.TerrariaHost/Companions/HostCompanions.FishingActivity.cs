@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using JueMingR.Platform.Companions;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.Chat;
@@ -19,17 +20,20 @@ namespace JueMingR.TerrariaHost.Companions
         internal readonly struct FishingAnchor
         {
             internal readonly Vector2 Feet;
+            internal readonly Vector2 BodyCenter;
             internal readonly float Gravity;
             internal readonly Point? Seat;
             internal readonly ushort SeatType;
             internal readonly short SeatFrameX, SeatFrameY;
             internal readonly string SelectedMarkerId;
             internal readonly long MarkerSession;
+            internal readonly Guid TalkItemWitness;
             internal bool Valid => Gravity != 0;
 
             internal FishingAnchor(Player player, Point? seat, Tile tile)
             {
                 Feet = CompanionNativeContact.Feet(player);
+                BodyCenter = player.Center;
                 Gravity = player.gravDir;
                 Seat = seat;
                 SeatType = tile?.type ?? 0;
@@ -37,14 +41,16 @@ namespace JueMingR.TerrariaHost.Companions
                 SeatFrameY = tile?.frameY ?? 0;
                 SelectedMarkerId = null;
                 MarkerSession = 0;
+                TalkItemWitness = Guid.Empty;
             }
             internal FishingAnchor(Vector2 feet, float gravity)
-            { Feet = feet; Gravity = gravity; Seat = null; SeatType = 0; SeatFrameX = SeatFrameY = 0; SelectedMarkerId = null; MarkerSession = 0; }
-            internal FishingAnchor(FishingAnchor spatial, string markerId, long markerSession)
+            { Feet = BodyCenter = feet; Gravity = gravity; Seat = null; SeatType = 0; SeatFrameX = SeatFrameY = 0; SelectedMarkerId = null; MarkerSession = 0; TalkItemWitness = Guid.Empty; }
+            internal FishingAnchor(FishingAnchor spatial, string markerId, long markerSession, Guid talkItemWitness = default(Guid))
             {
-                Feet = spatial.Feet; Gravity = spatial.Gravity; Seat = spatial.Seat; SeatType = spatial.SeatType;
+                Feet = spatial.Feet; BodyCenter = spatial.BodyCenter; Gravity = spatial.Gravity; Seat = spatial.Seat; SeatType = spatial.SeatType;
                 SeatFrameX = spatial.SeatFrameX; SeatFrameY = spatial.SeatFrameY;
                 SelectedMarkerId = markerId; MarkerSession = markerSession;
+                TalkItemWitness = talkItemWitness;
             }
         }
 
@@ -164,7 +170,27 @@ namespace JueMingR.TerrariaHost.Companions
         private static int FishingLiquid(Actor actor) => actor.Fishing?.Pond?.Liquid ?? -1;
         private bool FishingPagePauses(Actor actor) => fishingPageOwner == actor.Profile.OwnerId && fishingPageId == actor.Profile.Id;
         private static bool FishingFollowsOwner(Actor actor) => actor.Fishing == null &&
-            (actor.TaskTravel?.FollowOwner ?? actor.Preferences.Follow);
+            (actor.TaskTravel?.FollowOwner ?? (actor.TaskWork?.Independent != true && actor.Preferences.Follow));
+
+        internal int EffectiveFollow(CompanionProfile profile) => actors.TryGetValue(profile.Id,out var actor) &&
+            actor.Ready && !actor.Closing ? (FishingFollowsOwner(actor) ? 1 : 0) : profile.SettingValue(CompanionSetting.Follow);
+
+        internal bool SetManualFollow(Guid ownerId,Guid id,bool follow) => ApplyFollowSetting(ownerId,id,follow,true);
+
+        private bool ApplyFollowSetting(Guid ownerId,Guid id,bool follow,bool manual)
+        {
+            var profile = SettingProfile(ownerId,id);
+            if (profile == null || IsFishing(ownerId,id)) return false;
+            if (actors.TryGetValue(id,out var actor))
+            {
+                RetireTaskForActor(actor,manual?"已交回玩家手动跟随控制。":"已按玩家当前消息修改跟随设置。");
+                if (manual) InvalidateChatAction(id,"已采用玩家手动跟随控制。");
+            }
+            var preferences = profile.Behavior;
+            if (preferences.Follow == follow) return true;
+            preferences.Follow = follow;
+            return ApplyBehavior(id,preferences,manual:false);
+        }
 
         private bool EndFishingActivity(Actor actor, bool follow = false, bool retire = false, bool movingFishingTask = false)
         {

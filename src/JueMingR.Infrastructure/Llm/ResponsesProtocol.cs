@@ -32,7 +32,12 @@ namespace JueMingR.Infrastructure.Llm
             var body = Obj("model", settings.Model, "input", input, "stream", settings.Stream);
             if (request.Instructions.Length != 0) body["instructions"] = request.Instructions;
             // Responses output, including encrypted reasoning, is replayed from memory. No server response IDs are required.
-            if (connection.Preset.Provider == "openai") body["store"] = false;
+            if (connection.Preset.Provider == "openai")
+            {
+                body["store"] = false;
+                if (connection.Endpoint.IdnHost == "api.openai.com")
+                    body["include"] = new[] { "reasoning.encrypted_content" };
+            }
             SetOptions(body, settings, "max_output_tokens", null);
             if (!string.IsNullOrWhiteSpace(settings.Reasoning)) body["reasoning"] = Obj("effort", settings.Reasoning);
             if (request.Tools.Count != 0)
@@ -45,6 +50,7 @@ namespace JueMingR.Infrastructure.Llm
         }
 
         public override LlmTurn Decode(object response) => Finish(response, null);
+        public override void ReadResponseUsage(object response) => ObserveUsage(ReadOpenAiUsage(Get(response, "usage"), chat: false));
 
         public override bool Accept(string eventName, string data, Action<string> delta, out LlmTurn turn)
         {
@@ -67,6 +73,7 @@ namespace JueMingR.Infrastructure.Llm
                     break;
                 case "response.failed":
                 case "response.incomplete":
+                    ReadResponseUsage(Get(frame, "response"));
                     ThrowEmbeddedError(Get(frame, "response"));
                     throw Incomplete();
                 case "response.completed":
@@ -76,8 +83,9 @@ namespace JueMingR.Infrastructure.Llm
             return false;
         }
 
-        private static LlmTurn Finish(object response, SortedDictionary<int, object> completedItems)
+        private LlmTurn Finish(object response, SortedDictionary<int, object> completedItems)
         {
+            ReadResponseUsage(response);
             ThrowEmbeddedError(response);
             if (Text(response, "status") != "completed") throw Incomplete();
             object[] output = Array(Get(response, "output"));

@@ -2,6 +2,7 @@ using System;
 using System.Text;
 using JueMingR.Features.Text;
 using JueMingR.Features.Notes;
+using JueMingR.TerrariaHost.F5;
 using JueMingR.TerrariaHost.Notes;
 using Microsoft.Xna.Framework.Input;
 using ReLogic.OS;
@@ -93,11 +94,11 @@ namespace JueMingR.TerrariaHost.Input
         { ProcessSample(active, layout, physicalSample, focused, null); }
         internal void AfterSampleForImportName(bool active, KeyboardState physicalSample, bool focused, HostInputState input)
         { ProcessSample(active, null, physicalSample, focused, input); }
-        internal void AfterSampleForCompanion(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused,
+        internal void AfterSampleForCompanion(bool active, ChatDraftLayout layout, KeyboardState physicalSample, bool focused,
             HostInputState input, bool sendOnEnter)
-        { ProcessSample(active, layout, physicalSample, focused, input, sendOnEnter); }
+        { ProcessSample(active, null, physicalSample, focused, input, sendOnEnter, layout); }
         private void ProcessSample(bool active, NotesTextLayout layout, KeyboardState physicalSample, bool focused,
-            HostInputState textCommandInput, bool sendOnEnter = false)
+            HostInputState textCommandInput, bool sendOnEnter = false, ChatDraftLayout chatLayout = null)
         {
             sample = physicalSample;
             if (!focused) { Release(false); return; }
@@ -114,7 +115,7 @@ namespace JueMingR.TerrariaHost.Input
                 if (sample.IsKeyUp(Keys.Escape)) escapeTail = false;
                 ProcessText(imePriority || enterTail, imePriority || escapeTail, textCommandInput, sendOnEnter);
                 if (HasComposition) workspace.PreserveUncommittedInput(bound);
-                if (workspace.Editor != null && !imePriority) ProcessKeys(layout);
+                if (workspace.Editor != null && !imePriority) ProcessKeys(layout, chatLayout);
                 if (leased && workspace.Editor != null) PlayerInput.WritingText = true;
                 previousComposition = composing;
                 // Raw shortcuts earlier in the next Update consume this cached state.
@@ -169,7 +170,7 @@ namespace JueMingR.TerrariaHost.Input
             if (bound.SingleLine) { FinishComposition(false); if (!HasComposition) workspace.RequestFinish(); }
             else bound.Insert("\n");
         }
-        private void ProcessKeys(NotesTextLayout layout)
+        private void ProcessKeys(NotesTextLayout layout, ChatDraftLayout chatLayout)
         {
             TextEditBuffer editor = workspace.Editor; if (editor == null) return;
             bool control = sample.IsKeyDown(Keys.LeftControl) || sample.IsKeyDown(Keys.RightControl);
@@ -202,7 +203,7 @@ namespace JueMingR.TerrariaHost.Input
             { pendingNavigation = navigation; navigationRevision = editor.Revision; navigationCaret = editor.Caret; navigationSelection = editor.CaretRevision; navigationExtend = shift; }
             // Notes titles are single-line documents but may wrap visually;
             // only the map's unwrapped field has no Notes layout to navigate.
-            if (editor.SingleLine && layout == null && navigation != Keys.None)
+            if (editor.SingleLine && layout == null && chatLayout == null && navigation != Keys.None)
             {
                 if (navigation == Keys.Home) editor.MoveTo(0, shift);
                 else if (navigation == Keys.End) editor.MoveTo(editor.Text.Length, shift);
@@ -210,6 +211,13 @@ namespace JueMingR.TerrariaHost.Input
             }
             if (pendingNavigation == Keys.None) return;
             if (editor.Revision != navigationRevision || editor.Caret != navigationCaret || editor.CaretRevision != navigationSelection) { pendingNavigation = Keys.None; return; }
+            if (chatLayout != null)
+            {
+                if (!ReferenceEquals(chatLayout.Text, editor.Text)) return;
+                chatLayout.Navigate(editor, pendingNavigation, navigationExtend);
+                pendingNavigation = Keys.None;
+                return;
+            }
             if (layout == null || !ReferenceEquals(layout.Text, editor.Text) || !layout.CanLocate(editor.Caret)) return;
             int target = pendingNavigation == Keys.Up ? layout.Vertical(editor.Caret, -1) : pendingNavigation == Keys.Down ? layout.Vertical(editor.Caret, 1) :
                 pendingNavigation == Keys.Home ? layout.LineHome(editor.Caret) : layout.LineEnd(editor.Caret);

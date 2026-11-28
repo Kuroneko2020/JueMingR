@@ -13,7 +13,7 @@ using JueMingR.Platform.Llm;
 
 namespace JueMingR.ArchitectureTests
 {
-    internal static class LlmConnectionChecks
+    internal static partial class LlmConnectionChecks
     {
         private const string TestKey = "fixture-key-never-logged";
         private static readonly IReadOnlyList<LlmPreset> Presets = LlmPresetCatalog.Load();
@@ -27,6 +27,9 @@ namespace JueMingR.ArchitectureTests
             Run(failures, "cross-turn wire fields, tool groups and fragmented UTF-8", AcrossUserTurns);
             Run(failures, "local tool eligibility, budgets and closed protocol recovery", LocalToolBoundaries);
             Run(failures, "bad completion, cancellation and redaction", FailuresAndRedaction);
+            Run(failures, "three exact wire meters and one usage record per exchange", UsageProtocolWire);
+            Run(failures, "same-message budget recovery and preserved tool receipt", SameTurnRecovery);
+            Run(failures, "atomic persistent usage and latest connection identity", UsageArchive);
             Run(failures, "DPAPI, prepared replacement, references and public history", PersistentConfiguration);
             Run(failures, "save and use commits exactly the requested scope", SaveAndUse);
         }
